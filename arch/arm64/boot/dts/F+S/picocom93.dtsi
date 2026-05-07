@@ -341,56 +341,50 @@ pcom_adc: &adc1{};
 /* GPIO declarations */
 &gpio1 {
 	gpio-line-names =
-	/* 0-4 */   "I2C_1_SCL", "I2C_1_SDA", "BL_PWM", "BL_EN", "UART_2_RX",
-	/* 5-9 */   "UART_2_TX", "UART_3_RX", "UART_3_TX", "CAN_1_TX", "CAN_1_RX",
-	/* 10-14 */ "TOUCH_IRQ#_3V3", "SPI_CS", "SPI_MISO", "SPI_SCLK", "SPI_MOSI",
-	/* 15-19 */ "MX93_WDOG", "", "", "", "",
-	/* 20-24 */ "", "", "", "", "",
-	/* 25-29 */ "", "", "", "", "",
-	/* 30-31 */ "","";
+	/* 0 */  "I2C_1_SCL", "I2C_1_SDA", "BL_PWM", "BL_EN",
+	/* 4 */  "UART_2_RX", "UART_2_TX", "UART_3_RX", "UART_3_TX",
+	/* 8 */  "CAN_1_TX", "CAN_1_RX", "TOUCH_IRQ#_3V3", "SPI_CS",
+	/* 12 */ "SPI_MISO", "SPI_SCLK", "SPI_MOSI", "MX93_WDOG",
+	/* 16 */ "", "", "", "",
+	/* 20 */ "", "", "", "",
+	/* 24 */ "", "", "", "",
+	/* 28 */ "", "", "", "";
 };
 
 &gpio2 {
 	gpio-line-names =
-	/* 0-4 */   "RGB_CLK", "RGB_DE", "RGB_VSYNC_RGB_D12", "RGB_HSYNC_RGB_D0", "",
-	/* 5-9 */   "RGB_D1", "RGB_D2", "RGB_D3", "RGB_D4", "RGB_D5",
-	/* 10-14 */ "RGB_D6", "RGB_D7", "RGB_D8", "RGB_D9", "RGB_D10",
-	/* 15-19 */ "RGB_D11", "", "RGB_D13", "RGB_D14", "RGB_D15",
-	/* 20-24 */ "RGB_D16", "RGB_D17", "I2C_2_SDA", "I2C_2_SCL", "GPIO_41",
-	/* 25-29 */ "CAN_2_TX", "GPIO_40", "CAN_2_RX", "I2C_INT_SDA", "I2C_INT_SCL",
-	/* 30-31 */ "", "";
+	/* 0 */  "RGB_CLK", "RGB_DE", "RGB_VSYNC_RGB_D12", "RGB_HSYNC_RGB_D0",
+	/* 4 */  "", "RGB_D1", "RGB_D2", "RGB_D3",
+	/* 8 */  "RGB_D4", "RGB_D5", "RGB_D6", "RGB_D7",
+	/* 12 */ "RGB_D8", "RGB_D9", "RGB_D10", "RGB_D11",
+	/* 16 */ "", "RGB_D13", "RGB_D14", "RGB_D15",
+	/* 20 */ "RGB_D16", "RGB_D17", "I2C_2_SDA", "I2C_2_SCL",
+	/* 24 */ "GPIO_41", "CAN_2_TX", "GPIO_40", "CAN_2_RX",
+	/* 28 */ "I2C_INT_SDA", "I2C_INT_SCL", "", "";
 };
 
 &gpio3 {
 	gpio-line-names =
-	/* 0-4 */   "SD_CD", "SD_CLK", "SD_CMD", "SD_D0", "SD_D1",
-	/* 5-9 */   "SD_D2", "SD_D3", "PMIC_IRQ", "SD_eMMC_CLK", "SD_eMMC_CMD",
-	/* 10-14 */ "SD_eMMC_D0", "SD_eMMC_D1", "SD_eMMC_D2", "SD_eMMC_D3",
-				"SD_eMMC_D4",
-	/* 15-19 */ "SD_eMMC_D5", "SD_eMMC_D6", "SD_eMMC_D7", "SD_eMMC_DS",
-				"SD_VSEL",
-	/* 20-24 */ "SD_WLAN_CLK", "SD_WLAN_CMD", "SD_WLAN_D0", "SD_WLAN_D1",
-				"SD_WLAN_D2",
-	/* 25-29 */ "SD_WLAN_D3", "DISP_EN", "USB_HOST_PWR", "UART_1_RX",
-				"UART_1_RTS",
-	/* 30-31 */ "UART_1_CTS", "UART_1_TX";
+	/* 0 */  "SD_CD", "SD_CLK", "SD_CMD", "SD_D0",
+	/* 4 */  "SD_D1", "SD_D2", "SD_D3", "PMIC_IRQ",
+	/* 8 */  "SD_eMMC_CLK", "SD_eMMC_CMD", "SD_eMMC_D0", "SD_eMMC_D1",
+	/* 12 */ "SD_eMMC_D2", "SD_eMMC_D3", "SD_eMMC_D4", "SD_eMMC_D5",
+	/* 16 */ "SD_eMMC_D6", "SD_eMMC_D7", "SD_eMMC_DS", "SD_VSEL",
+	/* 20 */ "SD_WLAN_CLK", "SD_WLAN_CMD", "SD_WLAN_D0", "SD_WLAN_D1",
+	/* 24 */ "SD_WLAN_D2", "SD_WLAN_D3", "DISP_EN", "USB_HOST_PWR",
+	/* 28 */ "UART_1_RX", "UART_1_RTS", "UART_1_CTS", "UART_1_TX";
 };
 
 &gpio4 {
 	gpio-line-names =
-	/* 0-4 */   "RMII_MDC", "RMII_MDIO", "RGB_DEN", "ETH_A_REF_CLK",
-				"ETH_A_RMII_TXD1",
-	/* 5-9 */   "ETH_A_RMII_TXD0", "ETH_A_RMII_TX_CTL", "ETH_A_PHY_RST",
-				"ETH_A_RMII_RX_CTL", "ETH_A_RMII_RX_ER",
-	/* 10-14 */ "ETH_A_RMII_RXD0", "ETH_A_RMII_RXD1", "SE050_ENA", "TOUCH_RST",
-				"WLAN_WAKE_DEV",
-	/* 15-19 */ "WLAN_WAKE_HOST", "I2S_RXD", "ETH_B_REF_CLK", "ETH_B_RMII_TXD1",
-	 			"ETH_B_RMII_TXD0",
-	/* 20-24 */ "ETH_B_RMII_TX_CTL", "ETH_B_PHY_RST", "ETH_B_RMII_RX_CTL",
-	 			"ETH_B_RMII_RX_ER", "ETH_B_RMII_RXD0",
-	/* 25-29 */ "ETH_B_RMII_RXD1", "UART_BT_CTS", "WLAN_PD", "I2S_MCLK",
-	 			"RTC_IRQ",
-	/* 30-31 */ "", "";
+	/* 0 */  "RMII_MDC", "RMII_MDIO", "RGB_DEN", "ETH_A_REF_CLK",
+	/* 4 */  "ETH_A_RMII_TXD1", "ETH_A_RMII_TXD0", "ETH_A_RMII_TX_CTL", "ETH_A_PHY_RST",
+	/* 8 */  "ETH_A_RMII_RX_CTL", "ETH_A_RMII_RX_ER", "ETH_A_RMII_RXD0", "ETH_A_RMII_RXD1",
+	/* 12 */ "SE050_ENA", "TOUCH_RST", "WLAN_WAKE_DEV", "WLAN_WAKE_HOST",
+	/* 16 */ "I2S_RXD", "ETH_B_REF_CLK", "ETH_B_RMII_TXD1", "ETH_B_RMII_TXD0",
+	/* 20 */ "ETH_B_RMII_TX_CTL", "ETH_B_PHY_RST", "ETH_B_RMII_RX_CTL", "ETH_B_RMII_RX_ER",
+	/* 24 */ "ETH_B_RMII_RXD0", "ETH_B_RMII_RXD1", "UART_BT_CTS", "WLAN_PD",
+	/* 28 */ "I2S_MCLK", "RTC_IRQ", "", "";
 };
 
 #ifdef CONFIG_PICOCOM93_I2S

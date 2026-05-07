@@ -518,56 +518,50 @@ fs_can_b: &flexcan2 {};
 /* GPIO declarations */
 &gpio1 {
 	gpio-line-names =
-	/* 0-4 */   "I2C_A_SCL", "I2C_A_SDA", "I2C_C_SCL", "I2C_C_SDA", "UART_A_RX",
-	/* 5-9 */   "UART_A_TX", "UART_D_RX", "UART_D_TX", "CAN_A_TX", "CAN_A_RX",
-	/* 10-14 */ "SPI_A_IRQ1", "SPI_A_CS1", "SPI_A_MOSI", "SPI_A_SCLK", "SPI_A_MISO",
-	/* 15-19 */ "MX93_WDOG", "", "", "", "",
-	/* 20-24 */ "", "", "", "", "",
-	/* 25-29 */ "", "", "", "", "",
-	/* 30-31 */ "","";
+	/* 0 */   "I2C_A_SCL", "I2C_A_SDA", "I2C_C_SCL", "I2C_C_SDA",
+	/* 4 */   "UART_A_RX", "UART_A_TX", "UART_D_RX", "UART_D_TX",
+	/* 8 */   "CAN_A_TX", "CAN_A_RX", "SPI_A_IRQ1", "SPI_A_CS1",
+	/* 12 */  "SPI_A_MOSI", "SPI_A_SCLK", "SPI_A_MISO", "MX93_WDOG",
+	/* 16 */  "", "", "", "",
+	/* 20 */  "", "", "", "",
+	/* 24 */  "", "", "", "",
+	/* 28 */  "", "", "", "";
 };
 
 &gpio2 {
 	gpio-line-names =
-	/* 0-4 */   "RGB_CLK", "RGB_DE", "RGB_VSYNC", "RGB_HSYNC", "RGB_D0",
-	/* 5-9 */   "RGB_D1", "RGB_D2", "RGB_D3", "RGB_D4", "RGB_D5",
-	/* 10-14 */ "RGB_D6", "RGB_D7", "RGB_D8", "RGB_D9", "RGB_D10",
-	/* 15-19 */ "RGB_D11", "RGB_D12", "RGB_D13", "RGB_D14", "RGB_D15",
-	/* 20-24 */ "RGB_D16", "RGB_D17", "I2C_B_SDA", "I2C_B_SCL", "PWM",
-	/* 25-29 */ "GPIO2_IO25", "BL_PWM", "GPIO2_IO27", "SPI_A_IRQ2", "I2C_A_IRQ",
-	/* 30-31 */ "","";
+	/* 0 */   "RGB_CLK", "RGB_DE", "RGB_VSYNC", "RGB_HSYNC",
+	/* 4 */   "RGB_D0", "RGB_D1", "RGB_D2", "RGB_D3",
+	/* 8 */   "RGB_D4", "RGB_D5", "RGB_D6", "RGB_D7",
+	/* 12 */  "RGB_D8", "RGB_D9", "RGB_D10", "RGB_D11",
+	/* 16 */  "RGB_D12", "RGB_D13", "RGB_D14", "RGB_D15",
+	/* 20 */  "RGB_D16", "RGB_D17", "I2C_B_SDA", "I2C_B_SCL",
+	/* 24 */  "PWM", "GPIO2_IO25", "BL_PWM", "GPIO2_IO27",
+	/* 28 */  "SPI_A_IRQ2", "I2C_A_IRQ", "", "";
 };
 
 &gpio3 {
 	gpio-line-names =
-	/* 0-4 */   "SD_A_CD", "SD_A_CLK", "SD_A_CMD", "SD_A_D0", "SD_A_D1",
-	/* 5-9 */   "SD_A_D2", "SD_A_D3", "SD_A_RST", "SD_eMMC_CLK", "SD_eMMC_CMD",
-	/* 10-14 */ "SD_eMMC_D0", "SD_eMMC_D1", "SD_eMMC_D2", "SD_eMMC_D3",
-				"SD_eMMC_D4",
-	/* 15-19 */ "SD_eMMC_D5", "SD_eMMC_D6", "SD_eMMC_D7", "SD_eMMC_DS",
-				"SD2_VSEL",
-	/* 20-24 */ "SD_B_WLAN_CLK", "SD_B_WLAN_CMD", "SD_B_WLAN_D0", "SD_B_WLAN_D1",
-				"SD_B_WLAN_D2",
-	/* 25-29 */ "SD_B_WLAN_D3", "ETH_A_PHY_INT_1V8", "PMIC_IRQ", "UART_B_RX_1V8",
-				"UART_B_RTS_1V8",
-	/* 30-31 */ "UART_B_CTS_1V8","UART_B_TX_1V8";
+	/* 0 */   "SD_A_CD", "SD_A_CLK", "SD_A_CMD", "SD_A_D0",
+	/* 4 */   "SD_A_D1", "SD_A_D2", "SD_A_D3", "SD_A_RST",
+	/* 8 */   "SD_eMMC_CLK", "SD_eMMC_CMD", "SD_eMMC_D0", "SD_eMMC_D1",
+	/* 12 */  "SD_eMMC_D2", "SD_eMMC_D3", "SD_eMMC_D4", "SD_eMMC_D5",
+	/* 16 */  "SD_eMMC_D6", "SD_eMMC_D7", "SD_eMMC_DS", "SD2_VSEL",
+	/* 20 */  "SD_B_WLAN_CLK", "SD_B_WLAN_CMD", "SD_B_WLAN_D0", "SD_B_WLAN_D1",
+	/* 24 */  "SD_B_WLAN_D2", "SD_B_WLAN_D3", "ETH_A_PHY_INT_1V8", "PMIC_IRQ",
+	/* 28 */  "UART_B_RX_1V8", "UART_B_RTS_1V8", "UART_B_CTS_1V8", "UART_B_TX_1V8";
 };
 
 &gpio4 {
 	gpio-line-names =
-	/* 0-4 */   "RGMII_MDC", "RGMII_MDIO", "ETH_A_RGMII_TXD3", "ETH_A_RGMII_TXD2",
-				"ETH_A_RGMII_TXD1",
-	/* 5-9 */   "ETH_A_RGMII_TXD0", "ETH_A_RGMII_TXCTL", "ETH_A_RGMII_TXC",
-				"ETH_A_RGMII_RXCTL", "ETH_A_RGMII_RXC",
-	/* 10-14 */ "ETH_A_RGMII_RXD0", "ETH_A_RGMII_RXD1", "ETH_A_RGMII_RXD2",
-				"ETH_A_RGMII_RXD3", "GP_EXP_INT",
-	/* 15-19 */ "DISP_IRQ", "ETH_B_RGMII_TXD3", "ETH_B_RGMII_TXD2",
-				"ETH_B_RGMII_TXD1", "ETH_B_RGMII_TXD0",
-	/* 20-24 */ "ETH_B_RGMII_TXCTL", "ETH_B_RGMII_TXC", "ETH_B_RGMII_RXCTL",
-				"ETH_B_RGMII_RXC", "ETH_B_RGMII_RXD0",
-	/* 25-29 */ "ETH_B_RGMII_RXD1", "ETH_B_RGMII_RXD2", "ETH_B_RGMII_RXD3",
-				"ETH_B_PHY_INT_1V8", "I2C_B_IRQ",
-	/* 30-31 */ "","";
+	/* 0 */   "RGMII_MDC", "RGMII_MDIO", "ETH_A_RGMII_TXD3", "ETH_A_RGMII_TXD2",
+	/* 4 */   "ETH_A_RGMII_TXD1", "ETH_A_RGMII_TXD0", "ETH_A_RGMII_TXCTL", "ETH_A_RGMII_TXC",
+	/* 8 */   "ETH_A_RGMII_RXCTL", "ETH_A_RGMII_RXC", "ETH_A_RGMII_RXD0", "ETH_A_RGMII_RXD1",
+	/* 12 */  "ETH_A_RGMII_RXD2", "ETH_A_RGMII_RXD3", "GP_EXP_INT", "DISP_IRQ",
+	/* 16 */  "ETH_B_RGMII_TXD3", "ETH_B_RGMII_TXD2", "ETH_B_RGMII_TXD1", "ETH_B_RGMII_TXD0",
+	/* 20 */  "ETH_B_RGMII_TXCTL", "ETH_B_RGMII_TXC", "ETH_B_RGMII_RXCTL", "ETH_B_RGMII_RXC",
+	/* 24 */  "ETH_B_RGMII_RXD0", "ETH_B_RGMII_RXD1", "ETH_B_RGMII_RXD2", "ETH_B_RGMII_RXD3",
+	/* 28 */  "ETH_B_PHY_INT_1V8", "I2C_B_IRQ", "", "";
 };
 
 /* SPI declerations */

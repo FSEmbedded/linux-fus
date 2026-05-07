@@ -303,68 +303,65 @@ chosen {
 	};
 };
 
-/* GPIO declarations */
 &gpio1 {
 	gpio-line-names =
-	/* 0-4 */   "MQS_RIGHT", "MQS_LEFT", "", "SD1_CD", "PWM3",
-	/* 5-9 */   "ADC5/PWM4", "ENET_MDIO", "ENET_MDC", "ADC8/PWM1", "ADC9/PWM2",
-	/* 10-14 */ "JTAG_MOD", "JTAG_TMS", "JTAG_TDO", "JTAG_TDI", "JTAG_TCK",
-	/* 15-19 */ "JTAG_nTRST", "UART1_TXD", "UART1_RXD", "UART1_RTS/SD2_WP",
-	 			"UART1_CTS/SD2_CD",
-	/* 20-24 */ "UART2_TXD", "UART2_RXD", "UART2_RTS", "UART2_CTS", "UART3_TXD",
-	/* 25-29 */ "UART3_RXD", "UART3_RTS", "UART3_CTS", "I2C1_SCL", "I2C1_SDA",
-	/* 30-31 */ "I2C2_SCL", "I2C2_SDA";
+	/* 0 */  "MQS_RIGHT", "MQS_LEFT", "", "SD1_CD",
+	/* 4 */  "PWM3", "ADC5/PWM4", "ENET_MDIO", "ENET_MDC",
+	/* 8 */  "ADC8/PWM1", "ADC9/PWM2", "JTAG_MOD", "JTAG_TMS",
+	/* 12 */ "JTAG_TDO", "JTAG_TDI", "JTAG_TCK", "JTAG_nTRST",
+	/* 16 */ "UART1_TXD", "UART1_RXD", "UART1_RTS/SD2_WP", "UART1_CTS/SD2_CD",
+	/* 20 */ "UART2_TXD", "UART2_RXD", "UART2_RTS", "UART2_CTS",
+	/* 24 */ "UART3_TXD", "UART3_RXD", "UART3_RTS", "UART3_CTS",
+	/* 28 */ "I2C1_SCL", "I2C1_SDA", "I2C2_SCL", "I2C2_SDA";
 };
 
 &gpio2 {
 	gpio-line-names =
-	/* 0-4 */   "RMII1_RXD0", "RMII1_RXD1", "RMII1_CRS_DV", "RMII1_TXD0",
-	 			"RMII1_TXD1",
-	/* 5-9 */   "RMII1_TXEN", "RMII1_TXCLK", "RMII1_RXER", "USB_OTG_PWR", "",
-	/* 10-14 */ "", "", "USB_H1_PWR", "", "",
-	/* 15-19 */ "", "SD1_CMD", "SD1_CLK", "SD1_DATA0", "SD1_DATA1",
-	/* 20-24 */ "SD1_DATA2", "SD1_DATA3", "", "", "",
-	/* 25-29 */ "", "", "", "", "",
-	/* 30-31 */ "", "";
+	/* 0 */  "RMII1_RXD0", "RMII1_RXD1", "RMII1_CRS_DV", "RMII1_TXD0",
+	/* 4 */  "RMII1_TXD1", "RMII1_TXEN", "RMII1_TXCLK", "RMII1_RXER",
+	/* 8 */  "USB_OTG_PWR", "", "", "",
+	/* 12 */ "USB_H1_PWR", "", "", "",
+	/* 16 */ "SD1_CMD", "SD1_CLK", "SD1_DATA0", "SD1_DATA1",
+	/* 20 */ "SD1_DATA2", "SD1_DATA3", "", "",
+	/* 24 */ "", "", "", "",
+	/* 28 */ "", "", "", "";
 };
 
 &gpio3 {
 	gpio-line-names =
-	/* 0-4 */   "UART4_TXD", "UART4_RXD", "UART4_RTS", "UART4_CTS", "",
-	/* 5-9 */   "SAI1_MCLK", "SAI1_TX_SYNC", "SAI1_TX_BCLK", "SAI1_RX_DATA",
-	 			"SAI1_TX_DATA",
-	/* 10-14 */ "ECSPI1_SS1", "ECSPI1_SS2", "GPIO5", "CAN1_TX", "CAN1_RX",
-	/* 15-19 */ "CAN2_TX", "CAN2_RX", "GPIO1", "GPIO2", "GPIO3",
-	/* 20-24 */ "GPIO4", "UART7_TXD", "UART7_RXD", "SD2_CMD", "SD2_CLK",
-	/* 25-29 */ "SD2_DATA0", "SD2_DATA1", "SD2_DATA2", "SD2_DATA3", "",
-	/* 30-31 */ "", "";
+	/* 0 */  "UART4_TXD", "UART4_RXD", "UART4_RTS", "UART4_CTS",
+	/* 4 */  "", "SAI1_MCLK", "SAI1_TX_SYNC", "SAI1_TX_BCLK",
+	/* 8 */  "SAI1_RX_DATA", "SAI1_TX_DATA", "ECSPI1_SS1", "ECSPI1_SS2",
+	/* 12 */ "GPIO5", "CAN1_TX", "CAN1_RX", "CAN2_TX",
+	/* 16 */ "CAN2_RX", "GPIO1", "GPIO2", "GPIO3",
+	/* 20 */ "GPIO4", "UART7_TXD", "UART7_RXD", "SD2_CMD",
+	/* 24 */ "SD2_CLK", "SD2_DATA0", "SD2_DATA1", "SD2_DATA2",
+	/* 28 */ "SD2_DATA3", "", "", "";
 };
 
 &gpio4 {
 	gpio-line-names =
-	/* 0-4 */   "NAND_RE_B", "NAND_WE_B", "NAND_DATA0", "NAND_DATA1",
-	 			"NAND_DATA2",
-	/* 5-9 */   "NAND_DATA3", "NAND_DATA4", "NAND_DATA5", "NAND_DATA6",
-	 			"NAND_DATA7",
-	/* 10-14 */ "NAND_ALE", "NAND_WP_B", "NAND_RB0", "NAND_CE0_B", "",
-	/* 15-19 */ "NAND_CLE", "DVS", "UART6_TXD", "UART6_RXD", "UART6_CTS",
-	/* 20-24 */ "UART6_RTS", "UART5_TXD/ECSPI2_SCLK", "UART5_RXD/ECSPI2_SS0",
-	 			"UART5_CTS/ECSPI2_MOSI", "UART5_RTS/ECSPI2_MISO",
-	/* 25-29 */ "ECSPI1_SCLK", "ECSPI1_SS0", "ECSPI1_MOSI", "ECSPI1_MISO", "",
-	/* 30-31 */ "", "";
+	/* 0 */  "NAND_RE_B", "NAND_WE_B", "NAND_DATA0", "NAND_DATA1",
+	/* 4 */  "NAND_DATA2", "NAND_DATA3", "NAND_DATA4", "NAND_DATA5",
+	/* 8 */  "NAND_DATA6", "NAND_DATA7", "NAND_ALE", "NAND_WP_B",
+	/* 12 */ "NAND_RB0", "NAND_CE0_B", "", "NAND_CLE",
+	/* 16 */ "DVS", "UART6_TXD", "UART6_RXD", "UART6_CTS",
+	/* 20 */ "UART6_RTS", "UART5_TXD/ECSPI2_SCLK", "UART5_RXD/ECSPI2_SS0", "UART5_CTS/ECSPI2_MOSI",
+	/* 24 */ "UART5_RTS/ECSPI2_MISO", "ECSPI1_SCLK", "ECSPI1_SS0", "ECSPI1_MOSI",
+	/* 28 */ "ECSPI1_MISO", "", "", "";
 };
 
 &gpio5 {
 	gpio-line-names =
-	/* 0-4 */   "", "", "", "", "",
-	/* 5-9 */   "", "", "RTC_IRQ", "I2C3_SDA", "I2C3_SCL",
-	/* 10-14 */ "BOOT_MODE0", "BOOT_MODE1", "", "", "",
-	/* 15-19 */ "", "", "", "", "",
-	/* 20-24 */ "", "", "", "", "",
-	/* 25-29 */ "", "", "", "", "",
-	/* 30-31 */ "", "";
+	/* 0 */  "", "", "", "",
+	/* 4 */  "", "", "", "RTC_IRQ",
+	/* 8 */  "I2C3_SDA", "I2C3_SCL", "BOOT_MODE0", "BOOT_MODE1",
+	/* 12 */ "", "", "", "",
+	/* 16 */ "", "", "", "",
+	/* 20 */ "", "", "", "",
+	/* 24 */ "", "", "", "",
+	/* 28 */ "", "", "", "";
 };
-
 
 /* RAM size for Continues Memory Allocator */
 &cma {

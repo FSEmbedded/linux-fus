@@ -698,61 +698,51 @@ pc_sai: &sai3	{};
 /* GPIO declerations */
 &gpio1 {
 	gpio-line-names =
-	/* 0-4 */   "I2C_A_SCL", "I2C_A_SDA", "I2C_D_SCL", "I2C_D_SDA", "UART_C_RX",
-	/* 5-9 */   "UART_C_TX", "UART_D_RX", "UART_D_TX", "CAN_TX", "CAN_RX",
-	/* 10-14 */ "RTC_IRQ", "SPI_B_CS0", "SPI_B_MOSI", "SPI_B_SCLK", "SPI_B_MISO",
-	/* 15-19 */ "MX93_WDOG", "", "", "", "",
-	/* 20-24 */ "", "", "", "", "",
-	/* 25-29 */ "", "", "", "", "",
-	/* 30-31 */ "","";
+	/* 0 */  "I2C_A_SCL", "I2C_A_SDA", "I2C_D_SCL", "I2C_D_SDA",
+	/* 4 */  "UART_C_RX", "UART_C_TX", "UART_D_RX", "UART_D_TX",
+	/* 8 */  "CAN_TX", "CAN_RX", "RTC_IRQ", "SPI_B_CS0",
+	/* 12 */ "SPI_B_MOSI", "SPI_B_SCLK", "SPI_B_MISO", "MX93_WDOG",
+	/* 16 */ "", "", "", "",
+	/* 20 */ "", "", "", "",
+	/* 24 */ "", "", "", "",
+	/* 28 */ "", "", "", "";
 };
 
 &gpio2 {
 	gpio-line-names =
-	/* 0-4 */   "SPI_A_CS0", "SPI_A_MISO", "SPI_A_MOSI", "SPI_A_SCLK",
-				"UART_B_BT_TX",
-	/* 5-9 */   "UART_B_BT_RX", "UART_B_BT_CTS", "UART_B_BT_RTS", "UART_A_TX",
-				"UART_A_RX",
-	/* 10-14 */ "UART_A_CTS", "UART_A_RTS", "I2C_B_SDA", "I2C_B_SCL", "GPIO_J1_7",
-	/* 15-19 */ "I2C_B_IRQ", "I2S_SCLK", "I2S_MCLK", "DISP_BL_PWM", "GPIO_J1_2",
-	/* 20-24 */ "I2S_DIN", "I2S_DOUT", "I2C_C_SDA", "I2C_C_SCL", "PWM",
-	/* 25-29 */ "GPIO_J1_44", "I2S_LRCLK", "GPIO_J1_46", "ETH_A_PHY_INT",
-				"ETH_B_PHY_INT",
-	/* 30-31 */ "","";
+	/* 0 */  "SPI_A_CS0", "SPI_A_MISO", "SPI_A_MOSI", "SPI_A_SCLK",
+	/* 4 */  "UART_B_BT_TX", "UART_B_BT_RX", "UART_B_BT_CTS", "UART_B_BT_RTS",
+	/* 8 */  "UART_A_TX", "UART_A_RX", "UART_A_CTS", "UART_A_RTS",
+	/* 12 */ "I2C_B_SDA", "I2C_B_SCL", "GPIO_J1_7", "I2C_B_IRQ",
+	/* 16 */ "I2S_SCLK", "I2S_MCLK", "DISP_BL_PWM", "GPIO_J1_2",
+	/* 20 */ "I2S_DIN", "I2S_DOUT", "I2C_C_SDA", "I2C_C_SCL",
+	/* 24 */ "PWM", "GPIO_J1_44", "I2S_LRCLK", "GPIO_J1_46",
+	/* 28 */ "ETH_A_PHY_INT", "ETH_B_PHY_INT", "", "";
 };
 
 &gpio3 {
 	gpio-line-names =
-	/* 0-4 */   "SD_A_CD", "SD_A_CLK", "SD_A_CMD", "SD_A_D0", "SD_A_D1",
-	/* 5-9 */   "SD_A_D2", "SD_A_D3", "SD_A_RST", "SD_eMMC_CLK", "SD_eMMC_CMD",
-	/* 10-14 */ "SD_eMMC_D0", "SD_eMMC_D1", "SD_eMMC_D2", "SD_eMMC_D3",
-				"SD_eMMC_D4",
-	/* 15-19 */ "SD_eMMC_D5", "SD_eMMC_D6", "SD_eMMC_D7", "SD_eMMC_DS",
-				"SD2_VSEL",
-	/* 20-24 */ "SD_B_WLAN_CLK", "SD_B_WLAN_CMD", "SD_B_WLAN_D0", "SD_B_WLAN_D1",
-				"SD_B_WLAN_D2",
-	/* 25-29 */ "SD_B_WLAN_D3", "WLAN_WAKE_HOST", "PMIC_IRQ", "JTAG_TDI",
-				"JTAG_TMS",
-	/* 30-31 */ "JTAG_TCK","JTAG_TDO";
+	/* 0 */  "SD_A_CD", "SD_A_CLK", "SD_A_CMD", "SD_A_D0",
+	/* 4 */  "SD_A_D1", "SD_A_D2", "SD_A_D3", "SD_A_RST",
+	/* 8 */  "SD_eMMC_CLK", "SD_eMMC_CMD", "SD_eMMC_D0", "SD_eMMC_D1",
+	/* 12 */ "SD_eMMC_D2", "SD_eMMC_D3", "SD_eMMC_D4", "SD_eMMC_D5",
+	/* 16 */ "SD_eMMC_D6", "SD_eMMC_D7", "SD_eMMC_DS", "SD2_VSEL",
+	/* 20 */ "SD_B_WLAN_CLK", "SD_B_WLAN_CMD", "SD_B_WLAN_D0", "SD_B_WLAN_D1",
+	/* 24 */ "SD_B_WLAN_D2", "SD_B_WLAN_D3", "WLAN_WAKE_HOST", "PMIC_IRQ",
+	/* 28 */ "JTAG_TDI", "JTAG_TMS", "JTAG_TCK", "JTAG_TDO";
 };
 
 &gpio4 {
 	gpio-line-names =
-	/* 0-4 */   "ETH_A_RGMII_MDC", "ETH_A_RGMII_MDIO", "ETH_A_RGMII_TXD3",
-				"ETH_A_RGMII_TXD2", "ETH_A_RGMII_TXD1",
-	/* 5-9 */   "ETH_A_RGMII_TXD0", "ETH_A_RGMII_TXCTL", "ETH_A_RGMII_TXC",
-				"ETH_A_RGMII_RXCTL", "ETH_A_RGMII_RXC",
-	/* 10-14 */ "ETH_A_RGMII_RXD0", "ETH_A_RGMII_RXD1", "ETH_A_RGMII_RXD2",
-				"ETH_A_RGMII_RXD3", "ETH_B_RGMII_MDC",
-	/* 15-19 */ "ETH_B_RGMII_MDIO", "ETH_B_RGMII_TXD3", "ETH_B_RGMII_TXD2",
-				"ETH_B_RGMII_TXD1", "ETH_B_RGMII_TXD0",
-	/* 20-24 */ "ETH_B_RGMII_TXCTL", "ETH_B_RGMII_TXC", "ETH_B_RGMII_RXCTL",
-				"ETH_B_RGMII_RXC", "ETH_B_RGMII_RXD0",
-	/* 25-29 */ "ETH_B_RGMII_RXD1", "ETH_B_RGMII_RXD2", "ETH_B_RGMII_RXD3",
-				"BT_WAKE_HOST", "PCAL6408A_INT",
-	/* 30-31 */ "","";
+	/* 0 */  "ETH_A_RGMII_MDC", "ETH_A_RGMII_MDIO", "ETH_A_RGMII_TXD3", "ETH_A_RGMII_TXD2",
+	/* 4 */  "ETH_A_RGMII_TXD1", "ETH_A_RGMII_TXD0", "ETH_A_RGMII_TXCTL", "ETH_A_RGMII_TXC",
+	/* 8 */  "ETH_A_RGMII_RXCTL", "ETH_A_RGMII_RXC", "ETH_A_RGMII_RXD0", "ETH_A_RGMII_RXD1",
+	/* 12 */ "ETH_A_RGMII_RXD2", "ETH_A_RGMII_RXD3", "ETH_B_RGMII_MDC", "ETH_B_RGMII_MDIO",
+	/* 16 */ "ETH_B_RGMII_TXD3", "ETH_B_RGMII_TXD2", "ETH_B_RGMII_TXD1", "ETH_B_RGMII_TXD0",
+	/* 20 */ "ETH_B_RGMII_TXCTL", "ETH_B_RGMII_TXC", "ETH_B_RGMII_RXCTL", "ETH_B_RGMII_RXC",
+	/* 24 */ "ETH_B_RGMII_RXD0", "ETH_B_RGMII_RXD1", "ETH_B_RGMII_RXD2", "ETH_B_RGMII_RXD3",
+	/* 28 */ "BT_WAKE_HOST", "PCAL6408A_INT", "", "";
 };
-
 
 #ifdef CONFIG_PICOCOREMX93_SPI_A
 &pc_spi_a {

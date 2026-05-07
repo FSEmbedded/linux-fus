@@ -1324,89 +1324,86 @@
 /* GPIO declarations */
 &gpio1 {
 	gpio-line-names =
-	/* 0-4 */   "GPIO_0_CLKO", "XpwmTOUT1", "", "I2CLK", "",
-	/* 5-9 */   "", "I2DAT", "", "", "WDOG_ENn",
-	/* 10-14 */ "Xi2sSCL0", "Xi2sSDA0", "AUD4_TXC", "AUD4_TXD", "AUD4_TXFS",
-	/* 15-19 */ "AUD4_RXD", "SHDN_RS232", "AUTONLINE_RS232", "", "",
-	/* 20-24 */ "", "XpwmTOUT3", "ENET_MDIO", "RGMII_CLK",
-	 			"USB_OTG_ID(ENET_RX_ER)",
-	/* 25-29 */ "PHY_RST", "", "", "RTC_IRQ", "I2C_RST",
-	/* 30-31 */ "I2C_IRQ", "ENET_MDC";
+	/* 0 */  "GPIO_0_CLKO", "XpwmTOUT1", "", "I2CLK",
+	/* 4 */  "", "", "I2DAT", "",
+	/* 8 */  "", "WDOG_ENn", "Xi2sSCL0", "Xi2sSDA0",
+	/* 12 */ "AUD4_TXC", "AUD4_TXD", "AUD4_TXFS", "AUD4_RXD",
+	/* 16 */ "SHDN_RS232", "AUTONLINE_RS232", "", "",
+	/* 20 */ "", "XpwmTOUT3", "ENET_MDIO", "RGMII_CLK",
+	/* 24 */ "USB_OTG_ID(ENET_RX_ER)", "PHY_RST", "", "",
+	/* 28 */ "RTC_IRQ", "I2C_RST", "I2C_IRQ", "ENET_MDC";
 };
 
 &gpio2 {
 	gpio-line-names =
-	/* 0-4 */   "NANDF_D0", "NANDF_D1", "NANDF_D2", "NANDF_D3", "NANDF_D4",
-	/* 5-9 */   "NANDF_D5", "NANDF_D6", "NANDF_D7", "BACKLIGHT_ON", "LVDS0_PWM3",
-	/* 10-14 */ "XpwmTOUT2", "DIGON", "I2C_LVDS_RST", "", "SDVOCTRL_DATA",
-	/* 15-19 */ "SDVOCTRL_CLK", "", "", "", "",
-	/* 20-24 */ "", "", "", "SPI_CLK", "SPI_MOSI",
-	/* 25-29 */ "SPI_MISO", "SPI_CS0", "", "", "",
-	/* 30-31 */ "", "";
+	/* 0 */  "NANDF_D0", "NANDF_D1", "NANDF_D2", "NANDF_D3",
+	/* 4 */  "NANDF_D4", "NANDF_D5", "NANDF_D6", "NANDF_D7",
+	/* 8 */  "BACKLIGHT_ON", "LVDS0_PWM3", "XpwmTOUT2", "DIGON",
+	/* 12 */ "I2C_LVDS_RST", "", "SDVOCTRL_DATA", "SDVOCTRL_CLK",
+	/* 16 */ "", "", "", "",
+	/* 20 */ "", "", "", "SPI_CLK",
+	/* 24 */ "SPI_MOSI", "SPI_MISO", "SPI_CS0", "",
+	/* 28 */ "", "", "", "";
 };
 
 &gpio3 {
 	gpio-line-names =
-	/* 0-4 */   "", "", "", "", "",
-	/* 5-9 */   "", "", "", "", "",
-	/* 10-14 */ "", "", "", "", "",
-	/* 15-19 */ "", "", "", "", "",
-	/* 20-24 */ "", "", "", "", "XuTXD3",
-	/* 25-29 */ "XuRXD3", "XuTXD2", "XuRXD2", "XuRTSn2", "XuCTSn2",
-	/* 30-31 */ "", "";
+	/* 0 */  "", "", "", "",
+	/* 4 */  "", "", "", "",
+	/* 8 */  "", "", "", "",
+	/* 12 */ "", "", "", "",
+	/* 16 */ "", "", "", "",
+	/* 20 */ "", "", "", "",
+	/* 24 */ "XuTXD3", "XuRXD3", "XuTXD2", "XuRXD2",
+	/* 28 */ "XuRTSn2", "XuCTSn2", "", "";
 };
 
 &gpio4 {
 	gpio-line-names =
-	/* 0-4 */   "", "", "", "", "",
-	/* 5-9 */   "RGMII_INT_B(GPIO_19_GPIO4_5)", "", "", "", "",
-	/* 10-14 */ "", "I2C2_ALERTADC", "I2C2_SCL", "I2C2_SDA", "CANTX1",
-	/* 15-19 */ "CANRX1", "LCD_CLK", "LCD_DE", "LCD_HSYNC", "LCD_VSYNC",
-	/* 20-24 */ "DI0_PIN4", "LCD_B0", "LCD_B1", "LCD_B2", "LCD_B3",
-	/* 25-29 */ "LCD_B4", "LCD_B5", "LCD_G0", "LCD_G1", "LCD_G2",
-	/* 30-31 */ "LCD_G3", "LCD_G4";
+	/* 0 */  "", "", "", "",
+	/* 4 */  "", "RGMII_INT_B(GPIO_19_GPIO4_5)", "", "",
+	/* 8 */  "", "", "", "I2C2_ALERTADC",
+	/* 12 */ "I2C2_SCL", "I2C2_SDA", "CANTX1", "CANRX1",
+	/* 16 */ "LCD_CLK", "LCD_DE", "LCD_HSYNC", "LCD_VSYNC",
+	/* 20 */ "DI0_PIN4", "LCD_B0", "LCD_B1", "LCD_B2",
+	/* 24 */ "LCD_B3", "LCD_B4", "LCD_B5", "LCD_G0",
+	/* 28 */ "LCD_G1", "LCD_G2", "LCD_G3", "LCD_G4";
 };
 
 &gpio5 {
 	gpio-line-names =
-	/* 0-4 */   "", "", "", "", "",
-	/* 5-9 */   "LCD_G5", "LCD_R0", "LCD_R1", "LCD_R2", "LCD_R3",
-	/* 10-14 */ "LCD_R4", "LCD_R5", "", "", "",
-	/* 15-19 */ "PCIE_DIS_B", "PMIC_INT_B(DISP0_DAT22_GPIO5_16)", "CPU_PER_RST_B",
-	 			"XEINT17/COL1", "XEINT16/COL0",
-	/* 20-24 */ "XEINT19/COL3", "XEINT18/COL2", "XEINT20/COL4", "XEINT21/COL5",
-	 			"XEINT22/COL6",
-	/* 25-29 */ "XEINT23/COL7", "XEINT15", "XEINT24/ROW0", "UART1_TX",
-	 			"UART1_RX",
-	/* 30-31 */ "XEINT25/ROW1", "XEINT26/ROW2";
+	/* 0 */  "", "", "", "",
+	/* 4 */  "", "LCD_G5", "LCD_R0", "LCD_R1",
+	/* 8 */  "LCD_R2", "LCD_R3", "LCD_R4", "LCD_R5",
+	/* 12 */ "", "", "", "PCIE_DIS_B",
+	/* 16 */ "PMIC_INT_B(DISP0_DAT22_GPIO5_16)", "CPU_PER_RST_B", "XEINT17/COL1", "XEINT16/COL0",
+	/* 20 */ "XEINT19/COL3", "XEINT18/COL2", "XEINT20/COL4", "XEINT21/COL5",
+	/* 24 */ "XEINT22/COL6", "XEINT23/COL7", "XEINT15", "XEINT24/ROW0",
+	/* 28 */ "UART1_TX", "UART1_RX", "XEINT25/ROW1", "XEINT26/ROW2";
 };
 
 &gpio6 {
 	gpio-line-names =
-	/* 0-4 */   "XEINT27/ROW3", "XEINT28/ROW4", "XEINT29/ROW5", "XEINT30/ROW6",
-	 			"XEINT31/ROW7",
-	/* 5-9 */   "", "", "NANDF_CLE", "NANDF_ALE", "NANDF_WP_B",
-	/* 10-14 */ "NANDF_RB0", "NANDF_CE0_B", "", "", "NANDF_CE1_B",
-	/* 15-19 */ "SDa_CD(NANDF_CS2_GPIO6_15)", "PCIE_WAKE_B", "", "",
-	 			"RGMII_TXC_R",
-	/* 20-24 */ "RGMII_TXD0", "RGMII_TXD1", "RGMII_TXD2", "RGMII_TXD3",
-	 			"RGMII_RX_CTL",
-	/* 25-29 */ "RGMII_RXD0", "RGMII_TX_CTL", "RGMII_RXD1", "RGMII_RXD2",
-	 			"RGMII_RXD3",
-	/* 30-31 */ "RGMII_RXC_R", "";
+	/* 0 */  "XEINT27/ROW3", "XEINT28/ROW4", "XEINT29/ROW5", "XEINT30/ROW6",
+	/* 4 */  "XEINT31/ROW7", "", "", "NANDF_CLE",
+	/* 8 */  "NANDF_ALE", "NANDF_WP_B", "NANDF_RB0", "NANDF_CE0_B",
+	/* 12 */ "", "", "NANDF_CE1_B", "SDa_CD(NANDF_CS2_GPIO6_15)",
+	/* 16 */ "PCIE_WAKE_B", "", "", "",
+	/* 20 */ "RGMII_TXC_R", "RGMII_TXD0", "RGMII_TXD1", "RGMII_TXD2",
+	/* 24 */ "RGMII_TXD3", "RGMII_RX_CTL", "RGMII_RXD0", "RGMII_TX_CTL",
+	/* 28 */ "RGMII_RXD1", "RGMII_RXD2", "RGMII_RXD3", "RGMII_RXC_R";
 };
 
 &gpio7 {
 	gpio-line-names =
-	/* 0-4 */   "", "", "SDa_CMD(SD3_CMD)", "SDa_CLK(SD3_CLK)",
-	 			"SDa_DAT0(SD3_DAT0)",
-	/* 5-9 */   "SDa_DAT1(SD3_DAT1)", "SDa_DAT2(SD3_DAT2)", "SDa_DAT3(SD3_DAT3)",
-	 			"", "NANDF_RE_B(SD4_CMD)",
-	/* 10-14 */ "NANDF_WE_B(SD4_CLK)", "ENET_REF_CLK", "USB_HUB_RESET_B", "", "",
-	/* 15-19 */ "", "", "", "", "",
-	/* 20-24 */ "", "", "", "", "",
-	/* 25-29 */ "", "", "", "", "",
-	/* 30-31 */ "", "";
+	/* 0 */  "", "", "SDa_CMD(SD3_CMD)", "SDa_CLK(SD3_CLK)",
+	/* 4 */  "SDa_DAT0(SD3_DAT0)", "SDa_DAT1(SD3_DAT1)", "SDa_DAT2(SD3_DAT2)", "SDa_DAT3(SD3_DAT3)",
+	/* 8 */  "", "NANDF_RE_B(SD4_CMD)", "NANDF_WE_B(SD4_CLK)", "ENET_REF_CLK",
+	/* 12 */ "USB_HUB_RESET_B", "", "", "",
+	/* 16 */ "", "", "", "",
+	/* 20 */ "", "", "", "",
+	/* 24 */ "", "", "", "",
+	/* 28 */ "", "", "", "";
 };
 
 #ifdef CONFIG_ARMSTONEA9_PCIE
