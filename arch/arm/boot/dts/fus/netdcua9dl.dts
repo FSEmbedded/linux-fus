@@ -1,0 +1,285 @@
+/*
+ * Copyright (C) 2016-2017 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+/dts-v1/;
+
+/* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
+#define CONFIG_NETDCUA9_BOARD_REVISION	100
+
+#define DISPLAY_NONE	0	/* No display on this port */
+#define DISPLAY_LCD	1	/* LCD via RGB adapter */
+#define DISPLAY_HDMI	2	/* DVI/HDMI via HDMI connector */
+#define DISPLAY_LVDS0	3	/* LVDS channel 0 */
+#define DISPLAY_LVDS1	4	/* LVDS channel 1 */
+#define DISPLAY_BT656	5	/* BT656 via ADV739x */
+
+/*
+ * Set the display configuration:
+ *
+ * - If you have no display, set both settings to DISPLAY_NONE.
+ * - If you have one display, set MXCFB0 to one of the display types above
+ *   and leave MXCFB1 at DISPLAY_NONE.
+ * - If you have two displays, set both settings to a display type from above.
+ *   You have to use different types for the two displays.
+ *
+ * The first display will also get a video overlay, so MXCFB0 will use /dev/fb0
+ * and /dev/fb1 and MXCFB1 will use /dev/fb2.
+ */
+#define CONFIG_NETDCUA9_MXCFB0		DISPLAY_LCD
+#define CONFIG_NETDCUA9_MXCFB1		DISPLAY_NONE
+
+/* i.MX6 Solo and DualLite only have one IPU, do not change */
+#define CONFIG_NETDCUA9_USE_ONE_IPU
+
+/*
+ * Configure LCD settings here (ignored if LCD is not used);
+ * see drivers/video/fbdev/mxc/mxc_lcdif.c for possible LCD mode strings
+ */
+#define CONFIG_NETDCUA9_LCD_BPP		32
+#define CONFIG_NETDCUA9_LCD_PIX_FMT	"RGB24"
+#define CONFIG_NETDCUA9_LCD_MODE_STR	"LCD-ET070080"
+
+/*
+ * Configure BT656 settings here (ignored if BT656 is not used);
+ * see drivers/video/fbdev/mxc/mxc_bt656.c for possible mode strings
+ */
+#define CONFIG_NETDCUA9_BT656_BPP		32
+#define CONFIG_NETDCUA9_BT656_PIX_FMT	"BT656"
+#define CONFIG_NETDCUA9_BT656_MODE_STR	"BT656-PAL"
+
+/* Configure HDMI settings here (ignored if HDMI is not used) */
+#define CONFIG_NETDCUA9_HDMI_BPP	24
+#define CONFIG_NETDCUA9_HDMI_PIX_FMT	"RGB24"
+#define CONFIG_NETDCUA9_HDMI_MODE_STR	"1920x1080M@60"
+
+/*
+ * F&S has changed the default LVDS display. To use the previous settings
+ * activate the following define.
+ */
+//#define DISPLAY_LVDS_CHIMEI
+
+/*
+ * Configure LVDS0 settings here (ignored if LVDS0 is not used)
+ * Mapping (refers to LVDS_DATA_WIDTH, not LVDS_BPP):
+ *
+ * - "spwg":  18 bpp or 24 bpp, in case of 24 bpp, bits 6 and 7 of each color
+ *            are encoded on fourth LVDS differential data pair
+ * - "jeida": only 24 bpp, bits 6 and 7 of each color are interleaved with
+ *            all other data bits on all four differential data pairs
+ */
+#ifndef DISPLAY_LVDS_CHIMEI
+#define CONFIG_NETDCUA9_LVDS0_BPP	32
+#define CONFIG_NETDCUA9_LVDS0_PIX_FMT	"RGB24"
+#define CONFIG_NETDCUA9_LVDS0_DATA_WIDTH	24
+#define CONFIG_NETDCUA9_LVDS0_MAPPING	"spwg"
+#define CONFIG_NETDCUA9_LVDS0_TIMING \
+wvga {					\
+	clock-frequency = <33300000>;	\
+	hactive = <800>;		\
+	vactive = <480>;		\
+	hfront-porch = <210>;		\
+	hback-porch = <45>;		\
+	hsync-len = <1>;		\
+	vback-porch = <22>;		\
+	vfront-porch = <22>;		\
+	vsync-len = <1>;		\
+	hsync-active = <0>;		\
+	vsync-active = <0>;		\
+	de-active = <1>;		\
+	pixelclk-active = <0>;		\
+}
+#else
+#define CONFIG_NETDCUA9_LVDS0_BPP	32
+#define CONFIG_NETDCUA9_LVDS0_PIX_FMT	"RGB666"
+#define CONFIG_NETDCUA9_LVDS0_DATA_WIDTH	18
+#define CONFIG_NETDCUA9_LVDS0_MAPPING	"spwg"
+#define CONFIG_NETDCUA9_LVDS0_TIMING \
+wvga {					\
+	clock-frequency = <33500000>;	\
+	hactive = <800>;		\
+	vactive = <480>;		\
+	hfront-porch = <40>;		\
+	hback-porch = <88>;		\
+	hsync-len = <128>;		\
+	vback-porch = <33>;		\
+	vfront-porch = <10>;		\
+	vsync-len = <2>;		\
+	hsync-active = <0>;		\
+	vsync-active = <0>;		\
+	de-active = <1>;		\
+	pixelclk-active = <0>;		\
+}
+#endif
+
+/*
+ * Configure LVDS1 settings here (ignored if LVDS1 is not used)
+ * For mapping value see above.
+ */
+#ifndef DISPLAY_LVDS_CHIMEI
+#define CONFIG_NETDCUA9_LVDS1_BPP	32
+#define CONFIG_NETDCUA9_LVDS1_PIX_FMT	"RGB24"
+#define CONFIG_NETDCUA9_LVDS1_DATA_WIDTH	24
+#define CONFIG_NETDCUA9_LVDS1_MAPPING	"spwg"
+#define CONFIG_NETDCUA9_LVDS1_TIMING \
+wvga {					\
+	clock-frequency = <33300000>;	\
+	hactive = <800>;		\
+	vactive = <480>;		\
+	hfront-porch = <210>;		\
+	hback-porch = <45>;		\
+	hsync-len = <1>;		\
+	vback-porch = <22>;		\
+	vfront-porch = <22>;		\
+	vsync-len = <1>;		\
+	hsync-active = <0>;		\
+	vsync-active = <0>;		\
+	de-active = <1>;		\
+	pixelclk-active = <0>;		\
+}
+#else
+#define CONFIG_NETDCUA9_LVDS1_BPP	32
+#define CONFIG_NETDCUA9_LVDS1_PIX_FMT	"RGB666"
+#define CONFIG_NETDCUA9_LVDS1_DATA_WIDTH	18
+#define CONFIG_NETDCUA9_LVDS1_MAPPING	"spwg"
+#define CONFIG_NETDCUA9_LVDS1_TIMING \
+wvga {					\
+	clock-frequency = <33500000>;	\
+	hactive = <800>;		\
+	vactive = <480>;		\
+	hfront-porch = <40>;		\
+	hback-porch = <88>;		\
+	hsync-len = <128>;		\
+	vback-porch = <33>;		\
+	vfront-porch = <10>;		\
+	vsync-len = <2>;		\
+	hsync-active = <0>;		\
+	vsync-active = <0>;		\
+	de-active = <1>;		\
+	pixelclk-active = <0>;		\
+}
+#endif
+
+/*
+ * Depending on the needed pixel clock speed, the LVDS clock source must be
+ * selected accordingly. If pixelclock is between 38.7 MHz and 113 MHz,
+ * PLL2_PFD0 is sufficient. Otherwise PLL5 has to be used. If you have two
+ * LVDS displays with different clock requirements, set one to PLL2_PFD0 and the
+ * other to PLL5. If you have activated the displays in U-Boot already and want
+ * to keep these settings in Linux, de-activate all four lines.
+ */
+//#define CONFIG_NETDCUA9_LVDS0_CLK  IMX6QDL_CLK_PLL2_PFD0_352M
+#define CONFIG_NETDCUA9_LVDS0_CLK  IMX6QDL_CLK_PLL5_VIDEO_DIV
+//#define CONFIG_NETDCUA9_LVDS1_CLK  IMX6QDL_CLK_PLL2_PFD0_352M
+#define CONFIG_NETDCUA9_LVDS1_CLK  IMX6QDL_CLK_PLL5_VIDEO_DIV
+
+/*
+ * Define this for a two-channel display, i.e. one display, one framebuffer,
+ * but two LVDS channels, even pixels from one channel, odd pixels from the
+ * other channel. Only define either DISPLAY_LVDS0 or DISPLAY_LVDS1 in this
+ * case, using the full display resolution.
+ */
+//#define CONFIG_NETDCUA9_LVDS_SPLIT_MODE
+
+/*
+ * Define this if you have two similar displays (same resolution and timings),
+ * one on each LVDS channel. The display content of the framebuffer is shown
+ * on both displays simultaneously (cloned). Only define either DISPLAY_LVDS0
+ * or DISPLAY_LVDS1 in this case, using the resolution of one of the displays.
+ */
+//#define CONFIG_NETDCUA9_LVDS_DUAL_MODE
+
+/*
+ * Define this if your LVDS display requires 5V I/O logic voltage. Default is
+ * 3.3V. ATTENTION: Setting 5V on a 3.3V display may damage the display!
+ * Remark: This setting requires board revision 1.21 or newer; older board
+ * revisions only support 3.3V.
+ */
+//#define CONFIG_NETDCUA9_5V_LVDS
+
+/*
+ * Configure touch screen:
+ *
+ * - 4-wire/5-wire analog resistive touch, touch controller is optional
+ * - PCAP touch based on Maxtouch controller (MXT224, etc), on Touch Connector
+ * - PCAP touch based on Focaltech controller (FT5x06), on Touch Connector
+ * - PCAP touch based on Sitronix controller (ST1633i), on Touch Connector
+ * - PCAP touch based on Ilitek controller (ILI12xx), on Touch Connector
+ *
+ * On netdcuA9, all touches use the same interrupt line and I2C bus, so do not
+ * select more than one entry! Select none if you do not need touch support.
+ */
+//#define CONFIG_NETDCUA9_CAPTOUCH_MXT224
+//#define CONFIG_NETDCUA9_CAPTOUCH_FT5x06
+//#define CONFIG_NETDCUA9_CAPTOUCH_SITRONIX
+//#define CONFIG_NETDCUA9_CAPTOUCH_ILITEK
+
+/* CMA: Set 320 MB for Continuous Memory Allocator */
+#define CONFIG_NETDCUA9_CMA_SIZE	0x14000000
+/*If CMA > 256 MB base max address hast to be 0x80000000 - CMA_SIZE*/
+#define CONFIG_NETDCUA9_CMA_BASE	0x6C000000
+
+/* NAND */
+#define CONFIG_NETDCUA9_NAND
+
+/* USB OTG port (no ID signal, default is device, set to host if required) */
+//#define CONFIG_NETDCUA9_OTG_HOST
+
+/* AUDIO */
+#define CONFIG_NETDCUA9_WM9715_AUDIO
+
+#if 0 //### todo
+/* Camera on parallel CSI interface */
+//#define CONFIG_NETDCUA9_PARALLEL_CAMERA
+#endif
+
+/* SD-CARD - SD_A is SD card slot */
+#define CONFIG_NETDCUA9_SD_A
+
+/* EMMC */
+//#define CONFIG_NETDCUA9_EMMC
+
+/* SPI */
+#define CONFIG_NETDCUA9_SPI_A
+
+/* I2C */
+/* I2C_A for touchscreen onboard */
+#define CONFIG_NETDCUA9_I2C_A
+/* I2C_C for camera connector and onboard devices */
+#define CONFIG_NETDCUA9_I2C_C
+#ifndef CONFIG_NETDCUA9_SPI_A
+/* I2C_B on connector J5 */
+#define CONFIG_NETDCUA9_I2C_B
+#endif
+
+/* UART_A on pins 3/4/5/6 on J1 (debug port) */
+#define CONFIG_NETDCUA9_UART_A
+#define CONFIG_NETDCUA9_UART_A_RTSCTS
+
+/* UART_B on pins 9/10 on J7 or RS485 on pins 20/24 on J1 */
+#define CONFIG_NETDCUA9_UART_B
+//#define CONFIG_NETDCUA9_UART_B_RS485
+
+/* UART_C on pins 12/14 on J5 */
+#define CONFIG_NETDCUA9_UART_C
+
+#include "imx6dl.dtsi"
+#include "netdcua9qdl.dtsi"
+
+/ {
+	model = "F&S i.MX6 Solo/DualLite netdcuA9 module";
+	compatible = "fsl,imx6dl-netdcua9", "fsl,imx6dl";
+};
+
+&bdinfo {
+	board_name = "netdcua9dl";
+};
+
+/* i.MX6 Solo and DualLite have a PXP engine */
+&pxp {
+	status = "okay";
+};

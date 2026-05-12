@@ -1,0 +1,310 @@
+/*
+ * Copyright (C) 2016-2017 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+/dts-v1/;
+
+/* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
+#define CONFIG_ARMSTONEA9R2_BOARD_REVISION	120
+
+#define DISPLAY_NONE	0	/* No display on this port */
+#define DISPLAY_HDMI	1	/* DVI/HDMI via HDMI connector */
+#define DISPLAY_LVDS0	2	/* LVDS channel 0 */
+#define DISPLAY_LVDS1	3	/* LVDS channel 1 */
+
+/*
+ * Set the display configuration:
+ *
+ * - If you have no display, set both settings to DISPLAY_NONE.
+ * - If you have one display, set MXCFB0 to one of the display types above
+ *   and leave MXCFB1 at DISPLAY_NONE.
+ * - If you have two displays, set both settings to a display type from above.
+ *   You have to use different types for the two displays.
+ *
+ * The first display will also get a video overlay, so MXCFB0 will use /dev/fb0
+ * and /dev/fb1 and MXCFB1 will use /dev/fb2.
+ */
+#define CONFIG_ARMSTONEA9R2_MXCFB0	DISPLAY_LVDS0
+#define CONFIG_ARMSTONEA9R2_MXCFB1	DISPLAY_NONE
+
+/* i.MX6 Solo and DualLite only have one IPU, do not change */
+#define CONFIG_ARMSTONEA9R2_USE_ONE_IPU
+
+/* Configure HDMI settings here (ignored if HDMI is not used) */
+#define CONFIG_ARMSTONEA9R2_HDMI_BPP		32
+#define CONFIG_ARMSTONEA9R2_HDMI_PIX_FMT	"RGB24"
+#define CONFIG_ARMSTONEA9R2_HDMI_MODE_STR	"1920x1080M@60"
+
+/*
+ * F&S has changed the default LVDS display. To use the previous settings
+ * activate the following define.
+ */
+//#define DISPLAY_LVDS_CHIMEI
+
+/*
+ * Configure LVDS0 settings here (ignored if LVDS0 is not used)
+ * Mapping (refers to LVDS_DATA_WIDTH, not LVDS_BPP):
+ *
+ * - "spwg":  18 bpp or 24 bpp, in case of 24 bpp, bits 6 and 7 of each color
+ *            are encoded on fourth LVDS differential data pair
+ * - "jeida": only 24 bpp, bits 6 and 7 of each color are interleaved with
+ *            all other data bits on all four differential data pairs
+ */
+#ifndef DISPLAY_LVDS_CHIMEI
+#define CONFIG_ARMSTONEA9R2_LVDS0_BPP		32
+#define CONFIG_ARMSTONEA9R2_LVDS0_PIX_FMT	"RGB24"
+#define CONFIG_ARMSTONEA9R2_LVDS0_DATA_WIDTH	24
+#define CONFIG_ARMSTONEA9R2_LVDS0_MAPPING	"spwg"
+#define CONFIG_ARMSTONEA9R2_LVDS0_TIMING \
+wvga {					\
+	clock-frequency = <33300000>;	\
+	hactive = <800>;		\
+	vactive = <480>;		\
+	hfront-porch = <210>;		\
+	hback-porch = <45>;		\
+	hsync-len = <1>;		\
+	vback-porch = <22>;		\
+	vfront-porch = <22>;		\
+	vsync-len = <1>;		\
+	hsync-active = <0>;		\
+	vsync-active = <0>;		\
+	de-active = <1>;		\
+	pixelclk-active = <0>;		\
+}
+#else
+#define CONFIG_ARMSTONEA9R2_LVDS0_BPP		32
+#define CONFIG_ARMSTONEA9R2_LVDS0_PIX_FMT	"RGB666"
+#define CONFIG_ARMSTONEA9R2_LVDS0_DATA_WIDTH	18
+#define CONFIG_ARMSTONEA9R2_LVDS0_MAPPING	"spwg"
+#define CONFIG_ARMSTONEA9R2_LVDS0_TIMING \
+wvga {					\
+	clock-frequency = <33500000>;	\
+	hactive = <800>;		\
+	vactive = <480>;		\
+	hfront-porch = <40>;		\
+	hback-porch = <88>;		\
+	hsync-len = <128>;		\
+	vback-porch = <33>;		\
+	vfront-porch = <10>;		\
+	vsync-len = <2>;		\
+	hsync-active = <0>;		\
+	vsync-active = <0>;		\
+	de-active = <1>;		\
+	pixelclk-active = <0>;		\
+}
+#endif
+
+/*
+ * Configure LVDS1 settings here (ignored if LVDS1 is not used)
+ * For mapping value see above.
+ */
+#ifndef DISPLAY_LVDS_CHIMEI
+#define CONFIG_ARMSTONEA9R2_LVDS1_BPP		32
+#define CONFIG_ARMSTONEA9R2_LVDS1_PIX_FMT	"RGB24"
+#define CONFIG_ARMSTONEA9R2_LVDS1_DATA_WIDTH	24
+#define CONFIG_ARMSTONEA9R2_LVDS1_MAPPING	"spwg"
+#define CONFIG_ARMSTONEA9R2_LVDS1_TIMING \
+wvga {					\
+	clock-frequency = <33300000>;	\
+	hactive = <800>;		\
+	vactive = <480>;		\
+	hfront-porch = <210>;		\
+	hback-porch = <45>;		\
+	hsync-len = <1>;		\
+	vback-porch = <22>;		\
+	vfront-porch = <22>;		\
+	vsync-len = <1>;		\
+	hsync-active = <0>;		\
+	vsync-active = <0>;		\
+	de-active = <1>;		\
+	pixelclk-active = <0>;		\
+}
+#else
+#define CONFIG_ARMSTONEA9R2_LVDS1_BPP		32
+#define CONFIG_ARMSTONEA9R2_LVDS1_PIX_FMT	"RGB666"
+#define CONFIG_ARMSTONEA9R2_LVDS1_DATA_WIDTH	18
+#define CONFIG_ARMSTONEA9R2_LVDS1_MAPPING	"spwg"
+#define CONFIG_ARMSTONEA9R2_LVDS1_TIMING \
+wvga {					\
+	clock-frequency = <33500000>;	\
+	hactive = <800>;		\
+	vactive = <480>;		\
+	hfront-porch = <40>;		\
+	hback-porch = <88>;		\
+	hsync-len = <128>;		\
+	vback-porch = <33>;		\
+	vfront-porch = <10>;		\
+	vsync-len = <2>;		\
+	hsync-active = <0>;		\
+	vsync-active = <0>;		\
+	de-active = <1>;		\
+	pixelclk-active = <0>;		\
+}
+#endif
+
+/*
+ * Depending on the needed pixel clock speed, the LVDS clock source must be
+ * selected accordingly. If pixelclock is between 38.7 MHz and 113 MHz,
+ * PLL2_PFD0 is sufficient. Otherwise PLL5 has to be used. If you have two
+ * LVDS displays with different clock requirements, set one to PLL2_PFD0 and the
+ * other to PLL5. If you have activated the displays in U-Boot already and want
+ * to keep these settings in Linux, de-activate all four lines.
+ */
+//#define CONFIG_ARMSTONEA9R2_LVDS0_CLK  IMX6QDL_CLK_PLL2_PFD0_352M
+#define CONFIG_ARMSTONEA9R2_LVDS0_CLK  IMX6QDL_CLK_PLL5_VIDEO_DIV
+//#define CONFIG_ARMSTONEA9R2_LVDS1_CLK  IMX6QDL_CLK_PLL2_PFD0_352M
+#define CONFIG_ARMSTONEA9R2_LVDS1_CLK  IMX6QDL_CLK_PLL5_VIDEO_DIV
+
+/*
+ * Define this for a two-channel display, i.e. one display, one framebuffer,
+ * but two LVDS channels, even pixels from one channel, odd pixels from the
+ * other channel. Only define either DISPLAY_LVDS0 or DISPLAY_LVDS1 in this
+ * case, using the full display resolution.
+ */
+//#define CONFIG_ARMSTONEA9R2_LVDS_SPLIT_MODE
+
+/*
+ * Define this if you have two similar displays (same resolution and timings),
+ * one on each LVDS channel. The display content of the framebuffer is shown
+ * on both displays simultaneously (cloned). Only define either DISPLAY_LVDS0
+ * or DISPLAY_LVDS1 in this case, using the resolution of one of the displays.
+ */
+//#define CONFIG_ARMSTONEA9R2_LVDS_DUAL_MODE
+
+/*
+ * Configure touch screen:
+ *
+ * - 4-wire/5-wire analog resistive touch (SX8655), on Touch Connector
+ * - PCAP touch based on Maxtouch controller (MXT224, etc.), on Touch Connector
+ * - PCAP touch based on Focaltech controller (FT5x06), on Touch Connector
+ * - PCAP touch based on Sitronix controller (ST1633i), on Touch Connector
+ * - PCAP touch based on Ilitek controller (ILI12xx), on Touch Connector
+ *
+ * Select none if you do not need touch support.
+ */
+//#define CONFIG_ARMSTONEA9R2_4WTOUCH_SX8655
+//#define CONFIG_ARMSTONEA9R2_4WTOUCH_TSC2004
+//#define CONFIG_ARMSTONEA9R2_CAPTOUCH_MXT224
+#define CONFIG_ARMSTONEA9R2_CAPTOUCH_FT5x06
+//#define CONFIG_ARMSTONEA9R2_CAPTOUCH_SITRONIX
+//#define CONFIG_ARMSTONEA9R2_CAPTOUCH_ILITEK
+
+/* CMA: Set 320 MB for Continuous Memory Allocator */
+#define CONFIG_ARMSTONEA9R2_CMA_SIZE	0x14000000
+/*If CMA > 256 MB max base address hast to be 0x80000000 - CMA_SIZE*/
+#define CONFIG_ARMSTONEA9R2_CMA_BASE	0x6C000000
+
+/* NAND */
+#define CONFIG_ARMSTONEA9R2_NAND
+
+/* AUDIO */
+#define CONFIG_ARMSTONEA9R2_SGTL5000_AUDIO
+
+/* Use 12.288 MHz instead of 24.576 MHz for Audio */
+//#define CONFIG_ARMSTONEA9R2_AUDIO_12M288
+
+/* Camera on serial MIPI CSI interface */
+//#define CONFIG_ARMSTONEA9R2_SERIAL_CAMERA
+
+/* In case of MIPI, select one of the following cameras */
+//#define CONFIG_ARMSTONEA9R2_MIPI_CAMERA_OV564X
+#define CONFIG_ARMSTONEA9R2_MIPI_CAMERA_ISL7998X
+
+/* SD-CARD - SD_A is micro SD */
+#define CONFIG_ARMSTONEA9R2_SD_A
+
+/* WLAN */
+#define CONFIG_ARMSTONEA9R2_WLAN
+
+/* PCIe */
+/* On PCIe wire PCIECLKN/P there are some missing terminating resistor
+ * therefore PCIe can´t get a link. These can be fixed if either the
+ * corresponding adapter have these resistors or there must be a redesign
+ * for armstone. The resistors can be found on efusA9.
+ */
+//#define CONFIG_ARMSTONEA9R2_PCIE
+
+/* EMMC */
+#define CONFIG_ARMSTONEA9R2_EMMC
+
+/* I2C */
+#define CONFIG_ARMSTONEA9R2_I2C_A
+#define CONFIG_ARMSTONEA9R2_I2C_B
+#define CONFIG_ARMSTONEA9R2_I2C_C
+/* only available in revison >= 1.20 and if SPI_B is not activated */
+//#define CONFIG_ARMSTONEA9R2_I2C_D
+
+/* SPI */
+#define CONFIG_ARMSTONEA9R2_SPI_A
+#define CONFIG_ARMSTONEA9R2_SPI_B
+#define CONFIG_ARMSTONEA9R2_SPI_FLASH
+
+/* UART */
+#define CONFIG_ARMSTONEA9R2_UART_A
+#define CONFIG_ARMSTONEA9R2_UART_A_RTSCTS
+#define CONFIG_ARMSTONEA9R2_UART_B
+#define CONFIG_ARMSTONEA9R2_UART_B_RTSCTS
+#define CONFIG_ARMSTONEA9R2_UART_C
+#define CONFIG_ARMSTONEA9R2_UART_D
+#define CONFIG_ARMSTONEA9R2_UART_D_RTSCTS
+#define CONFIG_ARMSTONEA9R2_UART_E
+
+/* If board revision is less than 1.20, or if SPI_B is activated, I2C_D is not available */
+#if (CONFIG_ARMSTONEA9R2_BOARD_REVISION < 120) || defined(CONFIG_ARMSTONEA9R2_SPI_B)
+#undef CONFIG_ARMSTONEA9R2_I2C_D
+#endif
+
+#include "imx6dl.dtsi"
+#include "armstonea9r2qdl.dtsi"
+
+/ {
+	model = "F&S i.MX6 Solo/DualLite armStoneA9r2";
+	compatible = "fsl,imx6dl-armstonea9r2", "fsl,imx6dl";
+
+	regulators {
+		reg_rtc_clk: regulator-rtc-clk {
+			compatible = "regulator-fixed-clock";
+			regulator-always-on;
+			regulator-name = "RTC_CLK";
+			clocks = <&rtc_clk>;
+		};
+	};
+};
+
+&bdinfo {
+	board_name = "armstonea9r2dl";
+};
+
+/* i.MX6 Solo and DualLite have a PXP engine */
+&pxp {
+	status = "okay";
+};
+
+&i2c1 {
+	rtc_clk:rtc8565@51 {
+		compatible = "nxp,pcf8565", "nxp,pcf8563";
+		reg = <0x51>;
+		interrupt-parent = <&gpio1>;
+		interrupts = <28 IRQ_TYPE_EDGE_FALLING>;
+		#clock-cells = <0>;
+		clock-output-names = "rtc_clk32k";
+	};
+};
+
+&fec {
+	mdio {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		ethphy0: ethernet-phy@4 {
+			compatible = "ethernet-phy-ieee802.3-c22";
+			reg = <4>;
+			/* Set the maximum link speed if required */
+			//max-speed = <100>;
+		};
+	};
+};
