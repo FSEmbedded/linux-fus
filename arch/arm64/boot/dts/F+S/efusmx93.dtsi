@@ -141,15 +141,6 @@ fs_can_b: &flexcan2 {};
 #endif /* SUPPORT_RPMSG */
 	};
 
-#ifdef SUPPORT_M33
-	ethosu {
-		compatible = "arm,ethosu";
-		fsl,cm33-proc = <&cm33>;
-		memory-region = <&ethosu_mem>;
-		power-domains = <&mlmix>;
-	};
-#endif /* SUPPORT_M33 */
-
 	regulators {
 		compatible = "simple-bus";
 		#address-cells = <1>;
@@ -185,18 +176,39 @@ fs_can_b: &flexcan2 {};
 #endif
 };
 
-#ifdef SUPPORT_RPMSG
+#ifdef SUPPORT_M33
 &cm33 {
+#ifdef SUPPORT_RPMSG
 	mbox-names = "tx", "rx", "rxdb";
-	mboxes = <&mu1 0 1>,
-	<&mu1 1 1>,
-	<&mu1 3 1>;
+	mboxes = <&mu1 0 1
+			&mu1 1 1
+			&mu1 3 1>;
 	memory-region = <&vdevbuffer>, <&vdev0vring0>, <&vdev0vring1>,
-	<&vdev1vring0>, <&vdev1vring1>, <&rsc_table>;
+			<&vdev1vring0>, <&vdev1vring1>, <&rsc_table>;
+#endif /* SUPPORT_RPMSG */
 	fsl,startup-delay-ms = <500>;
 	status = "okay";
 };
-#endif
+
+&mu1 {
+	status = "okay";
+};
+
+&mu2 {
+	status = "okay";
+};
+
+#ifdef SUPPORT_RPMSG
+/{
+	ethosu {
+		compatible = "arm,ethosu";
+		fsl,cm33-proc = <&cm33>;
+		memory-region = <&ethosu_mem>;
+		power-domains = <&mlmix>;
+	};
+};
+#endif /* SUPPORT_RPMSG */
+#endif /* SUPPORT_M33 */
 
 /* UART declerations */
 #ifdef CONFIG_EFUSMX93_UART_A
@@ -770,14 +782,6 @@ fs_can_b: &flexcan2 {};
 };
 
 &media_blk_ctrl {
-	status = "okay";
-};
-
-&mu1 {
-	status = "okay";
-};
-
-&mu2 {
 	status = "okay";
 };
 

@@ -301,6 +301,14 @@ pc_sai: &sai3	{};
 	status = "okay";
 };
 
+&mu1 {
+	status = "okay";
+};
+
+&mu2 {
+	status = "okay";
+};
+
 #ifdef SUPPORT_RPMSG
 /{
 	ethosu {
@@ -766,14 +774,6 @@ pc_sai: &sai3	{};
 #endif /* CONFIG_PICOCOREMX93_SPI_A */
 
 &media_blk_ctrl {
-	status = "okay";
-};
-
-&mu1 {
-	status = "okay";
-};
-
-&mu2 {
 	status = "okay";
 };
 

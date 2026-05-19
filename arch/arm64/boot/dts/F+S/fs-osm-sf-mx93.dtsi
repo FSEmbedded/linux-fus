@@ -295,6 +295,14 @@ osm_can_b: &flexcan2 {};
 	status = "okay";
 };
 
+&mu1 {
+	status = "okay";
+};
+
+&mu2 {
+	status = "okay";
+};
+
 #ifdef SUPPORT_RPMSG
 /{
 	ethosu {
