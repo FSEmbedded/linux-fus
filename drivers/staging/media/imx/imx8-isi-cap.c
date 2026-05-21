@@ -959,6 +959,8 @@ static int mxc_isi_source_fmt_init(struct mxc_isi_cap_dev *isi_cap)
 		return -EINVAL;
 
 	src_fmt.pad = source_pad->index;
+	/* This driver only supports one single stream */
+	src_fmt.stream = 0;
 	src_fmt.which = V4L2_SUBDEV_FORMAT_ACTIVE;
 	src_fmt.format.code = MEDIA_BUS_FMT_UYVY8_1X16;
 	src_fmt.format.width = dst_f->width;
