@@ -5,6 +5,9 @@ DTC_FLAGS += -@
 dtb-$(CONFIG_ARCH_MXC) += armstonemx8mp.dtb \
 			  armstonemx8mp-BT070L1060CS0I1AD-A.dtb \
 			  armstonemx8mp-EE1010B1T-1CP.dtb
+dtb-$(CONFIG_ARCH_MXC) += armstonemx8mpr2.dtb \
+			  armstonemx8mpr2-BT070L1060CS0I1AD-A.dtb \
+			  armstonemx8mpr2-EE1010B1T-1CP.dtb
 dtb-$(CONFIG_ARCH_MXC) += picocoremx8mm-lpddr4.dtb \
 			  picocoremx8mm-lpddr4-lcdif-tc358764-g070y2-l01.dtb \
 			  picocoremx8mm-lpddr4-lcdif-tc358775-j070wvtc0211.dtb \

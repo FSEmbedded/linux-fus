@@ -1,5 +1,5 @@
 /*
-* Copyright (C) 2022 F&S Elektronik Systeme GmbH
+* Copyright (C) 2026 F&S Elektronik Systeme GmbH
 *
 * This program is free software; you can redistribute it and/or modify
 * it under the terms of the GNU General Public License version 2 as
@@ -190,10 +190,6 @@
 #define CONFIG_ARMSTONEMX8MP_ETH_A
 #define CONFIG_ARMSTONEMX8MP_ETH_B
 
-/* Add entry configuration for marvell wlan, bluetooth driver.
- * The entry is for NXP driver not needed. */
-#define CONFIG_ARMSTONEMX8MP_WLAN_MARVELL_DRV
-
 /* CAN */
 /* Feature connector - J20 pins 63, 64 */
 #define CONFIG_ARMSTONEMX8MP_CAN_A
@@ -206,20 +202,15 @@
 /* I2C_B - Feature connector J18 pins 2,3 */
 #define CONFIG_ARMSTONEMX8MP_I2C_B
 /* I2C_C - Feature connector J20 pins 19,21 optional */
-//#define CONFIG_ARMSTONEMX8MP_I2C_C
+#define CONFIG_ARMSTONEMX8MP_I2C_C
 /* I2C_D - Feature connector J20 pins 29,31 optional */
 #define CONFIG_ARMSTONEMX8MP_I2C_D
 
 /*
- * SD_A - External SD port with Card Detect (CD) and Write Protect (WP).
+ * SD_B - External SD port with Card Detect (CD) and Write Protect (WP).
  * 		  WP is fix low.
  */
-#define CONFIG_ARMSTONEMX8MP_SD_A
-#define CONFIG_ARMSTONEMX8MP_SD_A_CD
-/* There may be some pullups on the SD_A_VCC line, that prevent
-   voltage to go down to 1V8, which is needed for UHS support
-   so we disable 1V8 support by default. */
-//#define CONFIG_ARMSTONEMX8MP_SD_A_UHS
+#define CONFIG_ARMSTONEMX8MP_SD_B
 
 /* PWM and backlight brightness */
 /* PWM_A - Feature connector J20 pin 28 */
@@ -240,13 +231,15 @@
  * */
 /* TODO: RX <-> TX inverted in Rev. 1.00 */
 #define CONFIG_ARMSTONEMX8MP_UART_B
-#define CONFIG_ARMSTONEMX8MP_UART_B_RTSCTS
+//#define CONFIG_ARMSTONEMX8MP_UART_B_RTSCTS
 //#define CONFIG_ARMSTONEMX8MP_RS485
 /* UART_C - Feature connector J20 pins 36,38 */
 #define CONFIG_ARMSTONEMX8MP_UART_C
 /* UART_D - Feature connector J20 pins 18,20,22,24*/
 #define CONFIG_ARMSTONEMX8MP_UART_D
 #define CONFIG_ARMSTONEMX8MP_UART_D_RTSCTS
+/* UART_D - MAYA Bluetooth, mounting option */
+#define CONFIG_ARMSTONEMX8MP_UART_D_BT
 
 /* SPI_A - Feature connector J20 pins 12,14,16,17 */
 #define CONFIG_ARMSTONEMX8MP_SPI_A
@@ -262,9 +255,9 @@
 /* Codec - Feature connector J20 pins 41,43,44,45,48,49 */
 #define CONFIG_ARMSTONEMX8MP_AUDIO_CODEC
 
-/* Enable Basler da4200 camera */
-//#define CONFIG_ARMSTONEMX8MP_CAMERA_BASLER_daA4200
-#define CONFIG_ARMSTONEMX8MP_CAMERA_BASLER_daA3840
+/* Enable NXP RPI_CAM_MIPI camera */
+#define CONFIG_ARMSTONEMX8MP_CAMERA_RPI_CAM_MIPI_A
+//#define CONFIG_ARMSTONEMX8MP_CAMERA_RPI_CAM_MIPI_B
 
 /* USB Device TypeC and USB Host 2 Type A*/
 #define CONFIG_ARMSTONEMX8MP_USB_OTG
@@ -293,26 +286,23 @@
 #include "fsimx8mp.dtsi"
 #include "armstonemx8mp.dtsi"
 
-#ifdef CONFIG_ARMSTONEMX8MP_CAMERA_BASLER_daA3840
-#include "cameras/imx8mp-basler-daA3840.dtsi"
-#endif
-
-#ifdef CONFIG_ARMSTONEMX8MP_CAMERA_BASLER_daA4200
-#include "cameras/imx8mp-basler-daA4200.dtsi"
+#if defined (CONFIG_ARMSTONEMX8MP_CAMERA_RPI_CAM_MIPI_A) || \
+    defined (CONFIG_ARMSTONEMX8MP_CAMERA_RPI_CAM_MIPI_B)
+#include "cameras/imx8mp-rpi-cam-mipi.dtsi"
 #endif
 
 / {
-	model = "F&S armStoneMX8MP";
-	compatible = "fus,imx8mp-armstonemx8mp", "fsl,imx8mp";
+	model = "F&S armStoneMX8MPr2";
+	compatible = "fus,imx8mp-armstonemx8mpr2", "fsl,imx8mp";
 
-	usdhc2_pwrseq: usdhc2_pwrseq {
+	usdhc3_pwrseq: usdhc3_pwrseq {
 		compatible = "mmc-pwrseq-simple";
-		reset-gpios = <&gpio5 17 GPIO_ACTIVE_LOW>;
+		reset-gpios = <&gpio3 22 GPIO_ACTIVE_LOW>;
 	};
 };
 
 &bdinfo {
-	board_name = "armstonemx8mp";
+	board_name = "armstonemx8mpr2";
 };
 
 #if defined(DISPLAY_LVDS_BT070L1060CS0I1ADA) || defined(DISPLAY_LVDS_EE1010B1T1CP)
@@ -336,81 +326,71 @@
 };
 #endif
 
-/* SD_B - WLAN */
-&usdhc2 {
-	pinctrl-names = "default", "state_100mhz", "state_200mhz";
-	pinctrl-0 = <&pinctrl_usdhc2>, <&pinctrl_usdhc2_gpio>;
-	pinctrl-1 = <&pinctrl_usdhc2_100mhz>, <&pinctrl_usdhc2_gpio>;
-	pinctrl-2 = <&pinctrl_usdhc2_200mhz>, <&pinctrl_usdhc2_gpio>;
-	mmc-pwrseq = <&usdhc2_pwrseq>;
-	vmmc-supply = <&reg_vref_3v3>;
-	vqmmc-supply = <&reg_vref_1v8>;
-	pm-ignore-notify;
-	keep-power-in-suspend;
-	non-removable;
-	cap-power-off-card;
-	fsl,sdio-async-interrupt-enabled;
-	bus-width = <4>;
-	status = "okay";
-#ifdef CONFIG_ARMSTONEMX8MP_WLAN_MARVELL_DRV
-	#address-cells = <1>;
-	#size-cells = <0>;
-	mwifiex: wifi@1 {
-		compatible = "marvell,sd8997";
-		reg = <1>;
-	};
-#endif
-};
+/* armStoneMX8MPr2 uses different usdhc for WLAN and Micro-SD */
 
-#ifdef CONFIG_ARMSTONEMX8MP_SD_A
-/* SD_A - internal Micro-SD */
+/* SD_A - WLAN */
 &usdhc3 {
 	pinctrl-names = "default", "state_100mhz", "state_200mhz";
 	pinctrl-0 = <&pinctrl_usdhc3>, <&pinctrl_usdhc3_gpio>;
 	pinctrl-1 = <&pinctrl_usdhc3_100mhz>, <&pinctrl_usdhc3_gpio>;
 	pinctrl-2 = <&pinctrl_usdhc3_200mhz>, <&pinctrl_usdhc3_gpio>;
-	cd-gpios = <&gpio1 14 GPIO_ACTIVE_LOW>;
-#ifndef CONFIG_ARMSTONEMX8MP_SD_A_UHS
-	/* There may be some pullups on the SD_A_VCC line, that prevent
-	   voltage to go down to 1V8, which is needed for UHS support
-	   so we disable 1V8 support by default. */
-	no-1-8-v;
-#endif
+	mmc-pwrseq = <&usdhc3_pwrseq>;
+	vmmc-supply = <&reg_vref_3v3>;
+	vqmmc-supply = <&reg_vref_1v8>;
+	vqmmc-1-8-v;
 	bus-width = <4>;
+	keep-power-in-suspend;
+	non-removable;
+	wakeup-source;
+ 	//fsl,sdio-async-interrupt-enabled;
+	//pm-ignore-notify;
+	status = "okay";
+	wlan_wake: wifi_wake_host {
+		compatible = "nxp,wifi-wake-host";
+	};
+};
+
+#ifdef CONFIG_ARMSTONEMX8MP_UART_D
+&uart4 {
+#ifdef CONFIG_ARMSTONEMX8MP_UART_D_BT
+	bluetooth: bluetooth {
+		compatible = "nxp,88w8987-bt";
+		fw-init-baudrate = <115200>;
+	};
+#endif /* CONFIG_ARMSTONEMX8MP_UART_D_BT */
+};
+#endif /* CONFIG_ARMSTONEMX8MP_UART_D */
+
+/* SD_B - internal Micro-SD */
+&usdhc2 {
+	pinctrl-names = "default", "state_100mhz", "state_200mhz";
+	pinctrl-0 = <&pinctrl_usdhc2>, <&pinctrl_usdhc2_gpio>;
+	pinctrl-1 = <&pinctrl_usdhc2_100mhz>, <&pinctrl_usdhc2_gpio>;
+	pinctrl-2 = <&pinctrl_usdhc2_200mhz>, <&pinctrl_usdhc2_gpio>;
+	bus-width = <4>;
+	cd-gpios = <&gpio2 12 GPIO_ACTIVE_LOW>;
 	status = "okay";
 };
-#endif /* CONFIG_ARMSTONEMX8MP_SD_A */
 
 &iomuxc {
-
-	pinctrl-0 = <&pinctrl_hog>, <&pinctrl_hog1>;
 	imx8mp-armstonemx8mp {
-
-		pinctrl_hog1: hogg1rp {
-			fsl,pins = <
-				/* SHDN_RS232 */
-				MX8MP_IOMUXC_GPIO1_IO03__GPIO1_IO03			0x00142
-				/* AUTONLINE_RS232 */
-				MX8MP_IOMUXC_GPIO1_IO04__GPIO1_IO04			0x00142
-			>;
-		};
 
 		pinctrl_usdhc2_gpio: usdhc2grp-gpio {
 			fsl,pins = <
-				/* WLAN_RST */
-				MX8MP_IOMUXC_I2C2_SDA__GPIO5_IO17           0x00046
+				/* CD */
+				MX8MP_IOMUXC_SD2_CD_B__GPIO2_IO12	0x1c4
 			>;
 		};
 
 		pinctrl_usdhc2: usdhc2grp {
 			fsl,pins = <
-
 				MX8MP_IOMUXC_SD2_CLK__USDHC2_CLK	0x190
 				MX8MP_IOMUXC_SD2_CMD__USDHC2_CMD	0x1d0
 				MX8MP_IOMUXC_SD2_DATA0__USDHC2_DATA0	0x1d0
 				MX8MP_IOMUXC_SD2_DATA1__USDHC2_DATA1	0x1d0
 				MX8MP_IOMUXC_SD2_DATA2__USDHC2_DATA2	0x1d0
 				MX8MP_IOMUXC_SD2_DATA3__USDHC2_DATA3	0x1d0
+				MX8MP_IOMUXC_GPIO1_IO04__USDHC2_VSELECT 0x0c1
 			>;
 		};
 
@@ -422,6 +402,7 @@
 				MX8MP_IOMUXC_SD2_DATA1__USDHC2_DATA1	0x1d4
 				MX8MP_IOMUXC_SD2_DATA2__USDHC2_DATA2	0x1d4
 				MX8MP_IOMUXC_SD2_DATA3__USDHC2_DATA3	0x1d4
+				MX8MP_IOMUXC_GPIO1_IO04__USDHC2_VSELECT 0x0c1
 			>;
 		};
 
@@ -433,10 +414,16 @@
 				MX8MP_IOMUXC_SD2_DATA1__USDHC2_DATA1	0x1d6
 				MX8MP_IOMUXC_SD2_DATA2__USDHC2_DATA2	0x1d6
 				MX8MP_IOMUXC_SD2_DATA3__USDHC2_DATA3	0x1d6
+				MX8MP_IOMUXC_GPIO1_IO04__USDHC2_VSELECT 0x0c1
 			>;
 		};
 
-#ifdef CONFIG_ARMSTONEMX8MP_SD_A
+		pinctrl_usdhc3_gpio: usdhc3grp-gpio {
+			fsl,pins = <
+				/* WLAN RST */
+				MX8MP_IOMUXC_SAI5_RXD1__GPIO3_IO22	0x1c4
+			>;
+		};
 		pinctrl_usdhc3: usdhc3grp {
 			fsl,pins = <
 				MX8MP_IOMUXC_NAND_WE_B__USDHC3_CLK	0x190
@@ -445,7 +432,6 @@
 				MX8MP_IOMUXC_NAND_DATA05__USDHC3_DATA1	0x1d0
 				MX8MP_IOMUXC_NAND_DATA06__USDHC3_DATA2	0x1d0
 				MX8MP_IOMUXC_NAND_DATA07__USDHC3_DATA3	0x1d0
-				MX8MP_IOMUXC_GPIO1_IO11__USDHC3_VSELECT 0x0c1
 			>;
 		};
 
@@ -457,7 +443,6 @@
 				MX8MP_IOMUXC_NAND_DATA05__USDHC3_DATA1	0x1d4
 				MX8MP_IOMUXC_NAND_DATA06__USDHC3_DATA2	0x1d4
 				MX8MP_IOMUXC_NAND_DATA07__USDHC3_DATA3	0x1d4
-				MX8MP_IOMUXC_GPIO1_IO11__USDHC3_VSELECT 0x0c1
 			>;
 		};
 
@@ -469,17 +454,7 @@
 				MX8MP_IOMUXC_NAND_DATA05__USDHC3_DATA1	0x1d6
 				MX8MP_IOMUXC_NAND_DATA06__USDHC3_DATA2	0x1d6
 				MX8MP_IOMUXC_NAND_DATA07__USDHC3_DATA3	0x1d6
-				MX8MP_IOMUXC_GPIO1_IO11__USDHC3_VSELECT 0x0c1
 			>;
 		};
-
-		pinctrl_usdhc3_gpio: usdhc3grp-gpio {
-			fsl,pins = <
-				/* CD */
-				MX8MP_IOMUXC_GPIO1_IO14__GPIO1_IO14	0x1c4
-			>;
-		};
-#endif /* CONFIG_ARMSTONEMX8MP_SD_A */
 	};
 };
-

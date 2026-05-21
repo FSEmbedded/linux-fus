@@ -1,0 +1,297 @@
+
+/ {
+	regulators {
+#ifdef CONFIG_ARMSTONEMX8MP_CAMERA_RPI_CAM_MIPI_A
+		reg_dvdd_sel: regulator-dvdd_sel {
+			compatible = "regulator-fixed";
+			regulator-name = "DVDD_SEL";
+			gpio = <&adp5585gpio_isp_a 0 GPIO_ACTIVE_HIGH>;
+			enable-active-high;
+			startup-delay-us = <2000>;
+		};
+
+		reg_dvdd_1v2: regulator-dvdd {
+			compatible = "regulator-fixed";
+			regulator-name = "DVDD_1V2";
+			gpio = <&adp5585gpio_isp_a 6 GPIO_ACTIVE_HIGH>;
+			regulator-min-microvolt = <1200000>;
+			regulator-max-microvolt = <1200000>;
+			enable-active-high;
+			vin-supply = <&reg_dvdd_sel>;
+		};
+
+		reg_vdd_3v3: regulator-vdd {
+			compatible = "regulator-fixed";
+			regulator-name = "VDD_3V3";
+			gpio = <&adp5585gpio_isp_a 5 GPIO_ACTIVE_HIGH>;
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			startup-delay-us = <4000>;
+			enable-active-high;
+		};
+
+		reg_vddio_1v8: regulator-vddo {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDIO_1V8";
+			gpio = <&adp5585gpio_isp_a 9 GPIO_ACTIVE_HIGH>;
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+			startup-delay-us = <4000>;
+			enable-active-high;
+			vin-supply = <&reg_vdd_3v3>;
+		};
+
+		reg_vaa_sel: regulator-vaa_sel {
+			compatible = "regulator-fixed";
+			regulator-name = "VAA_SEL";
+			gpio = <&adp5585gpio_isp_a 1 GPIO_ACTIVE_HIGH>;
+			enable-active-high;
+		};
+
+		reg_avdd_2v8: regulator-avdd {
+			compatible = "regulator-fixed";
+			regulator-name = "AVDD_2V8";
+			gpio = <&adp5585gpio_isp_a 7 GPIO_ACTIVE_HIGH>;
+			regulator-min-microvolt = <2800000>;
+			regulator-max-microvolt = <2800000>;
+			enable-active-high;
+			vin-supply = <&reg_vaa_sel>;
+		};
+#endif
+
+#ifdef CONFIG_ARMSTONEMX8MP_CAMERA_RPI_CAM_MIPI_B
+		reg_dvdd_sel: regulator-dvdd_sel {
+			compatible = "regulator-fixed";
+			regulator-name = "DVDD_SEL";
+			gpio = <&adp5585gpio_isp_b 0 GPIO_ACTIVE_HIGH>;
+			enable-active-high;
+			startup-delay-us = <2000>;
+		};
+
+		reg_dvdd_1v2: regulator-dvdd {
+			compatible = "regulator-fixed";
+			regulator-name = "DVDD_1V2";
+			gpio = <&adp5585gpio_isp_b 6 GPIO_ACTIVE_HIGH>;
+			regulator-min-microvolt = <1200000>;
+			regulator-max-microvolt = <1200000>;
+			enable-active-high;
+			vin-supply = <&reg_dvdd_sel>;
+		};
+
+		reg_vdd_3v3: regulator-vdd {
+			compatible = "regulator-fixed";
+			regulator-name = "VDD_3V3";
+			gpio = <&adp5585gpio_isp_b 5 GPIO_ACTIVE_HIGH>;
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			startup-delay-us = <4000>;
+			enable-active-high;
+		};
+
+		reg_vddio_1v8: regulator-vddo {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDIO_1V8";
+			gpio = <&adp5585gpio_isp_b 9 GPIO_ACTIVE_HIGH>;
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+			startup-delay-us = <4000>;
+			enable-active-high;
+			vin-supply = <&reg_vdd_3v3>;
+		};
+
+		reg_vaa_sel: regulator-vaa_sel {
+			compatible = "regulator-fixed";
+			regulator-name = "VAA_SEL";
+			gpio = <&adp5585gpio_isp_b 1 GPIO_ACTIVE_HIGH>;
+			enable-active-high;
+		};
+
+		reg_avdd_2v8: regulator-avdd {
+			compatible = "regulator-fixed";
+			regulator-name = "AVDD_2V8";
+			gpio = <&adp5585gpio_isp_b 7 GPIO_ACTIVE_HIGH>;
+			regulator-min-microvolt = <2800000>;
+			regulator-max-microvolt = <2800000>;
+			enable-active-high;
+			vin-supply = <&reg_vaa_sel>;
+		};
+#endif
+	};
+};
+
+
+#ifdef CONFIG_ARMSTONEMX8MP_CAMERA_RPI_CAM_MIPI_A
+&fs_i2c_d {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "okay";
+
+	adp5585_isp_a: mfd-isp@34 {
+		compatible = "adi,adp5585";
+		reg = <0x34>;
+		status = "okay";
+
+		adp5585gpio_isp_a: gpio-isp-adp5585 {
+			compatible = "adp5585-gpio";
+			gpio-controller;
+			#gpio-cells = <2>;
+		};
+
+		adp5585pwm_isp_a: pwm-isp-adp5585 {
+			compatible = "adp5585-pwm";
+			#pwm-cells = <3>;
+		};
+    };
+
+	ap1302-camera@3c {
+		compatible = "onsemi,ap1302";
+		reg = <0x3c>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_camera_a_gpio>;
+
+		DVDD-supply   = <&reg_dvdd_1v2>;
+		VDDIO-supply  = <&reg_vddio_1v8>;
+		AVDD-supply   = <&reg_avdd_2v8>;
+		status = "okay";
+
+		reset-gpios = <&gpio5 17 GPIO_ACTIVE_LOW>;
+        isp_en-gpios = <&adp5585gpio_isp_a 2 GPIO_ACTIVE_HIGH>;
+
+		port {
+			ap1302_isp_output_ep: endpoint {
+				remote-endpoint = <&mipi_csi0_input_ep>;
+			};
+		};
+	};
+};
+
+&cameradev {
+	status = "okay";
+};
+
+&mipi_csi_0 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "okay";
+
+	port@0 {
+		reg = <0>;
+		mipi_csi0_input_ep: endpoint {
+			remote-endpoint = <&ap1302_isp_output_ep>;
+			data-lanes = <2>;
+			csis-hs-settle = <13>;
+			csis-clk-settle = <2>;
+		};
+	};
+};
+
+&isi_0 {
+	status = "okay";
+	
+	cap_device {
+		status = "okay";
+	};
+	
+	m2m_device {
+		status = "disabled";
+	};
+};
+#endif /* CONFIG_ARMSTONEMX8MP_CAMERA_RPI_CAM_MIPI_A */
+
+#ifdef CONFIG_ARMSTONEMX8MP_CAMERA_RPI_CAM_MIPI_B
+&fs_i2c_c {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "okay";
+
+	adp5585_isp_b: mfd-isp@34 {
+		compatible = "adi,adp5585";
+		reg = <0x34>;
+		status = "okay";
+
+		adp5585gpio_isp_b: gpio-isp-adp5585 {
+			compatible = "adp5585-gpio";
+			gpio-controller;
+			#gpio-cells = <2>;
+		};
+
+		adp5585pwm_isp_b: pwm-isp-adp5585 {
+			compatible = "adp5585-pwm";
+			#pwm-cells = <3>;
+		};
+    };
+
+	ap1302-camera@3c {
+		compatible = "onsemi,ap1302";
+		reg = <0x3c>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_camera_b_gpio>;
+
+		DVDD-supply   = <&reg_dvdd_1v2>;
+		VDDIO-supply  = <&reg_vddio_1v8>;
+		AVDD-supply   = <&reg_avdd_2v8>;
+		status = "okay";
+
+		reset-gpios = <&gpio1 3 GPIO_ACTIVE_LOW>;
+        isp_en-gpios = <&adp5585gpio_isp_b 2 GPIO_ACTIVE_HIGH>;
+
+		port {
+			ap1302_isp_output2_ep: endpoint {
+				remote-endpoint = <&mipi_csi1_input_ep>;
+			};
+		};
+	};
+};
+
+&cameradev {
+	status = "okay";
+};
+
+&mipi_csi_1 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "okay";
+
+	port@1 {
+		reg = <1>;
+		mipi_csi1_input_ep: endpoint {
+			remote-endpoint = <&ap1302_isp_output2_ep>;
+			data-lanes = <2>;
+			csis-hs-settle = <13>;
+			csis-clk-settle = <2>;
+		};
+	};
+};
+
+&isi_1 {
+	status = "okay";
+	
+	cap_device {
+		status = "okay";
+	};
+};
+#endif /* CONFIG_ARMSTONEMX8MP_CAMERA_RPI_CAM_MIPI_B */
+
+&iomuxc {
+
+	imx8mp-armstonemx8mp {
+
+#ifdef CONFIG_ARMSTONEMX8MP_CAMERA_RPI_CAM_MIPI_A
+		pinctrl_camera_a_gpio: cameraagrp-gpio {
+			fsl,pins = <
+				MX8MP_IOMUXC_I2C2_SDA__GPIO5_IO17	0x1c4
+			>;
+		};
+#endif
+
+#ifdef CONFIG_ARMSTONEMX8MP_CAMERA_RPI_CAM_MIPI_B
+		pinctrl_camera_b_gpio: camerabgrp-gpio {
+			fsl,pins = <
+				MX8MP_IOMUXC_GPIO1_IO03__GPIO1_IO03 0x1c4
+			>;
+		};
+
+#endif
+	};
+};
+
