@@ -102,7 +102,7 @@ static int imx8mp_set_intf_mode(struct plat_stmmacenet_data *plat_dat)
 		return -EINVAL;
 	}
 
-	val |= MX93_GPR_ENET_QOS_CLK_GEN_EN;
+	val |= GPR_ENET_QOS_CLK_GEN_EN;
 	return regmap_update_bits(dwmac->intf_regmap, dwmac->intf_reg_off,
 				  GPR_ENET_QOS_INTF_MODE_MASK, val);
 };
