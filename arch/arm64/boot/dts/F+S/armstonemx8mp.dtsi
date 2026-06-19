@@ -350,6 +350,7 @@ fs_usb_host: &usb_dwc3_0 {};
 	};
 #endif /* CONFIG_ARMSTONEMX8MP_AUDIO_CODEC */
 
+
 #ifdef CONFIG_ARMSTONEMX8MP_HDMI_AUDIO
 	sound-hdmi {
 		compatible = "fsl,imx-audio-hdmi";
@@ -1176,6 +1177,7 @@ touch: goodix@5d {
 	status = "okay";
 };
 
+
 &usb3_1 {
 	status = "okay";
 };
@@ -1207,6 +1209,8 @@ touch: goodix@5d {
 	bus-width = <8>;
 	status = "okay";
 };
+
+
 
 &wdog1 {
 	pinctrl-names = "default";
@@ -1356,27 +1360,28 @@ touch: goodix@5d {
 #endif
 };
 
-/* GPIOs for Feature Connector, Capacitive Touch and Backlight */
+
+/* GPIO declarations */
 &gpio1 {
 	gpio-line-names =
-	/*  0 */ "", "TOUCH_RSTn", "", "",
-	/*  4 */ "", "", "", "I2C_B_IRQ",
-	/*  8 */ "", "", "BL_PWM", "",
-	/* 12 */ "", "PWM_A", "", "",
-	/* 16 */ "", "", "", "",
-	/* 20 */ "", "", "", "",
-	/* 24 */ "", "", "", "",
-	/* 28 */ "", "", "", "";
+	/* 0 */  "SE050_ENA", "TOUCH_RST", "PMIC_WDOG", "CAM2_IO0",
+	/* 4 */  "SD_B_VSEL", "USB_OTG_TYPEC_EN", "USB_HUB_RESET", "I2C_B_IRQ",
+	/* 8 */  "USB_OTG_TYPEC_ALERT", "USB_OTG_TYPEC_SEL", "BL_PWM", "CAM2_IO1",
+	/* 12 */ "USB_HOST_PWR", "PWM_A", "CAM1_IO1", "LVDS_RST",
+	/* 16 */ "ENET_QOS_MDC", "ENET_QOS_MDIO", "ENET_QOS_TXD3", "ENET_QOS_TXD2",
+	/* 20 */ "ENET_QOS_TXD1", "ENET_QOS_TXD0", "ENET_QOS_TX_CTL", "ENET_QOS_TXC_R",
+	/* 24 */ "ENET_QOS_RX_CTL", "ENET_QOS_RXC_R", "ENET_QOS_RXD0", "ENET_QOS_RXD1",
+	/* 28 */ "ENET_QOS_RXD2", "ENET_QOS_RXD3", "", "";
 	status = "okay";
 };
 
 &gpio2 {
 	gpio-line-names =
-	/*  0 */ "", "", "", "",
-	/*  4 */ "", "", "", "",
-	/*  8 */ "", "", "", "",
-	/* 12 */ "", "", "", "",
-	/* 16 */ "", "", "", "",
+	/* 0 */  "SD_C_CLK", "SD_C_CMD", "SD_C_DATA0", "SD_C_DATA1",
+	/* 4 */  "SD_C_DATA2", "SD_C_DATA3", "SD_C_DATA4", "SD_C_DATA5",
+	/* 8 */  "SD_C_DATA6", "SD_C_DATA7", "SD_C_RESET_B", "SD_C_STROBE",
+	/* 12 */ "SD_B_CD", "SD_B_CLK", "SD_B_CMD", "SD_B_DATA0",
+	/* 16 */ "SD_B_DATA1", "SD_B_DATA2", "SD_B_DATA3", "",
 	/* 20 */ "", "", "", "",
 	/* 24 */ "", "", "", "",
 	/* 28 */ "", "", "", "";
@@ -1385,40 +1390,40 @@ touch: goodix@5d {
 
 &gpio3 {
 	gpio-line-names =
-	/*  0 */ "COL2", "COL0", "", "",
-	/*  4 */ "COL6", "", "UART_D_RXD", "UART_D_TXD",
-	/*  8 */ "UART_D_RTS", "UART_D_CTS", "", "",
-	/* 12 */ "", "", "COL4", "",
-	/* 16 */ "", "", "", "",
-	/* 20 */ "", "", "", "",
-	/* 24 */ "", "", "", "",
-	/* 28 */ "", "", "", "";
+	/* 0 */  "COL2", "COL0", "mPCIE_DISABLE", "mPCIE_PERST",
+	/* 4 */  "COL6", "mPCIE_WAKE", "UART_D_RXD", "UART_D_TXD",
+	/* 8 */  "UART_D_RTS", "UART_D_CTS", "SD_A_DATA0", "SD_A_DATA1",
+	/* 12 */ "SD_A_DATA2", "SD_A_DATA3", "COL4", "",
+	/* 16 */ "", "SD_A_CLK", "SD_A_CMD", "BT_DEV_WAKE_1V8",
+	/* 20 */ "BT_WAKE_HOST_1V8", "I2C_PMIC_SCL", "WLAN/BT_EN_1V8", "WLAN_DEV_WAKE_1V8",
+	/* 24 */ "WLAN_WAKE_HOST_1V8", "I2C_PMIC_SDA", "HDMI_DDC_SCL", "HDMI_DDC_SDA",
+	/* 28 */ "HDMI_CEC", "HDMI_HPD", "", "";
 	status = "okay";
 };
 
 &gpio4 {
 	gpio-line-names =
-	/*  0 */ "", "", "", "",
-	/*  4 */ "", "", "", "",
-	/*  8 */ "", "", "", "",
-	/* 12 */ "", "", "", "",
-	/* 16 */ "", "", "", "",
-	/* 20 */ "", "UART_C_TXD", "UART_C_RXD", "AUDIO_LOUT_L",
-	/* 24 */ "AUDIO_LIN_L", "AUDIO_LOUT_R", "AUDIO_MICIN", "AUDIO_LIN_R",
-	/* 28 */ "BL_ON", "", "", "";
+	/* 0 */  "ETH_B_PHY_RST", "ETH_B_PHY_INT", "ETH_A_PHY_INT", "WLAN_IRQ_1V8",
+	/* 4 */  "ENET_RGMII_MDC", "ENET_RGMII_MDIO", "ENET_RGMII_RXD0", "ENET_RGMII_RXD1",
+	/* 8 */  "ENET_RGMII_RXD2", "ENET_RGMII_RXD3", "ENET_RGMII_RX_CTL", "ENET_RGMII_RXC_R",
+	/* 12 */ "ENET_RGMII_TXD0", "ENET_RGMII_TXD1", "ENET_RGMII_TXD2", "ENET_RGMII_TXD3",
+	/* 16 */ "ENET_RGMII_TX_CTL", "ENET_RGMII_TXC_R", "ETH_A_PHY_RST", "PMIC_IRQ_B",
+	/* 20 */ "", "UART_C_TXD", "UART_C_RXD", "I2S_RXD",
+	/* 24 */ "I2S_TXFS", "I2S_TXC", "I2S_TXD", "I2S_MCLK",
+	/* 28 */ "BL_ON", "UART_A_CTS", "UART_A_RTS", "UART_A_RXD";
 	status = "okay";
 };
 
 &gpio5 {
 	gpio-line-names =
-	/*  0 */ "", "GPIO_A", "PWM_C", "CAN1H/CAN1TX",
-	/*  4 */ "CAN1L/CAN1RX", "PWM_B", "UART_B_RXD", "UART_B_TXD",
-	/*  8 */ "I2C_C_SCL", "I2C_C_SDA", "SPI_B_SCLK", "SPI_B_MOSI",
-	/* 12 */ "SPI_B_MISO", "SPI_B_SS0", "AIN_B", "AIN_A",
-	/* 16 */ "VLCD_ON", "", "I2C_B_SCL", "I2C_B_SDA",
+	/* 0 */  "UART_A_TXD", "GPIO_A", "PWM_C", "CAN_A_TX",
+	/* 4 */  "CAN_R_TX", "PWM_B", "UART_B_TXD", "UART_B_RXD",
+	/* 8 */  "I2C_C_SCL", "I2C_C_SDA", "SPI_B_SCLK", "SPI_B_MOSI",
+	/* 12 */ "SPI_B_MISO", "SPI_B_SS0", "I2C_D_SCL", "I2C_D_SDA",
+	/* 16 */ "VLCD_ON", "CAM1_IO0", "I2C_B_SCL", "I2C_B_SDA",
 	/* 20 */ "I2C_A_SCL", "I2C_A_SDA", "SPI_A_SCLK", "SPI_A_MOSI",
-	/* 24 */ "SPI_A_MISO", "SPI_A_SS0", "", "",
-	/* 28 */ "AIN_C", "AIN_D", "", "";
+	/* 24 */ "SPI_A_MISO", "SPI_A_SS0", "CAN_B_TX", "CAN_B_RX",
+	/* 28 */ "I2C_D_IRQ", "I2C_D_RST", "", "";
 	status = "okay";
 };
 
@@ -1838,6 +1843,7 @@ touch: goodix@5d {
 				MX8MP_IOMUXC_SD1_RESET_B__USDHC1_RESET_B 0x144
 			>;
 		};
+
 
 		pinctrl_wdog: wdoggrp {
 			fsl,pins = <

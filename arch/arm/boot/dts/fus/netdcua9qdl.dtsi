@@ -1032,6 +1032,91 @@
 };
 #endif /* CONFIG_NETDCUA9_LVDS0 || CONFIG_NETDCUA9_LVDS1 */
 
+/* GPIO declarations */
+&gpio1 {
+	gpio-line-names =
+	/* 0 */   "USB_H1_PWR", "SD1_CD", "PHY_RST", "ETH_RST",
+	/* 4 */   "5V_3V3", "I2C3_SCL", "I2C3_SDA", "I2C2_IRQ",
+	/* 8 */   "I2C2_RST", "USB_OTG_PWR", "", "",
+	/* 12 */  "AUD4_TXC", "AUD4_TXD", "AUD4_TXFS", "AUD4_RXD",
+	/* 16 */  "SD1_DAT0", "SD1_DAT1", "SD1_CMD", "SD1_DAT2",
+	/* 20 */  "SD1_CLK", "SD1_DAT3", "ENET_MDIO", "RTC_IRQ",
+	/* 24 */  "ENET_RX_ER", "ENET_CRS_DV", "ENET_RXD1", "ENET_RXD0",
+	/* 28 */  "ENET_TX_EN", "ENET_TXD1", "ENET_TXD0", "ENET_MDC";
+};
+
+&gpio2 {
+	gpio-line-names =
+	/* 0 */   "NANDF_D0", "NANDF_D1", "NANDF_D2", "NANDF_D3",
+	/* 4 */   "NANDF_D4", "NANDF_D5", "NANDF_D6", "NANDF_D7",
+	/* 8 */   "VCFL_ON", "BKLT_PWM", "PWM1", "VLCD_ON",
+	/* 12 */  "UART2_RX", "UART2_CTS", "UART2_RTS", "UART2_TX",
+	/* 16 */  "ROW6", "ROW5", "ROW4", "ROW3",
+	/* 20 */  "ROW2", "ROW1", "ROW0", "EIM_CS0",
+	/* 24 */  "EIM_CS1", "EIM_OE", "EIM_RW", "",
+	/* 28 */  "COL6", "COL7", "COL2", "COL3";
+};
+
+&gpio3 {
+	gpio-line-names =
+	/* 0 */   "EIM_A0", "EIM_A1", "EIM_A2", "EIM_A3",
+	/* 4 */   "EIM_A4", "A_IRQ1", "A_IRQ2", "A_IRQ3",
+	/* 8 */   "A_RESET", "RS485SEL", "KBINT", "FS_INT",
+	/* 12 */  "EIM_A12", "DVS", "LAN1IRQ", "LANPME",
+	/* 16 */  "EIM_D16", "EIM_D17", "EIM_D18", "EIM_D19",
+	/* 20 */  "EIM_D20", "EIM_D21", "EIM_D22", "EIM_D23",
+	/* 24 */  "EIM_D24", "EIM_D25", "EIM_D26", "EIM_D27",
+	/* 28 */  "EIM_D28", "EIM_D29", "EIM_D30", "EIM_D31";
+};
+
+&gpio4 {
+	gpio-line-names =
+	/* 0 */   "", "", "", "",
+	/* 4 */   "", "CCM_CLKO1", "UART4_TX", "UART4_RX",
+	/* 8 */   "UART5_TX", "UART5_RX", "CAN2_TX", "CAN2_RX",
+	/* 12 */  "I2C2_SCL", "I2C2_SDA", "CAN1_TX", "CAN1_RX",
+	/* 16 */  "LCDCLK", "LCDDE", "LCDHSYNC", "LCDVSYNC",
+	/* 20 */  "SD1_WP", "LCDB0", "LCDB1", "LCDB2",
+	/* 24 */  "LCDB3", "LCDB4", "LCDB5", "LCDB6",
+	/* 28 */  "LCDB7", "LCDG0", "LCDG1", "LCDG2";
+};
+
+&gpio5 {
+	gpio-line-names =
+	/* 0 */   "COL5", "", "COL1", "",
+	/* 4 */   "COL0", "LCDG3", "LCDG4", "LCDG5",
+	/* 8 */   "LCDG6", "LCDG7", "LCDR0", "LCDR1",
+	/* 12 */  "LCDR2", "LCDR3", "LCDR4", "LCDR5",
+	/* 16 */  "LCDR6", "LCDR7", "CSI0_PIXCLK", "CSI0_HSYNC",
+	/* 20 */  "LCD_DEN", "CSI0_VSYNC", "SPI_CLK/COL11", "SPI_MOSI/I2C3_SCL/COL9",
+	/* 24 */  "SPI_MISO/I2C3_SDA/COL8", "SPI_CS/COL10", "I2C1_SDA", "I2C1_SCL",
+	/* 28 */  "", "", "CSI0_DAT12", "CSI0_DAT13";
+};
+
+&gpio6 {
+	gpio-line-names =
+	/* 0 */   "CSI0_DAT14", "CSI0_DAT15", "CSI0_DAT16", "CSI0_DAT17",
+	/* 4 */   "CSI0_DAT18", "CSI0_DAT19", "ROW7", "NANDF_CLE",
+	/* 8 */   "NANDF_ALE", "NANDF_WP_B", "NANDF_RB0", "NANDF_CE0_B",
+	/* 12 */  "", "", "", "CCM_CLKO2",
+	/* 16 */  "", "SD3_DAT7", "SD3_DAT6", "",
+	/* 20 */  "", "", "", "",
+	/* 24 */  "", "", "", "",
+	/* 28 */  "", "", "", "COL4";
+};
+
+&gpio7 {
+	gpio-line-names =
+	/* 0 */   "SD3_DAT5", "SD3_DAT4", "SD3_CMD", "SD3_CLK",
+	/* 4 */   "SD3_DAT0", "SD3_DAT1", "SD3_DAT2", "SD3_DAT3",
+	/* 8 */   "SD3_RST", "NANDF_RE_B", "NANDF_WE_B", "ENET_REF_CLK",
+	/* 12 */  "STA1_LED", "STA2_LED", "", "",
+	/* 16 */  "", "", "", "",
+	/* 20 */  "", "", "", "",
+	/* 24 */  "", "", "", "",
+	/* 28 */  "", "", "", "";
+};
+
 &iomuxc {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_hog_1>;

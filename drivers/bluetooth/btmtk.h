@@ -196,39 +196,39 @@ static inline int btmtk_set_bdaddr(struct hci_dev *hdev,
 	return -EOPNOTSUPP;
 }
 
-static int btmtk_setup_firmware_79xx(struct hci_dev *hdev, const char *fwname,
+static inline int btmtk_setup_firmware_79xx(struct hci_dev *hdev, const char *fwname,
 				     wmt_cmd_sync_func_t wmt_cmd_sync)
 {
 	return -EOPNOTSUPP;
 }
 
-static int btmtk_setup_firmware(struct hci_dev *hdev, const char *fwname,
+static inline int btmtk_setup_firmware(struct hci_dev *hdev, const char *fwname,
 				wmt_cmd_sync_func_t wmt_cmd_sync)
 {
 	return -EOPNOTSUPP;
 }
 
-static void btmtk_reset_sync(struct hci_dev *hdev)
+static inline void btmtk_reset_sync(struct hci_dev *hdev)
 {
 }
 
-static int btmtk_register_coredump(struct hci_dev *hdev, const char *name,
+static inline int btmtk_register_coredump(struct hci_dev *hdev, const char *name,
 				   u32 fw_version)
 {
 	return -EOPNOTSUPP;
 }
 
-static int btmtk_process_coredump(struct hci_dev *hdev, struct sk_buff *skb)
+static inline int btmtk_process_coredump(struct hci_dev *hdev, struct sk_buff *skb)
 {
 	return -EOPNOTSUPP;
 }
 
-static void btmtk_fw_get_filename(char *buf, size_t size, u32 dev_id,
+static inline void btmtk_fw_get_filename(char *buf, size_t size, u32 dev_id,
 				  u32 fw_ver, u32 fw_flavor)
 {
 }
 
-static int btmtk_usb_hci_wmt_sync(struct hci_dev *hdev,
+static inline int btmtk_usb_hci_wmt_sync(struct hci_dev *hdev,
 				  struct btmtk_hci_wmt_params *wmt_params)
 {
 	return -EOPNOTSUPP;

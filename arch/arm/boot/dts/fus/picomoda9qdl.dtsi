@@ -700,6 +700,91 @@
 	};
 };
 
+/* GPIO declarations */
+&gpio1 {
+	gpio-line-names =
+	/* 0 */  "GPIO_0_CLKO", "USBOTG_ID", "SLOT0_WP", "I2CLK",
+	/* 4 */  "SLOT0_CD", "USB_PWR1", "RTC_IRQ", "TOUCH_RES",
+	/* 8 */  "USB_PWR2", "WDOUT", "SLOT0_CLK", "SLOT0_CMD",
+	/* 12 */ "SLOT0_DATA3", "SLOT0_DATA2", "SLOT0_DATA1", "SLOT0_DATA0",
+	/* 16 */ "SDb_DAT0", "SDb_DAT1", "SDb_CMD", "SDb_DAT2",
+	/* 20 */ "SDb_CLK", "SDb_DAT3", "RMII0_MDIO", "",
+	/* 24 */ "RMII0_RXER", "RMII0_CRS_DV", "RMII0_RXD1", "RMII0_RXD0",
+	/* 28 */ "RMII0_TXEN", "RMII0_TXD1", "RMII0_TXD0", "RMII0_MDC";
+};
+
+&gpio2 {
+	gpio-line-names =
+	/* 0 */  "NANDF_D0", "NANDF_D1", "NANDF_D2", "NANDF_D3",
+	/* 4 */  "NANDF_D4", "NANDF_D5", "NANDF_D6", "NANDF_D7",
+	/* 8 */  "VCFL_ON", "LBKLT_CTRL", "PHY_RST", "VLCD_ON",
+	/* 12 */ "LCD_DEN", "LCD_ENA", "", "",
+	/* 16 */ "GPIO6", "GPIO5", "GPIO4", "GPIO3",
+	/* 20 */ "GPIO2", "", "", "Xm0CSn0",
+	/* 24 */ "Xm0CSn1", "Xm0OEn", "Xm0WEn", "GPIO7",
+	/* 28 */ "GPIO8", "GPIO9", "GPIO10", "GPIO11";
+};
+
+&gpio3 {
+	gpio-line-names =
+	/* 0 */  "Xm0ADDR0", "Xm0ADDR1", "Xm0ADDR2", "Xm0ADDR3",
+	/* 4 */  "Xm0ADDR4", "Xm0ADDR5", "Xm0ADDR6", "Xm0ADDR7",
+	/* 8 */  "Xm0ADDR8", "Xm0ADDR9", "Xm0ADDR10", "GPIO12",
+	/* 12 */ "GPIO13", "GPIO14", "GPIO15", "GPIO16",
+	/* 16 */ "Xm0DATA0", "Xm0DATA1", "Xm0DATA2", "Xm0DATA3",
+	/* 20 */ "Xm0DATA4", "Xm0DATA5", "Xm0DATA6", "Xm0DATA7",
+	/* 24 */ "Xm0DATA8", "Xm0DATA9", "Xm0DATA10", "Xm0DATA11",
+	/* 28 */ "Xm0DATA12", "Xm0DATA13", "Xm0DATA14", "Xm0DATA15";
+};
+
+&gpio4 {
+	gpio-line-names =
+	/* 0 */  "", "", "", "",
+	/* 4 */  "", "TOUCH_INT", "XuTXD1", "XuRXD1",
+	/* 8 */  "XuTXD3", "XuRXD3", "CANTX", "CANRX",
+	/* 12 */ "I2C2_SCL", "I2C2_SDA", "GPIO0", "GPIO1",
+	/* 16 */ "LCD_CLK", "LCD_DE", "LCD_HSYNC", "LCD_VSYNC",
+	/* 20 */ "", "LCD_B0", "LCD_B1", "LCD_B2",
+	/* 24 */ "LCD_B3", "LCD_B4", "LCD_B5", "LCD_G0",
+	/* 28 */ "LCD_G1", "LCD_G2", "LCD_G3", "LCD_G4";
+};
+
+&gpio5 {
+	gpio-line-names =
+	/* 0 */  "Xm0WAIT", "", "", "",
+	/* 4 */  "", "LCD_G5", "LCD_R0", "LCD_R1",
+	/* 8 */  "LCD_R2", "LCD_R3", "LCD_R4", "LCD_R5",
+	/* 12 */ "Xm0CSn2", "", "SPI_CLK", "SPI_MOSI",
+	/* 16 */ "SPI_MISO", "SPI_CS", "LCD_CLK", "LCD_HSYNC",
+	/* 20 */ "LCD_DE", "LCD_VSYNC", "AUD3_TXC", "AUD3_TXD",
+	/* 24 */ "AUD3_TXFS", "AUD3_RXD", "Xi2sSDA0", "Xi2sSCL0",
+	/* 28 */ "", "", "XciYDATA0", "XciYDATA1";
+};
+
+&gpio6 {
+	gpio-line-names =
+	/* 0 */  "XciYDATA2", "XciYDATA3", "XciYDATA4", "XciYDATA5",
+	/* 4 */  "XciYDATA6", "XciYDATA7", "", "NANDF_CLE",
+	/* 8 */  "NANDF_ALE", "NANDF_WP_B", "NANDF_RB0", "NANDF_CE0_B",
+	/* 12 */ "", "", "SDb_RST_B", "CCM_CLKO2",
+	/* 16 */ "", "XuTXD0", "XuRXD0", "",
+	/* 20 */ "", "", "", "",
+	/* 24 */ "", "", "RMII_CLKIN/RMII_CLKOUT", "",
+	/* 28 */ "", "", "", "";
+};
+
+&gpio7 {
+	gpio-line-names =
+	/* 0 */  "XuTXD2", "XuRXD2", "", "",
+	/* 4 */  "XuRTSn0", "XuCTSn0", "", "",
+	/* 8 */  "UART3SEL", "NANDF_RE_B", "NANDF_WE_B", "I2DAT",
+	/* 12 */ "STA1", "STA2", "TOUCH_INT", "",
+	/* 16 */ "", "", "", "",
+	/* 20 */ "", "", "", "",
+	/* 24 */ "", "", "", "",
+	/* 28 */ "", "", "", "";
+};
+
 /* RAM size for Continuous Memory Allocator; if not defined, use 320 MB */
 #ifndef CONFIG_PICOMODA9_CMA_SIZE
 #define CONFIG_PICOMODA9_CMA_SIZE 0x14000000

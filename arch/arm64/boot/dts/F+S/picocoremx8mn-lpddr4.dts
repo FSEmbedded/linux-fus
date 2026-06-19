@@ -320,6 +320,7 @@
 #endif /* CONFIG_PICOCOREMX8MN_SGTL5000_AUDIO */
 
 	};
+
 #ifdef SUPPORT_M4
 	// ###TODO - not implemented yet
 #if 0
@@ -362,6 +363,67 @@
 			"Headphone Jack", "HP_OUT";
 	};
 #endif
+};
+
+/* GPIO declarations */
+&gpio1 {
+	gpio-line-names =
+	/* 0 */   "ETH_SW_PME", "GPIO_J1_7", "PMIC_WDOG", "SD_A_VSEL",
+	/* 4 */   "LVDS_STBY", "ETH_SW_RST", "SD_A_CD", "SD_A_WP",
+	/* 8 */   "LVDS_RST", "SE050_ENA", "PMIC_IRQ_B", "ETH_SW_INT",
+	/* 12 */  "USB_OTG_PWR", "GPIO_J1_2", "USB_HOST_PWR", "LVDS_CLK",
+	/* 16 */  "ETH_A_D1P", "ETH_A_D1N", "ETH_A_D4N", "ETH_A_D4P",
+	/* 20 */  "ETH_A_D3N", "ETH_A_D3P", "ETH_A_D2N", "ETH_A_D2P",
+	/* 24 */  "ETH_B_D1P", "ETH_B_D1N", "ETH_B_D2P", "ETH_B_D2N",
+	/* 28 */  "ETH_B_D3P", "ETH_B_D3N", "", "";
+};
+
+&gpio2 {
+	gpio-line-names =
+	/* 0 */   "SD_A_CLK", "SD_A_CMD", "SD_A_DATA0", "SD_A_DATA1",
+	/* 4 */   "SD_A_DATA2", "SD_A_DATA3", "SD_A_DATA4", "SD_A_DATA5",
+	/* 8 */   "SD_A_DATA6", "SD_A_DATA7", "SD_A_RST", "",
+	/* 12 */  "SD_B_CD", "SD_B_CLK", "SD_B_CMD", "SD_B_DATA0",
+	/* 16 */  "SD_B_DATA1", "SD_B_DATA2", "SD_B_DATA3", "SD_B_RST",
+	/* 20 */  "SD_B_WP", "", "", "",
+	/* 24 */  "", "", "", "",
+	/* 28 */  "", "", "", "";
+};
+
+&gpio3 {
+	gpio-line-names =
+	/* 0 */   "QSPI_SCLK", "QSPI_CS0", "SD_C_STROBE", "SD_C_DATA5",
+	/* 4 */   "SD_C_DATA6", "SD_C_DATA7", "QSPI_DATA0", "QSPI_DATA1",
+	/* 8 */   "QSPI_DATA2", "QSPI_DATA3", "SD_C_DATA0", "SD_C_DATA1",
+	/* 12 */  "SD_C_DATA2", "SD_C_DATA3", "", "SD_C_DATA4",
+	/* 16 */  "SD_C_RESET_B", "SD_C_CLK", "SD_C_CMD", "mPCIE_PERST",
+	/* 20 */  "mPCIE_WAKE", "I2S_DIN", "I2S_LRCLK", "I2S_SCLK",
+	/* 24 */  "I2S_DOUT", "I2S_MCLK", "", "",
+	/* 28 */  "", "", "", "";
+};
+
+&gpio4 {
+	gpio-line-names =
+	/* 0 */   "", "", "", "",
+	/* 4 */   "", "", "", "",
+	/* 8 */   "", "", "", "",
+	/* 12 */  "", "", "", "",
+	/* 16 */  "", "", "", "",
+	/* 20 */  "", "UART_A_TXD", "UART_A_RXD", "UART_A_CTS",
+	/* 24 */  "UART_A_RTS", "CAN_INT0", "CAN_INT1", "CAN_CLKO/SOF",
+	/* 28 */  "CAN_INT", "UART_B_RTS", "UART_B_CTS", "UART_B_RXD";
+};
+
+&gpio5 {
+	gpio-line-names =
+	/* 0 */   "UART_B_TXD", "VLCD_ON", "I2C_B_IRQ", "BL_ON",
+	/* 4 */   "BL_PWM", "PWM", "SPI_A_SCLK", "SPI_A_MOSI",
+	/* 8 */   "SPI_A_MISO", "SPI_A_SS0", "SPI_C_SCLK", "SPI_C_MOSI",
+	/* 12 */  "SPI_C_MISO", "SPI_C_SS0", "I2C_D_SCL", "I2C_D_SDA",
+	/* 16 */  "I2C_B_SCL", "I2C_B_SDA", "I2C_C_SCL", "I2C_C_SDA",
+	/* 20 */  "I2C_A_SCL", "I2C_A_SDA", "SPI_B_SCLK", "SPI_B_MOSI",
+	/* 24 */  "SPI_B_MISO", "SPI_B_SS0", "UART_D_RXD", "UART_D_TXD",
+	/* 28 */  "UART_C_RXD", "UART_C_TXD", "", "";
 };
 
 #ifdef CONFIG_PICOCOREMX8MN_I2C_A

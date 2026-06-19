@@ -321,6 +321,54 @@
 	};
 };
 
+&gpio0 {
+	gpio-line-names =
+	/*0*/   "", "", "UART4_TX", "UART4_RX",
+	/*4*/   "I2C5_SCL", "I2C5_SDA", "UART5_TX", "UART5_RX",
+	/*8*/   "PTC8", "PTC9", "SD0_CD", "PTC11",
+	/*12*/  "PTC12", "USB_OTG_ID", "PTC14", "PTC15",
+	/*16*/  "PTC16", "PTC17", "PTC18", "MIPI_RESET_B",
+	/*20*/  "", "", "", "",
+	/*24*/  "", "", "", "",
+	/*28*/  "", "", "", "";
+};
+
+&gpio1 {
+	gpio-line-names =
+	/*0*/   "SD0_nRST", "SD0_CMD", "SD0_CLK", "SD0_DATA7",
+	/*4*/   "SD0_DATA6", "SD0_DATA5", "SD0_DATA4", "SD0_DATA3",
+	/*8*/   "SD0_DATA2", "SD0_DATA1", "SD0_DATA0", "SD0_DQS",
+	/*12*/  "", "", "", "",
+	/*16*/  "", "", "", "",
+	/*20*/  "", "", "", "",
+	/*24*/  "", "", "", "",
+	/*28*/  "", "", "", "";
+};
+
+&gpio2 {
+	gpio-line-names =
+	/*0*/   "WL_SD1_DATA1", "WL_SD1_DATA0", "WL_SD1_CLK", "WL_SD1_CMD",
+	/*4*/   "WL_SD1_DATA3", "WL_SD1_DATA2", "WL_PD", "BT_REG_ON",
+	/*8*/   "UART6_CTS", "UART6_RTS", "UART6_TX", "UART6_RX",
+	/*12*/  "BT_DEV_WAKE", "WL_HOST_WAKE", "SD1_VSEL", "USB_OTG_PWR_EN",
+	/*16*/  "", "", "", "",
+	/*20*/  "", "", "", "",
+	/*24*/  "", "", "", "",
+	/*28*/  "", "", "", "";
+};
+
+&gpio3 {
+	gpio-line-names =
+	/*0*/   "TOUCH_INT", "PTF1", "LED_PWM_EN", "PTF3",
+	/*4*/   "PTF4", "PTF5", "PTF6", "PTF7",
+	/*8*/   "PTF8", "PTF9", "PTF10", "PTF11",
+	/*12*/  "I2C7_SCL", "I2C7_SDA", "UART7_TX", "UART7_RX",
+	/*16*/  "SPI3_SIN", "SPI3_SOUT", "SPI3_SCK", "SPI3_PCS0",
+	/*20*/  "", "", "", "",
+	/*24*/  "", "", "", "",
+	/*28*/  "", "", "", "";
+};
+
 /* RAM size for Continues Memory Allocator */
 &cma {
 	size = <CONFIG_PICOCOREMX7ULP_CMA_SIZE>;

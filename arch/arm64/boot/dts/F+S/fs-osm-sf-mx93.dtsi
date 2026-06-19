@@ -295,6 +295,14 @@ osm_can_b: &flexcan2 {};
 	status = "okay";
 };
 
+&mu1 {
+	status = "okay";
+};
+
+&mu2 {
+	status = "okay";
+};
+
 #ifdef SUPPORT_RPMSG
 /{
 	ethosu {
@@ -368,31 +376,18 @@ osm_uart_b: &lpuart5 {
 
 /* GPIO declerations */
 &gpio1 {
-	gpio-line-names = \
-		"","","","","",
-		"","","","","",
-		"",
-		"OSM_CARRIER_PWR_EN",
-		"","",
-		"PMIC_IRQ",
-		"","","","","",
-		"","","","","",
-		"","","","","",
-		"","";
-};
-
-&gpio1 {
 	pinctrl-names = "default", "sleep";
 	pinctrl-0 = <&pinctrl_gpio1>;
 	pinctrl-1 = <&pinctrl_gpio1>;
-	gpio-line-names = \
-		"","","","","",
-		"","","","","",
-		"USB_A_OC","","","","",
-		"","","","","",
-		"","","","","",
-		"","","","","",
-		"","";
+	gpio-line-names =
+	/* 0 */   "I2C_SCL", "I2C_SDA", "I2C_INT_SCL", "I2C_INT_SDA",
+	/* 4 */   "UART_CON_RX", "UART_CON_TX", "UART_A_RX", "UART_A_TX",
+	/* 8 */   "CAN_A_TX", "CAN_A_RX", "USB_A_OC", "CARRIER_PWR_EN",
+	/* 12 */  "UART_A_CTS", "UART_A_RTS", "PMIC_IRQ", "MX93_WDOG",
+	/* 16 */  "", "", "", "",
+	/* 20 */  "", "", "", "",
+	/* 24 */  "", "", "", "",
+	/* 28 */  "", "", "", "";
 	status = "okay";
 };
 
@@ -400,49 +395,45 @@ osm_uart_b: &lpuart5 {
 	pinctrl-names = "default", "sleep";
 	pinctrl-0 = <&pinctrl_gpio2>;
 	pinctrl-1 = <&pinctrl_gpio2>;
+	gpio-line-names =
+	/* 0 */   "UART_B_TX", "UART_B_RX", "UART_B_CTS", "UART_B_RTS",
+	/* 4 */   "PWM_1", "PWM_2", "DISP_BL_PWM", "DISP_BL_EN",
+	/* 8 */   "SPI_B_CS0", "SPI_B_SDI", "SPI_B_SDO", "SPI_B_SCK",
+	/* 12 */  "UART_D_TX", "UART_D_RX", "UART_C_TX", "UART_C_RX",
+	/* 16 */  "I2S_A_BITCLK", "I2S_MCLK", "USB_B_EN", "USB_A_EN",
+	/* 20 */  "I2S_A_DATA_IN", "I2S_A_DATA_OUT", "I2C_CAM_SDA", "I2C_CAM_SCL",
+	/* 24 */  "SPI_B_CS1", "SDIO_A_WP", "I2S_A_LRCLK", "USB_B_OC",
+	/* 28 */  "I2C_B_SDA", "I2C_B_SCL", "", "";
 	status = "okay";
-	gpio-line-names = \
-		"","","","","",
-		"","","OSM_DISP_EN","","",
-		"","","OSM_GPIO_A_5","OSM_GPIO_A_4","OSM_GPIO_A_3",
-		"OSM_GPIO_A_2","","","OSM_USB_B_EN","OSM_USB_A_EN",
-		"","","","","OSM_SPI_CS1",
-		"OSM_SDIO_A_WP","","USB_B_OC","","",
-		"","";
 };
 
 &gpio3 {
 	pinctrl-names = "default", "sleep";
 	pinctrl-0 = <&pinctrl_gpio3>;
 	pinctrl-1 = <&pinctrl_gpio3>;
-	gpio-line-names = \
-		"","","","","",
-		"","",
-		"SDIO_A_PWR_EN",
-		"","","","","",
-		"","","","","",
-		"","","","","",
-		"","","","","",
-		"",
-		"OSM_GPIO_A_1",
-		"OSM_GPIO_A_0",
-		"";
+	gpio-line-names =
+	/* 0 */   "SDIO_A_CD", "SDIO_A_CLK", "SDIO_A_CMD", "SDIO_A_D0",
+	/* 4 */   "SDIO_A_D1", "SDIO_A_D2", "SDIO_A_D3", "SDIO_A_PWR_EN",
+	/* 8 */   "SD_eMMC_CLK", "SD_eMMC_CMD", "SD_eMMC_D0", "SD_eMMC_D1",
+	/* 12 */  "SD_eMMC_D2", "SD_eMMC_D3", "SD_eMMC_D4", "SD_eMMC_D5",
+	/* 16 */  "SD_eMMC_D6", "SD_eMMC_D7", "SD_eMMC_DS", "SD2_VSEL",
+	/* 20 */  "SPI_A_SCK", "SPI_A_CS0", "SPI_A_IO0", "SPI_A_IO1",
+	/* 24 */  "SPI_A_IO2", "SPI_A_IO3", "CAM_MCK", "CAM_EN",
+	/* 28 */  "CAN_B_TX", "GPIO_A_1", "GPIO_A_0", "CAN_B_RX";
 	status = "okay";
 };
 
 &gpio4 {
-	gpio-line-names = \
-		"",
-		"OSM_DISP_VDD_EN",
-		"","","","","",
-		"","","","","",
-		"","",
-		"OSM_SPI_A_CS1",
-		"","","","","",
-		"","","","","",
-		"","","","",
-		"OSM_DSI_TE",
-		"","";
+	gpio-line-names =
+	/* 0 */   "ETH_MDC", "ETH_MDIO", "ETH_A_(S)(R)(G)MII_TXD3", "ETH_A_(S)(R)(G)MII_TXD2",
+	/* 4 */   "ETH_A_(S)(R)(G)MII_TXD1", "ETH_A_(S)(R)(G)MII_TXD0", "ETH_A_(R)(G)MII_TX_EN(_ER)", "ETH_A_(R)(G)MII_TX_CLK",
+	/* 8 */   "ETH_A_(R)(G)MII_RX_DV(_ER)", "ETH_A_(R)(G)MII_RX_CLK", "ETH_A_(R)(S)(G)MII_RXD0", "ETH_A_(S)(R)(G)MII_RXD1",
+	/* 12 */  "ETH_A_(R)(G)MII_RXD2", "ETH_A_(R)(G)MII_RXD3", "SPI_A_CS1", "DISP_VDD_EN",
+	/* 16 */  "ETH_B_(S)(R)(G)MII_TXD3", "ETH_B_(S)(R)(G)MII_TXD2", "ETH_B_(S)(R)(G)MII_TXD1", "ETH_B_(S)(R)(G)MII_TXD0",
+	/* 20 */  "ETH_B_(R)(G)MII_TX_EN(_ER)", "ETH_B_(R)(G)MII_TX_CLK", "ETH_B_(R)(G)MII_RX_DV(_ER)", "ETH_B_(R)(G)MII_RX_CLK",
+	/* 24 */  "ETH_B_(R)(S)(G)MII_RXD0", "ETH_B_(S)(R)(G)MII_RXD1", "ETH_B_(R)(G)MII_RXD2", "ETH_B_(R)(G)MII_RXD3",
+	/* 28 */  "CAM_RST", "DSI_TE", "", "";
+	status = "okay";
 };
 
 /* I2C declerations */
@@ -705,7 +696,7 @@ osm_uart_b: &lpuart5 {
 };
 
 &lcdif {
-	status = "disabled";	
+	status = "disabled";
 };
 
 &ldb {

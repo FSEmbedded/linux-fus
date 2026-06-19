@@ -562,6 +562,91 @@ lvds_wvga {				\
 #endif
 };
 
+/* GPIO declarations */
+&gpio1 {
+	gpio-line-names =
+	/* 0 */  "I2C1_SCL", "I2C1_SDA", "SD1_CD", "WLANBT_EN",
+	/* 4 */  "UART1_TXD", "UART1_RXD", "SD2_CD", "SD2_WP",
+	/* 8 */  "USB_OTG_OC", "USB_OTG_PWR", "USB_OTG_ID", "I2C1IRQ/VLCDON",
+	/* 12 */ "USB_H1_PWR", "ECSPI1_IRQ1", "CAM_D2", "CAM_D3",
+	/* 16 */ "CAM_D4", "CAM_D5", "CAM_D6", "CAM_D7",
+	/* 20 */ "CAM_D8", "CAM_D9", "CAM_HREF", "CAM_MCLK",
+	/* 24 */ "CAM_PCLK", "CAM_VSYNC", "", "",
+	/* 28 */ "", "", "", "";
+};
+
+&gpio2 {
+	gpio-line-names =
+	/* 0 */  "PCIE_WAKE", "RESETOUT", "PHY_RST", "AUDMUX_MCLK",
+	/* 4 */  "RTCIRQ", "5V_3V3", "ENET_MDC", "ENET_MDIO",
+	/* 8 */  "ENET_REF_CLK_25M", "ENET_INT", "ECSPI2_IRQ2", "UART6_TXD",
+	/* 12 */ "UART5_CTS", "UART5_TXD", "I2C3_SCL", "ECSPI2_IRQ1",
+	/* 16 */ "UART6_RXD", "UART5_RTS", "UART5_RXD", "I2C3_SDA",
+	/* 20 */ "", "", "", "",
+	/* 24 */ "", "", "", "",
+	/* 28 */ "", "", "", "";
+};
+
+&gpio3 {
+	gpio-line-names =
+	/* 0 */  "DI0_DISP_CLK", "LCD_B0", "LCD_B1", "LCD_B2",
+	/* 4 */  "LCD_B3", "LCD_B4", "LCD_B5", "LCD_G0",
+	/* 8 */  "LCD_G1", "LCD_G2", "LCD_G3", "LCD_G4",
+	/* 12 */ "LCD_G5", "LCD_R0", "LCD_R1", "LCD_R2",
+	/* 16 */ "LCD_R3", "LCD_R4", "LCD_R5", "VLCD_ON",
+	/* 20 */ "VCFL_ON", "I2C2_RST", "I2C3_RST", "BKLT_PWM",
+	/* 24 */ "PWM5", "DI0_DE", "DI0_HSYNC", "CAM_RESET",
+	/* 28 */ "DI0_VSYNC", "", "", "";
+};
+
+&gpio4 {
+	gpio-line-names =
+	/* 0 */  "NANDF_ALE", "NANDF_CE0_B", "QSPI2A_DATA3", "NANDF_CLE",
+	/* 4 */  "NANDF_D0", "NANDF_D1", "NANDF_D2", "NANDF_D3",
+	/* 8 */  "NANDF_D4", "NANDF_D5", "NANDF_D6", "NANDF_D7",
+	/* 12 */ "NANDF_RE_B", "NANDF_RB0", "NANDF_WE_B", "NANDF_WP_B",
+	/* 16 */ "ECSPI1_MOSI", "ECSPI1_MISO", "ECSPI5_SS1", "ECSPI1_IRQ2",
+	/* 20 */ "ECSPI5_MOSI", "ECSPI1_SCLK", "ECSPI1_SS0", "ECSPI5_MISO",
+	/* 24 */ "UART3_RTS", "UART3_CTS", "I2C2_SDA", "I2C2_SCL",
+	/* 28 */ "ECSPI5_SS0", "UART3_RXD", "UART3_TXD", "ECSPI5_SCLK";
+};
+
+&gpio5 {
+	gpio-line-names =
+	/* 0 */  "RGMII1_RXD0", "RGMII1_RXD1", "RGMII1_RXD2", "RGMII1_RXD3",
+	/* 4 */  "RGMII1_RXDV", "RGMII1_RXCLK", "RGMII1_TXD0", "RGMII1_TXD1",
+	/* 8 */  "RGMII1_TXD2", "RGMII1_TXD3", "RGMII1_TXEN", "RGMII1_TXCLK",
+	/* 12 */ "RGMII2_RXD0", "RGMII2_RXD1", "RGMII2_RXD2", "RGMII2_RXD3",
+	/* 16 */ "RGMII2_RXDV", "RGMII2_RXCLK", "RGMII2_TXD0", "RGMII2_TXD1",
+	/* 20 */ "RGMII2_TXD2", "RGMII2_TXD3", "RGMII2_TXEN", "RGMII2_TXCLK",
+	/* 24 */ "", "", "", "",
+	/* 28 */ "", "", "", "";
+};
+
+&gpio6 {
+	gpio-line-names =
+	/* 0 */  "SD1_CLK", "SD1_CMD", "SD1_DAT0", "SD1_DAT1",
+	/* 4 */  "SD1_DAT2", "SD1_DAT3", "SD2_CLK", "SD2_CMD",
+	/* 8 */  "SD2_DAT0", "SD2_DAT1", "SD2_DAT2", "SD2_DAT3",
+	/* 12 */ "SD4_CLK", "SD4_CMD", "SD4_DATA0", "SD4_DATA1",
+	/* 16 */ "SD4_DATA2", "SD4_DATA3", "SD4_DATA4", "SD4_DATA5",
+	/* 20 */ "SD4_DATA6", "SD4_DATA7", "SD4_RST_B", "",
+	/* 24 */ "", "", "", "",
+	/* 28 */ "", "", "", "";
+};
+
+&gpio7 {
+	gpio-line-names =
+	/* 0 */  "I2C2_IRQ", "I2C3_IRQ", "AUD6_RXD", "AUD6_TXC",
+	/* 4 */  "AUD6_TXFS", "AUD6_TXD", "CAN2_RX", "CAN1_TX",
+	/* 8 */  "CAN2_TX", "CAN1_RX", "CAM_PWDN", "DVS",
+	/* 12 */ "", "", "", "",
+	/* 16 */ "", "", "", "",
+	/* 20 */ "", "", "", "",
+	/* 24 */ "", "", "", "",
+	/* 28 */ "", "", "", "";
+};
+
 /* RAM size for Continues Memory Allocator */
 &cma {
 	size = <CONFIG_EFUSA9X_CMA_SIZE>;

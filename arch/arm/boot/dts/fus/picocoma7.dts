@@ -583,6 +583,68 @@ lcd_wvga {				\
 };
 #endif
 
+
+/* GPIO declarations */
+&gpio1 {
+	gpio-line-names =
+	/* 0 */  "", "TOUCH_Y-", "TOUCH_Y+", "TOUCH_X-",
+	/* 4 */  "TOUCH_X+", "PWM", "ENET_MDIO", "ENET_MDC",
+	/* 8 */  "UART5_RTS", "GPIO1", "JTAG_MOD", "JTAG_TMS",
+	/* 12 */ "JTAG_TDO", "JTAG_TDI", "JTAG_TCK", "JTAG_nTRST",
+	/* 16 */ "I2C3_SCL", "I2C3_SDA", "UART5_CTS", "SD1_CD",
+	/* 20 */ "UART2_TXD", "UART2_RXD", "I2C1_SDA/CAN2_TX", "I2C1_SCL/CAN2_RX",
+	/* 24 */ "UART2_RTS/UART3_TXD", "UART2_CTS/UART3_RXD","CAN1_TX/I2C2_SDA", "CAN1_RX/I2C2_SCL",
+	/* 28 */ "USB_H1_PWR", "ECSPI2_SS0", "UART5_TXD", "UART5_RXD";
+};
+
+&gpio2 {
+	gpio-line-names =
+	/* 0 */  "RMII1_RXD0", "RMII1_RXD1", "RMII1_CRS_DV", "RMII1_TXD0",
+	/* 4 */  "RMII1_TXD1", "RMII1_TXEN", "RMII1_TXCLK", "RMII1_RXER",
+	/* 8 */  "RMII2_RXD0", "RMII2_RXD1", "RMII2_CRS_DV", "RMII2_TXD0",
+	/* 12 */ "RMII2_TXD1", "RMII2_TXEN", "RMII2_TXCLK", "RMII2_RXER",
+	/* 16 */ "SD1_CMD", "SD1_CLK", "SD1_DATA0", "SD1_DATA1",
+	/* 20 */ "SD1_DATA2", "SD1_DATA3", "", "",
+	/* 24 */ "", "", "", "",
+	/* 28 */ "", "", "", "";
+};
+
+&gpio3 {
+	gpio-line-names =
+	/* 0 */  "LCD_CLK", "LCD_DE", "LCD_HSYNC/B0", "LCD_VSYNC/R0",
+	/* 4 */  "", "", "LCD_R1", "LCD_R2",
+	/* 8 */  "LCD_R3", "LCD_R4", "LCD_R5", "LCD_G0",
+	/* 12 */ "LCD_G1", "LCD_G2", "LCD_G3", "LCD_G4",
+	/* 16 */ "LCD_G5", "", "LCD_B1", "LCD_B2",
+	/* 20 */ "LCD_B3", "LCD_B4", "LCD_B5", "BL_CTRL",
+	/* 24 */ "LCD_DEN", "VLCD_ON", "VCFL_ON", "MQS_RIGHT",
+	/* 28 */ "MQS_LEFT", "", "", "";
+};
+
+&gpio4 {
+	gpio-line-names =
+	/* 0 */  "NAND_RE_B", "NAND_WE_B", "NAND_DATA0", "NAND_DATA1",
+	/* 4 */  "NAND_DATA2", "NAND_DATA3", "NAND_DATA4", "NAND_DATA5",
+	/* 8 */  "NAND_DATA6", "NAND_DATA7", "NAND_ALE", "NAND_WP_B",
+	/* 12 */ "NAND_RB0", "NAND_CE0_B", "", "NAND_CLE",
+	/* 16 */ "", "I2C1_SDA/CAN2_TX", "I2C1_SCL/CAN2_RX", "CAN1_TX/I2C2_SDA",
+	/* 20 */ "CAN1_RX/I2C2_SCL", "ECSPI2_SCLK", "SAI1_MCLK", "ECSPI2_MOSI",
+	/* 24 */ "ECSPI2_MISO", "SAI1_TX_SYNC", "SAI1_TX_BCLK", "SAI1_RX_DATA",
+	/* 28 */ "SAI1_TX_DATA", "", "", "";
+};
+
+&gpio5 {
+	gpio-line-names =
+	/* 0 */  "", "", "", "",
+	/* 4 */  "", "ETH1_RST", "ETH2_RST", "RTC_IRQ",
+	/* 8 */  "DVS", "", "BOOT_MODE0", "BOOT_MODE1",
+	/* 12 */ "", "", "", "",
+	/* 16 */ "", "", "", "",
+	/* 20 */ "", "", "", "",
+	/* 24 */ "", "", "", "",
+	/* 28 */ "", "", "", "";
+};
+
 /* RAM size for Continues Memory Allocator */
 &cma {
 	size = <CONFIG_PICOCOMA7_CMA_SIZE>;

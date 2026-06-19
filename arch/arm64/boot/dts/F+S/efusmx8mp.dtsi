@@ -1636,25 +1636,25 @@ pca9634: pca9634@61 {
 };
 #endif /* CONFIG_EFUSMX8MP_CSI_A */
 
-/* GPIOs for Goldfinger Connector */
+/* GPIO declarations */
 &gpio1 {
 	gpio-line-names =
-	/*  0 */ "", "BL_ON", "", "",
-	/*  4 */ "", "VLCD_ON", "", "",
-	/*  8 */ "I2C_A_RST", "I2C_A_IRQ", "BL_PWM", "",
-	/* 12 */ "USB_HOST_PWRn", "RESETOUTn", "USB_OTG_PWRn", "USB_OTG_OC",
-	/* 16 */ "", "", "", "",
-	/* 20 */ "", "", "", "",
-	/* 24 */ "", "", "", "",
-	/* 28 */ "", "", "", "";
+	/* 0 */  "SE050_ENA", "BL_ON", "PMIC_WDOG", "WLAN_RST",
+	/* 4 */  "SD_A_VSEL", "VLCD_ON", "LVDS_RST", "ETH_B_PHY_RST",
+	/* 8 */  "I2C_A_RST", "I2C_A_IRQ", "BL_PWM", "ETH_A_PHY_RST",
+	/* 12 */ "USB_HOST_PWR", "RESETOUT", "USB_OTG_PWR", "USB_OTG_OC",
+	/* 16 */ "ENET_QOS_MDC", "ENET_QOS_MDIO", "ENET_QOS_TXD3", "ENET_QOS_TXD2",
+	/* 20 */ "ENET_QOS_TXD1", "ENET_QOS_TXD0", "ENET_QOS_TX_CTL", "ENET_QOS_TXC_R",
+	/* 24 */ "ENET_QOS_RX_CTL", "ENET_QOS_RXC_R", "ENET_QOS_RXD0", "ENET_QOS_RXD1",
+	/* 28 */ "ENET_QOS_RXD2", "ENET_QOS_RXD3", "", "";
 	status = "okay";
 };
 
 &gpio2 {
 	gpio-line-names =
-	/*  0 */ "", "", "", "",
-	/*  4 */ "", "", "", "",
-	/*  8 */ "", "", "", "",
+	/* 0 */  "SD_C_CLK", "SD_C_CMD", "SD_C_DATA0", "SD_C_DATA1",
+	/* 4 */  "SD_C_DATA2", "SD_C_DATA3", "SD_C_DATA4", "SD_C_DATA5",
+	/* 8 */  "SD_C_DATA6", "SD_C_DATA7", "SD_C_RESET_B", "SD_C_STROBE",
 	/* 12 */ "SD_A_CD", "SD_A_CLK", "SD_A_CMD", "SD_A_DATA0",
 	/* 16 */ "SD_A_DATA1", "SD_A_DATA2", "SD_A_DATA3", "SD_A_RST",
 	/* 20 */ "SD_A_WP", "", "", "",
@@ -1665,37 +1665,37 @@ pca9634: pca9634@61 {
 
 &gpio3 {
 	gpio-line-names =
-	/*  0 */ "SPI_A_IRQ2n", "SPI_A_SS0", "SPI_B_IRQ2n", "",
-	/*  4 */ "SPI_B_IRQ1n", "", "UART_D_RXD", "UART_D_TXD",
-	/*  8 */ "SD_B_CD", "SD_B_WP", "SD_B_DATA0", "SD_B_DATA1",
-	/* 12 */ "SD_B_DATA2", "SD_B_DATA3", "SPI_A_IRQ1n", "",
-	/* 16 */ "SPI_B_SS1", "SD_B_CLK", "SD_B_CMD", "",
-	/* 20 */ "", "", "", "",
-	/* 24 */ "", "", "I2C_C_SCL", "I2C_C_SDA",
-	/* 28 */ "DISP_D3_P", "HDMI_HPD", "", "";
+	/* 0 */  "SPI_A_IRQ2", "SPI_A_SS1", "SPI_B_IRQ2", "QSPI_NAND_SS0",
+	/* 4 */  "SPI_B_IRQ1", "QSPI_NAND_SCLK", "UART_D_RXD", "UART_D_TXD",
+	/* 8 */  "SD_B_CD", "SD_B_WP", "QSPI_NAND_DATA0", "QSPI_NAND_DATA1",
+	/* 12 */ "QSPI_NAND_DATA2", "QSPI_NAND_DATA3", "SPI_A_IRQ1", "I2C_LVDS_IRQ/VLCDON",
+	/* 16 */ "SPI_B_SS1", "SD_B_CLK", "SD_B_CMD", "I2C_PMIC_SCL",
+	/* 20 */ "I2C_PMIC_SDA", "PCM_IN", "PCM_SYNC", "PCM_CLK",
+	/* 24 */ "PCM_OUT", "", "I2C_C_SCL", "I2C_C_SDA",
+	/* 28 */ "HDMI_CEC", "HDMI_HPD", "", "";
 	status = "okay";
 };
 
 &gpio4 {
 	gpio-line-names =
-	/*  0 */ "", "", "", "",
-	/*  4 */ "", "", "", "",
-	/*  8 */ "", "", "", "",
-	/* 12 */ "", "", "", "",
-	/* 16 */ "", "", "", "",
-	/* 20 */ "", "UART_A_TXD", "UART_A_RXD", "I2S_A_RXD",
+	/* 0 */  "I2C_E_IRQ", "DISP_RST", "ETH_B_PHY_INT", "ETH_A_PHY_INT",
+	/* 4 */  "RGMII_MDC", "RGMII_MDIO", "RGMII_RXD0", "RGMII_RXD1",
+	/* 8 */  "RGMII_RXD2", "RGMII_RXD3", "RGMII_RX_CTL", "RGMII_RXC_R",
+	/* 12 */ "RGMII_TXD0", "RGMII_TXD1", "RGMII_TXD2", "RGMII_TXD3",
+	/* 16 */ "RGMII_TX_CTL", "RGMII_TXC", "", "PMIC_IRQ_B",
+	/* 20 */ "DISP_INT", "UART_A_TXD", "UART_A_RXD", "I2S_A_RXD",
 	/* 24 */ "I2S_A_TXFS", "I2S_A_TXC", "I2S_A_TXD", "I2S_A_MCLK",
-	/* 28 */ "I2C_B_RST", "I2C_B_IRQ", "", "UART_C_RXD";
+	/* 28 */ "I2C_B_RST", "I2C_B_IRQ", "mPCIE_PERST", "UART_C_RXD";
 	status = "okay";
 };
 
 &gpio5 {
 	gpio-line-names =
-	/*  0 */ "UART_C_TXD", "", "PWM_A", "CAN_A_TX",
-	/*  4 */ "CAN_A_RX", "PWM_B", "UART_B_RXD", "UART_B_TXD",
-	/*  8 */ "UART_B_RTS", "UART_B_CTS", "SPI_B_SCLK", "SPI_B_MOSI",
+	/* 0 */  "UART_C_TXD", "mPCIE_WAKE", "SAI3_MCLK", "CAN_A_TX",
+	/* 4 */  "CAN_A_RX", "PWM_B", "UART_B_RXD", "UART_B_TXD",
+	/* 8 */  "UART_B_RTS", "UART_B_CTS", "SPI_B_SCLK", "SPI_B_MOSI",
 	/* 12 */ "SPI_B_MISO", "SPI_B_SS0", "I2C_E_SCL", "I2C_E_SDA",
-	/* 16 */ "", "", "I2C_A_SCL", "I2C_A_SDA",
+	/* 16 */ "I2C_LVDS_SCL", "I2C_LVDS_SDA", "I2C_A_SCL", "I2C_A_SDA",
 	/* 20 */ "I2C_B_SCL", "I2C_B_SDA", "SPI_A_SCLK", "SPI_A_MOSI",
 	/* 24 */ "SPI_A_MISO", "SPI_A_SS0", "CAN_B_TX", "CAN_B_RX",
 	/* 28 */ "UART_C_RTS", "UART_C_CTS", "", "";

@@ -141,15 +141,6 @@ fs_can_b: &flexcan2 {};
 #endif /* SUPPORT_RPMSG */
 	};
 
-#ifdef SUPPORT_M33
-	ethosu {
-		compatible = "arm,ethosu";
-		fsl,cm33-proc = <&cm33>;
-		memory-region = <&ethosu_mem>;
-		power-domains = <&mlmix>;
-	};
-#endif /* SUPPORT_M33 */
-
 	regulators {
 		compatible = "simple-bus";
 		#address-cells = <1>;
@@ -185,18 +176,39 @@ fs_can_b: &flexcan2 {};
 #endif
 };
 
-#ifdef SUPPORT_RPMSG
+#ifdef SUPPORT_M33
 &cm33 {
+#ifdef SUPPORT_RPMSG
 	mbox-names = "tx", "rx", "rxdb";
-	mboxes = <&mu1 0 1>,
-	<&mu1 1 1>,
-	<&mu1 3 1>;
+	mboxes = <&mu1 0 1
+			&mu1 1 1
+			&mu1 3 1>;
 	memory-region = <&vdevbuffer>, <&vdev0vring0>, <&vdev0vring1>,
-	<&vdev1vring0>, <&vdev1vring1>, <&rsc_table>;
+			<&vdev1vring0>, <&vdev1vring1>, <&rsc_table>;
+#endif /* SUPPORT_RPMSG */
 	fsl,startup-delay-ms = <500>;
 	status = "okay";
 };
-#endif
+
+&mu1 {
+	status = "okay";
+};
+
+&mu2 {
+	status = "okay";
+};
+
+#ifdef SUPPORT_RPMSG
+/{
+	ethosu {
+		compatible = "arm,ethosu";
+		fsl,cm33-proc = <&cm33>;
+		memory-region = <&ethosu_mem>;
+		power-domains = <&mlmix>;
+	};
+};
+#endif /* SUPPORT_RPMSG */
+#endif /* SUPPORT_M33 */
 
 /* UART declerations */
 #ifdef CONFIG_EFUSMX93_UART_A
@@ -505,19 +517,64 @@ fs_can_b: &flexcan2 {};
 		ngpios = <16>;
 		interrupt-parent = <&gpio4>;
 		interrupts = <14 IRQ_TYPE_LEVEL_LOW>;
-		gpio-line-names = "eth_a_rst",
-		"eth_b_rst", "usb_host_pwr",
-		"usb_otg_pwr", "wlan_rst",
-		"reset_out", "usb_dev_oc",
-		"not_connected",
-		"vlcd_on", "vbl_on",
-		"disp_rst", "i2c_a_rst",
-		"i2c_b_rst", "sd_b_gpio1",
-		"sd_b_gpio2", "spi_a_cs2";
+
+		gpio-line-names =
+		/* 0-3 */   "ETH_A_PHY_RST", "ETH_B_PHY_RST", "USB_HOST_PWR", "USB_OTG_PWR",
+		/* 4-7 */   "WLAN_RST", "RESET_OUT", "USB_DEV_OC", "",
+		/* 8-11 */  "VLCD_ON", "VBL_ON", "DISP_RST", "I2C_A_RST",
+		/* 12-15 */ "I2C_B_RST", "SD_B_GPIO1", "SD_B_GPIO2", "SPI_A_CS2";
 	};
 };
 #endif
 
+/* GPIO declarations */
+&gpio1 {
+	gpio-line-names =
+	/* 0 */   "I2C_A_SCL", "I2C_A_SDA", "I2C_C_SCL", "I2C_C_SDA",
+	/* 4 */   "UART_A_RX", "UART_A_TX", "UART_D_RX", "UART_D_TX",
+	/* 8 */   "CAN_A_TX", "CAN_A_RX", "SPI_A_IRQ1", "SPI_A_CS1",
+	/* 12 */  "SPI_A_MOSI", "SPI_A_SCLK", "SPI_A_MISO", "MX93_WDOG",
+	/* 16 */  "", "", "", "",
+	/* 20 */  "", "", "", "",
+	/* 24 */  "", "", "", "",
+	/* 28 */  "", "", "", "";
+};
+
+&gpio2 {
+	gpio-line-names =
+	/* 0 */   "RGB_CLK", "RGB_DE", "RGB_VSYNC", "RGB_HSYNC",
+	/* 4 */   "RGB_D0", "RGB_D1", "RGB_D2", "RGB_D3",
+	/* 8 */   "RGB_D4", "RGB_D5", "RGB_D6", "RGB_D7",
+	/* 12 */  "RGB_D8", "RGB_D9", "RGB_D10", "RGB_D11",
+	/* 16 */  "RGB_D12", "RGB_D13", "RGB_D14", "RGB_D15",
+	/* 20 */  "RGB_D16", "RGB_D17", "I2C_B_SDA", "I2C_B_SCL",
+	/* 24 */  "PWM", "GPIO2_IO25", "BL_PWM", "GPIO2_IO27",
+	/* 28 */  "SPI_A_IRQ2", "I2C_A_IRQ", "", "";
+};
+
+&gpio3 {
+	gpio-line-names =
+	/* 0 */   "SD_A_CD", "SD_A_CLK", "SD_A_CMD", "SD_A_D0",
+	/* 4 */   "SD_A_D1", "SD_A_D2", "SD_A_D3", "SD_A_RST",
+	/* 8 */   "SD_eMMC_CLK", "SD_eMMC_CMD", "SD_eMMC_D0", "SD_eMMC_D1",
+	/* 12 */  "SD_eMMC_D2", "SD_eMMC_D3", "SD_eMMC_D4", "SD_eMMC_D5",
+	/* 16 */  "SD_eMMC_D6", "SD_eMMC_D7", "SD_eMMC_DS", "SD2_VSEL",
+	/* 20 */  "SD_B_WLAN_CLK", "SD_B_WLAN_CMD", "SD_B_WLAN_D0", "SD_B_WLAN_D1",
+	/* 24 */  "SD_B_WLAN_D2", "SD_B_WLAN_D3", "ETH_A_PHY_INT_1V8", "PMIC_IRQ",
+	/* 28 */  "UART_B_RX_1V8", "UART_B_RTS_1V8", "UART_B_CTS_1V8", "UART_B_TX_1V8";
+};
+
+&gpio4 {
+	gpio-line-names =
+	/* 0 */   "RGMII_MDC", "RGMII_MDIO", "ETH_A_RGMII_TXD3", "ETH_A_RGMII_TXD2",
+	/* 4 */   "ETH_A_RGMII_TXD1", "ETH_A_RGMII_TXD0", "ETH_A_RGMII_TXCTL", "ETH_A_RGMII_TXC",
+	/* 8 */   "ETH_A_RGMII_RXCTL", "ETH_A_RGMII_RXC", "ETH_A_RGMII_RXD0", "ETH_A_RGMII_RXD1",
+	/* 12 */  "ETH_A_RGMII_RXD2", "ETH_A_RGMII_RXD3", "GP_EXP_INT", "DISP_IRQ",
+	/* 16 */  "ETH_B_RGMII_TXD3", "ETH_B_RGMII_TXD2", "ETH_B_RGMII_TXD1", "ETH_B_RGMII_TXD0",
+	/* 20 */  "ETH_B_RGMII_TXCTL", "ETH_B_RGMII_TXC", "ETH_B_RGMII_RXCTL", "ETH_B_RGMII_RXC",
+	/* 24 */  "ETH_B_RGMII_RXD0", "ETH_B_RGMII_RXD1", "ETH_B_RGMII_RXD2", "ETH_B_RGMII_RXD3",
+	/* 28 */  "ETH_B_PHY_INT_1V8", "I2C_B_IRQ", "", "";
+};
 
 /* SPI declerations */
 #ifdef CONFIG_EFUSMX93_SPI_A
@@ -725,14 +782,6 @@ fs_can_b: &flexcan2 {};
 };
 
 &media_blk_ctrl {
-	status = "okay";
-};
-
-&mu1 {
-	status = "okay";
-};
-
-&mu2 {
 	status = "okay";
 };
 

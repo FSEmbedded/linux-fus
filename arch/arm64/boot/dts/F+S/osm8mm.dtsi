@@ -279,6 +279,72 @@ osm_pcie_a: &pcie0 {};
 #endif
 };
 
+/* GPIO declarations */
+&gpio1 {
+	gpio-line-names =
+	/* 0 */   "GPIO_A_0", "GPIO_A_1", "PMIC_WDOG", "SD_A_VSEL",
+	/* 4 */   "GPIO_A_2", "GPIO_A_3", "GPIO_A_4", "GPIO_A_5",
+	/* 8 */   "GPIO_B_0", "GPIO_B_1", "GPIO_B_2", "GPIO_B_3",
+	/* 12 */  "USB_A_EN", "USB_A_OC", "USB_B_EN", "USB_B_OC",
+	/* 16 */  "ETH_MDC", "ETH_MDIO", "ETH_A_(S)(R)(G)MII_TXD3", "ETH_A_(S)(R)(G)MII_TXD2",
+	/* 20 */  "ETH_A_(S)(R)(G)MII_TXD1", "ETH_A_(S)(R)(G)MII_TXD0", "ETH_A_(R)(G)MII_TX_EN(_ER)", "ETH_A_(R)(G)MII_TX_CLK",
+	/* 24 */  "ETH_A_(R)(G)MII_RX_DV(_ER)", "ETH_A_(R)(G)MII_RX_CLK", "ETH_A_(S)(R)(G)MII_RXD0", "ETH_A_(S)(R)(G)MII_RXD1",
+	/* 28 */  "ETH_A_(R)(G)MII_RXD2", "ETH_A_(R)(G)MII_RXD3", "", "";
+	status = "okay";
+};
+
+&gpio2 {
+	gpio-line-names =
+	/* 0 */   "SD_eMMC_CLK", "SD_eMMC_CMD", "SD_eMMC_D0", "SD_eMMC_D1",
+	/* 4 */   "SD_eMMC_D2", "SD_eMMC_D3", "SD_eMMC_D4", "SD_eMMC_D5",
+	/* 8 */   "SD_eMMC_D6", "SD_eMMC_D7", "SD_eMMC_RST", "SD_eMMC_DS",
+	/* 12 */  "SDIO_A_CD", "SDIO_A_CLK", "SDIO_A_CMD", "SDIO_A_D0",
+	/* 16 */  "SDIO_A_D1", "SDIO_A_D2", "SDIO_A_D3", "SDIO_A_PWR_EN",
+	/* 20 */  "SDIO_A_WP", "", "", "",
+	/* 24 */  "", "", "", "",
+	/* 28 */  "", "", "", "";
+	status = "okay";
+};
+
+&gpio3 {
+	gpio-line-names =
+	/* 0 */   "SPI_A_SCK", "SPI_A_CS0", "SPI_A_CS1", "SDIO_B_D5",
+	/* 4 */   "SDIO_B_D6", "SDIO_B_D7", "SPI_A_IO0", "SPI_A_IO1",
+	/* 8 */   "SPI_A_IO2", "SPI_A_IO3", "SDIO_B_D0", "SDIO_B_D1",
+	/* 12 */  "SDIO_B_D2", "SDIO_B_D3", "", "SDIO_B_D4",
+	/* 16 */  "SDIO_B_PWR_EN", "SDIO_B_CLK", "SDIO_B_CMD", "PCIe_PERST",
+	/* 20 */  "PCIe_WAKE", "I2S_A_DATA_IN", "I2S_A_LRCLK", "I2S_A_BITCLK",
+	/* 24 */  "I2S_A_DATA_OUT", "I2S_MCLK", "", "",
+	/* 28 */  "", "", "", "";
+	status = "okay";
+};
+
+&gpio4 {
+	gpio-line-names =
+	/* 0 */   "", "", "", "GPIO_C_3",
+	/* 4 */   "GPIO_C_2", "GPIO_C_1", "GPIO_C_0", "GPIO_B_7",
+	/* 8 */   "GPIO_B_6", "GPIO_B_5", "", "",
+	/* 12 */  "", "", "", "",
+	/* 16 */  "", "", "", "",
+	/* 20 */  "", "DSI_TE", "SDIO_B_CD", "SDIO_B_WP",
+	/* 24 */  "PMIC_IRQ", "CAM_EN", "CAM_RST", "CARRIER_PWR_EN",
+	/* 28 */  "PCIe_CLKREQ", "UART_A_RTS", "UART_A_CTS", "PCIe_SM_ALERT";
+	status = "okay";
+};
+
+&gpio5 {
+	gpio-line-names =
+	/* 0 */   "DISP_BL_EN", "DISP_VDD_EN", "DISP_BL_PWM", "PWM_3",
+	/* 4 */   "PWM_2", "PWM_1", "SPI_B_CS1", "GPIO_B_4",
+	/* 8 */   "UART_B_RTS", "UART_B_CTS", "SPI_B_SCK", "SPI_B_SDO",
+	/* 12 */  "SPI_B_SDI", "SPI_B_CS0", "I2C_INT_SCL", "I2C_INT_SDA",
+	/* 16 */  "I2C_A_SCL", "I2C_A_SDA", "I2C_B_SCL", "I2C_B_SDA",
+	/* 20 */  "I2C_CAM_PCI_SCL", "I2C_CAM_PCI_SDA", "UART_CON_RX", "UART_CON_TX",
+	/* 24 */  "UART_A_RX", "UART_A_TX", "UART_B_RX", "UART_B_TX",
+	/* 28 */  "UART_C_RX", "UART_C_TX", "", "";
+	status = "okay";
+};
+
 /* OSM8MM_I2C_INT */
 &i2c_int {
 	clock-frequency = <100000>;
