@@ -291,6 +291,46 @@ wvga {					\
 	};
 #endif
 
+#ifdef CONFIG_PICOCOREMX6UL_I2C_C
+	/* Bitbanging I2C */
+	i2c_gpio: i2c_gpio {
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_i2c_gpio>;
+		compatible = "i2c-gpio";
+		gpios = <&gpio5 8 0 /* sda */
+			 &gpio5 9 0 /* scl */
+			>;
+//###		i2c-gpio,sda-open-drain;
+//###		i2c-gpio,scl-open-drain;
+		i2c-gpio,delay-us = <2>;	/* ~100 kHz */
+		#address-cells = <1>;
+		#size-cells = <0>;
+	};
+#endif
+
+#ifdef CONFIG_PICOCOREMX6UL_AUDIO
+	sound-sgtl5000 {
+		compatible = "fsl,imx-audio-sgtl5000";
+		cpu-dai = <&sai2>;
+		audio-codec = <&sgtl5000>;
+		model = "imx-sgtl5000";
+		audio-routing =
+			"LINE_IN", "Line In Jack",
+//###			"MIC_IN", "Mic Jack",
+//###			"Line Out Jack", "LINE_OUT",
+			"Headphone Jack", "HP_OUT";
+	};
+#endif
+
+	/* F&S board information */
+	bdinfo {
+		compatible = "bdinfo";
+		board_name = "PicoCoreMX6UL";
+		dts_version = FS_LINUX_VERSION;
+	};
+
+};
+
 /* GPIO declarations */
 &gpio1 {
 	gpio-line-names =
@@ -350,46 +390,6 @@ wvga {					\
 	/* 20 */ "", "", "", "",
 	/* 24 */ "", "", "", "",
 	/* 28 */ "", "", "", "";
-};
-
-#ifdef CONFIG_PICOCOREMX6UL_I2C_C
-	/* Bitbanging I2C */
-	i2c_gpio: i2c_gpio {
-		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_i2c_gpio>;
-		compatible = "i2c-gpio";
-		gpios = <&gpio5 8 0 /* sda */
-			 &gpio5 9 0 /* scl */
-			>;
-//###		i2c-gpio,sda-open-drain;
-//###		i2c-gpio,scl-open-drain;
-		i2c-gpio,delay-us = <2>;	/* ~100 kHz */
-		#address-cells = <1>;
-		#size-cells = <0>;
-	};
-#endif
-
-#ifdef CONFIG_PICOCOREMX6UL_AUDIO
-	sound-sgtl5000 {
-		compatible = "fsl,imx-audio-sgtl5000";
-		cpu-dai = <&sai2>;
-		audio-codec = <&sgtl5000>;
-		model = "imx-sgtl5000";
-		audio-routing =
-			"LINE_IN", "Line In Jack",
-//###			"MIC_IN", "Mic Jack",
-//###			"Line Out Jack", "LINE_OUT",
-			"Headphone Jack", "HP_OUT";
-	};
-#endif
-
-	/* F&S board information */
-	bdinfo {
-		compatible = "bdinfo";
-		board_name = "PicoCoreMX6UL";
-		dts_version = FS_LINUX_VERSION;
-	};
-
 };
 
 /* RAM size for Continues Memory Allocator */
