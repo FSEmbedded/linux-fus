@@ -473,7 +473,7 @@ wvga {					\
 		ethphy0: ethernet-phy@0 {
 			compatible = "ethernet-phy-ieee802.3-c22";
 			reg = <0>;
-			clocks = <&clks IMX6UL_CLK_ENET_REF>;
+			clocks = <&clks IMX6UL_CLK_ENET1_REF_125M>;
 			clock-names = "rmii-ref";
 		};
 
@@ -481,7 +481,7 @@ wvga {					\
 		ethphy1: ethernet-phy@3 {
 			compatible = "ethernet-phy-ieee802.3-c22";
 			reg = <3>;
-			clocks = <&clks IMX6UL_CLK_ENET2_REF>;
+			clocks = <&clks IMX6UL_CLK_ENET2_REF_125M>;
 			clock-names = "rmii-ref";
 		};
 #endif
@@ -508,7 +508,7 @@ wvga {					\
 		ethphy1: ethernet-phy@3 {
 			compatible = "ethernet-phy-ieee802.3-c22";
 			reg = <3>;
-			clocks = <&clks IMX6UL_CLK_ENET2_REF>;
+			clocks = <&clks IMX6UL_CLK_ENET2_REF_125M>;
 			clock-names = "rmii-ref";
 		};
 	};
