@@ -757,9 +757,7 @@ static int chipone_i2c_probe(struct i2c_client *client)
 	dev_set_drvdata(dev, icn);
 	i2c_set_clientdata(client, icn);
 
-	ret = devm_drm_bridge_add(dev, &icn->bridge);
-	if (ret)
-		return ret;
+	drm_bridge_add(&icn->bridge);
 
 	return chipone_dsi_host_attach(icn);
 }

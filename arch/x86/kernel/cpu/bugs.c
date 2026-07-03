@@ -69,14 +69,6 @@ EXPORT_PER_CPU_SYMBOL_GPL(x86_spec_ctrl_current);
 DEFINE_PER_CPU(bool, x86_ibpb_exit_to_user);
 EXPORT_PER_CPU_SYMBOL_GPL(x86_ibpb_exit_to_user);
 
-/*
- * Set when the CPU has run a potentially malicious guest. An IBPB will
- * be needed to before running userspace. That IBPB will flush the branch
- * predictor content.
- */
-DEFINE_PER_CPU(bool, x86_ibpb_exit_to_user);
-EXPORT_PER_CPU_SYMBOL_GPL(x86_ibpb_exit_to_user);
-
 u64 x86_pred_cmd __ro_after_init = PRED_CMD_IBPB;
 EXPORT_SYMBOL_GPL(x86_pred_cmd);
 
@@ -1194,10 +1186,8 @@ do_cmd_auto:
 			retbleed_mitigation = RETBLEED_MITIGATION_EIBRS;
 			break;
 		default:
-			if (retbleed_mitigation != RETBLEED_MITIGATION_STUFF) {
+			if (retbleed_mitigation != RETBLEED_MITIGATION_STUFF)
 				pr_err(RETBLEED_INTEL_MSG);
-				retbleed_mitigation = RETBLEED_MITIGATION_NONE;
-			}
 		}
 	}
 
@@ -1606,7 +1596,7 @@ set_mode:
 static const char * const spectre_v2_strings[] = {
 	[SPECTRE_V2_NONE]			= "Vulnerable",
 	[SPECTRE_V2_RETPOLINE]			= "Mitigation: Retpolines",
-	[SPECTRE_V2_LFENCE]			= "Vulnerable: LFENCE",
+	[SPECTRE_V2_LFENCE]			= "Mitigation: LFENCE",
 	[SPECTRE_V2_EIBRS]			= "Mitigation: Enhanced / Automatic IBRS",
 	[SPECTRE_V2_EIBRS_LFENCE]		= "Mitigation: Enhanced / Automatic IBRS + LFENCE",
 	[SPECTRE_V2_EIBRS_RETPOLINE]		= "Mitigation: Enhanced / Automatic IBRS + Retpolines",
@@ -2979,68 +2969,6 @@ static void __init vmscape_select_mitigation(void)
 }
 
 #undef pr_fmt
-#define pr_fmt(fmt)	"VMSCAPE: " fmt
-
-enum vmscape_mitigations {
-	VMSCAPE_MITIGATION_NONE,
-	VMSCAPE_MITIGATION_AUTO,
-	VMSCAPE_MITIGATION_IBPB_EXIT_TO_USER,
-	VMSCAPE_MITIGATION_IBPB_ON_VMEXIT,
-};
-
-static const char * const vmscape_strings[] = {
-	[VMSCAPE_MITIGATION_NONE]		= "Vulnerable",
-	/* [VMSCAPE_MITIGATION_AUTO] */
-	[VMSCAPE_MITIGATION_IBPB_EXIT_TO_USER]	= "Mitigation: IBPB before exit to userspace",
-	[VMSCAPE_MITIGATION_IBPB_ON_VMEXIT]	= "Mitigation: IBPB on VMEXIT",
-};
-
-static enum vmscape_mitigations vmscape_mitigation __ro_after_init =
-	IS_ENABLED(CONFIG_MITIGATION_VMSCAPE) ? VMSCAPE_MITIGATION_AUTO : VMSCAPE_MITIGATION_NONE;
-
-static int __init vmscape_parse_cmdline(char *str)
-{
-	if (!str)
-		return -EINVAL;
-
-	if (!strcmp(str, "off")) {
-		vmscape_mitigation = VMSCAPE_MITIGATION_NONE;
-	} else if (!strcmp(str, "ibpb")) {
-		vmscape_mitigation = VMSCAPE_MITIGATION_IBPB_EXIT_TO_USER;
-	} else if (!strcmp(str, "force")) {
-		setup_force_cpu_bug(X86_BUG_VMSCAPE);
-		vmscape_mitigation = VMSCAPE_MITIGATION_AUTO;
-	} else {
-		pr_err("Ignoring unknown vmscape=%s option.\n", str);
-	}
-
-	return 0;
-}
-early_param("vmscape", vmscape_parse_cmdline);
-
-static void __init vmscape_select_mitigation(void)
-{
-	if (cpu_mitigations_off() ||
-	    !boot_cpu_has_bug(X86_BUG_VMSCAPE) ||
-	    !boot_cpu_has(X86_FEATURE_IBPB)) {
-		vmscape_mitigation = VMSCAPE_MITIGATION_NONE;
-		return;
-	}
-
-	if (vmscape_mitigation == VMSCAPE_MITIGATION_AUTO)
-		vmscape_mitigation = VMSCAPE_MITIGATION_IBPB_EXIT_TO_USER;
-
-	if (retbleed_mitigation == RETBLEED_MITIGATION_IBPB ||
-	    srso_mitigation == SRSO_MITIGATION_IBPB_ON_VMEXIT)
-		vmscape_mitigation = VMSCAPE_MITIGATION_IBPB_ON_VMEXIT;
-
-	if (vmscape_mitigation == VMSCAPE_MITIGATION_IBPB_EXIT_TO_USER)
-		setup_force_cpu_cap(X86_FEATURE_IBPB_EXIT_TO_USER);
-
-	pr_info("%s\n", vmscape_strings[vmscape_mitigation]);
-}
-
-#undef pr_fmt
 #define pr_fmt(fmt) fmt
 
 #define VMSCAPE_MSG_SMT "VMSCAPE: SMT on, STIBP is required for full protection. See https://www.kernel.org/doc/html/latest/admin-guide/hw-vuln/vmscape.html for more details.\n"
@@ -3321,6 +3249,9 @@ static const char *spectre_bhi_state(void)
 
 static ssize_t spectre_v2_show_state(char *buf)
 {
+	if (spectre_v2_enabled == SPECTRE_V2_LFENCE)
+		return sysfs_emit(buf, "Vulnerable: LFENCE\n");
+
 	if (spectre_v2_enabled == SPECTRE_V2_EIBRS && unprivileged_ebpf_enabled())
 		return sysfs_emit(buf, "Vulnerable: eIBRS with unprivileged eBPF\n");
 

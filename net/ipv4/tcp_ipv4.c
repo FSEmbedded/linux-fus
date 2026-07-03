@@ -82,7 +82,6 @@
 #include <linux/skbuff_ref.h>
 
 #include <crypto/hash.h>
-#include <crypto/utils.h>
 #include <linux/scatterlist.h>
 
 #include <trace/events/tcp.h>
@@ -123,9 +122,6 @@ int tcp_twsk_unique(struct sock *sk, struct sock *sktw, void *twp)
 	int ts_recent_stamp;
 
 	if (READ_ONCE(tw->tw_substate) == TCP_FIN_WAIT2)
-		reuse = 0;
-
-	if (tw->tw_substate == TCP_FIN_WAIT2)
 		reuse = 0;
 
 	if (reuse == 2) {

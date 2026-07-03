@@ -856,23 +856,6 @@ static const struct adsp_data sa8775p_adsp_resource = {
 	.ssctl_id = 0x14,
 };
 
-static const struct adsp_data sa8775p_adsp_resource = {
-	.crash_reason_smem = 423,
-	.firmware_name = "adsp.mbn",
-	.pas_id = 1,
-	.minidump_id = 5,
-	.auto_boot = true,
-	.proxy_pd_names = (char*[]){
-		"lcx",
-		"lmx",
-		NULL
-	},
-	.load_state = "adsp",
-	.ssr_name = "lpass",
-	.sysmon_name = "adsp",
-	.ssctl_id = 0x14,
-};
-
 static const struct adsp_data sdm845_adsp_resource_init = {
 	.crash_reason_smem = 423,
 	.firmware_name = "adsp.mdt",

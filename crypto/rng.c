@@ -167,11 +167,6 @@ out:
 EXPORT_SYMBOL_GPL(crypto_del_default_rng);
 #endif
 
-static void rng_default_set_ent(struct crypto_rng *tfm, const u8 *data,
-				unsigned int len)
-{
-}
-
 int crypto_register_rng(struct rng_alg *alg)
 {
 	struct crypto_alg *base = &alg->base;

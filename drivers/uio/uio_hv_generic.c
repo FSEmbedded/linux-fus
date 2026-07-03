@@ -79,15 +79,9 @@ hv_uio_irqcontrol(struct uio_info *info, s32 irq_state)
 {
 	struct hv_uio_private_data *pdata = info->priv;
 	struct hv_device *dev = pdata->device;
-	struct vmbus_channel *primary, *sc;
 
-	primary = dev->channel;
-	primary->inbound.ring_buffer->interrupt_mask = !irq_state;
-
-	mutex_lock(&vmbus_connection.channel_mutex);
-	list_for_each_entry(sc, &primary->sc_list, sc_list)
-		sc->inbound.ring_buffer->interrupt_mask = !irq_state;
-	mutex_unlock(&vmbus_connection.channel_mutex);
+	dev->channel->inbound.ring_buffer->interrupt_mask = !irq_state;
+	virt_mb();
 
 	if (!dev->channel->offermsg.monitor_allocated && irq_state)
 		vmbus_setevent(dev->channel);
@@ -101,18 +95,12 @@ hv_uio_irqcontrol(struct uio_info *info, s32 irq_state)
 static void hv_uio_channel_cb(void *context)
 {
 	struct vmbus_channel *chan = context;
-	struct hv_device *hv_dev;
-	struct hv_uio_private_data *pdata;
+	struct hv_device *hv_dev = chan->device_obj;
+	struct hv_uio_private_data *pdata = hv_get_drvdata(hv_dev);
 
+	chan->inbound.ring_buffer->interrupt_mask = 1;
 	virt_mb();
 
-	/*
-	 * The callback may come from a subchannel, in which case look
-	 * for the hv device in the primary channel
-	 */
-	hv_dev = chan->primary_channel ?
-		 chan->primary_channel->device_obj : chan->device_obj;
-	pdata = hv_get_drvdata(hv_dev);
 	uio_event_notify(&pdata->info);
 }
 
@@ -175,6 +163,8 @@ hv_uio_new_channel(struct vmbus_channel *new_sc)
 		return;
 	}
 
+	/* Disable interrupts on sub channel */
+	new_sc->inbound.ring_buffer->interrupt_mask = 1;
 	set_channel_read_mode(new_sc, HV_CALL_ISR);
 	ret = hv_create_ring_sysfs(new_sc, hv_uio_ring_mmap);
 	if (ret) {
@@ -217,7 +207,9 @@ hv_uio_open(struct uio_info *info, struct inode *inode)
 
 	ret = vmbus_connect_ring(dev->channel,
 				 hv_uio_channel_cb, dev->channel);
-	if (ret)
+	if (ret == 0)
+		dev->channel->inbound.ring_buffer->interrupt_mask = 1;
+	else
 		atomic_dec(&pdata->refcnt);
 
 	return ret;
@@ -250,12 +242,6 @@ hv_uio_probe(struct hv_device *dev,
 
 	if (!ring_size)
 		ring_size = SZ_2M;
-
-	/* Adjust ring size if necessary to have it page aligned */
-	ring_size = VMBUS_RING_SIZE(ring_size);
-
-	if (!ring_size)
-		ring_size = HV_RING_SIZE * PAGE_SIZE;
 
 	/* Adjust ring size if necessary to have it page aligned */
 	ring_size = VMBUS_RING_SIZE(ring_size);

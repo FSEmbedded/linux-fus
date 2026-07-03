@@ -2331,7 +2331,7 @@ static int fib6_age(struct fib6_info *rt, struct fib6_gc_args *gc_args)
 	 *	Note, that clones are aged out
 	 *	only if they are not in use now.
 	 */
-	fib6_age_exceptions(rt, gc_args, now);
+	rt6_age_exceptions(rt, gc_args, now);
 
 	return 0;
 }

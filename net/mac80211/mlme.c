@@ -5147,7 +5147,7 @@ static u8 ieee80211_max_rx_chains(struct ieee80211_link_data *link,
 	he_cap_elem = cfg80211_find_ext_elem(WLAN_EID_EXT_HE_CAPABILITY,
 					     ies->data, ies->len);
 
-	if (!he_cap_elem || he_cap_elem->datalen < sizeof(*he_cap) + 1)
+	if (!he_cap_elem || he_cap_elem->datalen < sizeof(*he_cap))
 		return chains;
 
 	/* skip one byte ext_tag_id */
@@ -6254,9 +6254,6 @@ static void ieee80211_ml_reconfiguration(struct ieee80211_sub_if_data *sdata,
 
 		control = le16_to_cpu(prof->control);
 		link_id = control & IEEE80211_MLE_STA_RECONF_CONTROL_LINK_ID;
-
-		if (link_id >= IEEE80211_MLD_MAX_NUM_LINKS)
-			continue;
 
 		removed_links |= BIT(link_id);
 
@@ -8176,7 +8173,7 @@ static int ieee80211_prep_connection(struct ieee80211_sub_if_data *sdata,
 	struct ieee80211_bss *bss = (void *)cbss->priv;
 	struct sta_info *new_sta = NULL;
 	struct ieee80211_link_data *link;
-	struct sta_info *have_sta = NULL;
+	bool have_sta = false;
 	bool mlo;
 	int err;
 
@@ -8214,8 +8211,11 @@ static int ieee80211_prep_connection(struct ieee80211_sub_if_data *sdata,
 		goto out_err;
 	}
 
-	if (assoc)
+	if (assoc) {
+		rcu_read_lock();
 		have_sta = sta_info_get(sdata, ap_mld_addr);
+		rcu_read_unlock();
+	}
 
 	if (!have_sta) {
 		if (mlo)
@@ -8348,8 +8348,6 @@ static int ieee80211_prep_connection(struct ieee80211_sub_if_data *sdata,
 out_release_chan:
 	ieee80211_link_release_channel(link);
 out_err:
-	if (mlo && have_sta)
-		WARN_ON(__sta_info_destroy(have_sta));
 	ieee80211_vif_set_links(sdata, 0, 0);
 	return err;
 }

@@ -605,11 +605,8 @@ static const struct vm_operations_struct drm_vm_ops = {
 static int qaic_gem_object_mmap(struct drm_gem_object *obj, struct vm_area_struct *vma)
 {
 	struct qaic_bo *bo = to_qaic_bo(obj);
-	unsigned long remap_start;
 	unsigned long offset = 0;
-	unsigned long remap_end;
 	struct scatterlist *sg;
-	unsigned long length;
 	int ret = 0;
 
 	if (obj->import_attach)
@@ -617,27 +614,11 @@ static int qaic_gem_object_mmap(struct drm_gem_object *obj, struct vm_area_struc
 
 	for (sg = bo->sgt->sgl; sg; sg = sg_next(sg)) {
 		if (sg_page(sg)) {
-			/* if sg is too large for the VMA, so truncate it to fit */
-			if (check_add_overflow(vma->vm_start, offset, &remap_start))
-				return -EINVAL;
-			if (check_add_overflow(remap_start, sg->length, &remap_end))
-				return -EINVAL;
-
-			if (remap_end > vma->vm_end) {
-				if (check_sub_overflow(vma->vm_end, remap_start, &length))
-					return -EINVAL;
-			} else {
-				length = sg->length;
-			}
-
-			if (length == 0)
-				goto out;
-
 			ret = remap_pfn_range(vma, vma->vm_start + offset, page_to_pfn(sg_page(sg)),
-					      length, vma->vm_page_prot);
+					      sg->length, vma->vm_page_prot);
 			if (ret)
 				goto out;
-			offset += length;
+			offset += sg->length;
 		}
 	}
 

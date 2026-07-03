@@ -44,8 +44,6 @@ struct ox03c10 {
 	struct v4l2_ctrl *hblank;
 	struct v4l2_ctrl *vblank;
 
-	bool streaming;
-
 	/* this needs to be the last element in the structure */
 	struct v4l2_ctrl *ctrls[];
 };

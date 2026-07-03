@@ -1695,42 +1695,6 @@ static void ata_scsi_qc_complete(struct ata_queued_cmd *qc)
 	ata_qc_done(qc);
 }
 
-static int ata_scsi_qc_issue(struct ata_port *ap, struct ata_queued_cmd *qc)
-{
-	int ret;
-
-	if (!ap->ops->qc_defer)
-		goto issue;
-
-	/* Check if the command needs to be deferred. */
-	ret = ap->ops->qc_defer(qc);
-	switch (ret) {
-	case 0:
-		break;
-	case ATA_DEFER_LINK:
-		ret = SCSI_MLQUEUE_DEVICE_BUSY;
-		break;
-	case ATA_DEFER_PORT:
-		ret = SCSI_MLQUEUE_HOST_BUSY;
-		break;
-	default:
-		WARN_ON_ONCE(1);
-		ret = SCSI_MLQUEUE_HOST_BUSY;
-		break;
-	}
-
-	if (ret) {
-		/* Force a requeue of the command to defer its execution. */
-		ata_qc_free(qc);
-		return ret;
-	}
-
-issue:
-	ata_qc_issue(qc);
-
-	return 0;
-}
-
 /**
  *	ata_scsi_translate - Translate then issue SCSI command to ATA device
  *	@dev: ATA device to which the command is addressed
@@ -1754,49 +1718,66 @@ issue:
  *	spin_lock_irqsave(host lock)
  *
  *	RETURNS:
- *	0 on success, SCSI_ML_QUEUE_DEVICE_BUSY or SCSI_MLQUEUE_HOST_BUSY if the
- *	command needs to be deferred.
+ *	0 on success, SCSI_ML_QUEUE_DEVICE_BUSY if the command
+ *	needs to be deferred.
  */
 static int ata_scsi_translate(struct ata_device *dev, struct scsi_cmnd *cmd,
 			      ata_xlat_func_t xlat_func)
 {
 	struct ata_port *ap = dev->link->ap;
 	struct ata_queued_cmd *qc;
+	int rc;
 
-	lockdep_assert_held(ap->lock);
-
-	/*
-	 * ata_scsi_qc_new() calls scsi_done(cmd) in case of failure. So we
-	 * have nothing further to do when allocating a qc fails.
-	 */
 	qc = ata_scsi_qc_new(dev, cmd);
 	if (!qc)
-		return 0;
+		goto err_mem;
 
 	/* data is present; dma-map it */
 	if (cmd->sc_data_direction == DMA_FROM_DEVICE ||
 	    cmd->sc_data_direction == DMA_TO_DEVICE) {
 		if (unlikely(scsi_bufflen(cmd) < 1)) {
 			ata_dev_warn(dev, "WARNING: zero len r/w req\n");
-			cmd->result = (DID_ERROR << 16);
-			goto done;
+			goto err_did;
 		}
 
 		ata_sg_init(qc, scsi_sglist(cmd), scsi_sg_count(cmd));
+
 		qc->dma_dir = cmd->sc_data_direction;
 	}
 
 	qc->complete_fn = ata_scsi_qc_complete;
 
 	if (xlat_func(qc))
-		goto done;
+		goto early_finish;
 
-	return ata_scsi_qc_issue(ap, qc);
+	if (ap->ops->qc_defer) {
+		if ((rc = ap->ops->qc_defer(qc)))
+			goto defer;
+	}
 
-done:
+	/* select device, send command to hardware */
+	ata_qc_issue(qc);
+
+	return 0;
+
+early_finish:
 	ata_qc_free(qc);
 	scsi_done(cmd);
 	return 0;
+
+err_did:
+	ata_qc_free(qc);
+	cmd->result = (DID_ERROR << 16);
+	scsi_done(cmd);
+err_mem:
+	return 0;
+
+defer:
+	ata_qc_free(qc);
+	if (rc == ATA_DEFER_LINK)
+		return SCSI_MLQUEUE_DEVICE_BUSY;
+	else
+		return SCSI_MLQUEUE_HOST_BUSY;
 }
 
 struct ata_scsi_args {
@@ -2849,9 +2830,6 @@ struct ata_device *
 ata_scsi_find_dev(struct ata_port *ap, const struct scsi_device *scsidev)
 {
 	struct ata_device *dev = __ata_scsi_find_dev(ap, scsidev);
-
-	if (!ata_adapter_is_online(ap))
-		return NULL;
 
 	if (unlikely(!dev || !ata_dev_enabled(dev)))
 		return NULL;
@@ -4825,10 +4803,8 @@ void ata_scsi_dev_rescan(struct work_struct *work)
 			spin_unlock_irqrestore(ap->lock, flags);
 			if (do_resume) {
 				ret = scsi_resume_device(sdev);
-				if (ret == -EWOULDBLOCK) {
-					scsi_device_put(sdev);
+				if (ret == -EWOULDBLOCK)
 					goto unlock_scan;
-				}
 				dev->flags &= ~ATA_DFLAG_RESUMING;
 			}
 			ret = scsi_rescan_device(sdev);

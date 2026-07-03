@@ -409,9 +409,8 @@ int se_restore_imem_state(struct se_if_priv *priv, struct se_imem_buf *imem)
 			dev_err(priv->dev, "Failed to import IMEM\n");
 			goto exit;
 		}
-	} else {
+	} else
 		goto exit;
-	}
 
 	/* After importing IMEM, check if IMEM state is equal to 0xCA
 	 * to ensure IMEM is fully loaded and

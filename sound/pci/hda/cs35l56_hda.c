@@ -180,14 +180,9 @@ static int cs35l56_hda_mixer_info(struct snd_kcontrol *kcontrol,
 static int cs35l56_hda_mixer_get(struct snd_kcontrol *kcontrol,
 				 struct snd_ctl_elem_value *ucontrol)
 {
-	struct cs35l56_hda *cs35l56 = snd_kcontrol_chip(kcontrol);
+	struct cs35l56_hda *cs35l56 = (struct cs35l56_hda *)kcontrol->private_data;
 	unsigned int reg_val;
-	int i, ret;
-
-	ret = regmap_read(cs35l56->base.regmap, kcontrol->private_value,
-			  &reg_val);
-	if (ret)
-		return ret;
+	int i;
 
 	cs35l56_hda_wait_dsp_ready(cs35l56);
 
@@ -207,10 +202,9 @@ static int cs35l56_hda_mixer_get(struct snd_kcontrol *kcontrol,
 static int cs35l56_hda_mixer_put(struct snd_kcontrol *kcontrol,
 				 struct snd_ctl_elem_value *ucontrol)
 {
-	struct cs35l56_hda *cs35l56 = snd_kcontrol_chip(kcontrol);
+	struct cs35l56_hda *cs35l56 = (struct cs35l56_hda *)kcontrol->private_data;
 	unsigned int item = ucontrol->value.enumerated.item[0];
 	bool changed;
-	int ret;
 
 	if (item >= CS35L56_NUM_INPUT_SRC)
 		return -EINVAL;
@@ -237,7 +231,7 @@ static int cs35l56_hda_posture_info(struct snd_kcontrol *kcontrol,
 static int cs35l56_hda_posture_get(struct snd_kcontrol *kcontrol,
 				   struct snd_ctl_elem_value *ucontrol)
 {
-	struct cs35l56_hda *cs35l56 = snd_kcontrol_chip(kcontrol);
+	struct cs35l56_hda *cs35l56 = (struct cs35l56_hda *)kcontrol->private_data;
 	unsigned int pos;
 	int ret;
 
@@ -255,8 +249,8 @@ static int cs35l56_hda_posture_get(struct snd_kcontrol *kcontrol,
 static int cs35l56_hda_posture_put(struct snd_kcontrol *kcontrol,
 				   struct snd_ctl_elem_value *ucontrol)
 {
-	struct cs35l56_hda *cs35l56 = snd_kcontrol_chip(kcontrol);
-	long pos = ucontrol->value.integer.value[0];
+	struct cs35l56_hda *cs35l56 = (struct cs35l56_hda *)kcontrol->private_data;
+	unsigned long pos = ucontrol->value.integer.value[0];
 	bool changed;
 	int ret;
 
@@ -304,7 +298,7 @@ static int cs35l56_hda_vol_info(struct snd_kcontrol *kcontrol,
 static int cs35l56_hda_vol_get(struct snd_kcontrol *kcontrol,
 			       struct snd_ctl_elem_value *ucontrol)
 {
-	struct cs35l56_hda *cs35l56 = snd_kcontrol_chip(kcontrol);
+	struct cs35l56_hda *cs35l56 = (struct cs35l56_hda *)kcontrol->private_data;
 	unsigned int raw_vol;
 	int vol;
 	int ret;
@@ -330,7 +324,7 @@ static int cs35l56_hda_vol_get(struct snd_kcontrol *kcontrol,
 static int cs35l56_hda_vol_put(struct snd_kcontrol *kcontrol,
 			       struct snd_ctl_elem_value *ucontrol)
 {
-	struct cs35l56_hda *cs35l56 = snd_kcontrol_chip(kcontrol);
+	struct cs35l56_hda *cs35l56 = (struct cs35l56_hda *)kcontrol->private_data;
 	long vol = ucontrol->value.integer.value[0];
 	unsigned int raw_vol;
 	bool changed;
@@ -950,7 +944,6 @@ static int cs35l56_hda_read_acpi(struct cs35l56_hda *cs35l56, int hid, int id)
 			return -ENODEV;
 		}
 		ACPI_COMPANION_SET(cs35l56->base.dev, adev);
-		acpi_dev_put(adev);
 	}
 
 	/* Initialize things that could be overwritten by a fixup */

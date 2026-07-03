@@ -1860,9 +1860,8 @@ static int storvsc_queuecommand(struct Scsi_Host *host, struct scsi_cmnd *scmnd)
 	cmd_request->payload_sz = payload_sz;
 
 	/* Invokes the vsc to start an IO */
-	migrate_disable();
-	ret = storvsc_do_io(dev, cmd_request, smp_processor_id());
-	migrate_enable();
+	ret = storvsc_do_io(dev, cmd_request, get_cpu());
+	put_cpu();
 
 	if (ret)
 		scsi_dma_unmap(scmnd);

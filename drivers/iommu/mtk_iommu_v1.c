@@ -423,8 +423,6 @@ static int mtk_iommu_v1_create_mapping(struct device *dev,
 			return -EINVAL;
 
 		dev_iommu_priv_set(dev, platform_get_drvdata(m4updev));
-
-		put_device(&m4updev->dev);
 	}
 
 	ret = iommu_fwspec_add_ids(dev, args->args, 1);
@@ -647,10 +645,8 @@ static int mtk_iommu_v1_probe(struct platform_device *pdev)
 		struct platform_device *plarbdev;
 
 		larbnode = of_parse_phandle(dev->of_node, "mediatek,larbs", i);
-		if (!larbnode) {
-			ret = -EINVAL;
-			goto out_put_larbs;
-		}
+		if (!larbnode)
+			return -EINVAL;
 
 		if (!of_device_is_available(larbnode)) {
 			of_node_put(larbnode);
@@ -660,14 +656,11 @@ static int mtk_iommu_v1_probe(struct platform_device *pdev)
 		plarbdev = of_find_device_by_node(larbnode);
 		if (!plarbdev) {
 			of_node_put(larbnode);
-			ret = -ENODEV;
-			goto out_put_larbs;
+			return -ENODEV;
 		}
 		if (!plarbdev->dev.driver) {
 			of_node_put(larbnode);
-			put_device(&plarbdev->dev);
-			ret = -EPROBE_DEFER;
-			goto out_put_larbs;
+			return -EPROBE_DEFER;
 		}
 		data->larb_imu[i].dev = &plarbdev->dev;
 
@@ -679,7 +672,7 @@ static int mtk_iommu_v1_probe(struct platform_device *pdev)
 
 	ret = mtk_iommu_v1_hw_init(data);
 	if (ret)
-		goto out_put_larbs;
+		return ret;
 
 	ret = iommu_device_sysfs_add(&data->iommu, &pdev->dev, NULL,
 				     dev_name(&pdev->dev));
@@ -701,17 +694,12 @@ out_sysfs_remove:
 	iommu_device_sysfs_remove(&data->iommu);
 out_clk_unprepare:
 	clk_disable_unprepare(data->bclk);
-out_put_larbs:
-	for (i = 0; i < MTK_LARB_NR_MAX; i++)
-		put_device(data->larb_imu[i].dev);
-
 	return ret;
 }
 
 static void mtk_iommu_v1_remove(struct platform_device *pdev)
 {
 	struct mtk_iommu_v1_data *data = platform_get_drvdata(pdev);
-	int i;
 
 	iommu_device_sysfs_remove(&data->iommu);
 	iommu_device_unregister(&data->iommu);
@@ -719,9 +707,6 @@ static void mtk_iommu_v1_remove(struct platform_device *pdev)
 	clk_disable_unprepare(data->bclk);
 	devm_free_irq(&pdev->dev, data->irq, data);
 	component_master_del(&pdev->dev, &mtk_iommu_v1_com_ops);
-
-	for (i = 0; i < MTK_LARB_NR_MAX; i++)
-		put_device(data->larb_imu[i].dev);
 }
 
 static int __maybe_unused mtk_iommu_v1_suspend(struct device *dev)

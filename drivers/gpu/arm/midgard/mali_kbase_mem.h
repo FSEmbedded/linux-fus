@@ -107,8 +107,8 @@ static inline void kbase_process_page_usage_inc(struct kbase_context *kctx, int 
 
 /* Index of chosen MEMATTR for this region (0..7) */
 #define KBASE_REG_MEMATTR_MASK (7ul << 16)
-#define KBASE_REG_MEMATTR_INDEX(x) (((x) & 7) << 16)
-#define KBASE_REG_MEMATTR_VALUE(x) (((x) & KBASE_REG_MEMATTR_MASK) >> 16)
+#define KBASE_REG_MEMATTR_INDEX(x) (((x)&7) << 16)
+#define KBASE_REG_MEMATTR_VALUE(x) (((x)&KBASE_REG_MEMATTR_MASK) >> 16)
 
 /* AS<n>_MEMATTR values from MMU_MEMATTR_STAGE1: */
 /* Use GPU implementation-defined caching policy. */
@@ -1824,8 +1824,8 @@ static inline dma_addr_t kbase_dma_addr_from_tagged(struct tagged_addr tagged_pa
 	phys_addr_t pa = as_phys_addr_t(tagged_pa);
 	struct page *page = pfn_to_page(PFN_DOWN(pa));
 	dma_addr_t dma_addr = (is_huge(tagged_pa) || is_partial(tagged_pa)) ?
-				      kbase_dma_addr_as_priv(page) :
-				      kbase_dma_addr(page);
+					    kbase_dma_addr_as_priv(page) :
+					    kbase_dma_addr(page);
 
 	return dma_addr;
 }

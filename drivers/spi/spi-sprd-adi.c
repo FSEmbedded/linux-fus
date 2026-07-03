@@ -536,8 +536,10 @@ static int sprd_adi_probe(struct platform_device *pdev)
 	sadi = spi_controller_get_devdata(ctlr);
 
 	sadi->base = devm_platform_get_and_ioremap_resource(pdev, 0, &res);
-	if (IS_ERR(sadi->base))
-		return PTR_ERR(sadi->base);
+	if (IS_ERR(sadi->base)) {
+		ret = PTR_ERR(sadi->base);
+		goto put_ctlr;
+	}
 
 	sadi->slave_vbase = (unsigned long)sadi->base +
 			    data->slave_offset;
@@ -549,15 +551,18 @@ static int sprd_adi_probe(struct platform_device *pdev)
 	if (ret > 0 || (IS_ENABLED(CONFIG_HWSPINLOCK) && ret == 0)) {
 		sadi->hwlock =
 			devm_hwspin_lock_request_specific(&pdev->dev, ret);
-		if (!sadi->hwlock)
-			return -ENXIO;
+		if (!sadi->hwlock) {
+			ret = -ENXIO;
+			goto put_ctlr;
+		}
 	} else {
 		switch (ret) {
 		case -ENOENT:
 			dev_info(&pdev->dev, "no hardware spinlock supplied\n");
 			break;
 		default:
-			return dev_err_probe(&pdev->dev, ret, "failed to find hwlock id\n");
+			dev_err_probe(&pdev->dev, ret, "failed to find hwlock id\n");
+			goto put_ctlr;
 		}
 	}
 
@@ -574,8 +579,10 @@ static int sprd_adi_probe(struct platform_device *pdev)
 	ctlr->transfer_one = sprd_adi_transfer_one;
 
 	ret = devm_spi_register_controller(&pdev->dev, ctlr);
-	if (ret)
-		return dev_err_probe(&pdev->dev, ret, "failed to register SPI controller\n");
+	if (ret) {
+		dev_err(&pdev->dev, "failed to register SPI controller\n");
+		goto put_ctlr;
+	}
 
 	if (sadi->data->restart) {
 		ret = devm_register_restart_handler(&pdev->dev,

@@ -6,7 +6,6 @@
 #include <linux/arm-smccc.h>
 #include <linux/clk.h>
 #include <linux/device.h>
-#include <linux/firmware/imx/se_api.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/of.h>

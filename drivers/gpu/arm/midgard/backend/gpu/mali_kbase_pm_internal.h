@@ -693,21 +693,6 @@ bool kbase_pm_is_mcu_desired(struct kbase_device *kbdev);
  */
 bool kbase_pm_is_mcu_inactive(struct kbase_device *kbdev, enum kbase_mcu_state state);
 
-#ifdef KBASE_PM_RUNTIME
-
-/**
- * kbase_pm_enable_mcu_db_notification - Enable the Doorbell notification on
- *                                       MCU side
- *
- * @kbdev: Pointer to the device.
- *
- * This function is called to re-enable the Doorbell notification on MCU side
- * when MCU needs to beome active again.
- */
-void kbase_pm_enable_mcu_db_notification(struct kbase_device *kbdev);
-
-#endif /* KBASE_PM_RUNTIME */
-
 /**
  * kbase_pm_enable_mcu_db_notification - Enable the Doorbell notification on
  *                                       MCU side

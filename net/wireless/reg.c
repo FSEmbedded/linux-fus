@@ -4258,8 +4258,6 @@ static void cfg80211_check_and_end_cac(struct cfg80211_registered_device *rdev)
 				rdev_end_cac(rdev, wdev->netdev, link_id);
 		}
 	}
-
-	wiphy_unlock(&rdev->wiphy);
 }
 
 void regulatory_propagate_dfs_state(struct wiphy *wiphy,

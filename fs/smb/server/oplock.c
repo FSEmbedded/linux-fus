@@ -82,19 +82,11 @@ static void lease_del_list(struct oplock_info *opinfo)
 	spin_unlock(&lb->lb_lock);
 }
 
-static struct lease_table *alloc_lease_table(struct oplock_info *opinfo)
+static void lb_add(struct lease_table *lb)
 {
-	struct lease_table *lb;
-
-	lb = kmalloc(sizeof(struct lease_table), GFP_KERNEL);
-	if (!lb)
-		return NULL;
-
-	memcpy(lb->client_guid, opinfo->conn->ClientGUID,
-	       SMB2_CLIENT_GUID_SIZE);
-	INIT_LIST_HEAD(&lb->lease_list);
-	spin_lock_init(&lb->lb_lock);
-	return lb;
+	write_lock(&lease_list_lock);
+	list_add(&lb->l_entry, &lease_table_list);
+	write_unlock(&lease_list_lock);
 }
 
 static int alloc_lease(struct oplock_info *opinfo, struct lease_ctx_info *lctx)
@@ -128,7 +120,7 @@ static void free_lease(struct oplock_info *opinfo)
 	kfree(lease);
 }
 
-static void __free_opinfo(struct oplock_info *opinfo)
+static void free_opinfo(struct oplock_info *opinfo)
 {
 	if (opinfo->is_lease)
 		free_lease(opinfo);
@@ -184,9 +176,9 @@ void opinfo_put(struct oplock_info *opinfo)
 	free_opinfo(opinfo);
 }
 
-static void opinfo_add(struct oplock_info *opinfo, struct ksmbd_file *fp)
+static void opinfo_add(struct oplock_info *opinfo)
 {
-	struct ksmbd_inode *ci = fp->f_ci;
+	struct ksmbd_inode *ci = opinfo->o_fp->f_ci;
 
 	down_write(&ci->m_lock);
 	list_add(&opinfo->op_entry, &ci->m_op_list);
@@ -472,12 +464,8 @@ static inline int compare_guid_key(struct oplock_info *opinfo,
 				   const char *guid1, const char *key1)
 {
 	const char *guid2, *key2;
-	struct ksmbd_conn *conn;
 
-	conn = READ_ONCE(opinfo->conn);
-	if (!conn)
-		return 0;
-	guid2 = conn->ClientGUID;
+	guid2 = opinfo->conn->ClientGUID;
 	key2 = opinfo->o_lease->lease_key;
 	if (!memcmp(guid1, guid2, SMB2_CLIENT_GUID_SIZE) &&
 	    !memcmp(key1, key2, SMB2_LEASE_KEY_SIZE))
@@ -1042,22 +1030,21 @@ static void copy_lease(struct oplock_info *op1, struct oplock_info *op2)
 	lease2->version = lease1->version;
 }
 
-static void add_lease_global_list(struct oplock_info *opinfo,
-				  struct lease_table *new_lb)
+static int add_lease_global_list(struct oplock_info *opinfo)
 {
 	struct lease_table *lb;
 
-	write_lock(&lease_list_lock);
+	read_lock(&lease_list_lock);
 	list_for_each_entry(lb, &lease_table_list, l_entry) {
 		if (!memcmp(lb->client_guid, opinfo->conn->ClientGUID,
 			    SMB2_CLIENT_GUID_SIZE)) {
 			opinfo->o_lease->l_lb = lb;
 			lease_add_list(opinfo);
-			write_unlock(&lease_list_lock);
-			kfree(new_lb);
-			return;
+			read_unlock(&lease_list_lock);
+			return 0;
 		}
 	}
+	read_unlock(&lease_list_lock);
 
 	lb = kmalloc(sizeof(struct lease_table), KSMBD_DEFAULT_GFP);
 	if (!lb)
@@ -1069,8 +1056,8 @@ static void add_lease_global_list(struct oplock_info *opinfo,
 	spin_lock_init(&lb->lb_lock);
 	opinfo->o_lease->l_lb = lb;
 	lease_add_list(opinfo);
-	list_add(&new_lb->l_entry, &lease_table_list);
-	write_unlock(&lease_list_lock);
+	lb_add(lb);
+	return 0;
 }
 
 static void set_oplock_level(struct oplock_info *opinfo, int level,
@@ -1136,12 +1123,10 @@ void smb_lazy_parent_lease_break_close(struct ksmbd_file *fp)
 
 	rcu_read_lock();
 	opinfo = rcu_dereference(fp->f_opinfo);
-
-	if (!opinfo || !opinfo->is_lease || opinfo->o_lease->version != 2) {
-		rcu_read_unlock();
-		return;
-	}
 	rcu_read_unlock();
+
+	if (!opinfo || !opinfo->is_lease || opinfo->o_lease->version != 2)
+		return;
 
 	p_ci = ksmbd_inode_lookup_lock(fp->filp->f_path.dentry->d_parent);
 	if (!p_ci)
@@ -1190,7 +1175,6 @@ int smb_grant_oplock(struct ksmbd_work *work, int req_op_level, u64 pid,
 	int err = 0;
 	struct oplock_info *opinfo = NULL, *prev_opinfo = NULL;
 	struct ksmbd_inode *ci = fp->f_ci;
-	struct lease_table *new_lb = NULL;
 	bool prev_op_has_lease;
 	__le32 prev_op_state = 0;
 
@@ -1293,37 +1277,20 @@ set_lev:
 	set_oplock_level(opinfo, req_op_level, lctx);
 
 out:
-	/*
-	 * Set o_fp before any publication so that concurrent readers
-	 * (e.g. find_same_lease_key() on the lease list) that
-	 * dereference opinfo->o_fp don't hit a NULL pointer.
-	 *
-	 * Keep the original publication order so concurrent opens can
-	 * still observe the in-flight grant via ci->m_op_list, but make
-	 * everything after opinfo_add() no-fail by preallocating any new
-	 * lease_table first.
-	 */
+	rcu_assign_pointer(fp->f_opinfo, opinfo);
 	opinfo->o_fp = fp;
-	if (opinfo->is_lease) {
-		new_lb = alloc_lease_table(opinfo);
-		if (!new_lb) {
-			err = -ENOMEM;
-			goto err_out;
-		}
-	}
 
 	opinfo_count_inc(fp);
-	opinfo_add(opinfo, fp);
-
-	if (opinfo->is_lease)
-		add_lease_global_list(opinfo, new_lb);
-
-	rcu_assign_pointer(fp->f_opinfo, opinfo);
+	opinfo_add(opinfo);
+	if (opinfo->is_lease) {
+		err = add_lease_global_list(opinfo);
+		if (err)
+			goto err_out;
+	}
 
 	return 0;
 err_out:
-	kfree(new_lb);
-	opinfo_put(opinfo);
+	free_opinfo(opinfo);
 	return err;
 }
 
@@ -1841,7 +1808,6 @@ int smb2_check_durable_oplock(struct ksmbd_conn *conn,
 			      struct ksmbd_share_config *share,
 			      struct ksmbd_file *fp,
 			      struct lease_ctx_info *lctx,
-			      struct ksmbd_user *user,
 			      char *name)
 {
 	struct oplock_info *opinfo = opinfo_get(fp);
@@ -1849,12 +1815,6 @@ int smb2_check_durable_oplock(struct ksmbd_conn *conn,
 
 	if (!opinfo)
 		return 0;
-
-	if (ksmbd_vfs_compare_durable_owner(fp, user) == false) {
-		ksmbd_debug(SMB, "Durable handle reconnect failed: owner mismatch\n");
-		ret = -EBADF;
-		goto out;
-	}
 
 	if (opinfo->is_lease == false) {
 		if (lctx) {

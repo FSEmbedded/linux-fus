@@ -417,10 +417,8 @@ static int catpt_dai_hw_params(struct snd_pcm_substream *substream,
 		return CATPT_IPC_ERROR(ret);
 
 	ret = catpt_dai_apply_usettings(dai, stream);
-	if (ret) {
-		catpt_ipc_free_stream(cdev, stream->info.stream_hw_id);
+	if (ret)
 		return ret;
-	}
 
 	stream->allocated = true;
 	return 0;

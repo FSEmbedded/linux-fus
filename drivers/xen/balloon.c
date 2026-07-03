@@ -763,10 +763,6 @@ static int __init balloon_init(void)
 	xen_balloon_init();
 
 	return 0;
-
- underflow:
-	WARN(1, "Released pages underflow current target");
-	return -ERANGE;
 }
 subsys_initcall(balloon_init);
 

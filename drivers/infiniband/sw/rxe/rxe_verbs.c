@@ -58,12 +58,6 @@ static int rxe_query_port(struct ib_device *ibdev,
 
 	memcpy(attr, &rxe->port.attr, sizeof(*attr));
 
-	ndev = rxe_ib_device_get_netdev(ibdev);
-	if (!ndev) {
-		err = -ENODEV;
-		goto err_out;
-	}
-
 	mutex_lock(&rxe->usdev_lock);
 	ret = ib_get_eth_speed(ibdev, port_num, &attr->active_speed,
 			       &attr->active_width);

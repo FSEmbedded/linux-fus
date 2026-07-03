@@ -80,25 +80,37 @@ static const struct nla_policy ib_nl_addr_policy[LS_NLA_TYPE_MAX] = {
 		.min = sizeof(struct rdma_nla_ls_gid)},
 };
 
-static void ib_nl_process_ip_rsep(const struct nlmsghdr *nlh)
+static inline bool ib_nl_is_good_ip_resp(const struct nlmsghdr *nlh)
 {
 	struct nlattr *tb[LS_NLA_TYPE_MAX] = {};
-	union ib_gid gid;
-	struct addr_req *req;
-	int found = 0;
 	int ret;
 
 	if (nlh->nlmsg_flags & RDMA_NL_LS_F_ERR)
-		return;
+		return false;
 
 	ret = nla_parse_deprecated(tb, LS_NLA_TYPE_MAX - 1, nlmsg_data(nlh),
 				   nlmsg_len(nlh), ib_nl_addr_policy, NULL);
 	if (ret)
-		return;
+		return false;
 
-	if (!tb[LS_NLA_TYPE_DGID])
-		return;
-	memcpy(&gid, nla_data(tb[LS_NLA_TYPE_DGID]), sizeof(gid));
+	return true;
+}
+
+static void ib_nl_process_good_ip_rsep(const struct nlmsghdr *nlh)
+{
+	const struct nlattr *head, *curr;
+	union ib_gid gid;
+	struct addr_req *req;
+	int len, rem;
+	int found = 0;
+
+	head = (const struct nlattr *)nlmsg_data(nlh);
+	len = nlmsg_len(nlh);
+
+	nla_for_each_attr(curr, head, len, rem) {
+		if (curr->nla_type == LS_NLA_TYPE_DGID)
+			memcpy(&gid, nla_data(curr), nla_len(curr));
+	}
 
 	spin_lock_bh(&lock);
 	list_for_each_entry(req, &req_list, list) {
@@ -125,7 +137,8 @@ int ib_nl_handle_ip_res_resp(struct sk_buff *skb,
 	    !(NETLINK_CB(skb).sk))
 		return -EPERM;
 
-	ib_nl_process_ip_rsep(nlh);
+	if (ib_nl_is_good_ip_resp(nlh))
+		ib_nl_process_good_ip_rsep(nlh);
 
 	return 0;
 }
@@ -321,14 +334,11 @@ static int dst_fetch_ha(const struct dst_entry *dst,
 	if (!n)
 		return -ENODATA;
 
-	read_lock_bh(&n->lock);
 	if (!(n->nud_state & NUD_VALID)) {
-		read_unlock_bh(&n->lock);
 		neigh_event_send(n, NULL);
 		ret = -ENODATA;
 	} else {
 		neigh_ha_snapshot(dev_addr->dst_dev_addr, n, dst->dev);
-		read_unlock_bh(&n->lock);
 	}
 
 	neigh_release(n);
@@ -444,10 +454,14 @@ static int addr_resolve_neigh(const struct dst_entry *dst,
 {
 	int ret = 0;
 
-	if (ndev_flags & IFF_LOOPBACK)
+	if (ndev_flags & IFF_LOOPBACK) {
 		memcpy(addr->dst_dev_addr, addr->src_dev_addr, MAX_ADDR_LEN);
-	else
-		ret = fetch_ha(dst, addr, dst_in, seq);
+	} else {
+		if (!(ndev_flags & IFF_NOARP)) {
+			/* If the device doesn't do ARP internally */
+			ret = fetch_ha(dst, addr, dst_in, seq);
+		}
+	}
 	return ret;
 }
 

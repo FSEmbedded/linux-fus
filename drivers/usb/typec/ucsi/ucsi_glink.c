@@ -198,34 +198,6 @@ static void pmic_glink_ucsi_connector_status(struct ucsi_connector *con)
 	}
 }
 
-static void pmic_glink_ucsi_update_connector(struct ucsi_connector *con)
-{
-	struct pmic_glink_ucsi *ucsi = ucsi_get_drvdata(con->ucsi);
-
-	if (con->num > PMIC_GLINK_MAX_PORTS ||
-	    !ucsi->port_orientation[con->num - 1])
-		return;
-
-	con->typec_cap.orientation_aware = true;
-}
-
-static void pmic_glink_ucsi_connector_status(struct ucsi_connector *con)
-{
-	struct pmic_glink_ucsi *ucsi = ucsi_get_drvdata(con->ucsi);
-	int orientation;
-
-	if (con->num > PMIC_GLINK_MAX_PORTS ||
-	    !ucsi->port_orientation[con->num - 1])
-		return;
-
-	orientation = gpiod_get_value(ucsi->port_orientation[con->num - 1]);
-	if (orientation >= 0) {
-		typec_switch_set(ucsi->port_switch[con->num - 1],
-				 orientation ? TYPEC_ORIENTATION_REVERSE
-				 : TYPEC_ORIENTATION_NORMAL);
-	}
-}
-
 static const struct ucsi_operations pmic_glink_ucsi_ops = {
 	.read_version = pmic_glink_ucsi_read_version,
 	.read_cci = pmic_glink_ucsi_read_cci,

@@ -62,8 +62,10 @@ int __init riscv_early_of_processor_hartid(struct device_node *node, unsigned lo
 		return -ENODEV;
 	}
 
-	if (!of_device_is_available(node))
+	if (!of_device_is_available(node)) {
+		pr_info("CPU with hartid=%lu is not available\n", *hart);
 		return -ENODEV;
+	}
 
 	if (of_property_read_string(node, "riscv,isa-base", &isa))
 		goto old_interface;

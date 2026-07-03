@@ -7,6 +7,4 @@ include ../flags.mk
 
 CFLAGS += $(KHDR_INCLUDES)
 
-CFLAGS += $(KHDR_INCLUDES)
-
 $(TEST_GEN_PROGS): ../harness.c ../utils.c

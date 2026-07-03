@@ -272,10 +272,8 @@ static const struct imx_rproc_att imx_rproc_att_imx8mq[] = {
 	{ 0x08000000, 0x08000000, 0x08000000, 0 },
 	/* DDR (Code) - alias */
 	{ 0x10000000, 0x40000000, 0x0FFE0000, 0 },
-	/* TCML */
-	{ 0x1FFE0000, 0x007E0000, 0x00020000, ATT_OWN  | ATT_IOMEM},
-	/* TCMU */
-	{ 0x20000000, 0x00800000, 0x00020000, ATT_OWN  | ATT_IOMEM},
+	/* TCML/U */
+	{ 0x1FFE0000, 0x007E0000, 0x00040000, ATT_OWN  | ATT_IOMEM},
 	/* OCRAM_S */
 	{ 0x20180000, 0x00180000, 0x00008000, ATT_OWN },
 	/* OCRAM */
@@ -833,10 +831,6 @@ static struct resource_table *
 imx_rproc_elf_find_loaded_rsc_table(struct rproc *rproc, const struct firmware *fw)
 {
 	struct imx_rproc *priv = rproc->priv;
-
-	/* No resource table in the firmware */
-	if (!rproc->table_ptr)
-		return NULL;
 
 	if (priv->rsc_table)
 		return (struct resource_table *)priv->rsc_table;

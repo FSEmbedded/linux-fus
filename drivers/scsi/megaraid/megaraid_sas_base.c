@@ -2106,9 +2106,6 @@ static int megasas_device_configure(struct scsi_device *sdev,
 	if (!MEGASAS_IS_LOGICAL(sdev))
 		sdev->no_vpd_size = 1;
 
-	if (!MEGASAS_IS_LOGICAL(sdev))
-		sdev->no_vpd_size = 1;
-
 	mutex_unlock(&instance->reset_mutex);
 
 	return 0;

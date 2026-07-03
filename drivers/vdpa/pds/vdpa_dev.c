@@ -51,7 +51,7 @@ static int pds_vdpa_register_event_handler(struct pds_vdpa_device *pdsv)
 		err = pdsc_register_notify(nb);
 		if (err) {
 			nb->notifier_call = NULL;
-			dev_err(dev, "failed to register pds event handler: %pe\n",
+			dev_err(dev, "failed to register pds event handler: %ps\n",
 				ERR_PTR(err));
 			return -EINVAL;
 		}

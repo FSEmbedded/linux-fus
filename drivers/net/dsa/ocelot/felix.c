@@ -1186,8 +1186,6 @@ static void felix_phylink_mac_config(struct phylink_config *config,
 
 	ocelot->ports[port]->phy_mode = state->interface;
 
-	ocelot->ports[port]->phy_mode = state->interface;
-
 	if (felix->info->phylink_mac_config)
 		felix->info->phylink_mac_config(ocelot, port, mode, state);
 }

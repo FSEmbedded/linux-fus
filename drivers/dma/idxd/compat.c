@@ -20,15 +20,10 @@ static ssize_t unbind_store(struct device_driver *drv, const char *buf, size_t c
 	int rc = -ENODEV;
 
 	dev = bus_find_device_by_name(bus, NULL, buf);
-	if (!dev)
-		return -ENODEV;
-
-	if (dev->driver) {
+	if (dev && dev->driver) {
 		device_driver_detach(dev);
 		rc = count;
 	}
-
-	put_device(dev);
 
 	return rc;
 }
@@ -43,11 +38,8 @@ static ssize_t bind_store(struct device_driver *drv, const char *buf, size_t cou
 	struct idxd_dev *idxd_dev;
 
 	dev = bus_find_device_by_name(bus, NULL, buf);
-	if (!dev)
+	if (!dev || dev->driver || drv != &dsa_drv.drv)
 		return -ENODEV;
-
-	if (dev->driver || drv != &dsa_drv.drv)
-		goto err_put_dev;
 
 	idxd_dev = confdev_to_idxd_dev(dev);
 	if (is_idxd_dev(idxd_dev)) {
@@ -61,20 +53,13 @@ static ssize_t bind_store(struct device_driver *drv, const char *buf, size_t cou
 			alt_drv = driver_find("user", bus);
 	}
 	if (!alt_drv)
-		goto err_put_dev;
+		return -ENODEV;
 
 	rc = device_driver_attach(alt_drv, dev);
 	if (rc < 0)
-		goto err_put_dev;
-
-	put_device(dev);
+		return rc;
 
 	return count;
-
-err_put_dev:
-	put_device(dev);
-
-	return rc;
 }
 static DRIVER_ATTR_IGNORE_LOCKDEP(bind, 0200, NULL, bind_store);
 

@@ -81,14 +81,6 @@ struct neoisp_head_color_cfg_s {
 /**
  * HDR Decompression (hdr_decompress)
  */
-struct neoisp_head_color_cfg_s {
-	__u8 ctrl_hoffset;
-	__u8 ctrl_voffset;
-};
-
-/**
- * HDR Decompression (hdr_decompress)
- */
 struct neoisp_hdr_decompress0_cfg_s {
 	__u8 ctrl_enable;
 	__u16 knee_point1;

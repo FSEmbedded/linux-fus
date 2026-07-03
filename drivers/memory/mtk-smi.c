@@ -564,7 +564,6 @@ static int mtk_smi_larb_probe(struct platform_device *pdev)
 err_pm_disable:
 	pm_runtime_disable(dev);
 	device_link_remove(dev, larb->smi_common_dev);
-	put_device(larb->smi_common_dev);
 	return ret;
 }
 

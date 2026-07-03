@@ -132,12 +132,8 @@ static void do_task(struct rxe_task *task)
 		 * yield the cpu and reschedule the task
 		 */
 		if (!ret) {
-			if (task->state != TASK_STATE_DRAINING) {
-				task->state = TASK_STATE_IDLE;
-				resched = 1;
-			} else {
-				cont = 1;
-			}
+			task->state = TASK_STATE_IDLE;
+			resched = 1;
 			goto exit;
 		}
 

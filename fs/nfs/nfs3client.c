@@ -2,7 +2,6 @@
 #include <linux/nfs_fs.h>
 #include <linux/nfs_mount.h>
 #include <linux/sunrpc/addr.h>
-#include <net/handshake.h>
 #include "internal.h"
 #include "nfs3_fs.h"
 #include "netns.h"
@@ -99,11 +98,7 @@ struct nfs_client *nfs3_set_ds_client(struct nfs_server *mds_srv,
 		.net = mds_clp->cl_net,
 		.timeparms = &ds_timeout,
 		.cred = mds_srv->cred,
-		.xprtsec = {
-			.policy = RPC_XPRTSEC_NONE,
-			.cert_serial = TLS_NO_CERT,
-			.privkey_serial = TLS_NO_PRIVKEY,
-		},
+		.xprtsec = mds_clp->cl_xprtsec,
 		.connect_timeout = connect_timeout,
 		.reconnect_timeout = connect_timeout,
 	};
@@ -119,13 +114,6 @@ struct nfs_client *nfs3_set_ds_client(struct nfs_server *mds_srv,
 	case XPRT_TRANSPORT_RDMA:
 	case XPRT_TRANSPORT_TCP:
 	case XPRT_TRANSPORT_TCP_TLS:
-		if (mds_clp->cl_xprtsec.policy != RPC_XPRTSEC_NONE)
-			cl_init.xprtsec = mds_clp->cl_xprtsec;
-		else
-			ds_proto = XPRT_TRANSPORT_TCP;
-		fallthrough;
-	case XPRT_TRANSPORT_RDMA:
-	case XPRT_TRANSPORT_TCP:
 		if (mds_clp->cl_nconnect > 1)
 			cl_init.nconnect = mds_clp->cl_nconnect;
 	}

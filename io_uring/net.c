@@ -1745,13 +1745,6 @@ int io_connect(struct io_kiocb *req, unsigned int issue_flags)
 			goto get_sock_err;
 	}
 
-	if (connect->in_progress) {
-		struct poll_table_struct pt = { ._key = EPOLLERR };
-
-		if (vfs_poll(req->file, &pt) & EPOLLERR)
-			goto get_sock_err;
-	}
-
 	file_flags = force_nonblock ? O_NONBLOCK : 0;
 
 	ret = __sys_connect_file(req->file, &io->addr, connect->addr_len,

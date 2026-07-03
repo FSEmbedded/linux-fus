@@ -130,14 +130,7 @@ static struct sock *smc_tcp_syn_recv_sock(const struct sock *sk,
 	struct smc_sock *smc;
 	struct sock *child;
 
-	rcu_read_lock();
-	smc = smc_clcsock_user_data_rcu(sk);
-	if (!smc || !refcount_inc_not_zero(&smc->sk.sk_refcnt)) {
-		rcu_read_unlock();
-		smc = NULL;
-		goto drop;
-	}
-	rcu_read_unlock();
+	smc = smc_clcsock_user_data(sk);
 
 	if (READ_ONCE(sk->sk_ack_backlog) + atomic_read(&smc->queued_smc_hs) >
 				sk->sk_max_ack_backlog)
@@ -159,14 +152,11 @@ static struct sock *smc_tcp_syn_recv_sock(const struct sock *sk,
 		if (inet_csk(child)->icsk_af_ops == inet_csk(sk)->icsk_af_ops)
 			inet_csk(child)->icsk_af_ops = smc->ori_af_ops;
 	}
-	sock_put(&smc->sk);
 	return child;
 
 drop:
 	dst_release(dst);
 	tcp_listendrop(sk);
-	if (smc)
-		sock_put(&smc->sk);
 	return NULL;
 }
 
@@ -263,7 +253,7 @@ static void smc_fback_restore_callbacks(struct smc_sock *smc)
 	struct sock *clcsk = smc->clcsock->sk;
 
 	write_lock_bh(&clcsk->sk_callback_lock);
-	rcu_assign_sk_user_data(clcsk, NULL);
+	clcsk->sk_user_data = NULL;
 
 	smc_clcsock_restore_cb(&clcsk->sk_state_change, &smc->clcsk_state_change);
 	smc_clcsock_restore_cb(&clcsk->sk_data_ready, &smc->clcsk_data_ready);
@@ -415,7 +405,8 @@ void smc_sk_init(struct net *net, struct sock *sk, int protocol)
 	smc_close_init(smc);
 }
 
-void smc_sk_init(struct net *net, struct sock *sk, int protocol)
+static struct sock *smc_sock_alloc(struct net *net, struct socket *sock,
+				   int protocol)
 {
 	struct proto *prot;
 	struct sock *sk;
@@ -910,7 +901,7 @@ static void smc_fback_replace_callbacks(struct smc_sock *smc)
 	struct sock *clcsk = smc->clcsock->sk;
 
 	write_lock_bh(&clcsk->sk_callback_lock);
-	__rcu_assign_sk_user_data_with_flags(clcsk, smc, SK_USER_DATA_NOCOPY);
+	clcsk->sk_user_data = (void *)((uintptr_t)smc | SK_USER_DATA_NOCOPY);
 
 	smc_clcsock_replace_cb(&clcsk->sk_state_change, smc_fback_state_change,
 			       &smc->clcsk_state_change);
@@ -1397,8 +1388,7 @@ smc_v2_determine_accepted_chid(struct smc_clc_msg_accept_confirm *aclc,
 	int i;
 
 	for (i = 0; i < ini->ism_offered_cnt + 1; i++) {
-		if (ini->ism_dev[i] &&
-		    ini->ism_chid[i] == ntohs(aclc->d1.chid)) {
+		if (ini->ism_chid[i] == ntohs(aclc->d1.chid)) {
 			ini->ism_selected = i;
 			return 0;
 		}
@@ -2673,8 +2663,8 @@ int smc_listen(struct socket *sock, int backlog)
 	 * smc-specific sk_data_ready function
 	 */
 	write_lock_bh(&smc->clcsock->sk->sk_callback_lock);
-	__rcu_assign_sk_user_data_with_flags(smc->clcsock->sk, smc,
-					     SK_USER_DATA_NOCOPY);
+	smc->clcsock->sk->sk_user_data =
+		(void *)((uintptr_t)smc | SK_USER_DATA_NOCOPY);
 	smc_clcsock_replace_cb(&smc->clcsock->sk->sk_data_ready,
 			       smc_clcsock_data_ready, &smc->clcsk_data_ready);
 	write_unlock_bh(&smc->clcsock->sk->sk_callback_lock);
@@ -2695,11 +2685,10 @@ int smc_listen(struct socket *sock, int backlog)
 		write_lock_bh(&smc->clcsock->sk->sk_callback_lock);
 		smc_clcsock_restore_cb(&smc->clcsock->sk->sk_data_ready,
 				       &smc->clcsk_data_ready);
-		rcu_assign_sk_user_data(smc->clcsock->sk, NULL);
+		smc->clcsock->sk->sk_user_data = NULL;
 		write_unlock_bh(&smc->clcsock->sk->sk_callback_lock);
 		goto out;
 	}
-	sock_set_flag(sk, SOCK_RCU_FREE);
 	sk->sk_max_ack_backlog = backlog;
 	sk->sk_ack_backlog = 0;
 	sk->sk_state = SMC_LISTEN;

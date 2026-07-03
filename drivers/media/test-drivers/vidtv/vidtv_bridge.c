@@ -237,10 +237,8 @@ static int vidtv_start_feed(struct dvb_demux_feed *feed)
 
 	if (dvb->nfeeds == 1) {
 		ret = vidtv_start_streaming(dvb);
-		if (ret < 0) {
-			dvb->nfeeds--;
+		if (ret < 0)
 			rc = ret;
-		}
 	}
 
 	mutex_unlock(&dvb->feed_lock);

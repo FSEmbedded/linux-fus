@@ -1413,9 +1413,6 @@ static int adv7511_probe(struct i2c_client *i2c)
 
 	return 0;
 
-err_unregister_audio:
-	adv7511_audio_exit(adv7511);
-	drm_bridge_remove(&adv7511->bridge);
 err_unregister_cec:
 	cec_unregister_adapter(adv7511->cec_adap);
 	i2c_unregister_device(adv7511->i2c_cec);

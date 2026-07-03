@@ -358,8 +358,6 @@ check_current:
 	if ((high_limit - info->low_limit) < length)
 		return -ENOMEM;
 
-	high_limit = info->high_limit;
-
 	while (true) {
 		unsigned long gap_start, gap_end;
 		unsigned long saved_high_lmt = high_limit;

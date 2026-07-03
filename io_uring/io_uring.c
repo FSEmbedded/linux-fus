@@ -70,7 +70,6 @@
 #include <linux/io_uring/cmd.h>
 #include <linux/audit.h>
 #include <linux/security.h>
-#include <linux/vmalloc.h>
 #include <asm/shmparam.h>
 
 #define CREATE_TRACE_POINTS
@@ -2902,11 +2901,11 @@ static __cold void io_ring_exit_work(struct work_struct *work)
 			mutex_unlock(&ctx->uring_lock);
 		}
 
-		do {
-			if (ctx->flags & IORING_SETUP_DEFER_TASKRUN)
-				io_move_task_work_from_local(ctx);
+		if (ctx->flags & IORING_SETUP_DEFER_TASKRUN)
+			io_move_task_work_from_local(ctx);
+
+		while (io_uring_try_cancel_requests(ctx, NULL, true))
 			cond_resched();
-		} while (io_uring_try_cancel_requests(ctx, NULL, true));
 
 		if (ctx->sq_data) {
 			struct io_sq_data *sqd = ctx->sq_data;

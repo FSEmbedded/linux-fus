@@ -235,6 +235,7 @@ struct imx_port {
 	enum imx_tx_state	tx_state;
 	struct hrtimer		trigger_start_tx;
 	struct hrtimer		trigger_stop_tx;
+
 	struct pm_qos_request   pm_qos_req;
 	unsigned int		rxtl;
 };

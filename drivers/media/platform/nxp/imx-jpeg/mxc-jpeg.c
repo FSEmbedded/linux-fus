@@ -2001,7 +2001,7 @@ static void mxc_jpeg_buf_queue(struct vb2_buffer *vb)
 	jpeg_src_buf = vb2_to_mxc_buf(vb);
 	jpeg_src_buf->jpeg_parse_error = false;
 	ret = mxc_jpeg_parse(ctx, vb);
-	if (ret) {
+	if (ret)
 		jpeg_src_buf->jpeg_parse_error = true;
 
 	/*

@@ -425,7 +425,8 @@ static int ntfs_readdir(struct file *file, struct dir_context *ctx)
 	if (!dir_emit_dots(file, ctx))
 		return 0;
 
-	name = kmalloc(PATH_MAX, GFP_KERNEL);
+	/* Allocate PATH_MAX bytes. */
+	name = __getname();
 	if (!name)
 		return -ENOMEM;
 
@@ -503,7 +504,7 @@ static int ntfs_readdir(struct file *file, struct dir_context *ctx)
 
 out:
 
-	kfree(name);
+	__putname(name);
 	put_indx_node(node);
 
 	if (err == 1) {

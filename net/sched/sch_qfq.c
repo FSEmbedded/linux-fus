@@ -373,7 +373,7 @@ static void qfq_rm_from_agg(struct qfq_sched *q, struct qfq_class *cl)
 /* Deschedule class and remove it from its parent aggregate. */
 static void qfq_deact_rm_from_agg(struct qfq_sched *q, struct qfq_class *cl)
 {
-	if (cl_is_active(cl)) /* class is active */
+	if (cl->qdisc->q.qlen > 0) /* class is active */
 		qfq_deactivate_class(q, cl);
 
 	qfq_rm_from_agg(q, cl);
@@ -532,10 +532,8 @@ set_change_agg:
 	return 0;
 
 destroy_class:
-	if (!existing) {
-		qdisc_put(cl->qdisc);
-		kfree(cl);
-	}
+	qdisc_put(cl->qdisc);
+	kfree(cl);
 	return err;
 }
 
@@ -1486,7 +1484,7 @@ static void qfq_reset_qdisc(struct Qdisc *sch)
 
 	for (i = 0; i < q->clhash.hashsize; i++) {
 		hlist_for_each_entry(cl, &q->clhash.hash[i], common.hnode) {
-			if (cl_is_active(cl))
+			if (cl->qdisc->q.qlen > 0)
 				qfq_deactivate_class(q, cl);
 
 			qdisc_reset(cl->qdisc);

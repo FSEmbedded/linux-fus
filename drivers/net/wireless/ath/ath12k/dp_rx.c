@@ -2485,29 +2485,6 @@ static bool ath12k_dp_rx_check_nwifi_hdr_len_valid(struct ath12k_base *ab,
 	return false;
 }
 
-static bool ath12k_dp_rx_check_nwifi_hdr_len_valid(struct ath12k_base *ab,
-						   struct hal_rx_desc *rx_desc,
-						   struct sk_buff *msdu)
-{
-	struct ieee80211_hdr *hdr;
-	u8 decap_type;
-	u32 hdr_len;
-
-	decap_type = ath12k_dp_rx_h_decap_type(ab, rx_desc);
-	if (decap_type != DP_RX_DECAP_TYPE_NATIVE_WIFI)
-		return true;
-
-	hdr = (struct ieee80211_hdr *)msdu->data;
-	hdr_len = ieee80211_hdrlen(hdr->frame_control);
-
-	if ((likely(hdr_len <= DP_MAX_NWIFI_HDR_LEN)))
-		return true;
-
-	ab->soc_stats.invalid_rbm++;
-	WARN_ON_ONCE(1);
-	return false;
-}
-
 static int ath12k_dp_rx_process_msdu(struct ath12k *ar,
 				     struct sk_buff *msdu,
 				     struct sk_buff_head *msdu_list,

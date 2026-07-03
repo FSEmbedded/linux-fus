@@ -90,7 +90,7 @@ static void *rzn1_dmamux_route_allocate(struct of_phandle_args *dma_spec,
 
 	if (test_and_set_bit(map->req_idx, dmamux->used_chans)) {
 		ret = -EBUSY;
-		goto put_dma_spec_np;
+		goto free_map;
 	}
 
 	mask = BIT(map->req_idx);
@@ -103,8 +103,6 @@ static void *rzn1_dmamux_route_allocate(struct of_phandle_args *dma_spec,
 
 clear_bitmap:
 	clear_bit(map->req_idx, dmamux->used_chans);
-put_dma_spec_np:
-	of_node_put(dma_spec->np);
 free_map:
 	kfree(map);
 put_device:

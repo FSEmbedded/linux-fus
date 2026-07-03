@@ -219,7 +219,6 @@ static void mana_hwc_rx_event_handler(void *ctx, u32 gdma_rxq_id,
 	struct gdma_sge *sge;
 	u64 rq_base_addr;
 	u64 rx_req_idx;
-	u16 msg_id;
 	u8 *wqe;
 
 	if (WARN_ON_ONCE(hwc_rxq->gdma_wq->id != gdma_rxq_id))
@@ -235,9 +234,12 @@ static void mana_hwc_rx_event_handler(void *ctx, u32 gdma_rxq_id,
 	rq_base_addr = hwc_rxq->msg_buf->mem_info.dma_handle;
 	rx_req_idx = (sge->address - rq_base_addr) / hwc->max_req_msg_size;
 
-	if (rx_req_idx >= hwc_rxq->msg_buf->num_reqs) {
-		dev_err(hwc->dev, "HWC RX: wrong rx_req_idx=%llu, num_reqs=%u\n",
-			rx_req_idx, hwc_rxq->msg_buf->num_reqs);
+	rx_req = &hwc_rxq->msg_buf->reqs[rx_req_idx];
+	resp = (struct gdma_resp_hdr *)rx_req->buf_va;
+
+	if (resp->response.hwc_msg_id >= hwc->num_inflight_msg) {
+		dev_err(hwc->dev, "HWC RX: wrong msg_id=%u\n",
+			resp->response.hwc_msg_id);
 		return;
 	}
 
@@ -776,6 +778,9 @@ void mana_hwc_destroy_channel(struct gdma_context *gc)
 		gc->max_num_cqs = 0;
 	}
 
+	kfree(hwc->caller_ctx);
+	hwc->caller_ctx = NULL;
+
 	if (hwc->txq)
 		mana_hwc_destroy_wq(hwc, hwc->txq);
 
@@ -784,9 +789,6 @@ void mana_hwc_destroy_channel(struct gdma_context *gc)
 
 	if (hwc->cq)
 		mana_hwc_destroy_cq(hwc->gdma_dev->gdma_context, hwc->cq);
-
-	kfree(hwc->caller_ctx);
-	hwc->caller_ctx = NULL;
 
 	mana_gd_free_res_map(&hwc->inflight_msg_res);
 

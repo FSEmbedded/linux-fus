@@ -29,8 +29,6 @@ static int enetc_pci_mdio_probe(struct pci_dev *pdev,
 
 	pinctrl_pm_select_default_state(dev);
 
-	pinctrl_pm_select_default_state(dev);
-
 	port_regs = pci_iomap(pdev, 0, 0);
 	if (!port_regs) {
 		dev_err(dev, "iomap failed\n");

@@ -132,39 +132,6 @@ dpu95_plane_alloc_vscaler(struct drm_plane *plane, struct dpu95_fetchunit *fu,
 	return vs;
 }
 
-static int dpu95_plane_alloc_vscaler(struct drm_plane *plane,
-				     struct dpu95_fetchunit *fu,
-				     unsigned int stream_id)
-{
-	struct dpu95_plane *dplane = to_dpu95_plane(plane);
-	const struct dpu95_fetchunit_ops *fu_ops;
-	const struct dpu95_vscaler_ops *vs_ops;
-	struct dpu95_vscaler *vs;
-
-	if (dplane->grp->vs_used) {
-		dpu95_plane_dbg(plane, "failed to alloc VScaler on stream%u\n",
-				stream_id);
-		return -EINVAL;
-	}
-
-	fu_ops = dpu95_fu_get_ops(fu);
-	vs = fu_ops->get_vscaler(fu);
-	vs_ops = dpu95_vs_get_ops(vs);
-
-	/* avoid VScaler hot migration */
-	if (vs_ops->has_stream_id(vs) &&
-	    vs_ops->get_stream_id(vs) != stream_id) {
-		dpu95_plane_dbg(plane,
-				"failed to hot migrate VScaler to stream%u\n",
-				stream_id);
-		return -EINVAL;
-	}
-
-	dplane->grp->vs_used = true;
-
-	return 0;
-}
-
 static int
 dpu95_atomic_assign_plane_source_per_crtc(struct dpu95_crtc *dpu_crtc,
 					  struct drm_plane_state **plane_states,
@@ -276,12 +243,6 @@ dpu95_atomic_assign_plane_source_per_crtc(struct dpu95_crtc *dpu_crtc,
 					return PTR_ERR(vs);
 
 				dpstate->vs = vs;
-			}
-
-			if (need_vs) {
-				ret = dpu95_plane_alloc_vscaler(plane, fu, sid);
-				if (ret)
-					return ret;
 			}
 
 			fu_ops->set_inavailable(fu);

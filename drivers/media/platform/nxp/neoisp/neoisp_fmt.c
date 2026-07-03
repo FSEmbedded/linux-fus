@@ -240,24 +240,6 @@ const struct neoisp_fmt_s formats_vcap_ir[NEOISP_FMT_VCAP_IR_COUNT] = {
 	}
 };
 
-const struct neoisp_fmt_s formats_vcap_ir[NEOISP_FMT_VCAP_IR_COUNT] = {
-	{
-		.fourcc = V4L2_PIX_FMT_GREY,      /* 8-bit Greyscale */
-		.align = 32,
-		.bit_depth = 8,
-		.num_planes = 1,
-		.is_rgb = 0,
-		.type = NEOISP_FMT_VIDEO_CAPTURE
-	}, {
-		.fourcc = V4L2_PIX_FMT_Y16,      /* 16-bit Greyscale */
-		.align = 32,
-		.bit_depth = 16,
-		.num_planes = 1,
-		.is_rgb = 0,
-		.type = NEOISP_FMT_VIDEO_CAPTURE
-	}
-};
-
 const struct neoisp_fmt_s formats_vout[NEOISP_FMT_VOUT_COUNT] = {
 	{
 		.fourcc = V4L2_PIX_FMT_SRGGB8,    /* 8-bit Bayer RGRG/GBGB */

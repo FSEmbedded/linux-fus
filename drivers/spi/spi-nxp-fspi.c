@@ -1328,12 +1328,10 @@ static const struct spi_controller_mem_ops nxp_fspi_mem_ops = {
 
 static const struct spi_controller_mem_caps nxp_fspi_mem_caps = {
 	.dtr = true,
-	.per_op_freq = true,
 };
 
 static const struct spi_controller_mem_caps nxp_fspi_mem_caps_quirks = {
 	.dtr = false,
-	.per_op_freq = true,
 };
 
 static void nxp_fspi_cleanup(void *data)
@@ -1364,7 +1362,7 @@ static int nxp_fspi_probe(struct platform_device *pdev)
 {
 	struct spi_controller *ctlr;
 	struct device *dev = &pdev->dev;
-	struct fwnode_handle *fwnode = dev_fwnode(dev);
+	struct device_node *np = dev->of_node;
 	struct resource *res;
 	struct nxp_fspi *f;
 	int ret;
@@ -1388,7 +1386,7 @@ static int nxp_fspi_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, f);
 
 	/* find the resources - configuration register address space */
-	if (is_acpi_node(fwnode))
+	if (is_acpi_node(dev_fwnode(f->dev)))
 		f->iobase = devm_platform_ioremap_resource(pdev, 0);
 	else
 		f->iobase = devm_platform_ioremap_resource_byname(pdev, "fspi_base");
@@ -1399,7 +1397,7 @@ static int nxp_fspi_probe(struct platform_device *pdev)
 	}
 
 	/* find the resources - controller memory mapped space */
-	if (is_acpi_node(fwnode))
+	if (is_acpi_node(dev_fwnode(f->dev)))
 		res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
 	else
 		res = platform_get_resource_byname(pdev,
@@ -1415,7 +1413,7 @@ static int nxp_fspi_probe(struct platform_device *pdev)
 	f->memmap_phy_size = resource_size(res);
 
 	/* find the clocks */
-	if (is_of_node(fwnode)) {
+	if (dev_of_node(&pdev->dev)) {
 		f->clk_en = devm_clk_get(dev, "fspi_en");
 		if (IS_ERR(f->clk_en)) {
 			ret = PTR_ERR(f->clk_en);
@@ -1458,7 +1456,7 @@ static int nxp_fspi_probe(struct platform_device *pdev)
 	}
 
 	/* check if the controller work in combination or individual mode */
-	f->individual_mode = of_property_read_bool(dev->of_node,
+	f->individual_mode = of_property_read_bool(np,
 						   "nxp,fspi-individual-mode");
 
 	mutex_init(&f->lock);
@@ -1473,7 +1471,7 @@ static int nxp_fspi_probe(struct platform_device *pdev)
 
 	nxp_fspi_default_setup(f);
 
-	device_set_node(&ctlr->dev, fwnode);
+	ctlr->dev.of_node = np;
 
 	ret = devm_add_action_or_reset(dev, nxp_fspi_cleanup, f);
 	if (ret)

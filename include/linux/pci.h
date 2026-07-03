@@ -1069,20 +1069,6 @@ struct pci_driver {
 	.subvendor = PCI_ANY_ID, .subdevice = PCI_ANY_ID, 0, 0
 
 /**
- * PCI_VDEVICE_SUB - describe a specific PCI device/subdevice in a short form
- * @vend: the vendor name
- * @dev: the 16 bit PCI Device ID
- * @subvend: the 16 bit PCI Subvendor ID
- * @subdev: the 16 bit PCI Subdevice ID
- *
- * Generate the pci_device_id struct layout for the specific PCI
- * device/subdevice. Private data may follow the output.
- */
-#define PCI_VDEVICE_SUB(vend, dev, subvend, subdev) \
-	.vendor = PCI_VENDOR_ID_##vend, .device = (dev), \
-	.subvendor = (subvend), .subdevice = (subdev), 0, 0
-
-/**
  * PCI_DEVICE_DATA - macro used to describe a specific PCI device in very short form
  * @vend: the vendor name (without PCI_VENDOR_ID_ prefix)
  * @dev: the device name (without PCI_DEVICE_ID_<vend>_ prefix)
@@ -2709,17 +2695,9 @@ static inline bool pci_is_thunderbolt_attached(struct pci_dev *pdev)
 	return false;
 }
 
-#if defined(CONFIG_PCIEPORTBUS) || defined(CONFIG_EEH) || defined(CONFIG_S390)
+#if defined(CONFIG_PCIEPORTBUS) || defined(CONFIG_EEH)
 void pci_uevent_ers(struct pci_dev *pdev, enum  pci_ers_result err_type);
 #endif
-
-struct msi_domain_template;
-
-bool pci_create_ims_domain(struct pci_dev *pdev, const struct msi_domain_template *template,
-			   unsigned int hwsize, void *data);
-struct msi_map pci_ims_alloc_irq(struct pci_dev *pdev, union msi_instance_cookie *icookie,
-				 const struct irq_affinity_desc *affdesc);
-void pci_ims_free_irq(struct pci_dev *pdev, struct msi_map map);
 
 #include <linux/dma-mapping.h>
 

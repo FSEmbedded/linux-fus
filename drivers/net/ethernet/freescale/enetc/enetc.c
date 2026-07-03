@@ -251,24 +251,6 @@ static int enetc_ptp_parse(struct sk_buff *skb, u8 *udp,
 	return 0;
 }
 
-/**
- * enetc_unwind_tx_frame() - Unwind the DMA mappings of a multi-buffer Tx frame
- * @tx_ring: Pointer to the Tx ring on which the buffer descriptors are located
- * @count: Number of Tx buffer descriptors which need to be unmapped
- * @i: Index of the last successfully mapped Tx buffer descriptor
- */
-static void enetc_unwind_tx_frame(struct enetc_bdr *tx_ring, int count, int i)
-{
-	while (count--) {
-		struct enetc_tx_swbd *tx_swbd = &tx_ring->tx_swbd[i];
-
-		enetc_free_tx_frame(tx_ring, tx_swbd);
-		if (i == 0)
-			i = tx_ring->bd_count;
-		i--;
-	}
-}
-
 static void enetc_set_one_step_ts(struct enetc_si *si, bool udp, int offset)
 {
 	u32 val = ENETC_PM0_SINGLE_STEP_EN;
@@ -1814,8 +1796,6 @@ static int enetc_clean_rx_ring(struct enetc_bdr *rx_ring,
 	/* next descriptor to process */
 	i = rx_ring->next_to_clean;
 
-	enetc_lock_mdio();
-
 	while (likely(rx_frm_cnt < work_limit)) {
 		union enetc_rx_bd *rxbd;
 		struct sk_buff *skb;
@@ -1851,17 +1831,13 @@ static int enetc_clean_rx_ring(struct enetc_bdr *rx_ring,
 		rx_byte_cnt += skb->len + ETH_HLEN;
 		rx_frm_cnt++;
 
-		enetc_unlock_mdio();
 		napi_gro_receive(napi, skb);
-		enetc_lock_mdio();
 	}
 
 	rx_ring->next_to_clean = i;
 
 	rx_ring->stats.packets += rx_frm_cnt;
 	rx_ring->stats.bytes += rx_byte_cnt;
-
-	enetc_unlock_mdio();
 
 	return rx_frm_cnt;
 }
@@ -1978,29 +1954,6 @@ dma_map_err:
 	}
 
 	return -ENOMEM;
-}
-
-static inline void enetc_tx_queue_lock(struct enetc_bdr *tx_ring, int cpu)
-{
-	struct enetc_ndev_priv *priv = netdev_priv(tx_ring->ndev);
-	struct netdev_queue *nq;
-
-	if (priv->shared_tx_rings) {
-		nq = netdev_get_tx_queue(tx_ring->ndev, tx_ring->index);
-		__netif_tx_lock(nq, cpu);
-		txq_trans_cond_update(nq);
-	}
-}
-
-static inline void enetc_tx_queue_unlock(struct enetc_bdr *tx_ring)
-{
-	struct enetc_ndev_priv *priv = netdev_priv(tx_ring->ndev);
-	struct netdev_queue *nq;
-
-	if (priv->shared_tx_rings) {
-		nq = netdev_get_tx_queue(tx_ring->ndev, tx_ring->index);
-		__netif_tx_unlock(nq);
-	}
 }
 
 static inline void enetc_tx_queue_lock(struct enetc_bdr *tx_ring, int cpu)
@@ -2203,8 +2156,6 @@ static int enetc_clean_rx_ring_xdp(struct enetc_bdr *rx_ring,
 {
 	int xdp_tx_bd_cnt, xdp_tx_frm_cnt = 0, xdp_redirect_frm_cnt = 0;
 	struct enetc_ndev_priv *priv = netdev_priv(rx_ring->ndev);
-	int max_txbd_num = ENETC_TXBDS_NEEDED(priv->max_frags_bd);
-	struct enetc_tx_swbd *xdp_tx_arr __free(kfree);
 	int rx_frm_cnt = 0, rx_byte_cnt = 0;
 	int cpu = smp_processor_id();
 	struct enetc_bdr *tx_ring;
@@ -2212,15 +2163,9 @@ static int enetc_clean_rx_ring_xdp(struct enetc_bdr *rx_ring,
 	u32 xdp_act;
 	u32 frm_len;
 
-	xdp_tx_arr = kcalloc(max_txbd_num, sizeof(*xdp_tx_arr), GFP_ATOMIC);
-	if (unlikely(!xdp_tx_arr))
-		return -ENOMEM;
-
 	cleaned_cnt = enetc_bd_unused(rx_ring);
 	/* next descriptor to process */
 	i = rx_ring->next_to_clean;
-
-	enetc_lock_mdio();
 
 	while (likely(rx_frm_cnt < work_limit)) {
 		union enetc_rx_bd *rxbd, *orig_rxbd;
@@ -2290,9 +2235,7 @@ static int enetc_clean_rx_ring_xdp(struct enetc_bdr *rx_ring,
 			 */
 			enetc_bulk_flip_buff(rx_ring, orig_i, i);
 
-			enetc_unlock_mdio();
 			napi_gro_receive(napi, skb);
-			enetc_lock_mdio();
 			break;
 		case XDP_TX:
 			xdp_tx_bd_cnt = enetc_num_bd(rx_ring, orig_i, i);
@@ -2361,8 +2304,6 @@ out:
 	if (cleaned_cnt > rx_ring->xdp.xdp_tx_in_flight)
 		enetc_refill_rx_ring(rx_ring, enetc_bd_unused(rx_ring) -
 				     rx_ring->xdp.xdp_tx_in_flight);
-
-	enetc_unlock_mdio();
 
 	return rx_frm_cnt;
 }
@@ -3011,7 +2952,6 @@ static int enetc_poll(struct napi_struct *napi, int budget)
 	for (i = 0; i < v->count_tx_rings; i++)
 		if (!enetc_clean_tx_ring(&v->tx_ring[i], budget, &xsk_tx_cnt))
 			complete = false;
-	enetc_unlock_mdio();
 
 	prog = rx_ring->xdp.prog;
 	pool = rx_ring->xdp.xsk_pool;
@@ -3039,8 +2979,10 @@ static int enetc_poll(struct napi_struct *napi, int budget)
 	if (work_done)
 		v->rx_napi_work = true;
 
-	if (!complete)
+	if (!complete) {
+		enetc_unlock_mdio();
 		return budget;
+	}
 
 	napi_complete_done(napi, work_done);
 
@@ -3049,7 +2991,6 @@ static int enetc_poll(struct napi_struct *napi, int budget)
 
 	v->rx_napi_work = false;
 
-	enetc_lock_mdio();
 	/* enable interrupts */
 	enetc_wr_reg_hot(v->rbier, ENETC_RBIER_RXTIE);
 
@@ -3944,8 +3885,6 @@ void enetc_start(struct net_device *ndev)
 
 	enetc_setup_interrupts(priv);
 
-	enetc_enable_tx_bdrs(priv);
-
 	for (i = 0; i < priv->bdr_int_num; i++) {
 		int irq = pci_irq_vector(priv->si->pdev,
 					 ENETC_BDR_INT_BASE_IDX + i);
@@ -4406,7 +4345,6 @@ static int enetc_reconfigure_xdp_cb(struct enetc_ndev_priv *priv, void *ctx)
 	for (i = 0; i < priv->num_rx_rings; i++) {
 		struct enetc_bdr *rx_ring = priv->rx_ring[i];
 
-		rx_ring->xdp.xdp_tx_in_flight = 0;
 		rx_ring->xdp.prog = prog;
 
 		if (prog)

@@ -537,17 +537,10 @@ void dsi_link_clk_disable_v2(struct msm_dsi_host *msm_host)
 static unsigned long dsi_adjust_pclk_for_compression(const struct drm_display_mode *mode,
 		const struct drm_dsc_config *dsc)
 {
-	int hdisplay, new_hdisplay, new_htotal;
+	int new_hdisplay = DIV_ROUND_UP(mode->hdisplay * drm_dsc_get_bpp_int(dsc),
+			dsc->bits_per_component * 3);
 
-	/*
-	 * For bonded DSI, split hdisplay across two links and round up each
-	 * half separately, passing the full hdisplay would only round up once.
-	 * This also aligns with the hdisplay we program later in
-	 * dsi_timing_setup()
-	 */
-	hdisplay = mode->hdisplay;
-	if (is_bonded_dsi)
-		hdisplay /= 2;
+	int new_htotal = mode->htotal - mode->hdisplay + new_hdisplay;
 
 	return mult_frac(mode->clock * 1000u, new_htotal, mode->htotal);
 }
@@ -560,7 +553,7 @@ static unsigned long dsi_get_pclk_rate(const struct drm_display_mode *mode,
 	pclk_rate = mode->clock * 1000u;
 
 	if (dsc)
-		pclk_rate = dsi_adjust_pclk_for_compression(mode, dsc, is_bonded_dsi);
+		pclk_rate = dsi_adjust_pclk_for_compression(mode, dsc);
 
 	/*
 	 * For bonded DSI mode, the current DRM mode has the complete width of the
@@ -1924,7 +1917,6 @@ int msm_dsi_host_init(struct msm_dsi *msm_dsi)
 
 	/* fixup base address by io offset */
 	msm_host->ctrl_base += cfg->io_offset;
-	msm_host->ctrl_size -= cfg->io_offset;
 
 	ret = devm_regulator_bulk_get_const(&pdev->dev, cfg->num_regulators,
 					    cfg->regulator_data,

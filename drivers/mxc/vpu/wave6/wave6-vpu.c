@@ -257,7 +257,6 @@ static int wave6_vpu_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	mutex_init(&dev->hw_lock);
-	mutex_init(&dev->pause_lock);
 	init_completion(&dev->irq_done);
 	dev_set_drvdata(&pdev->dev, dev);
 	dev->dev = &pdev->dev;
@@ -466,10 +465,11 @@ static int wave6_vpu_runtime_resume(struct device *dev)
 #ifdef CONFIG_PM_SLEEP
 static int wave6_vpu_suspend(struct device *dev)
 {
+	struct vpu_device *vpu_dev = dev_get_drvdata(dev);
 	int ret;
 
 	dprintk(dev, "suspend\n");
-	wave6_vpu_pause(dev, 0);
+	v4l2_m2m_suspend(vpu_dev->m2m_dev);
 
 	ret = pm_runtime_force_suspend(dev);
 	if (ret)
@@ -480,6 +480,7 @@ static int wave6_vpu_suspend(struct device *dev)
 
 static int wave6_vpu_resume(struct device *dev)
 {
+	struct vpu_device *vpu_dev = dev_get_drvdata(dev);
 	int ret;
 
 	dprintk(dev, "resume\n");
@@ -487,7 +488,7 @@ static int wave6_vpu_resume(struct device *dev)
 	if (ret)
 		return ret;
 
-	wave6_vpu_pause(dev, 1);
+	v4l2_m2m_resume(vpu_dev->m2m_dev);
 	return 0;
 }
 #endif

@@ -535,8 +535,6 @@ extern u32 default_cpu_present_to_apicid(int mps_cpu);
 
 void apic_send_nmi_to_offline_cpu(unsigned int cpu);
 
-void apic_send_nmi_to_offline_cpu(unsigned int cpu);
-
 #else /* CONFIG_X86_LOCAL_APIC */
 
 static inline u32 read_apic_id(void) { return 0; }

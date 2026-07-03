@@ -176,9 +176,6 @@ static void __page_state_change(unsigned long paddr, enum psc_op op)
 	/* Save the current GHCB MSR value */
 	msr = sev_es_rd_ghcb_msr();
 
-	/* Save the current GHCB MSR value */
-	msr = sev_es_rd_ghcb_msr();
-
 	/* Issue VMGEXIT to change the page state in RMP table. */
 	sev_es_wr_ghcb_msr(GHCB_MSR_PSC_REQ_GFN(paddr >> PAGE_SHIFT, op));
 	VMGEXIT();
@@ -360,7 +357,6 @@ finish:
 				 MSR_AMD64_SNP_VMSA_REG_PROT |		\
 				 MSR_AMD64_SNP_RESERVED_BIT13 |		\
 				 MSR_AMD64_SNP_RESERVED_BIT15 |		\
-				 MSR_AMD64_SNP_RESERVED_BITS18_22 |	\
 				 MSR_AMD64_SNP_RESERVED_MASK)
 
 /*

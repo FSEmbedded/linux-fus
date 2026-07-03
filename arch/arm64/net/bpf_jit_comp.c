@@ -33,8 +33,8 @@
 #define ARENA_VM_START (MAX_BPF_JIT_REG + 5)
 
 #define check_imm(bits, imm) do {				\
-	if ((((imm) > 0) && ((imm) >> ((bits) - 1))) ||		\
-	    (((imm) < 0) && (~(imm) >> ((bits) - 1)))) {	\
+	if ((((imm) > 0) && ((imm) >> (bits))) ||		\
+	    (((imm) < 0) && (~(imm) >> (bits)))) {		\
 		pr_info("[%2d] imm=%d(0x%x) out of range\n",	\
 			i, imm, imm);				\
 		return -EINVAL;					\
@@ -916,9 +916,6 @@ static void build_epilogue(struct jit_ctx *ctx, bool was_classic)
 	pop_callee_regs(ctx);
 
 	emit(A64_POP(A64_ZR, ptr, A64_SP), ctx);
-
-	if (was_classic)
-		build_bhb_mitigation(ctx);
 
 	if (was_classic)
 		build_bhb_mitigation(ctx);

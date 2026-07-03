@@ -267,7 +267,6 @@ static int enetc_msg_vf_set_uc_exact_filter(struct net_device *ndev)
 		return -ENOMEM;
 	}
 
-	mac_cnt = 0;
 	msg = (struct enetc_msg_mac_exact_filter *)msg_swbd.vaddr;
 	netdev_for_each_uc_addr(ha, ndev) {
 		if (!is_valid_ether_addr(ha->addr) ||

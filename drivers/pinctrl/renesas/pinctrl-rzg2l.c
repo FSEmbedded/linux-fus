@@ -2592,8 +2592,6 @@ static int rzg2l_gpio_register(struct rzg2l_pinctrl *pctrl)
 
 	of_node_put(of_args.np);
 
-	of_node_put(of_args.np);
-
 	if (of_args.args[0] != 0 || of_args.args[1] != 0 ||
 	    of_args.args[2] != pctrl->data->n_port_pins)
 		return dev_err_probe(pctrl->dev, -EINVAL,

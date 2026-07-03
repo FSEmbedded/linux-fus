@@ -376,18 +376,8 @@ static int hellcreek_led_setup(struct hellcreek *hellcreek)
 		hellcreek_set_brightness(hellcreek, STATUS_OUT_IS_GM, 1);
 
 	/* Register both leds */
-	ret = led_classdev_register(hellcreek->dev, &hellcreek->led_sync_good);
-	if (ret) {
-		dev_err(hellcreek->dev, "Failed to register sync_good LED\n");
-		goto out;
-	}
-
-	ret = led_classdev_register(hellcreek->dev, &hellcreek->led_is_gm);
-	if (ret) {
-		dev_err(hellcreek->dev, "Failed to register is_gm LED\n");
-		led_classdev_unregister(&hellcreek->led_sync_good);
-		goto out;
-	}
+	led_classdev_register(hellcreek->dev, &hellcreek->led_sync_good);
+	led_classdev_register(hellcreek->dev, &hellcreek->led_is_gm);
 
 	ret = 0;
 

@@ -2431,12 +2431,14 @@ static int replay_one_buffer(struct btrfs_root *log, struct extent_buffer *eb,
 	int i;
 	int ret;
 
-	if (level != 0)
-		return 0;
-
 	ret = btrfs_read_extent_buffer(eb, &check);
 	if (ret)
 		return ret;
+
+	level = btrfs_header_level(eb);
+
+	if (level != 0)
+		return 0;
 
 	path = btrfs_alloc_path();
 	if (!path)
@@ -4281,9 +4283,6 @@ static void fill_inode_item(struct btrfs_trans_handle *trans,
 	btrfs_set_timespec_sec(leaf, &item->otime, BTRFS_I(inode)->i_otime_sec);
 	btrfs_set_timespec_nsec(leaf, &item->otime, BTRFS_I(inode)->i_otime_nsec);
 
-	btrfs_set_timespec_sec(leaf, &item->otime, BTRFS_I(inode)->i_otime_sec);
-	btrfs_set_timespec_nsec(leaf, &item->otime, BTRFS_I(inode)->i_otime_nsec);
-
 	/*
 	 * We do not need to set the nbytes field, in fact during a fast fsync
 	 * its value may not even be correct, since a fast fsync does not wait
@@ -5522,6 +5521,14 @@ static int log_new_dir_dentries(struct btrfs_trans_handle *trans,
 	struct btrfs_inode *curr_inode = start_inode;
 	int ret = 0;
 
+	/*
+	 * If we are logging a new name, as part of a link or rename operation,
+	 * don't bother logging new dentries, as we just want to log the names
+	 * of an inode and that any new parents exist.
+	 */
+	if (ctx->logging_new_name)
+		return 0;
+
 	path = btrfs_alloc_path();
 	if (!path)
 		return -ENOMEM;
@@ -5700,33 +5707,6 @@ static int conflicting_inode_is_dir(struct btrfs_root *root, u64 ino,
 	return ret;
 }
 
-static bool can_log_conflicting_inode(const struct btrfs_trans_handle *trans,
-				      const struct btrfs_inode *inode)
-{
-	if (!S_ISDIR(inode->vfs_inode.i_mode))
-		return true;
-
-	if (inode->last_unlink_trans < trans->transid)
-		return true;
-
-	/*
-	 * If this is a directory and its unlink_trans is not from a past
-	 * transaction then we must fallback to a transaction commit in order
-	 * to avoid getting a directory with 2 hard links after log replay.
-	 *
-	 * This happens if a directory A is renamed, moved from one parent
-	 * directory to another one, a new file is created in the old parent
-	 * directory with the old name of our directory A, the new file is
-	 * fsynced, then we moved the new file to some other parent directory
-	 * and fsync again the new file. This results in a log tree where we
-	 * logged that directory A existed, with the INODE_REF item for the
-	 * new location but without having logged its old parent inode, so
-	 * that on log replay we add a new link for the new location but the
-	 * old link remains, resulting in a link count of 2.
-	 */
-	return false;
-}
-
 static int add_conflicting_inode(struct btrfs_trans_handle *trans,
 				 struct btrfs_root *root,
 				 struct btrfs_path *path,
@@ -5847,7 +5827,6 @@ static int log_conflicting_inodes(struct btrfs_trans_handle *trans,
 				  struct btrfs_root *root,
 				  struct btrfs_log_ctx *ctx)
 {
-	const bool orig_log_new_dentries = ctx->log_new_dentries;
 	int ret = 0;
 
 	/*
@@ -5895,12 +5874,6 @@ static int log_conflicting_inodes(struct btrfs_trans_handle *trans,
 				break;
 			}
 
-			if (!can_log_conflicting_inode(trans, inode)) {
-				btrfs_add_delayed_iput(inode);
-				ret = BTRFS_LOG_FORCE_COMMIT;
-				break;
-			}
-
 			/*
 			 * Always log the directory, we cannot make this
 			 * conditional on need_log_inode() because the directory
@@ -5944,7 +5917,6 @@ static int log_conflicting_inodes(struct btrfs_trans_handle *trans,
 			break;
 	}
 
-	ctx->log_new_dentries = orig_log_new_dentries;
 	ctx->logging_conflict_inodes = false;
 	if (ret)
 		free_conflicting_inodes(ctx);
@@ -5995,8 +5967,10 @@ again:
 			 * and no keys greater than that, so bail out.
 			 */
 			break;
-		} else if (min_key->type == BTRFS_INODE_REF_KEY ||
-			   min_key->type == BTRFS_INODE_EXTREF_KEY) {
+		} else if ((min_key->type == BTRFS_INODE_REF_KEY ||
+			    min_key->type == BTRFS_INODE_EXTREF_KEY) &&
+			   (inode->generation == trans->transid ||
+			    ctx->logging_conflict_inodes)) {
 			u64 other_ino = 0;
 			u64 other_parent = 0;
 
@@ -6786,7 +6760,7 @@ log_extents:
 	 *    a power failure unless the log was synced as part of an fsync
 	 *    against any other unrelated inode.
 	 */
-	if (!ctx->logging_new_name && inode_only != LOG_INODE_EXISTS)
+	if (inode_only != LOG_INODE_EXISTS)
 		inode->last_log_commit = inode->last_sub_trans;
 	spin_unlock(&inode->lock);
 
@@ -7448,6 +7422,7 @@ next:
 
 	log_root_tree->log_root = NULL;
 	clear_bit(BTRFS_FS_LOG_RECOVERING, &fs_info->flags);
+	btrfs_put_root(log_root_tree);
 
 	return 0;
 error:

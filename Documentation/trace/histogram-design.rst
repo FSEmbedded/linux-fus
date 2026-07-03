@@ -380,9 +380,7 @@ entry, ts0, corresponding to the ts0 variable in the sched_waking
 trigger above.
 
 sched_waking histogram
-----------------------
-
-.. code-block::
+----------------------::
 
   +------------------+
   | hist_data        |<-------------------------------------------------------+

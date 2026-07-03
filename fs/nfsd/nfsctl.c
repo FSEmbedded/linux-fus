@@ -152,17 +152,7 @@ static int exports_net_open(struct net *net, struct file *file)
 
 	seq = file->private_data;
 	seq->private = nn->svc_export_cache;
-	get_net(net);
 	return 0;
-}
-
-static int exports_release(struct inode *inode, struct file *file)
-{
-	struct seq_file *seq = file->private_data;
-	struct cache_detail *cd = seq->private;
-
-	put_net(cd->net);
-	return seq_release(inode, file);
 }
 
 static int exports_nfsd_open(struct inode *inode, struct file *file)
@@ -174,7 +164,7 @@ static const struct file_operations exports_nfsd_operations = {
 	.open		= exports_nfsd_open,
 	.read		= seq_read,
 	.llseek		= seq_lseek,
-	.release	= exports_release,
+	.release	= seq_release,
 };
 
 static int export_features_show(struct seq_file *m, void *v)
@@ -1133,9 +1123,10 @@ static ssize_t write_v4_end_grace(struct file *file, char *buf, size_t size)
 		case 'Y':
 		case 'y':
 		case '1':
-			if (!nfsd4_force_end_grace(nn))
+			if (!nn->nfsd_serv)
 				return -EBUSY;
 			trace_nfsd_end_grace(netns(file));
+			nfsd4_end_grace(nn);
 			break;
 		default:
 			return -EINVAL;
@@ -1459,7 +1450,7 @@ static const struct proc_ops exports_proc_ops = {
 	.proc_open	= exports_proc_open,
 	.proc_read	= seq_read,
 	.proc_lseek	= seq_lseek,
-	.proc_release	= exports_release,
+	.proc_release	= seq_release,
 };
 
 static int create_proc_exports_entry(void)

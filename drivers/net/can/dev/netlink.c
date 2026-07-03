@@ -294,7 +294,7 @@ static int can_changelink(struct net_device *dev, struct nlattr *tb[],
 		/* Do not allow changing restart delay while running */
 		if (dev->flags & IFF_UP)
 			return -EBUSY;
-		priv->restart_ms = restart_ms;
+		priv->restart_ms = nla_get_u32(data[IFLA_CAN_RESTART_MS]);
 	}
 
 	if (data[IFLA_CAN_RESTART]) {

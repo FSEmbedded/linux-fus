@@ -3589,8 +3589,10 @@ static int kbase_pm_do_reset_soft(struct kbase_device *kbdev)
 	return 0;
 }
 
-static int kbase_pm_do_reset_soft(struct kbase_device *kbdev)
+static int kbase_pm_do_reset(struct kbase_device *kbdev)
 {
+	struct kbasep_reset_timeout_data rtdata;
+	u32 reg_offset, reg_val;
 	int ret;
 
 	KBASE_KTRACE_ADD(kbdev, CORE_GPU_SOFT_RESET, NULL, 0);
@@ -3614,8 +3616,6 @@ static int kbase_pm_do_reset_soft(struct kbase_device *kbdev)
 		}
 		kbase_reg_write32(kbdev, reg_offset, reg_val);
 	}
-	return 0;
-}
 
 	/* Initialize a structure for tracking the status of the reset */
 	rtdata.kbdev = kbdev;

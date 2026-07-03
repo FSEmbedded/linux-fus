@@ -149,6 +149,8 @@ static int stih407_usb2_picophy_probe(struct platform_device *pdev)
 	if (IS_ERR(phy_provider))
 		return PTR_ERR(phy_provider);
 
+	dev_info(dev, "STiH407 USB Generic picoPHY driver probed!");
+
 	return 0;
 }
 

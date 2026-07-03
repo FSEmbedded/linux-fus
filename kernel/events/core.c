@@ -4634,7 +4634,7 @@ static void __perf_event_read(void *info)
 	struct perf_event *sub, *event = data->event;
 	struct perf_event_context *ctx = event->ctx;
 	struct perf_cpu_context *cpuctx = this_cpu_ptr(&perf_cpu_context);
-	struct pmu *pmu;
+	struct pmu *pmu = event->pmu;
 
 	/*
 	 * If this is a task context, we need to check whether it is
@@ -4654,15 +4654,14 @@ static void __perf_event_read(void *info)
 		perf_event_update_sibling_time(event);
 
 	if (event->state != PERF_EVENT_STATE_ACTIVE)
-		return;
+		goto unlock;
 
 	if (!data->group) {
-		perf_pmu_read(event);
+		pmu->read(event);
 		data->ret = 0;
-		return;
+		goto unlock;
 	}
 
-	pmu = event->pmu_ctx->pmu;
 	pmu->start_txn(pmu, PERF_PMU_TXN_READ);
 
 	pmu->read(event);
@@ -4671,6 +4670,9 @@ static void __perf_event_read(void *info)
 		perf_pmu_read(sub);
 
 	data->ret = pmu->commit_txn(pmu);
+
+unlock:
+	raw_spin_unlock(&ctx->lock);
 }
 
 static inline u64 perf_event_count(struct perf_event *event, bool self)
@@ -7093,7 +7095,7 @@ static void perf_sample_regs_user(struct perf_regs *regs_user,
 	if (user_mode(regs)) {
 		regs_user->abi = perf_reg_abi(current);
 		regs_user->regs = regs;
-	} else if (is_user_task(current)) {
+	} else if (!(current->flags & PF_KTHREAD)) {
 		perf_get_regs_user(regs_user, regs);
 	} else {
 		regs_user->abi = PERF_SAMPLE_REGS_ABI_NONE;
@@ -7733,7 +7735,7 @@ static u64 perf_virt_to_phys(u64 virt)
 		 * Try IRQ-safe get_user_page_fast_only first.
 		 * If failed, leave phys_addr as 0.
 		 */
-		if (is_user_task(current)) {
+		if (current->mm != NULL) {
 			struct page *p;
 
 			pagefault_disable();
@@ -7845,8 +7847,7 @@ struct perf_callchain_entry *
 perf_callchain(struct perf_event *event, struct pt_regs *regs)
 {
 	bool kernel = !event->attr.exclude_callchain_kernel;
-	bool user   = !event->attr.exclude_callchain_user &&
-		is_user_task(current);
+	bool user   = !event->attr.exclude_callchain_user;
 	/* Disallow cross-task user callchains. */
 	bool crosstask = event->ctx->task && event->ctx->task != current;
 	const u32 max_stack = event->attr.sample_max_stack;
@@ -9999,13 +10000,6 @@ int perf_event_overflow(struct perf_event *event,
 			struct perf_sample_data *data,
 			struct pt_regs *regs)
 {
-	/*
-	 * Entry point from hardware PMI, interrupts should be disabled here.
-	 * This serializes us against perf_event_remove_from_context() in
-	 * things like perf_event_release_kernel().
-	 */
-	lockdep_assert_irqs_disabled();
-
 	return __perf_event_overflow(event, 1, data, regs);
 }
 
@@ -10082,35 +10076,12 @@ static void perf_swevent_event(struct perf_event *event, u64 nr,
 {
 	struct hw_perf_event *hwc = &event->hw;
 
-	/*
-	 * This is:
-	 *   - software		preempt
-	 *   - tracepoint	preempt
-	 *   -   tp_target_task	irq (ctx->lock)
-	 *   - uprobes		preempt/irq
-	 *   - kprobes		preempt/irq
-	 *   - hw_breakpoint	irq
-	 *
-	 * Any of these are sufficient to hold off RCU and thus ensure @event
-	 * exists.
-	 */
-	lockdep_assert_preemption_disabled();
 	local64_add(nr, &event->count);
 
 	if (!regs)
 		return;
 
 	if (!is_sampling_event(event))
-		return;
-
-	/*
-	 * Serialize against event_function_call() IPIs like normal overflow
-	 * event handling. Specifically, must not allow
-	 * perf_event_release_kernel() -> perf_remove_from_context() to make
-	 * progress and 'release' the event from under us.
-	 */
-	guard(irqsave)();
-	if (event->state != PERF_EVENT_STATE_ACTIVE)
 		return;
 
 	if ((event->attr.sample_type & PERF_SAMPLE_PERIOD) && !event->attr.freq) {
@@ -10612,11 +10583,6 @@ void perf_tp_event(u16 event_type, u64 count, void *record, int entry_size,
 	struct perf_sample_data data;
 	struct perf_event *event;
 
-	/*
-	 * Per being a tracepoint, this runs with preemption disabled.
-	 */
-	lockdep_assert_preemption_disabled();
-
 	struct perf_raw_record raw = {
 		.frag = {
 			.size = entry_size,
@@ -10938,11 +10904,6 @@ void perf_bp_event(struct perf_event *bp, void *data)
 {
 	struct perf_sample_data sample;
 	struct pt_regs *regs = data;
-
-	/*
-	 * Exception context, will have interrupts disabled.
-	 */
-	lockdep_assert_irqs_disabled();
 
 	perf_sample_data_init(&sample, bp->attr.bp_addr, 0);
 
@@ -11396,7 +11357,7 @@ static enum hrtimer_restart perf_swevent_hrtimer(struct hrtimer *hrtimer)
 
 	if (regs && !perf_exclude_event(event, regs)) {
 		if (!(event->attr.exclude_idle && is_idle_task(current)))
-			if (perf_event_overflow(event, &data, regs))
+			if (__perf_event_overflow(event, 1, &data, regs))
 				ret = HRTIMER_NORESTART;
 	}
 

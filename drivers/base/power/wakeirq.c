@@ -83,16 +83,13 @@ EXPORT_SYMBOL_GPL(dev_pm_set_wake_irq);
  */
 void dev_pm_clear_wake_irq(struct device *dev)
 {
-	struct wake_irq *wirq;
+	struct wake_irq *wirq = dev->power.wakeirq;
 	unsigned long flags;
 
-	spin_lock_irqsave(&dev->power.lock, flags);
-	wirq = dev->power.wakeirq;
-	if (!wirq) {
-		spin_unlock_irqrestore(&dev->power.lock, flags);
+	if (!wirq)
 		return;
-	}
 
+	spin_lock_irqsave(&dev->power.lock, flags);
 	device_wakeup_detach_irq(dev);
 	dev->power.wakeirq = NULL;
 	spin_unlock_irqrestore(&dev->power.lock, flags);

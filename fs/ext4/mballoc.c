@@ -718,6 +718,15 @@ static void __mb_check_buddy(struct ext4_buddy *e4b, char *file,
 				continue;
 			}
 
+			/* both bits in buddy2 must be 1 */
+			MB_CHECK_ASSERT(mb_test_bit(i << 1, buddy2));
+			MB_CHECK_ASSERT(mb_test_bit((i << 1) + 1, buddy2));
+
+			for (j = 0; j < (1 << order); j++) {
+				k = (i * (1 << order)) + j;
+				MB_CHECK_ASSERT(
+					!mb_test_bit(k, e4b->bd_bitmap));
+			}
 			count++;
 		}
 		MB_CHECK_ASSERT(e4b->bd_info->bb_counters[order] == count);
@@ -733,21 +742,15 @@ static void __mb_check_buddy(struct ext4_buddy *e4b, char *file,
 				fragments++;
 				fstart = i;
 			}
-		} else {
-			fstart = -1;
+			continue;
 		}
-		if (!(i & 1)) {
-			int in_use, zero_bit_count = 0;
-
-			in_use = mb_test_bit(i, buddy) || mb_test_bit(i + 1, buddy);
-			for (j = 1; j < e4b->bd_blkbits + 2; j++) {
-				buddy2 = mb_find_buddy(e4b, j, &max2);
-				k = i >> j;
-				MB_CHECK_ASSERT(k < max2);
-				if (!mb_test_bit(k, buddy2))
-					zero_bit_count++;
-			}
-			MB_CHECK_ASSERT(zero_bit_count == !in_use);
+		fstart = -1;
+		/* check used bits only */
+		for (j = 0; j < e4b->bd_blkbits + 1; j++) {
+			buddy2 = mb_find_buddy(e4b, j, &max2);
+			k = i >> j;
+			MB_CHECK_ASSERT(k < max2);
+			MB_CHECK_ASSERT(mb_test_bit(k, buddy2));
 		}
 	}
 	MB_CHECK_ASSERT(!EXT4_MB_GRP_NEED_INIT(e4b->bd_info));
@@ -760,8 +763,6 @@ static void __mb_check_buddy(struct ext4_buddy *e4b, char *file,
 		ext4_group_t groupnr;
 		struct ext4_prealloc_space *pa;
 		pa = list_entry(cur, struct ext4_prealloc_space, pa_group_list);
-		if (!pa->pa_len)
-			continue;
 		ext4_get_group_no_and_offset(sb, pa->pa_pstart, &groupnr, &k);
 		MB_CHECK_ASSERT(groupnr == e4b->bd_group);
 		for (i = 0; i < pa->pa_len; i++)
@@ -1072,6 +1073,8 @@ static inline int should_optimize_scan(struct ext4_allocation_context *ac)
 	if (unlikely(!test_opt2(ac->ac_sb, MB_OPTIMIZE_SCAN)))
 		return 0;
 	if (ac->ac_criteria >= CR_GOAL_LEN_SLOW)
+		return 0;
+	if (!ext4_test_inode_flag(ac->ac_inode, EXT4_INODE_EXTENTS))
 		return 0;
 	return 1;
 }
@@ -2336,12 +2339,8 @@ int ext4_mb_find_by_goal(struct ext4_allocation_context *ac,
 		return 0;
 
 	err = ext4_mb_load_buddy(ac->ac_sb, group, e4b);
-	if (err) {
-		if (EXT4_MB_GRP_BBITMAP_CORRUPT(e4b->bd_info) &&
-		    !(ac->ac_flags & EXT4_MB_HINT_GOAL_ONLY))
-			return 0;
+	if (err)
 		return err;
-	}
 
 	ext4_lock_group(ac->ac_sb, group);
 	if (unlikely(EXT4_MB_GRP_BBITMAP_CORRUPT(e4b->bd_info)))
@@ -2803,7 +2802,10 @@ ext4_mb_regular_allocator(struct ext4_allocation_context *ac)
 
 	sb = ac->ac_sb;
 	sbi = EXT4_SB(sb);
-	ngroups = ext4_get_allocation_groups_count(ac);
+	ngroups = ext4_get_groups_count(sb);
+	/* non-extent files are limited to low blocks/groups */
+	if (!(ext4_test_inode_flag(ac->ac_inode, EXT4_INODE_EXTENTS)))
+		ngroups = sbi->s_blockfile_groups;
 
 	BUG_ON(ac->ac_status == AC_STATUS_FOUND);
 
@@ -2859,8 +2861,6 @@ repeat:
 		 * from the goal value specified
 		 */
 		group = ac->ac_g_ex.fe_group;
-		if (group >= ngroups)
-			group = 0;
 		ac->ac_groups_linear_remaining = sbi->s_mb_max_linear_groups;
 		prefetch_grp = group;
 		nr = 0;
@@ -3478,7 +3478,9 @@ err_freebuddy:
 	rcu_read_unlock();
 	iput(sbi->s_buddy_cache);
 err_freesgi:
-	kvfree(rcu_access_pointer(sbi->s_group_info));
+	rcu_read_lock();
+	kvfree(rcu_dereference(sbi->s_group_info));
+	rcu_read_unlock();
 	return -ENOMEM;
 }
 
@@ -3770,14 +3772,15 @@ void ext4_mb_release(struct super_block *sb)
 	struct kmem_cache *cachep = get_groupinfo_cache(sb->s_blocksize_bits);
 	int count;
 
-	/*
-	 * wait the discard work to drain all of ext4_free_data
-	 */
-	flush_work(&sbi->s_discard_work);
-	WARN_ON_ONCE(!list_empty(&sbi->s_discard_list));
+	if (test_opt(sb, DISCARD)) {
+		/*
+		 * wait the discard work to drain all of ext4_free_data
+		 */
+		flush_work(&sbi->s_discard_work);
+		WARN_ON_ONCE(!list_empty(&sbi->s_discard_list));
+	}
 
-	group_info = rcu_access_pointer(sbi->s_group_info);
-	if (group_info) {
+	if (sbi->s_group_info) {
 		for (i = 0; i < ngroups; i++) {
 			cond_resched();
 			grinfo = ext4_get_group_info(sb, i);
@@ -3795,9 +3798,12 @@ void ext4_mb_release(struct super_block *sb)
 		num_meta_group_infos = (ngroups +
 				EXT4_DESC_PER_BLOCK(sb) - 1) >>
 			EXT4_DESC_PER_BLOCK_BITS(sb);
+		rcu_read_lock();
+		group_info = rcu_dereference(sbi->s_group_info);
 		for (i = 0; i < num_meta_group_infos; i++)
 			kfree(group_info[i]);
 		kvfree(group_info);
+		rcu_read_unlock();
 	}
 	kfree(sbi->s_mb_avg_fragment_size);
 	kfree(sbi->s_mb_avg_fragment_size_locks);
@@ -4074,7 +4080,8 @@ out_err:
  * Returns 0 if success or error code
  */
 static noinline_for_stack int
-ext4_mb_mark_diskspace_used(struct ext4_allocation_context *ac, handle_t *handle)
+ext4_mb_mark_diskspace_used(struct ext4_allocation_context *ac,
+				handle_t *handle, unsigned int reserv_clstrs)
 {
 	struct ext4_group_desc *gdp;
 	struct ext4_sb_info *sbi;
@@ -4129,6 +4136,13 @@ ext4_mb_mark_diskspace_used(struct ext4_allocation_context *ac, handle_t *handle
 	BUG_ON(changed != ac->ac_b_ex.fe_len);
 #endif
 	percpu_counter_sub(&sbi->s_freeclusters_counter, ac->ac_b_ex.fe_len);
+	/*
+	 * Now reduce the dirty block count also. Should not go negative
+	 */
+	if (!(ac->ac_flags & EXT4_MB_DELALLOC_RESERVED))
+		/* release all the reserved blocks if non delalloc */
+		percpu_counter_sub(&sbi->s_dirtyclusters_counter,
+				   reserv_clstrs);
 
 	return err;
 }
@@ -6213,7 +6227,7 @@ repeat:
 			ext4_mb_pa_put_free(ac);
 	}
 	if (likely(ac->ac_status == AC_STATUS_FOUND)) {
-		*errp = ext4_mb_mark_diskspace_used(ac, handle);
+		*errp = ext4_mb_mark_diskspace_used(ac, handle, reserv_clstrs);
 		if (*errp) {
 			ext4_discard_allocated_blocks(ac);
 			goto errout;
@@ -6244,9 +6258,12 @@ errout:
 out:
 	if (inquota && ar->len < inquota)
 		dquot_free_block(ar->inode, EXT4_C2B(sbi, inquota - ar->len));
-	/* release any reserved blocks */
-	if (reserv_clstrs)
-		percpu_counter_sub(&sbi->s_dirtyclusters_counter, reserv_clstrs);
+	if (!ar->len) {
+		if ((ar->flags & EXT4_MB_DELALLOC_RESERVED) == 0)
+			/* release all the reserved blocks if non delalloc */
+			percpu_counter_sub(&sbi->s_dirtyclusters_counter,
+						reserv_clstrs);
+	}
 
 	trace_ext4_allocate_blocks(ar, (unsigned long long)block);
 

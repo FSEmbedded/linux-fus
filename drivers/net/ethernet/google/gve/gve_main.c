@@ -244,9 +244,9 @@ static int gve_alloc_stats_report(struct gve_priv *priv)
 	int tx_stats_num, rx_stats_num;
 
 	tx_stats_num = (GVE_TX_STATS_REPORT_NUM + NIC_TX_STATS_REPORT_NUM) *
-				priv->tx_cfg.max_queues;
+		       gve_num_tx_queues(priv);
 	rx_stats_num = (GVE_RX_STATS_REPORT_NUM + NIC_RX_STATS_REPORT_NUM) *
-				priv->rx_cfg.max_queues;
+		       priv->rx_cfg.num_queues;
 	priv->stats_report_len = struct_size(priv->stats_report, stats,
 					     size_add(tx_stats_num, rx_stats_num));
 	priv->stats_report =
@@ -498,10 +498,9 @@ static int gve_alloc_notify_blocks(struct gve_priv *priv)
 		snprintf(block->name, sizeof(block->name), "gve-ntfy-blk%d@pci:%s",
 			 i, pci_name(priv->pdev));
 		block->priv = priv;
-		block->irq = priv->msix_vectors[msix_idx].vector;
 		err = request_irq(priv->msix_vectors[msix_idx].vector,
 				  gve_is_gqi(priv) ? gve_intr : gve_intr_dqo,
-				  IRQF_NO_AUTOEN, block->name, block);
+				  0, block->name, block);
 		if (err) {
 			dev_err(&priv->pdev->dev,
 				"Failed to receive msix vector %d\n", i);
@@ -1720,9 +1719,6 @@ static int gve_xsk_wakeup(struct net_device *dev, u32 queue_id, u32 flags)
 	if (!gve_get_napi_enabled(priv))
 		return -ENETDOWN;
 
-	if (!gve_get_napi_enabled(priv))
-		return -ENETDOWN;
-
 	if (queue_id >= priv->rx_cfg.num_queues || !priv->xdp_prog)
 		return -EINVAL;
 
@@ -2729,8 +2725,6 @@ static void gve_shutdown(struct pci_dev *pdev)
 	struct net_device *netdev = pci_get_drvdata(pdev);
 	struct gve_priv *priv = netdev_priv(netdev);
 	bool was_up = netif_running(priv->dev);
-
-	netif_device_detach(netdev);
 
 	netif_device_detach(netdev);
 

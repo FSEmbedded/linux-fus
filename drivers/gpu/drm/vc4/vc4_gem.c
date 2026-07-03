@@ -60,7 +60,6 @@ vc4_free_hang_state(struct drm_device *dev, struct vc4_hang_state *state)
 	for (i = 0; i < state->user_state.bo_count; i++)
 		drm_gem_object_put(state->bo[i]);
 
-	kfree(state->bo);
 	kfree(state);
 }
 
@@ -169,8 +168,10 @@ vc4_save_hang_state(struct drm_device *dev)
 	spin_lock_irqsave(&vc4->job_lock, irqflags);
 	exec[0] = vc4_first_bin_job(vc4);
 	exec[1] = vc4_first_render_job(vc4);
-	if (!exec[0] && !exec[1])
-		goto err_free_state;
+	if (!exec[0] && !exec[1]) {
+		spin_unlock_irqrestore(&vc4->job_lock, irqflags);
+		return;
+	}
 
 	/* Get the bos from both binner and renderer into hang state. */
 	state->bo_count = 0;
@@ -187,8 +188,10 @@ vc4_save_hang_state(struct drm_device *dev)
 	kernel_state->bo = kcalloc(state->bo_count,
 				   sizeof(*kernel_state->bo), GFP_ATOMIC);
 
-	if (!kernel_state->bo)
-		goto err_free_state;
+	if (!kernel_state->bo) {
+		spin_unlock_irqrestore(&vc4->job_lock, irqflags);
+		return;
+	}
 
 	k = 0;
 	for (i = 0; i < 2; i++) {
@@ -280,12 +283,6 @@ vc4_save_hang_state(struct drm_device *dev)
 		vc4->hang_state = kernel_state;
 		spin_unlock_irqrestore(&vc4->job_lock, irqflags);
 	}
-
-	return;
-
-err_free_state:
-	spin_unlock_irqrestore(&vc4->job_lock, irqflags);
-	kfree(kernel_state);
 }
 
 static void

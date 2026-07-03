@@ -743,8 +743,6 @@ static void synquacer_spi_remove(struct platform_device *pdev)
 	pm_runtime_disable(sspi->dev);
 
 	clk_disable_unprepare(sspi->clk);
-
-	spi_controller_put(host);
 }
 
 static int __maybe_unused synquacer_spi_suspend(struct device *dev)

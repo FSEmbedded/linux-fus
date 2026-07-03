@@ -153,7 +153,7 @@ static int creative_sb0540_raw_event(struct hid_device *hid,
 	u64 code, main_code;
 	int key;
 
-	if (len != 6 || !(hid->claimed & HID_CLAIMED_INPUT))
+	if (len != 6)
 		return 0;
 
 	/* From daemons/hw_hiddev.c sb0540_rec() in lirc */

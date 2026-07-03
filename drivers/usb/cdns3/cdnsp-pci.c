@@ -36,8 +36,6 @@
 
 #define CHICKEN_APB_TIMEOUT_VALUE       0x1C20
 
-#define CHICKEN_APB_TIMEOUT_VALUE       0x1C20
-
 static struct pci_dev *cdnsp_get_second_fun(struct pci_dev *pdev)
 {
 	/*
@@ -93,7 +91,7 @@ static int cdnsp_pci_probe(struct pci_dev *pdev,
 		cdnsp = kzalloc(sizeof(*cdnsp), GFP_KERNEL);
 		if (!cdnsp) {
 			ret = -ENOMEM;
-			goto put_pci;
+			goto disable_pci;
 		}
 	}
 
@@ -175,6 +173,9 @@ static int cdnsp_pci_probe(struct pci_dev *pdev,
 free_cdnsp:
 	if (!pci_is_enabled(func))
 		kfree(cdnsp);
+
+disable_pci:
+	pci_disable_device(pdev);
 
 put_pci:
 	pci_dev_put(func);

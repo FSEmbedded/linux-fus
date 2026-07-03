@@ -136,14 +136,6 @@ static int sysctr_set_next_event(unsigned long delta,
 
 	enable_irq(evt->irq);
 
-	if (!sysctr_is_imx95_quirk())
-		return 0;
-
-	sysctr_timer_read_write(sys_ctr_base + CMPCV_HI, GENMASK(31, 0), cmp_hi, 1000);
-	sysctr_timer_read_write(sys_ctr_base + CMPCV_LO, GENMASK(31, 0), cmp_lo, 1000);
-
-	enable_irq(to_sysctr.clkevt.irq);
-
 	return 0;
 }
 

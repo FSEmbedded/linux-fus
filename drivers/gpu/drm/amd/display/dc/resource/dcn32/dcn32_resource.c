@@ -1784,7 +1784,6 @@ static bool dml1_validate(struct dc *dc, struct dc_state *context, bool fast_val
 
 	dc->res_pool->funcs->calculate_wm_and_dlg(dc, context, pipes, pipe_cnt, vlevel);
 
-	DC_FP_START();
 	dcn32_override_min_req_memclk(dc, context);
 	dcn32_override_min_req_dcfclk(dc, context);
 

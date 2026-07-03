@@ -608,17 +608,6 @@ struct sbpt_sbpse_data {
 #define SBPT_FC_STATE		BIT(0)
 };
 
-struct isct_stse_data {
-	__le32 rx_count;
-	__le32 resv0;
-	__le32 msdu_drop_count;
-	__le32 resv1;
-	__le32 policer_drop_count;
-	__le32 resv2;
-	__le32 sg_drop_count;
-	__le32 resv3;
-};
-
 #pragma pack()
 
 struct netc_cbdr_regs {

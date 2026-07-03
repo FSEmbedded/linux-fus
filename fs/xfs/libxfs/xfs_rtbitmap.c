@@ -348,8 +348,6 @@ xfs_rtfind_forw(
 
 	ASSERT(start <= limit);
 
-	ASSERT(start <= limit);
-
 	/*
 	 * Compute and read in starting bitmap block for starting block.
 	 */

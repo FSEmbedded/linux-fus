@@ -396,9 +396,14 @@ extern char *parse_args(const char *name,
 		      void *arg, parse_unknown_fn unknown);
 
 /* Called by module remove. */
-#ifdef CONFIG_MODULES
-void module_destroy_params(const struct kernel_param *params, unsigned int num);
-#endif
+#ifdef CONFIG_SYSFS
+extern void destroy_params(const struct kernel_param *params, unsigned num);
+#else
+static inline void destroy_params(const struct kernel_param *params,
+				  unsigned num)
+{
+}
+#endif /* !CONFIG_SYSFS */
 
 /* All the helper functions */
 /* The macros to do compile-time type checking stolen from Jakub

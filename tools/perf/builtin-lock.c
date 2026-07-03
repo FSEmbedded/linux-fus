@@ -2300,7 +2300,7 @@ static int parse_map_entry(const struct option *opt, const char *str,
 static int parse_max_stack(const struct option *opt, const char *str,
 			   int unset __maybe_unused)
 {
-	int *len = opt->value;
+	unsigned long *len = (unsigned long *)opt->value;
 	long val;
 	char *endptr;
 

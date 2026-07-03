@@ -975,8 +975,6 @@ static int mtk_iommu_of_xlate(struct device *dev,
 			return -EINVAL;
 
 		dev_iommu_priv_set(dev, platform_get_drvdata(m4updev));
-
-		put_device(&m4updev->dev);
 	}
 
 	return iommu_fwspec_add_ids(dev, args->args, 1);
@@ -1215,19 +1213,16 @@ static int mtk_iommu_mm_dts_parse(struct device *dev, struct component_match **m
 		}
 
 		component_match_add(dev, match, component_compare_dev, &plarbdev->dev);
+		platform_device_put(plarbdev);
 	}
 
-	if (!frst_avail_smicomm_node) {
-		ret = -EINVAL;
-		goto err_larbdev_put;
-	}
+	if (!frst_avail_smicomm_node)
+		return -EINVAL;
 
 	pcommdev = of_find_device_by_node(frst_avail_smicomm_node);
 	of_node_put(frst_avail_smicomm_node);
-	if (!pcommdev) {
-		ret = -ENODEV;
-		goto err_larbdev_put;
-	}
+	if (!pcommdev)
+		return -ENODEV;
 	data->smicomm_dev = &pcommdev->dev;
 
 	link = device_link_add(data->smicomm_dev, dev,
@@ -1235,8 +1230,7 @@ static int mtk_iommu_mm_dts_parse(struct device *dev, struct component_match **m
 	platform_device_put(pcommdev);
 	if (!link) {
 		dev_err(dev, "Unable to link %s.\n", dev_name(data->smicomm_dev));
-		ret = -EINVAL;
-		goto err_larbdev_put;
+		return -EINVAL;
 	}
 	return 0;
 
@@ -1410,10 +1404,6 @@ out_list_del:
 	list_del(&data->list);
 	if (MTK_IOMMU_IS_TYPE(data->plat_data, MTK_IOMMU_TYPE_MM))
 		device_link_remove(data->smicomm_dev, dev);
-
-		for (i = 0; i < MTK_LARB_NR_MAX; i++)
-			put_device(data->larb_imu[i].dev);
-	}
 out_runtime_disable:
 	pm_runtime_disable(dev);
 	return ret;
@@ -1433,9 +1423,6 @@ static void mtk_iommu_remove(struct platform_device *pdev)
 	if (MTK_IOMMU_IS_TYPE(data->plat_data, MTK_IOMMU_TYPE_MM)) {
 		device_link_remove(data->smicomm_dev, &pdev->dev);
 		component_master_del(&pdev->dev, &mtk_iommu_com_ops);
-
-		for (i = 0; i < MTK_LARB_NR_MAX; i++)
-			put_device(data->larb_imu[i].dev);
 	}
 	pm_runtime_disable(&pdev->dev);
 	for (i = 0; i < data->plat_data->banks_num; i++) {

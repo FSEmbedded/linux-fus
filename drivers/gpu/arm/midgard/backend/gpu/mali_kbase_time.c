@@ -137,68 +137,6 @@ u64 kbase_backend_read_gpu_timestamp_offset_reg(struct kbase_device *kbdev)
 KBASE_EXPORT_TEST_API(kbase_backend_read_gpu_timestamp_offset_reg);
 #endif
 
-#if MALI_USE_CSF
-void kbase_backend_invalidate_gpu_timestamp_offset(struct kbase_device *kbdev)
-{
-	kbdev->backend_time.gpu_timestamp_offset = GPU_TIMESTAMP_OFFSET_INVALID;
-}
-KBASE_EXPORT_TEST_API(kbase_backend_invalidate_gpu_timestamp_offset);
-
-/**
- * kbase_backend_compute_gpu_ts_offset() - Compute GPU TS offset.
- *
- * @kbdev:	Kbase device.
- *
- * This function compute the value of GPU and CPU TS offset:
- *   - set to zero current TIMESTAMP_OFFSET register
- *   - read CPU TS and convert it to ticks
- *   - read GPU TS
- *   - calculate diff between CPU and GPU ticks
- *   - cache the diff as the GPU TS offset
- *
- * To reduce delays, preemption must be disabled during reads of both CPU and GPU TS
- * this function require access to GPU register to be enabled
- */
-static inline void kbase_backend_compute_gpu_ts_offset(struct kbase_device *kbdev)
-{
-	s64 cpu_ts_ticks = 0;
-	s64 gpu_ts_ticks = 0;
-
-	if (kbdev->backend_time.gpu_timestamp_offset != GPU_TIMESTAMP_OFFSET_INVALID)
-		return;
-
-	kbase_reg_write64(kbdev, GPU_CONTROL_ENUM(TIMESTAMP_OFFSET), 0);
-
-	gpu_ts_ticks = kbase_reg_read64_coherent(kbdev, GPU_CONTROL_ENUM(TIMESTAMP));
-	cpu_ts_ticks = ktime_get_raw_ns();
-	cpu_ts_ticks = div64_u64(cpu_ts_ticks * kbdev->backend_time.divisor,
-				 kbdev->backend_time.multiplier);
-	kbdev->backend_time.gpu_timestamp_offset = cpu_ts_ticks - gpu_ts_ticks;
-}
-
-void kbase_backend_update_gpu_timestamp_offset(struct kbase_device *kbdev)
-{
-	lockdep_assert_held(&kbdev->pm.lock);
-
-	kbase_backend_compute_gpu_ts_offset(kbdev);
-
-	dev_dbg(kbdev->dev, "Setting GPU timestamp offset register to %lld (%lld ns)",
-		kbdev->backend_time.gpu_timestamp_offset,
-		div64_s64(kbdev->backend_time.gpu_timestamp_offset *
-				  (s64)kbdev->backend_time.multiplier,
-			  (s64)kbdev->backend_time.divisor));
-	kbase_reg_write64(kbdev, GPU_CONTROL_ENUM(TIMESTAMP_OFFSET),
-			  kbdev->backend_time.gpu_timestamp_offset);
-}
-#if MALI_UNIT_TEST
-u64 kbase_backend_read_gpu_timestamp_offset_reg(struct kbase_device *kbdev)
-{
-	return kbase_reg_read64_coherent(kbdev, GPU_CONTROL_ENUM(TIMESTAMP_OFFSET));
-}
-KBASE_EXPORT_TEST_API(kbase_backend_read_gpu_timestamp_offset_reg);
-#endif
-#endif
-
 void kbase_backend_get_gpu_time_norequest(struct kbase_device *kbdev, u64 *cycle_counter,
 					  u64 *system_time, struct timespec64 *ts)
 {

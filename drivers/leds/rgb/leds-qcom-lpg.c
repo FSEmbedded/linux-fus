@@ -368,7 +368,7 @@ static int lpg_lut_store(struct lpg *lpg, struct led_pattern *pattern,
 {
 	unsigned int idx;
 	u16 val;
-	int i, ret;
+	int i;
 
 	idx = bitmap_find_next_zero_area(lpg->lut_bitmap, lpg->lut_size,
 					 0, len, 0);
@@ -378,10 +378,8 @@ static int lpg_lut_store(struct lpg *lpg, struct led_pattern *pattern,
 	for (i = 0; i < len; i++) {
 		val = pattern[i].brightness;
 
-		ret = regmap_bulk_write(lpg->map, lpg->lut_base + LPG_LUT_REG(idx + i),
-					&val, sizeof(val));
-		if (ret)
-			return ret;
+		regmap_bulk_write(lpg->map, lpg->lut_base + LPG_LUT_REG(idx + i),
+				  &val, sizeof(val));
 	}
 
 	bitmap_set(lpg->lut_bitmap, idx, len);
@@ -1274,12 +1272,7 @@ static int lpg_pwm_get_state(struct pwm_chip *chip, struct pwm_device *pwm,
 		return ret;
 
 	if (chan->subtype == LPG_SUBTYPE_HI_RES_PWM) {
-		unsigned int clk_idx = FIELD_GET(PWM_CLK_SELECT_HI_RES_MASK, val);
-
-		if (clk_idx >= ARRAY_SIZE(lpg_clk_rates_hi_res))
-			return -EINVAL;
-
-		refclk = lpg_clk_rates_hi_res[clk_idx];
+		refclk = lpg_clk_rates_hi_res[FIELD_GET(PWM_CLK_SELECT_HI_RES_MASK, val)];
 		resolution = lpg_pwm_resolution_hi_res[FIELD_GET(PWM_SIZE_HI_RES_MASK, val)];
 	} else {
 		refclk = lpg_clk_rates[FIELD_GET(PWM_CLK_SELECT_MASK, val)];

@@ -2212,9 +2212,7 @@ static ssize_t core_mask_show(struct device *dev, struct device_attribute *attr,
 				 kbdev->pm.backend.shaders_avail);
 	ret += scnprintf(buf + ret, (size_t)(PAGE_SIZE - ret), "Available core mask : 0x%llX\n",
 			 kbdev->gpu_props.shader_present);
-#if !MALI_USE_CSF
-out_unlock:
-#endif
+
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 
 	return ret;

@@ -249,8 +249,8 @@ gve_get_ethtool_stats(struct net_device *netdev,
 	data[i++] = rx_bytes;
 	data[i++] = tx_bytes;
 	/* total rx dropped packets */
-	data[i++] = rx_skb_alloc_fail + rx_desc_err_dropped_pkt +
-		    xdp_tx_errors + xdp_redirect_errors;
+	data[i++] = rx_skb_alloc_fail + rx_buf_alloc_fail +
+		    rx_desc_err_dropped_pkt;
 	data[i++] = tx_dropped;
 	data[i++] = priv->tx_timeo_cnt;
 	data[i++] = rx_skb_alloc_fail;
@@ -278,7 +278,7 @@ gve_get_ethtool_stats(struct net_device *netdev,
 		base_stats_idx;
 	/* Preprocess the stats report for rx, map queue id to start index */
 	skip_nic_stats = false;
-	for (stats_idx = rx_base_stats_idx; stats_idx < max_rx_stats_idx;
+	for (stats_idx = base_stats_idx; stats_idx < max_stats_idx;
 		stats_idx += NIC_RX_STATS_REPORT_NUM) {
 		u32 stat_name = be32_to_cpu(report_stats[stats_idx].stat_name);
 		u32 queue_id = be32_to_cpu(report_stats[stats_idx].queue_id);
@@ -311,9 +311,6 @@ gve_get_ethtool_stats(struct net_device *netdev,
 				tmp_rx_buf_alloc_fail = rx->rx_buf_alloc_fail;
 				tmp_rx_desc_err_dropped_pkt =
 					rx->rx_desc_err_dropped_pkt;
-				tmp_xdp_tx_errors = rx->xdp_tx_errors;
-				tmp_xdp_redirect_errors =
-					rx->xdp_redirect_errors;
 			} while (u64_stats_fetch_retry(&priv->rx[ring].statss,
 						       start));
 			data[i++] = tmp_rx_bytes;
@@ -324,9 +321,8 @@ gve_get_ethtool_stats(struct net_device *netdev,
 			data[i++] = rx->rx_frag_alloc_cnt;
 			/* rx dropped packets */
 			data[i++] = tmp_rx_skb_alloc_fail +
-				    tmp_rx_desc_err_dropped_pkt +
-				    tmp_xdp_tx_errors +
-				    tmp_xdp_redirect_errors;
+				tmp_rx_buf_alloc_fail +
+				tmp_rx_desc_err_dropped_pkt;
 			data[i++] = rx->rx_copybreak_pkt;
 			data[i++] = rx->rx_copied_pkt;
 			/* stats from NIC */
@@ -365,8 +361,7 @@ gve_get_ethtool_stats(struct net_device *netdev,
 		max_stats_idx;
 	/* Preprocess the stats report for tx, map queue id to start index */
 	skip_nic_stats = false;
-	/* NIC TX stats start right after NIC RX stats */
-	for (stats_idx = max_rx_stats_idx; stats_idx < max_tx_stats_idx;
+	for (stats_idx = base_stats_idx; stats_idx < max_stats_idx;
 		stats_idx += NIC_TX_STATS_REPORT_NUM) {
 		u32 stat_name = be32_to_cpu(report_stats[stats_idx].stat_name);
 		u32 queue_id = be32_to_cpu(report_stats[stats_idx].queue_id);

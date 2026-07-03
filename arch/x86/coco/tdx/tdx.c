@@ -1081,19 +1081,6 @@ void __init tdx_early_init(void)
 	pv_ops.irq.halt = tdx_halt;
 
 	/*
-	 * Avoid "sti;hlt" execution in TDX guests as HLT induces a #VE that
-	 * will enable interrupts before HLT TDCALL invocation if executed
-	 * in STI-shadow, possibly resulting in missed wakeup events.
-	 *
-	 * Modify all possible HLT execution paths to use TDX specific routines
-	 * that directly execute TDCALL and toggle the interrupt state as
-	 * needed after TDCALL completion. This also reduces HLT related #VEs
-	 * in addition to having a reliable halt logic execution.
-	 */
-	pv_ops.irq.safe_halt = tdx_safe_halt;
-	pv_ops.irq.halt = tdx_halt;
-
-	/*
 	 * TDX intercepts the RDMSR to read the X2APIC ID in the parallel
 	 * bringup low level code. That raises #VE which cannot be handled
 	 * there.

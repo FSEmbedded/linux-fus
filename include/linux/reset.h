@@ -2,7 +2,6 @@
 #ifndef _LINUX_RESET_H_
 #define _LINUX_RESET_H_
 
-#include <linux/bits.h>
 #include <linux/err.h>
 #include <linux/errno.h>
 #include <linux/types.h>

@@ -5402,14 +5402,6 @@ static int ksz9131_resume(struct phy_device *phydev)
 	return kszphy_resume(phydev);
 }
 
-static int ksz9131_resume(struct phy_device *phydev)
-{
-	if (phydev->suspended && phy_interface_is_rgmii(phydev))
-		ksz9131_config_rgmii_delay(phydev);
-
-	return kszphy_resume(phydev);
-}
-
 static struct phy_driver ksphy_driver[] = {
 {
 	.phy_id		= PHY_ID_KS8737,

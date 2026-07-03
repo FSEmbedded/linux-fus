@@ -471,9 +471,8 @@ void gfs2_log_release(struct gfs2_sbd *sdp, unsigned int blks)
 {
 	atomic_add(blks, &sdp->sd_log_blks_free);
 	trace_gfs2_log_blocks(sdp, blks);
-	gfs2_assert_withdraw(sdp, !sdp->sd_jdesc ||
-			atomic_read(&sdp->sd_log_blks_free) <=
-			sdp->sd_jdesc->jd_blocks);
+	gfs2_assert_withdraw(sdp, atomic_read(&sdp->sd_log_blks_free) <=
+				  sdp->sd_jdesc->jd_blocks);
 	if (atomic_read(&sdp->sd_log_blks_needed))
 		wake_up(&sdp->sd_log_waitq);
 }
@@ -1028,15 +1027,14 @@ static void trans_drain(struct gfs2_trans *tr)
 }
 
 /**
- * __gfs2_log_flush - flush incore transaction(s)
+ * gfs2_log_flush - flush incore transaction(s)
  * @sdp: The filesystem
  * @gl: The glock structure to flush.  If NULL, flush the whole incore log
  * @flags: The log header flags: GFS2_LOG_HEAD_FLUSH_* and debug flags
  *
  */
 
-static void __gfs2_log_flush(struct gfs2_sbd *sdp, struct gfs2_glock *gl,
-			     u32 flags)
+void gfs2_log_flush(struct gfs2_sbd *sdp, struct gfs2_glock *gl, u32 flags)
 {
 	struct gfs2_trans *tr = NULL;
 	unsigned int reserved_blocks = 0, used_blocks = 0;
@@ -1044,6 +1042,7 @@ static void __gfs2_log_flush(struct gfs2_sbd *sdp, struct gfs2_glock *gl,
 	unsigned int first_log_head;
 	unsigned int reserved_revokes = 0;
 
+	down_write(&sdp->sd_log_flush_lock);
 	trace_gfs2_log_flush(sdp, 1, flags);
 
 repeat:
@@ -1155,6 +1154,7 @@ out:
 		gfs2_assert_withdraw_delayed(sdp, used_blocks < reserved_blocks);
 		gfs2_log_release(sdp, reserved_blocks - used_blocks);
 	}
+	up_write(&sdp->sd_log_flush_lock);
 	gfs2_trans_free(sdp, tr);
 	if (gfs2_withdrawing(sdp))
 		gfs2_withdraw(sdp);
@@ -1175,13 +1175,6 @@ out_withdraw:
 	spin_unlock(&sdp->sd_ail_lock);
 	tr = NULL;
 	goto out_end;
-}
-
-void gfs2_log_flush(struct gfs2_sbd *sdp, struct gfs2_glock *gl, u32 flags)
-{
-	down_write(&sdp->sd_log_flush_lock);
-	__gfs2_log_flush(sdp, gl, flags);
-	up_write(&sdp->sd_log_flush_lock);
 }
 
 /**
@@ -1326,25 +1319,19 @@ int gfs2_logd(void *data)
 		}
 
 		if (gfs2_jrnl_flush_reqd(sdp) || t == 0) {
-			down_write(&sdp->sd_log_flush_lock);
 			gfs2_ail1_empty(sdp, 0);
-			__gfs2_log_flush(sdp, NULL,
-					 GFS2_LOG_HEAD_FLUSH_NORMAL |
-					 GFS2_LFC_LOGD_JFLUSH_REQD);
-			up_write(&sdp->sd_log_flush_lock);
+			gfs2_log_flush(sdp, NULL, GFS2_LOG_HEAD_FLUSH_NORMAL |
+						  GFS2_LFC_LOGD_JFLUSH_REQD);
 		}
 
 		if (test_bit(SDF_FORCE_AIL_FLUSH, &sdp->sd_flags) ||
 		    gfs2_ail_flush_reqd(sdp)) {
 			clear_bit(SDF_FORCE_AIL_FLUSH, &sdp->sd_flags);
-			down_write(&sdp->sd_log_flush_lock);
 			gfs2_ail1_start(sdp);
 			gfs2_ail1_wait(sdp);
 			gfs2_ail1_empty(sdp, 0);
-			__gfs2_log_flush(sdp, NULL,
-					 GFS2_LOG_HEAD_FLUSH_NORMAL |
-					 GFS2_LFC_LOGD_AIL_FLUSH_REQD);
-			up_write(&sdp->sd_log_flush_lock);
+			gfs2_log_flush(sdp, NULL, GFS2_LOG_HEAD_FLUSH_NORMAL |
+						  GFS2_LFC_LOGD_AIL_FLUSH_REQD);
 		}
 
 		t = gfs2_tune_get(sdp, gt_logd_secs) * HZ;

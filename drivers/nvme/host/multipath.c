@@ -1014,12 +1014,6 @@ void nvme_mpath_shutdown_disk(struct nvme_ns_head *head)
 		kblockd_schedule_work(&head->requeue_work);
 		del_gendisk(head->disk);
 	}
-	/*
-	 * requeue I/O after NVME_NSHEAD_DISK_LIVE has been cleared
-	 * to allow multipath to fail all I/O.
-	 */
-	synchronize_srcu(&head->srcu);
-	kblockd_schedule_work(&head->requeue_work);
 }
 
 void nvme_mpath_remove_disk(struct nvme_ns_head *head)

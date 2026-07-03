@@ -328,8 +328,6 @@ out:
 static int nfs_do_read_folio(struct file *file, struct folio *folio)
 {
 	struct inode *inode = file_inode(file);
-	loff_t pos = folio_pos(folio);
-	size_t len = folio_size(folio);
 	struct nfs_pageio_descriptor pgio;
 	struct nfs_open_context *ctx;
 	int ret;

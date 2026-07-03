@@ -195,8 +195,7 @@ void kmsan_internal_set_shadow_origin(void *addr, size_t size, int b,
 				      u32 origin, bool checked)
 {
 	u64 address = (u64)addr;
-	void *shadow_start;
-	u32 *aligned_shadow, *origin_start;
+	u32 *shadow_start, *origin_start;
 	size_t pad = 0;
 
 	KMSAN_WARN_ON(!kmsan_metadata_is_contiguous(addr, size));
@@ -215,12 +214,9 @@ void kmsan_internal_set_shadow_origin(void *addr, size_t size, int b,
 	}
 	__memset(shadow_start, b, size);
 
-	if (IS_ALIGNED(address, KMSAN_ORIGIN_SIZE)) {
-		aligned_shadow = shadow_start;
-	} else {
+	if (!IS_ALIGNED(address, KMSAN_ORIGIN_SIZE)) {
 		pad = address % KMSAN_ORIGIN_SIZE;
 		address -= pad;
-		aligned_shadow = shadow_start - pad;
 		size += pad;
 	}
 	size = ALIGN(size, KMSAN_ORIGIN_SIZE);
@@ -234,7 +230,7 @@ void kmsan_internal_set_shadow_origin(void *addr, size_t size, int b,
 	 * corresponding shadow slot is zero.
 	 */
 	for (int i = 0; i < size / KMSAN_ORIGIN_SIZE; i++) {
-		if (origin || !aligned_shadow[i])
+		if (origin || !shadow_start[i])
 			origin_start[i] = origin;
 	}
 }

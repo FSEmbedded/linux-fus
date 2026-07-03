@@ -232,16 +232,11 @@ EXPORT_SYMBOL(meson_sm_call_write);
 struct meson_sm_firmware *meson_sm_get(struct device_node *sm_node)
 {
 	struct platform_device *pdev = of_find_device_by_node(sm_node);
-	struct meson_sm_firmware *fw;
 
 	if (!pdev)
 		return NULL;
 
-	fw = platform_get_drvdata(pdev);
-
-	put_device(&pdev->dev);
-
-	return fw;
+	return platform_get_drvdata(pdev);
 }
 EXPORT_SYMBOL_GPL(meson_sm_get);
 

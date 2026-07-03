@@ -74,8 +74,7 @@ static int ext4_getfsmap_dev_compare(const void *p1, const void *p2)
 static bool ext4_getfsmap_rec_before_low_key(struct ext4_getfsmap_info *info,
 					     struct ext4_fsmap *rec)
 {
-	return rec->fmr_physical + rec->fmr_length <=
-	       info->gfi_low.fmr_physical;
+	return rec->fmr_physical < info->gfi_low.fmr_physical;
 }
 
 /*

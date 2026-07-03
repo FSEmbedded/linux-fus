@@ -21,7 +21,7 @@ TRACE_EVENT(mei_reg_read,
 	TP_ARGS(dev, reg, offs, val),
 	TP_STRUCT__entry(
 		__string(dev, dev_name(dev))
-		__string(reg, reg)
+		__field(const char *, reg)
 		__field(u32, offs)
 		__field(u32, val)
 	),
@@ -32,7 +32,7 @@ TRACE_EVENT(mei_reg_read,
 		__entry->val = val;
 	),
 	TP_printk("[%s] read %s:[%#x] = %#x",
-		  __get_str(dev), __get_str(reg), __entry->offs, __entry->val)
+		  __get_str(dev), __entry->reg, __entry->offs, __entry->val)
 );
 
 TRACE_EVENT(mei_reg_write,
@@ -40,7 +40,7 @@ TRACE_EVENT(mei_reg_write,
 	TP_ARGS(dev, reg, offs, val),
 	TP_STRUCT__entry(
 		__string(dev, dev_name(dev))
-		__string(reg, reg)
+		__field(const char *, reg)
 		__field(u32, offs)
 		__field(u32, val)
 	),
@@ -51,7 +51,7 @@ TRACE_EVENT(mei_reg_write,
 		__entry->val = val;
 	),
 	TP_printk("[%s] write %s[%#x] = %#x",
-		  __get_str(dev), __get_str(reg),  __entry->offs, __entry->val)
+		  __get_str(dev), __entry->reg,  __entry->offs, __entry->val)
 );
 
 TRACE_EVENT(mei_pci_cfg_read,
@@ -59,7 +59,7 @@ TRACE_EVENT(mei_pci_cfg_read,
 	TP_ARGS(dev, reg, offs, val),
 	TP_STRUCT__entry(
 		__string(dev, dev_name(dev))
-		__string(reg, reg)
+		__field(const char *, reg)
 		__field(u32, offs)
 		__field(u32, val)
 	),
@@ -70,7 +70,7 @@ TRACE_EVENT(mei_pci_cfg_read,
 		__entry->val = val;
 	),
 	TP_printk("[%s] pci cfg read %s:[%#x] = %#x",
-		  __get_str(dev), __get_str(reg), __entry->offs, __entry->val)
+		  __get_str(dev), __entry->reg, __entry->offs, __entry->val)
 );
 
 #endif /* _MEI_TRACE_H_ */

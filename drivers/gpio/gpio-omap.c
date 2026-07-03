@@ -799,13 +799,10 @@ static struct platform_device omap_mpuio_device = {
 
 static inline void omap_mpuio_init(struct gpio_bank *bank)
 {
-	static bool registered;
-
 	platform_set_drvdata(&omap_mpuio_device, bank);
-	if (!registered) {
-		(void)platform_device_register(&omap_mpuio_device);
-		registered = true;
-	}
+
+	if (platform_driver_register(&omap_mpuio_driver) == 0)
+		(void) platform_device_register(&omap_mpuio_device);
 }
 
 /*---------------------------------------------------------------------*/
@@ -1575,24 +1572,13 @@ static struct platform_driver omap_gpio_driver = {
  */
 static int __init omap_gpio_drv_reg(void)
 {
-	int ret;
-
-	ret = platform_driver_register(&omap_mpuio_driver);
-	if (ret)
-		return ret;
-
-	ret = platform_driver_register(&omap_gpio_driver);
-	if (ret)
-		platform_driver_unregister(&omap_mpuio_driver);
-
-	return ret;
+	return platform_driver_register(&omap_gpio_driver);
 }
 postcore_initcall(omap_gpio_drv_reg);
 
 static void __exit omap_gpio_exit(void)
 {
 	platform_driver_unregister(&omap_gpio_driver);
-	platform_driver_unregister(&omap_mpuio_driver);
 }
 module_exit(omap_gpio_exit);
 

@@ -1144,13 +1144,6 @@ attribute-sets:
         name: alt-ifname
         multi-attr: true
   -
-    name: prop-list-link-attrs
-    subset-of: link-attrs
-    attributes:
-      -
-        name: alt-ifname
-        multi-attr: true
-  -
     name: af-spec-attrs
     attributes:
       -

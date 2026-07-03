@@ -101,12 +101,6 @@ enum v3d_irq {
 	V3D_MAX_IRQS,
 };
 
-enum v3d_irq {
-	V3D_CORE_IRQ,
-	V3D_HUB_IRQ,
-	V3D_MAX_IRQS,
-};
-
 struct v3d_dev {
 	struct drm_device drm;
 

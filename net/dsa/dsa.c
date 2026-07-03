@@ -157,7 +157,7 @@ unsigned int dsa_bridge_num_get(const struct net_device *bridge_dev, int max)
 		bridge_num = find_next_zero_bit(&dsa_fwd_offloading_bridges,
 						DSA_MAX_NUM_OFFLOADING_BRIDGES,
 						1);
-		if (bridge_num > max)
+		if (bridge_num >= max)
 			return 0;
 
 		set_bit(bridge_num, &dsa_fwd_offloading_bridges);
@@ -1252,17 +1252,11 @@ static int dsa_port_parse_of(struct dsa_port *dp, struct device_node *dn)
 	if (ethernet) {
 		struct net_device *conduit;
 		const char *user_protocol;
-		int err;
 
 		conduit = of_find_net_device_by_node(ethernet);
 		of_node_put(ethernet);
 		if (!conduit)
 			return -EPROBE_DEFER;
-		}
-
-		netdev_hold(master, &dp->master_tracker, GFP_KERNEL);
-		put_device(&master->dev);
-		rtnl_unlock();
 
 		user_protocol = of_get_property(dn, "dsa-tag-protocol", NULL);
 		return dsa_port_parse_cpu(dp, conduit, user_protocol);
@@ -1398,6 +1392,24 @@ static struct device *dev_find_class(struct device *parent, char *class)
 	return device_find_child(parent, class, dev_is_class);
 }
 
+static struct net_device *dsa_dev_to_net_device(struct device *dev)
+{
+	struct device *d;
+
+	d = dev_find_class(dev, "net");
+	if (d != NULL) {
+		struct net_device *nd;
+
+		nd = to_net_dev(d);
+		dev_hold(nd);
+		put_device(d);
+
+		return nd;
+	}
+
+	return NULL;
+}
+
 static int dsa_port_parse(struct dsa_port *dp, const char *name,
 			  struct device *dev)
 {
@@ -1407,7 +1419,6 @@ static int dsa_port_parse(struct dsa_port *dp, const char *name,
 		conduit = dsa_dev_to_net_device(dev);
 		if (!conduit)
 			return -EPROBE_DEFER;
-		}
 
 		dev_put(conduit);
 

@@ -536,57 +536,6 @@ nfs_page_group_lock_subreq(struct nfs_page *head, struct nfs_page *subreq)
 }
 
 /*
- * nfs_unroll_locks -  unlock all newly locked reqs and wait on @req
- * @head: head request of page group, must be holding head lock
- * @req: request that couldn't lock and needs to wait on the req bit lock
- *
- * This is a helper function for nfs_lock_and_join_requests
- * returns 0 on success, < 0 on error.
- */
-static void
-nfs_unroll_locks(struct nfs_page *head, struct nfs_page *req)
-{
-	struct nfs_page *tmp;
-
-	/* relinquish all the locks successfully grabbed this run */
-	for (tmp = head->wb_this_page ; tmp != req; tmp = tmp->wb_this_page) {
-		if (!kref_read(&tmp->wb_kref))
-			continue;
-		nfs_unlock_and_release_request(tmp);
-	}
-}
-
-/*
- * nfs_page_group_lock_subreq -  try to lock a subrequest
- * @head: head request of page group
- * @subreq: request to lock
- *
- * This is a helper function for nfs_lock_and_join_requests which
- * must be called with the head request and page group both locked.
- * On error, it returns with the page group unlocked.
- */
-static int
-nfs_page_group_lock_subreq(struct nfs_page *head, struct nfs_page *subreq)
-{
-	int ret;
-
-	if (!kref_get_unless_zero(&subreq->wb_kref))
-		return 0;
-	while (!nfs_lock_request(subreq)) {
-		nfs_page_group_unlock(head);
-		ret = nfs_wait_on_request(subreq);
-		if (!ret)
-			ret = nfs_page_group_lock(head);
-		if (ret < 0) {
-			nfs_unroll_locks(head, subreq);
-			nfs_release_request(subreq);
-			return ret;
-		}
-	}
-	return 0;
-}
-
-/*
  * nfs_lock_and_join_requests - join all subreqs to the head req
  * @folio: the folio used to lookup the "page group" of nfs_page structures
  *
@@ -1628,8 +1577,7 @@ static int nfs_writeback_done(struct rpc_task *task,
 	/* Deal with the suid/sgid bit corner case */
 	if (nfs_should_remove_suid(inode)) {
 		spin_lock(&inode->i_lock);
-		nfs_set_cache_invalid(inode, NFS_INO_INVALID_MODE
-				| NFS_INO_REVAL_FORCED);
+		nfs_set_cache_invalid(inode, NFS_INO_INVALID_MODE);
 		spin_unlock(&inode->i_lock);
 	}
 	return 0;
@@ -2114,39 +2062,6 @@ int nfs_wb_folio_cancel(struct inode *inode, struct folio *folio)
 	}
 
 	return ret;
-}
-
-/**
- * nfs_wb_folio_reclaim - Write back all requests on one page
- * @inode: pointer to page
- * @folio: pointer to folio
- *
- * Assumes that the folio has been locked by the caller
- */
-int nfs_wb_folio_reclaim(struct inode *inode, struct folio *folio)
-{
-	loff_t range_start = folio_pos(folio);
-	size_t len = folio_size(folio);
-	struct writeback_control wbc = {
-		.sync_mode = WB_SYNC_ALL,
-		.nr_to_write = 0,
-		.range_start = range_start,
-		.range_end = range_start + len - 1,
-		.for_sync = 1,
-	};
-	int ret;
-
-	if (folio_test_writeback(folio))
-		return -EBUSY;
-	if (folio_clear_dirty_for_io(folio)) {
-		trace_nfs_writeback_folio_reclaim(inode, range_start, len);
-		ret = nfs_writepage_locked(folio, &wbc);
-		trace_nfs_writeback_folio_reclaim_done(inode, range_start, len,
-						       ret);
-		return ret;
-	}
-	nfs_commit_inode(inode, 0);
-	return 0;
 }
 
 /**

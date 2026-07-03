@@ -70,11 +70,12 @@ static inline int rsi_create_kthread(struct rsi_common *common,
 	return 0;
 }
 
-static inline void rsi_kill_thread(struct rsi_thread *handle)
+static inline int rsi_kill_thread(struct rsi_thread *handle)
 {
 	atomic_inc(&handle->thread_done);
 	rsi_set_event(&handle->event);
-	wait_for_completion(&handle->completion);
+
+	return kthread_stop(handle->task);
 }
 
 void rsi_mac80211_detach(struct rsi_hw *hw);

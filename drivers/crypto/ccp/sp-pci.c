@@ -353,13 +353,6 @@ static int __maybe_unused sp_pci_resume(struct device *dev)
 	return sp_resume(sp);
 }
 
-static int __maybe_unused sp_pci_restore(struct device *dev)
-{
-	struct sp_device *sp = dev_get_drvdata(dev);
-
-	return sp_restore(sp);
-}
-
 #ifdef CONFIG_CRYPTO_DEV_SP_PSP
 static const struct sev_vdata sevv1 = {
 	.cmdresp_reg		= 0x10580,	/* C2PMSG_32 */
@@ -408,9 +401,6 @@ static const struct psp_vdata pspv1 = {
 static const struct psp_vdata pspv2 = {
 	.sev			= &sevv2,
 	.platform_access	= &pa_v1,
-	.cmdresp_reg		= 0x10544,	/* C2PMSG_17 */
-	.cmdbuff_addr_lo_reg	= 0x10548,	/* C2PMSG_18 */
-	.cmdbuff_addr_hi_reg	= 0x1054c,	/* C2PMSG_19 */
 	.bootloader_info_reg	= 0x109ec,	/* C2PMSG_59 */
 	.feature_reg		= 0x109fc,	/* C2PMSG_63 */
 	.inten_reg		= 0x10690,	/* P2CMSG_INTEN */
@@ -551,14 +541,7 @@ static const struct pci_device_id sp_pci_table[] = {
 };
 MODULE_DEVICE_TABLE(pci, sp_pci_table);
 
-static const struct dev_pm_ops sp_pci_pm_ops = {
-	.suspend = pm_sleep_ptr(sp_pci_suspend),
-	.resume = pm_sleep_ptr(sp_pci_resume),
-	.freeze = pm_sleep_ptr(sp_pci_suspend),
-	.thaw = pm_sleep_ptr(sp_pci_resume),
-	.poweroff = pm_sleep_ptr(sp_pci_suspend),
-	.restore_early = pm_sleep_ptr(sp_pci_restore),
-};
+static SIMPLE_DEV_PM_OPS(sp_pci_pm_ops, sp_pci_suspend, sp_pci_resume);
 
 static struct pci_driver sp_pci_driver = {
 	.name = "ccp",

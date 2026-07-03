@@ -64,7 +64,6 @@
 #include <linux/jiffies.h>
 #include <linux/kernel.h>
 #include <linux/fcntl.h>
-#include <linux/nospec.h>
 #include <linux/socket.h>
 #include <linux/in.h>
 #include <linux/inet.h>
@@ -359,9 +358,7 @@ static int icmp_glue_bits(void *from, char *to, int offset, int len, int odd,
 				      to, len);
 
 	skb->csum = csum_block_add(skb->csum, csum, odd);
-	if (icmp_param->data.icmph.type <= NR_ICMP_TYPES &&
-	    icmp_pointers[array_index_nospec(icmp_param->data.icmph.type,
-					     NR_ICMP_TYPES + 1)].error)
+	if (icmp_pointers[icmp_param->data.icmph.type].error)
 		nf_ct_attach(skb, icmp_param->skb);
 	return 0;
 }
@@ -547,30 +544,14 @@ static struct rtable *icmp_route_lookup(struct net *net, struct flowi4 *fl4,
 			goto relookup_failed;
 		}
 		/* Ugh! */
-		orefdst = skb_dstref_steal(skb_in);
+		orefdst = skb_in->_skb_refdst; /* save old refdst */
+		skb_dst_set(skb_in, NULL);
 		err = ip_route_input(skb_in, fl4_dec.daddr, fl4_dec.saddr,
 				     dscp, rt2->dst.dev);
 
 		dst_release(&rt2->dst);
 		rt2 = skb_rtable(skb_in);
-		/* steal dst entry from skb_in, don't drop refcnt */
-		skb_dstref_steal(skb_in);
-		skb_dstref_restore(skb_in, orefdst);
-
-		/*
-		 * At this point, fl4_dec.daddr should NOT be local (we
-		 * checked fl4_dec.saddr above). However, a race condition
-		 * may occur if the address is added to the interface
-		 * concurrently. In that case, ip_route_input() returns a
-		 * LOCAL route with dst.output=ip_rt_bug, which must not
-		 * be used for output.
-		 */
-		if (!err && rt2 && rt2->rt_type == RTN_LOCAL) {
-			net_warn_ratelimited("detected local route for %pI4 during ICMP sending, src %pI4\n",
-					     &fl4_dec.daddr, &fl4_dec.saddr);
-			dst_release(&rt2->dst);
-			err = -EINVAL;
-		}
+		skb_in->_skb_refdst = orefdst; /* restore old refdst */
 	}
 
 	if (err)
@@ -867,20 +848,14 @@ static void icmp_socket_deliver(struct sk_buff *skb, u32 info)
 	ipprot = rcu_dereference(inet_protos[protocol]);
 	if (ipprot && ipprot->err_handler)
 		ipprot->err_handler(skb, info);
-	return;
-
-out:
-	__ICMP_INC_STATS(dev_net_rcu(skb->dev), ICMP_MIB_INERRORS);
 }
 
 static bool icmp_tag_validation(int proto)
 {
-	const struct net_protocol *ipprot;
 	bool ok;
 
 	rcu_read_lock();
-	ipprot = rcu_dereference(inet_protos[proto]);
-	ok = ipprot ? ipprot->icmp_strict_tag_validation : false;
+	ok = rcu_dereference(inet_protos[proto])->icmp_strict_tag_validation;
 	rcu_read_unlock();
 	return ok;
 }
@@ -1141,13 +1116,6 @@ bool icmp_build_probe(struct sk_buff *skb, struct icmphdr *icmphdr)
 			if (iio->ident.addr.ctype3_hdr.addrlen != sizeof(struct in6_addr))
 				goto send_mal_query;
 			dev = ipv6_stub->ipv6_dev_find(net, &iio->ident.addr.ip_addr.ipv6_addr, dev);
-			/*
-			 * If IPv6 identifier lookup is unavailable, silently
-			 * discard the request instead of misreporting NO_IF.
-			 */
-			if (IS_ERR(dev))
-				return false;
-
 			dev_hold(dev);
 			break;
 #endif

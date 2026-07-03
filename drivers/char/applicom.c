@@ -835,10 +835,7 @@ static long ac_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		ret = -ENOTTY;
 		break;
 	}
-
-	if (cmd != 6)
-		Dummy = readb(apbs[IndexCard].RamIO + VERS);
-
+	Dummy = readb(apbs[IndexCard].RamIO + VERS);
 	kfree(adgl);
 	mutex_unlock(&ac_mutex);
 	return ret;

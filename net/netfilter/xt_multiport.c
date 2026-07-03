@@ -105,28 +105,6 @@ multiport_mt(const struct sk_buff *skb, struct xt_action_param *par)
 	return ports_match_v1(multiinfo, ntohs(pptr[0]), ntohs(pptr[1]));
 }
 
-static bool
-multiport_valid_ranges(const struct xt_multiport_v1 *multiinfo)
-{
-	unsigned int i;
-
-	for (i = 0; i < multiinfo->count; i++) {
-		if (!multiinfo->pflags[i])
-			continue;
-
-		if (++i >= multiinfo->count)
-			return false;
-
-		if (multiinfo->pflags[i])
-			return false;
-
-		if (multiinfo->ports[i - 1] > multiinfo->ports[i])
-			return false;
-	}
-
-	return true;
-}
-
 static inline bool
 check(u_int16_t proto,
       u_int8_t ip_invflags,
@@ -149,10 +127,8 @@ static int multiport_mt_check(const struct xt_mtchk_param *par)
 	const struct ipt_ip *ip = par->entryinfo;
 	const struct xt_multiport_v1 *multiinfo = par->matchinfo;
 
-	if (!check(ip->proto, ip->invflags, multiinfo->flags, multiinfo->count))
-		return -EINVAL;
-
-	return multiport_valid_ranges(multiinfo) ? 0 : -EINVAL;
+	return check(ip->proto, ip->invflags, multiinfo->flags,
+		     multiinfo->count) ? 0 : -EINVAL;
 }
 
 static int multiport_mt6_check(const struct xt_mtchk_param *par)
@@ -160,10 +136,8 @@ static int multiport_mt6_check(const struct xt_mtchk_param *par)
 	const struct ip6t_ip6 *ip = par->entryinfo;
 	const struct xt_multiport_v1 *multiinfo = par->matchinfo;
 
-	if (!check(ip->proto, ip->invflags, multiinfo->flags, multiinfo->count))
-		return -EINVAL;
-
-	return multiport_valid_ranges(multiinfo) ? 0 : -EINVAL;
+	return check(ip->proto, ip->invflags, multiinfo->flags,
+		     multiinfo->count) ? 0 : -EINVAL;
 }
 
 static struct xt_match multiport_mt_reg[] __read_mostly = {

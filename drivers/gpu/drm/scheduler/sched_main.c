@@ -404,7 +404,6 @@ static void drm_sched_run_free_queue(struct drm_gpu_scheduler *sched)
 /**
  * drm_sched_job_done - complete a job
  * @s_job: pointer to the job which is done
- * @result: 0 on success, -ERRNO on error
  *
  * Finish the job's fence and wake up the worker thread.
  */
@@ -812,14 +811,6 @@ int drm_sched_job_init(struct drm_sched_job *job,
 	 */
 	memset(job, 0, sizeof(*job));
 
-	/*
-	 * We don't know for sure how the user has allocated. Thus, zero the
-	 * struct so that unallowed (i.e., too early) usage of pointers that
-	 * this function does not set is guaranteed to lead to a NULL pointer
-	 * exception instead of UB.
-	 */
-	memset(job, 0, sizeof(*job));
-
 	job->entity = entity;
 	job->credits = credits;
 	job->s_fence = drm_sched_fence_alloc(entity, owner);
@@ -961,14 +952,13 @@ int drm_sched_job_add_resv_dependencies(struct drm_sched_job *job,
 	dma_resv_assert_held(resv);
 
 	dma_resv_for_each_fence(&cursor, resv, usage, fence) {
-		/*
-		 * As drm_sched_job_add_dependency always consumes the fence
-		 * reference (even when it fails), and dma_resv_for_each_fence
-		 * is not obtaining one, we need to grab one before calling.
-		 */
-		ret = drm_sched_job_add_dependency(job, dma_fence_get(fence));
-		if (ret)
+		/* Make sure to grab an additional ref on the added fence */
+		dma_fence_get(fence);
+		ret = drm_sched_job_add_dependency(job, fence);
+		if (ret) {
+			dma_fence_put(fence);
 			return ret;
+		}
 	}
 	return 0;
 }

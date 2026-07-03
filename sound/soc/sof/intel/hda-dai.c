@@ -70,7 +70,7 @@ static const struct hda_dai_widget_dma_ops *
 hda_dai_get_ops(struct snd_pcm_substream *substream, struct snd_soc_dai *cpu_dai)
 {
 	struct snd_soc_dapm_widget *w = snd_soc_dai_get_widget(cpu_dai, substream->stream);
-	struct snd_sof_widget *swidget;
+	struct snd_sof_widget *swidget = w->dobj.private;
 	struct snd_sof_dev *sdev;
 	struct snd_sof_dai *sdai;
 
@@ -444,7 +444,6 @@ static int non_hda_dai_hw_params_data(struct snd_pcm_substream *substream,
 	dma_config->dma_stream_channel_map.device_count = 1;
 	dma_config->dma_priv_config_size = 0;
 
-skip_tlv:
 	return 0;
 }
 

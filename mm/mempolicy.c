@@ -474,16 +474,6 @@ struct migration_mpol {		/* for alloc_migration_target_by_mpol() */
 	pgoff_t ilx;
 };
 
-static bool strictly_unmovable(unsigned long flags)
-{
-	/*
-	 * STRICT without MOVE flags lets do_mbind() fail immediately with -EIO
-	 * if any misplaced page is found.
-	 */
-	return (flags & (MPOL_MF_STRICT | MPOL_MF_MOVE | MPOL_MF_MOVE_ALL)) ==
-			 MPOL_MF_STRICT;
-}
-
 struct queue_pages {
 	struct list_head *pagelist;
 	unsigned long flags;
@@ -1397,9 +1387,6 @@ static long do_mbind(unsigned long start, unsigned long len,
 			}
 		}
 	}
-
-	if (!list_empty(&pagelist))
-		putback_movable_pages(&pagelist);
 
 	mmap_write_unlock(mm);
 

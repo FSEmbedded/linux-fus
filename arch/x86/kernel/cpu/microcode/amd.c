@@ -412,7 +412,7 @@ static unsigned int __verify_patch_size(u32 sh_psize, size_t buf_size)
 	u32 max_size;
 
 	if (family >= 0x15)
-		goto ret;
+		return min_t(u32, sh_psize, buf_size);
 
 #define F1XH_MPB_MAX_SIZE 2048
 #define F14H_MPB_MAX_SIZE 1824
@@ -426,15 +426,13 @@ static unsigned int __verify_patch_size(u32 sh_psize, size_t buf_size)
 		break;
 	default:
 		WARN(1, "%s: WTF family: 0x%x\n", __func__, family);
-		return false;
+		return 0;
 	}
 
-	if (sh_psize > max_size)
-		return false;
+	if (sh_psize > min_t(u32, buf_size, max_size))
+		return 0;
 
-ret:
-	/* Working with the whole buffer so < is ok. */
-	return sh_psize <= buf_size;
+	return sh_psize;
 }
 
 /*
@@ -449,7 +447,7 @@ static int verify_patch(const u8 *buf, size_t buf_size, u32 *patch_size)
 {
 	u8 family = x86_family(bsp_cpuid_1_eax);
 	struct microcode_header_amd *mc_hdr;
-	u32 cur_rev, cutoff, patch_rev;
+	unsigned int ret;
 	u32 sh_psize;
 	u16 proc_id;
 	u8 patch_fam;
@@ -491,24 +489,6 @@ static int verify_patch(const u8 *buf, size_t buf_size, u32 *patch_size)
 	patch_fam = 0xf + (proc_id >> 12);
 	if (patch_fam != family)
 		return 1;
-
-	cur_rev = get_patch_level();
-
-	/* No cutoff revision means old/unaffected by signing algorithm weakness => matches */
-	cutoff = get_cutoff_revision(cur_rev);
-	if (!cutoff)
-		goto ok;
-
-	patch_rev = mc_hdr->patch_id;
-
-	if (cur_rev <= cutoff && patch_rev <= cutoff)
-		goto ok;
-
-	if (cur_rev > cutoff && patch_rev > cutoff)
-		goto ok;
-
-	return 1;
-ok:
 
 	return 0;
 }

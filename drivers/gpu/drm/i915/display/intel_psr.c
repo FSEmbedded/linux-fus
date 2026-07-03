@@ -2368,9 +2368,9 @@ static u32 psr2_pipe_srcsz_early_tpt_calc(struct intel_crtc_state *crtc_state,
 
 static void clip_area_update(struct drm_rect *overlap_damage_area,
 			     struct drm_rect *damage_area,
-			     struct drm_rect *display_area)
+			     struct drm_rect *pipe_src)
 {
-	if (!drm_rect_intersect(damage_area, display_area))
+	if (!drm_rect_intersect(damage_area, pipe_src))
 		return;
 
 	if (overlap_damage_area->y1 == -1) {

@@ -7,6 +7,4 @@ include ../flags.mk
 
 CFLAGS += -I$(CURDIR)
 
-CFLAGS += -I$(CURDIR)
-
 $(TEST_GEN_PROGS): ../harness.c

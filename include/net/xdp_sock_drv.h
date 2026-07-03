@@ -37,40 +37,14 @@ static inline u32 xsk_pool_get_headroom(struct xsk_buff_pool *pool)
 	return XDP_PACKET_HEADROOM + pool->headroom;
 }
 
-static inline u32 xsk_pool_get_tailroom(bool mbuf)
-{
-	return mbuf ? SKB_DATA_ALIGN(sizeof(struct skb_shared_info)) : 0;
-}
-
 static inline u32 xsk_pool_get_chunk_size(struct xsk_buff_pool *pool)
 {
 	return pool->chunk_size;
 }
 
-static inline u32 __xsk_pool_get_rx_frame_size(struct xsk_buff_pool *pool)
-{
-	return xsk_pool_get_chunk_size(pool) - xsk_pool_get_headroom(pool);
-}
-
 static inline u32 xsk_pool_get_rx_frame_size(struct xsk_buff_pool *pool)
 {
-	u32 frame_size =  __xsk_pool_get_rx_frame_size(pool);
-	struct xdp_umem *umem = pool->umem;
-	bool mbuf;
-
-	/* Reserve tailroom only for zero-copy pools that opted into
-	 * multi-buffer. The reserved area is used for skb_shared_info,
-	 * matching the XDP core's xdp_data_hard_end() layout.
-	 */
-	mbuf = pool->dev && (umem->flags & XDP_UMEM_SG_FLAG);
-	frame_size -= xsk_pool_get_tailroom(mbuf);
-
-	return ALIGN_DOWN(frame_size, 128);
-}
-
-static inline u32 xsk_pool_get_rx_frag_step(struct xsk_buff_pool *pool)
-{
-	return pool->unaligned ? 0 : xsk_pool_get_chunk_size(pool);
+	return xsk_pool_get_chunk_size(pool) - xsk_pool_get_headroom(pool);
 }
 
 static inline void xsk_pool_set_rxq_info(struct xsk_buff_pool *pool,
@@ -152,8 +126,8 @@ static inline void xsk_buff_free(struct xdp_buff *xdp)
 	if (likely(!xdp_buff_has_frags(xdp)))
 		goto out;
 
-	list_for_each_entry_safe(pos, tmp, xskb_list, list_node) {
-		list_del_init(&pos->list_node);
+	list_for_each_entry_safe(pos, tmp, xskb_list, xskb_list_node) {
+		list_del(&pos->xskb_list_node);
 		xp_free(pos);
 	}
 
@@ -166,7 +140,7 @@ static inline void xsk_buff_add_frag(struct xdp_buff *xdp)
 {
 	struct xdp_buff_xsk *frag = container_of(xdp, struct xdp_buff_xsk, xdp);
 
-	list_add_tail(&frag->list_node, &frag->pool->xskb_list);
+	list_add_tail(&frag->xskb_list_node, &frag->pool->xskb_list);
 }
 
 static inline struct xdp_buff *xsk_buff_get_frag(const struct xdp_buff *first)
@@ -176,9 +150,9 @@ static inline struct xdp_buff *xsk_buff_get_frag(const struct xdp_buff *first)
 	struct xdp_buff_xsk *frag;
 
 	frag = list_first_entry_or_null(&xskb->pool->xskb_list,
-					struct xdp_buff_xsk, list_node);
+					struct xdp_buff_xsk, xskb_list_node);
 	if (frag) {
-		list_del_init(&frag->list_node);
+		list_del(&frag->xskb_list_node);
 		ret = &frag->xdp;
 	}
 
@@ -189,7 +163,7 @@ static inline void xsk_buff_del_tail(struct xdp_buff *tail)
 {
 	struct xdp_buff_xsk *xskb = container_of(tail, struct xdp_buff_xsk, xdp);
 
-	list_del_init(&xskb->list_node);
+	list_del(&xskb->xskb_list_node);
 }
 
 static inline struct xdp_buff *xsk_buff_get_tail(struct xdp_buff *first)
@@ -198,7 +172,7 @@ static inline struct xdp_buff *xsk_buff_get_tail(struct xdp_buff *first)
 	struct xdp_buff_xsk *frag;
 
 	frag = list_last_entry(&xskb->pool->xskb_list, struct xdp_buff_xsk,
-			       list_node);
+			       xskb_list_node);
 	return &frag->xdp;
 }
 
@@ -319,11 +293,6 @@ static inline u32 xsk_pool_get_chunk_size(struct xsk_buff_pool *pool)
 }
 
 static inline u32 xsk_pool_get_rx_frame_size(struct xsk_buff_pool *pool)
-{
-	return 0;
-}
-
-static inline u32 xsk_pool_get_rx_frag_step(struct xsk_buff_pool *pool)
 {
 	return 0;
 }

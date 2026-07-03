@@ -246,7 +246,6 @@ static int tls_decrypt_async_wait(struct tls_sw_context_rx *ctx)
 		crypto_wait_req(-EINPROGRESS, &ctx->async_wait);
 	atomic_inc(&ctx->decrypt_pending);
 
-	__skb_queue_purge(&ctx->async_hold);
 	return ctx->async_wait.err;
 }
 
@@ -584,16 +583,6 @@ static int tls_do_encryption(struct sock *sk,
 	if (rc == -EBUSY) {
 		rc = tls_encrypt_async_wait(ctx);
 		rc = rc ?: -EINPROGRESS;
-		/*
-		 * The async callback tls_encrypt_done() has already
-		 * decremented encrypt_pending and restored the sge on
-		 * both success and error. Skip the synchronous cleanup
-		 * below on error, just remove the record and return.
-		 */
-		if (rc != -EINPROGRESS) {
-			list_del(&rec->list);
-			return rc;
-		}
 	}
 	if (!rc || rc != -EINPROGRESS) {
 		atomic_dec(&ctx->encrypt_pending);
@@ -789,31 +778,21 @@ static int tls_push_record(struct sock *sk, int flags,
 	i = msg_pl->sg.end;
 	sk_msg_iter_var_prev(i);
 
-	/* msg_pl->sg.data is a ring; data[MAX+1] is reserved for the wrap
-	 * link (frags won't use it). 'i' is now the last filled entry:
-	 *
-	 *         i   end              start
-	 *         v    v                 v            [ rsv ]
-	 *  [ d ][ d ][   ][   ]...[   ][ d ][ d ][ d ][chain]
-	 *    ^   END                                     v
-	 *     `-----------------------------------------'
-	 *
-	 * Note that SGL does not allow chain-after-chain, so for TLS 1.3,
-	 * we must make sure we don't create the wrap entry and then chain
-	 * link to content_type immediately at index 0.
-	 */
-	if (i < msg_pl->sg.start)
-		sg_chain(msg_pl->sg.data, ARRAY_SIZE(msg_pl->sg.data),
-			 msg_pl->sg.data);
-
 	rec->content_type = record_type;
 	if (prot->version == TLS_1_3_VERSION) {
 		/* Add content type to end of message.  No padding added */
 		sg_set_buf(&rec->sg_content_type, &rec->content_type, 1);
 		sg_mark_end(&rec->sg_content_type);
-		sg_chain(msg_pl->sg.data, i + 2, &rec->sg_content_type);
+		sg_chain(msg_pl->sg.data, msg_pl->sg.end + 1,
+			 &rec->sg_content_type);
 	} else {
 		sg_mark_end(sk_msg_elem(msg_pl, i));
+	}
+
+	if (msg_pl->sg.end < msg_pl->sg.start) {
+		sg_chain(&msg_pl->sg.data[msg_pl->sg.start],
+			 MAX_SKB_FRAGS - msg_pl->sg.start + 1,
+			 msg_pl->sg.data);
 	}
 
 	i = msg_pl->sg.start;
@@ -1075,7 +1054,7 @@ static int tls_sw_sendmsg_locked(struct sock *sk, struct msghdr *msg,
 			if (ret == -EINPROGRESS)
 				num_async++;
 			else if (ret != -EAGAIN)
-				goto end;
+				goto send_end;
 		}
 	}
 
@@ -1133,11 +1112,8 @@ alloc_encrypted:
 				goto send_end;
 			tls_ctx->pending_open_record_frags = true;
 
-			if (sk_msg_full(msg_pl)) {
+			if (sk_msg_full(msg_pl))
 				full_record = true;
-				sk_msg_trim(sk, msg_en,
-					    msg_pl->sg.size + prot->overhead_size);
-			}
 
 			if (full_record || eor)
 				goto copied;
@@ -1173,13 +1149,6 @@ alloc_encrypted:
 				} else if (ret != -EAGAIN)
 					goto send_end;
 			}
-
-			/* Transmit if any encryptions have completed */
-			if (test_and_clear_bit(BIT_TX_SCHEDULED, &ctx->tx_bitmask)) {
-				cancel_delayed_work(&ctx->tx_work.work);
-				tls_tx_records(sk, msg->msg_flags);
-			}
-
 			continue;
 rollback_iter:
 			copied -= try_to_copy;
@@ -1235,12 +1204,6 @@ copied:
 					goto send_end;
 				}
 			}
-
-			/* Transmit if any encryptions have completed */
-			if (test_and_clear_bit(BIT_TX_SCHEDULED, &ctx->tx_bitmask)) {
-				cancel_delayed_work(&ctx->tx_work.work);
-				tls_tx_records(sk, msg->msg_flags);
-			}
 		}
 
 		continue;
@@ -1260,7 +1223,6 @@ trim_sgl:
 			goto alloc_encrypted;
 	}
 
-send_end:
 	if (!num_async) {
 		goto send_end;
 	} else if (num_zc || eor) {
@@ -1280,7 +1242,7 @@ send_end:
 		tls_tx_records(sk, msg->msg_flags);
 	}
 
-end:
+send_end:
 	ret = sk_stream_error(sk, msg->msg_flags, ret);
 	return copied > 0 ? copied : ret;
 }
@@ -1366,14 +1328,9 @@ unlock:
 	mutex_unlock(&tls_ctx->tx_lock);
 }
 
-/* When has_copied is true the caller has already moved bytes to
- * userspace. Report sk_err but leave it set so the next read
- * surfaces it instead of a spurious EOF, otherwise sk_err is
- * consumed via sock_error().
- */
 static int
 tls_rx_rec_wait(struct sock *sk, struct sk_psock *psock, bool nonblock,
-		bool released, bool has_copied)
+		bool released)
 {
 	struct tls_context *tls_ctx = tls_get_ctx(sk);
 	struct tls_sw_context_rx *ctx = tls_sw_ctx_rx(tls_ctx);
@@ -1387,11 +1344,8 @@ tls_rx_rec_wait(struct sock *sk, struct sk_psock *psock, bool nonblock,
 		if (!sk_psock_queue_empty(psock))
 			return 0;
 
-		if (sk->sk_err) {
-			if (has_copied)
-				return -READ_ONCE(sk->sk_err);
+		if (sk->sk_err)
 			return sock_error(sk);
-		}
 
 		if (ret < 0)
 			return ret;
@@ -1679,10 +1633,8 @@ static int tls_decrypt_sg(struct sock *sk, struct iov_iter *out_iov,
 
 	if (unlikely(darg->async)) {
 		err = tls_strp_msg_hold(&ctx->strp, &ctx->async_hold);
-		if (err) {
-			err = tls_decrypt_async_wait(ctx);
-			darg->async = false;
-		}
+		if (err)
+			__skb_queue_tail(&ctx->async_hold, darg->skb);
 		return err;
 	}
 
@@ -2085,7 +2037,7 @@ int tls_sw_recvmsg(struct sock *sk,
 		int to_decrypt, chunk;
 
 		err = tls_rx_rec_wait(sk, psock, flags & MSG_DONTWAIT,
-				      released, !!(decrypted + copied));
+				      released);
 		if (err <= 0) {
 			if (psock) {
 				chunk = sk_msg_recvmsg(sk, psock, msg, len,
@@ -2220,6 +2172,7 @@ recv_end:
 
 		/* Wait for all previously submitted records to be decrypted */
 		ret = tls_decrypt_async_wait(ctx);
+		__skb_queue_purge(&ctx->async_hold);
 
 		if (ret) {
 			if (err >= 0 || err == -EINPROGRESS)
@@ -2272,7 +2225,7 @@ ssize_t tls_sw_splice_read(struct socket *sock,  loff_t *ppos,
 		struct tls_decrypt_arg darg;
 
 		err = tls_rx_rec_wait(sk, NULL, flags & SPLICE_F_NONBLOCK,
-				      true, false);
+				      true);
 		if (err <= 0)
 			goto splice_read_end;
 
@@ -2358,7 +2311,7 @@ int tls_sw_read_sock(struct sock *sk, read_descriptor_t *desc,
 		} else {
 			struct tls_decrypt_arg darg;
 
-			err = tls_rx_rec_wait(sk, NULL, true, released, !!copied);
+			err = tls_rx_rec_wait(sk, NULL, true, released);
 			if (err <= 0)
 				goto read_sock_end;
 
@@ -2609,12 +2562,8 @@ void tls_sw_free_ctx_rx(struct tls_context *tls_ctx)
 void tls_sw_free_resources_rx(struct sock *sk)
 {
 	struct tls_context *tls_ctx = tls_get_ctx(sk);
-	struct tls_sw_context_rx *ctx;
-
-	ctx = tls_sw_ctx_rx(tls_ctx);
 
 	tls_sw_release_resources_rx(sk);
-	__tls_strp_done(&ctx->strp);
 	tls_sw_free_ctx_rx(tls_ctx);
 }
 

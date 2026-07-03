@@ -643,8 +643,6 @@ static const u16 ksz9477_regs[] = {
 static const u32 ksz9477_masks[] = {
 	[ALU_STAT_WRITE]		= 0,
 	[ALU_STAT_READ]			= 1,
-	[ALU_STAT_DIRECT]		= 0,
-	[ALU_RESV_MCAST_ADDR]		= BIT(1),
 	[P_MII_TX_FLOW_CTRL]		= BIT(5),
 	[P_MII_RX_FLOW_CTRL]		= BIT(3),
 };
@@ -672,8 +670,6 @@ static const u8 ksz9477_xmii_ctrl1[] = {
 static const u32 lan937x_masks[] = {
 	[ALU_STAT_WRITE]		= 1,
 	[ALU_STAT_READ]			= 2,
-	[ALU_STAT_DIRECT]		= BIT(3),
-	[ALU_RESV_MCAST_ADDR]		= BIT(2),
 	[P_MII_TX_FLOW_CTRL]		= BIT(5),
 	[P_MII_RX_FLOW_CTRL]		= BIT(3),
 };
@@ -2253,8 +2249,8 @@ static int ksz_irq_phy_setup(struct ksz_device *dev)
 		if (BIT(phy) & ds->phys_mii_mask) {
 			irq = irq_find_mapping(dev->ports[phy].pirq.domain,
 					       PORT_SRC_PHY_INT);
-			if (!irq) {
-				ret = -EINVAL;
+			if (irq < 0) {
+				ret = irq;
 				goto out;
 			}
 			ds->user_mii_bus->irq[phy] = irq;
@@ -2478,8 +2474,8 @@ static int ksz_pirq_setup(struct ksz_device *dev, u8 p)
 	snprintf(pirq->name, sizeof(pirq->name), "port_irq-%d", p);
 
 	pirq->irq_num = irq_find_mapping(dev->girq.domain, p);
-	if (!pirq->irq_num)
-		return -EINVAL;
+	if (pirq->irq_num < 0)
+		return pirq->irq_num;
 
 	return ksz_irq_common_setup(dev, pirq);
 }
@@ -2553,18 +2549,18 @@ static int ksz_setup(struct dsa_switch *ds)
 		dsa_switch_for_each_user_port(dp, dev->ds) {
 			ret = ksz_pirq_setup(dev, dp->index);
 			if (ret)
-				goto port_release;
+				goto out_girq;
 
 			ret = ksz_ptp_irq_setup(ds, dp->index);
 			if (ret)
-				goto pirq_release;
+				goto out_pirq;
 		}
 	}
 
 	ret = ksz_ptp_clock_register(ds);
 	if (ret) {
 		dev_err(dev->dev, "Failed to register PTP clock: %d\n", ret);
-		goto port_release;
+		goto out_ptpirq;
 	}
 
 	ret = ksz_mdio_register(dev);
@@ -2585,17 +2581,17 @@ static int ksz_setup(struct dsa_switch *ds)
 
 out_ptp_clock_unregister:
 	ksz_ptp_clock_unregister(ds);
-port_release:
-	if (dev->irq > 0) {
-		dsa_switch_for_each_port_continue_reverse(dp, dev->ds) {
-			if (!dsa_port_is_user(dp))
-				continue;
+out_ptpirq:
+	if (dev->irq > 0)
+		dsa_switch_for_each_user_port(dp, dev->ds)
 			ksz_ptp_irq_free(ds, dp->index);
-pirq_release:
+out_pirq:
+	if (dev->irq > 0)
+		dsa_switch_for_each_user_port(dp, dev->ds)
 			ksz_irq_free(&dev->ports[dp->index].pirq);
-		}
+out_girq:
+	if (dev->irq > 0)
 		ksz_irq_free(&dev->girq);
-	}
 
 	return ret;
 }

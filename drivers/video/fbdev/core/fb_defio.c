@@ -128,25 +128,13 @@ static void fb_deferred_io_pageref_put(struct fb_deferred_io_pageref *pageref,
 /* this is to find and return the vmalloc-ed fb pages */
 static vm_fault_t fb_deferred_io_fault(struct vm_fault *vmf)
 {
-	struct fb_info *info;
 	unsigned long offset;
 	struct page *page;
-	vm_fault_t ret;
-	struct fb_deferred_io_state *fbdefio_state = vmf->vma->vm_private_data;
-
-	mutex_lock(&fbdefio_state->lock);
-
-	info = fbdefio_state->info;
-	if (!info) {
-		ret = VM_FAULT_SIGBUS; /* our device is gone */
-		goto err_mutex_unlock;
-	}
+	struct fb_info *info = vmf->vma->vm_private_data;
 
 	offset = vmf->pgoff << PAGE_SHIFT;
-	if (offset >= info->fix.smem_len) {
-		ret = VM_FAULT_SIGBUS;
-		goto err_mutex_unlock;
-	}
+	if (offset >= info->fix.smem_len)
+		return VM_FAULT_SIGBUS;
 
 	page = fb_deferred_io_get_page(info, offset);
 	if (!page)
@@ -160,15 +148,8 @@ static vm_fault_t fb_deferred_io_fault(struct vm_fault *vmf)
 	BUG_ON(!page->mapping);
 	page->index = vmf->pgoff; /* for folio_mkclean() */
 
-	mutex_unlock(&fbdefio_state->lock);
-
 	vmf->page = page;
-
 	return 0;
-
-err_mutex_unlock:
-	mutex_unlock(&fbdefio_state->lock);
-	return ret;
 }
 
 int fb_deferred_io_fsync(struct file *file, loff_t start, loff_t end, int datasync)
@@ -195,24 +176,15 @@ EXPORT_SYMBOL_GPL(fb_deferred_io_fsync);
  * Adds a page to the dirty list. Call this from struct
  * vm_operations_struct.page_mkwrite.
  */
-static vm_fault_t fb_deferred_io_track_page(struct fb_deferred_io_state *fbdefio_state,
-					    unsigned long offset, struct page *page)
+static vm_fault_t fb_deferred_io_track_page(struct fb_info *info, unsigned long offset,
+					    struct page *page)
 {
-	struct fb_info *info;
-	struct fb_deferred_io *fbdefio;
+	struct fb_deferred_io *fbdefio = info->fbdefio;
 	struct fb_deferred_io_pageref *pageref;
 	vm_fault_t ret;
 
 	/* protect against the workqueue changing the page list */
-	mutex_lock(&fbdefio_state->lock);
-
-	info = fbdefio_state->info;
-	if (!info) {
-		ret = VM_FAULT_SIGBUS; /* our device is gone */
-		goto err_mutex_unlock;
-	}
-
-	fbdefio = info->fbdefio;
+	mutex_lock(&fbdefio->lock);
 
 	pageref = fb_deferred_io_pageref_get(info, offset, page);
 	if (WARN_ON_ONCE(!pageref)) {
@@ -230,38 +202,50 @@ static vm_fault_t fb_deferred_io_track_page(struct fb_deferred_io_state *fbdefio
 	 */
 	lock_page(pageref->page);
 
-	mutex_unlock(&fbdefio_state->lock);
+	mutex_unlock(&fbdefio->lock);
 
 	/* come back after delay to process the deferred IO */
 	schedule_delayed_work(&info->deferred_work, fbdefio->delay);
 	return VM_FAULT_LOCKED;
 
 err_mutex_unlock:
-	mutex_unlock(&fbdefio_state->lock);
+	mutex_unlock(&fbdefio->lock);
 	return ret;
 }
 
-static vm_fault_t fb_deferred_io_page_mkwrite(struct fb_deferred_io_state *fbdefio_state,
-					      struct vm_fault *vmf)
+/*
+ * fb_deferred_io_page_mkwrite - Mark a page as written for deferred I/O
+ * @fb_info: The fbdev info structure
+ * @vmf: The VM fault
+ *
+ * This is a callback we get when userspace first tries to
+ * write to the page. We schedule a workqueue. That workqueue
+ * will eventually mkclean the touched pages and execute the
+ * deferred framebuffer IO. Then if userspace touches a page
+ * again, we repeat the same scheme.
+ *
+ * Returns:
+ * VM_FAULT_LOCKED on success, or a VM_FAULT error otherwise.
+ */
+static vm_fault_t fb_deferred_io_page_mkwrite(struct fb_info *info, struct vm_fault *vmf)
 {
 	unsigned long offset = vmf->pgoff << PAGE_SHIFT;
 	struct page *page = vmf->page;
 
 	file_update_time(vmf->vma->vm_file);
 
-	return fb_deferred_io_track_page(fbdefio_state, offset, page);
+	return fb_deferred_io_track_page(info, offset, page);
 }
 
+/* vm_ops->page_mkwrite handler */
 static vm_fault_t fb_deferred_io_mkwrite(struct vm_fault *vmf)
 {
-	struct fb_deferred_io_state *fbdefio_state = vmf->vma->vm_private_data;
+	struct fb_info *info = vmf->vma->vm_private_data;
 
-	return fb_deferred_io_page_mkwrite(fbdefio_state, vmf);
+	return fb_deferred_io_page_mkwrite(info, vmf);
 }
 
 static const struct vm_operations_struct fb_deferred_io_vm_ops = {
-	.open		= fb_deferred_io_vm_open,
-	.close		= fb_deferred_io_vm_close,
 	.fault		= fb_deferred_io_fault,
 	.page_mkwrite	= fb_deferred_io_mkwrite,
 };
@@ -278,10 +262,7 @@ int fb_deferred_io_mmap(struct fb_info *info, struct vm_area_struct *vma)
 	vm_flags_set(vma, VM_DONTEXPAND | VM_DONTDUMP);
 	if (!(info->flags & FBINFO_VIRTFB))
 		vm_flags_set(vma, VM_IO);
-	vma->vm_private_data = info->fbdefio_state;
-
-	fb_deferred_io_state_get(info->fbdefio_state); /* released in vma->vm_ops->close() */
-
+	vma->vm_private_data = info;
 	return 0;
 }
 EXPORT_SYMBOL_GPL(fb_deferred_io_mmap);
@@ -292,10 +273,9 @@ static void fb_deferred_io_work(struct work_struct *work)
 	struct fb_info *info = container_of(work, struct fb_info, deferred_work.work);
 	struct fb_deferred_io_pageref *pageref, *next;
 	struct fb_deferred_io *fbdefio = info->fbdefio;
-	struct fb_deferred_io_state *fbdefio_state = info->fbdefio_state;
 
 	/* here we mkclean the pages, then do all deferred IO */
-	mutex_lock(&fbdefio_state->lock);
+	mutex_lock(&fbdefio->lock);
 	list_for_each_entry(pageref, &fbdefio->pagereflist, list) {
 		struct folio *folio = page_folio(pageref->page);
 
@@ -311,13 +291,12 @@ static void fb_deferred_io_work(struct work_struct *work)
 	list_for_each_entry_safe(pageref, next, &fbdefio->pagereflist, list)
 		fb_deferred_io_pageref_put(pageref, info);
 
-	mutex_unlock(&fbdefio_state->lock);
+	mutex_unlock(&fbdefio->lock);
 }
 
 int fb_deferred_io_init(struct fb_info *info)
 {
 	struct fb_deferred_io *fbdefio = info->fbdefio;
-	struct fb_deferred_io_state *fbdefio_state;
 	struct fb_deferred_io_pageref *pagerefs;
 	unsigned long npagerefs;
 	int ret;
@@ -327,11 +306,7 @@ int fb_deferred_io_init(struct fb_info *info)
 	if (WARN_ON(!info->fix.smem_len))
 		return -EINVAL;
 
-	fbdefio_state = fb_deferred_io_state_alloc();
-	if (!fbdefio_state)
-		return -ENOMEM;
-	fbdefio_state->info = info;
-
+	mutex_init(&fbdefio->lock);
 	INIT_DELAYED_WORK(&info->deferred_work, fb_deferred_io_work);
 	INIT_LIST_HEAD(&fbdefio->pagereflist);
 	if (fbdefio->delay == 0) /* set a default of 1 s */
@@ -348,12 +323,10 @@ int fb_deferred_io_init(struct fb_info *info)
 	info->npagerefs = npagerefs;
 	info->pagerefs = pagerefs;
 
-	info->fbdefio_state = fbdefio_state;
-
 	return 0;
 
 err:
-	fb_deferred_io_state_release(fbdefio_state);
+	mutex_destroy(&fbdefio->lock);
 	return ret;
 }
 EXPORT_SYMBOL_GPL(fb_deferred_io_init);
@@ -391,18 +364,11 @@ EXPORT_SYMBOL_GPL(fb_deferred_io_release);
 
 void fb_deferred_io_cleanup(struct fb_info *info)
 {
-	struct fb_deferred_io_state *fbdefio_state = info->fbdefio_state;
+	struct fb_deferred_io *fbdefio = info->fbdefio;
 
 	fb_deferred_io_lastclose(info);
 
-	info->fbdefio_state = NULL;
-
-	mutex_lock(&fbdefio_state->lock);
-	fbdefio_state->info = NULL;
-	mutex_unlock(&fbdefio_state->lock);
-
-	fb_deferred_io_state_put(fbdefio_state);
-
 	kvfree(info->pagerefs);
+	mutex_destroy(&fbdefio->lock);
 }
 EXPORT_SYMBOL_GPL(fb_deferred_io_cleanup);

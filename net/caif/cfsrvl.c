@@ -197,20 +197,10 @@ bool cfsrvl_phyid_match(struct cflayer *layer, int phyid)
 
 void caif_free_client(struct cflayer *adap_layer)
 {
-	struct cflayer *serv_layer;
 	struct cfsrvl *servl;
-
-	if (!adap_layer)
+	if (adap_layer == NULL || adap_layer->dn == NULL)
 		return;
-
-	serv_layer = adap_layer->dn;
-	if (!serv_layer)
-		return;
-
-	layer_set_dn(adap_layer, NULL);
-	layer_set_up(serv_layer, NULL);
-
-	servl = container_obj(serv_layer);
+	servl = container_obj(adap_layer->dn);
 	servl->release(&servl->layer);
 }
 EXPORT_SYMBOL(caif_free_client);

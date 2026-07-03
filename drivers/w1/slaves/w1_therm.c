@@ -1846,35 +1846,53 @@ static ssize_t alarms_store(struct device *device,
 	struct w1_slave *sl = dev_to_w1_slave(device);
 	struct therm_info info;
 	u8 new_config_register[3];	/* array of data to be written */
-	long long temp;
-	int ret = 0;
+	int temp, ret;
+	char *token = NULL;
 	s8 tl, th;	/* 1 byte per value + temp ring order */
-	const char *p = buf;
-	char *endp;
+	char *p_args, *orig;
 
-	temp = simple_strtoll(p, &endp, 10);
-	if (p == endp || *endp != ' ')
-		ret = -EINVAL;
-	else if (temp < INT_MIN || temp > INT_MAX)
-		ret = -ERANGE;
+	p_args = orig = kmalloc(size, GFP_KERNEL);
+	/* Safe string copys as buf is const */
+	if (!p_args) {
+		dev_warn(device,
+			"%s: error unable to allocate memory %d\n",
+			__func__, -ENOMEM);
+		return size;
+	}
+	strcpy(p_args, buf);
+
+	/* Split string using space char */
+	token = strsep(&p_args, " ");
+
+	if (!token)	{
+		dev_info(device,
+			"%s: error parsing args %d\n", __func__, -EINVAL);
+		goto free_m;
+	}
+
+	/* Convert 1st entry to int */
+	ret = kstrtoint (token, 10, &temp);
 	if (ret) {
 		dev_info(device,
 			"%s: error parsing args %d\n", __func__, ret);
-		return size;
+		goto free_m;
 	}
 
 	tl = int_to_short(temp);
 
-	p = endp + 1;
-	temp = simple_strtoll(p, &endp, 10);
-	if (p == endp)
-		ret = -EINVAL;
-	else if (temp < INT_MIN || temp > INT_MAX)
-		ret = -ERANGE;
+	/* Split string using space char */
+	token = strsep(&p_args, " ");
+	if (!token)	{
+		dev_info(device,
+			"%s: error parsing args %d\n", __func__, -EINVAL);
+		goto free_m;
+	}
+	/* Convert 2nd entry to int */
+	ret = kstrtoint (token, 10, &temp);
 	if (ret) {
 		dev_info(device,
 			"%s: error parsing args %d\n", __func__, ret);
-		return size;
+		goto free_m;
 	}
 
 	/* Prepare to cast to short by eliminating out of range values */
@@ -1897,7 +1915,7 @@ static ssize_t alarms_store(struct device *device,
 		dev_info(device,
 			"%s: error reading from the slave device %d\n",
 			__func__, ret);
-		return size;
+		goto free_m;
 	}
 
 	/* Write data in the device RAM */
@@ -1905,7 +1923,7 @@ static ssize_t alarms_store(struct device *device,
 		dev_info(device,
 			"%s: Device not supported by the driver %d\n",
 			__func__, -ENODEV);
-		return size;
+		goto free_m;
 	}
 
 	ret = SLAVE_SPECIFIC_FUNC(sl)->write_data(sl, new_config_register);
@@ -1913,6 +1931,10 @@ static ssize_t alarms_store(struct device *device,
 		dev_info(device,
 			"%s: error writing to the slave device %d\n",
 			__func__, ret);
+
+free_m:
+	/* free allocated memory */
+	kfree(orig);
 
 	return size;
 }

@@ -277,7 +277,6 @@
 				compatible = "fsl,imx8ulp-edma";
 				reg = <0x29010000 0x210000>;
 				#dma-cells = <3>;
-				shared-interrupt;
 				dma-channels = <32>;
 				interrupts = <GIC_SPI 0 IRQ_TYPE_LEVEL_HIGH>,
 					     <GIC_SPI 1 IRQ_TYPE_LEVEL_HIGH>,
@@ -863,7 +862,6 @@
 				compatible = "fsl,imx8ulp-edma";
 				reg = <0x2d800000 0x210000>;
 				#dma-cells = <3>;
-				shared-interrupt;
 				dma-channels = <32>;
 				interrupts = <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>,
 					     <GIC_SPI 33 IRQ_TYPE_LEVEL_HIGH>,

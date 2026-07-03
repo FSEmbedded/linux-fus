@@ -2379,7 +2379,7 @@ static unsigned long collect_longterm_unpinnable_folios(
 		if (drain_allow && folio_ref_count(folio) !=
 				   folio_expected_ref_count(folio) + 1) {
 			lru_add_drain_all();
-			drained = 2;
+			drain_allow = false;
 		}
 
 		if (!folio_isolate_lru(folio))

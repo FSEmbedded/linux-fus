@@ -471,8 +471,6 @@ end_enum:
 		   fname->home.seq == cpu_to_le16(MFT_REC_EXTEND)) {
 		/* Records in $Extend are not a files or general directories. */
 		inode->i_op = &ntfs_file_inode_operations;
-		mode = S_IFREG;
-		init_rwsem(&ni->file.run_lock);
 	} else {
 		err = -EINVAL;
 		goto out;
@@ -1301,7 +1299,7 @@ int ntfs_create_inode(struct mnt_idmap *idmap, struct inode *dir,
 		fa |= FILE_ATTRIBUTE_READONLY;
 
 	/* Allocate PATH_MAX bytes. */
-	new_de = kzalloc(PATH_MAX, GFP_KERNEL);
+	new_de = __getname();
 	if (!new_de) {
 		err = -ENOMEM;
 		goto out1;
@@ -1713,7 +1711,7 @@ out3:
 	ntfs_mark_rec_free(sbi, ino, false);
 
 out2:
-	kfree(new_de);
+	__putname(new_de);
 	kfree(rp);
 
 out1:
@@ -1734,7 +1732,7 @@ int ntfs_link_inode(struct inode *inode, struct dentry *dentry)
 	struct NTFS_DE *de;
 
 	/* Allocate PATH_MAX bytes. */
-	de = kzalloc(PATH_MAX, GFP_KERNEL);
+	de = __getname();
 	if (!de)
 		return -ENOMEM;
 
@@ -1748,7 +1746,7 @@ int ntfs_link_inode(struct inode *inode, struct dentry *dentry)
 
 	err = ni_add_name(ntfs_i(d_inode(dentry->d_parent)), ni, de);
 out:
-	kfree(de);
+	__putname(de);
 	return err;
 }
 
@@ -1771,7 +1769,8 @@ int ntfs_unlink_inode(struct inode *dir, const struct dentry *dentry)
 	if (ntfs_is_meta_file(sbi, ni->mi.rno))
 		return -EINVAL;
 
-	de = kzalloc(PATH_MAX, GFP_KERNEL);
+	/* Allocate PATH_MAX bytes. */
+	de = __getname();
 	if (!de)
 		return -ENOMEM;
 
@@ -1807,7 +1806,7 @@ int ntfs_unlink_inode(struct inode *dir, const struct dentry *dentry)
 
 out:
 	ni_unlock(ni);
-	kfree(de);
+	__putname(de);
 	return err;
 }
 

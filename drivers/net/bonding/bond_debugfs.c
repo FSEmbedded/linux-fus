@@ -34,17 +34,11 @@ static int bond_debug_rlb_hash_show(struct seq_file *m, void *v)
 	for (; hash_index != RLB_NULL_INDEX;
 	     hash_index = client_info->used_next) {
 		client_info = &(bond_info->rx_hashtbl[hash_index]);
-		if (client_info->slave)
-			seq_printf(m, "%-15pI4 %-15pI4 %-17pM %s\n",
-				   &client_info->ip_src,
-				   &client_info->ip_dst,
-				   &client_info->mac_dst,
-				   client_info->slave->dev->name);
-		else
-			seq_printf(m, "%-15pI4 %-15pI4 %-17pM (none)\n",
-				   &client_info->ip_src,
-				   &client_info->ip_dst,
-				   &client_info->mac_dst);
+		seq_printf(m, "%-15pI4 %-15pI4 %-17pM %s\n",
+			&client_info->ip_src,
+			&client_info->ip_dst,
+			&client_info->mac_dst,
+			client_info->slave->dev->name);
 	}
 
 	spin_unlock_bh(&bond->mode_lock);

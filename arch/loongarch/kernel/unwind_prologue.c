@@ -64,7 +64,7 @@ static inline bool scan_handlers(unsigned long entry_offset)
 
 static inline bool fix_exception(unsigned long pc)
 {
-#if defined(CONFIG_NUMA) && !defined(CONFIG_PREEMPT_RT)
+#ifdef CONFIG_NUMA
 	int cpu;
 
 	for_each_possible_cpu(cpu) {

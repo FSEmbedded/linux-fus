@@ -1459,48 +1459,6 @@ static int emit_spectre_bhb_barrier(u8 **pprog, u8 *ip,
 	return 0;
 }
 
-static int emit_spectre_bhb_barrier(u8 **pprog, u8 *ip,
-				    struct bpf_prog *bpf_prog)
-{
-	u8 *prog = *pprog;
-	u8 *func;
-
-	if (cpu_feature_enabled(X86_FEATURE_CLEAR_BHB_LOOP)) {
-		/* The clearing sequence clobbers eax and ecx. */
-		EMIT1(0x50); /* push rax */
-		EMIT1(0x51); /* push rcx */
-		ip += 2;
-
-		func = (u8 *)clear_bhb_loop;
-		ip += x86_call_depth_emit_accounting(&prog, func);
-
-		if (emit_call(&prog, func, ip))
-			return -EINVAL;
-		EMIT1(0x59); /* pop rcx */
-		EMIT1(0x58); /* pop rax */
-	}
-	/* Insert IBHF instruction */
-	if ((cpu_feature_enabled(X86_FEATURE_CLEAR_BHB_LOOP) &&
-	     cpu_feature_enabled(X86_FEATURE_HYPERVISOR)) ||
-	    cpu_feature_enabled(X86_FEATURE_CLEAR_BHB_HW)) {
-		/*
-		 * Add an Indirect Branch History Fence (IBHF). IBHF acts as a
-		 * fence preventing branch history from before the fence from
-		 * affecting indirect branches after the fence. This is
-		 * specifically used in cBPF jitted code to prevent Intra-mode
-		 * BHI attacks. The IBHF instruction is designed to be a NOP on
-		 * hardware that doesn't need or support it.  The REP and REX.W
-		 * prefixes are required by the microcode, and they also ensure
-		 * that the NOP is unlikely to be used in existing code.
-		 *
-		 * IBHF is not a valid instruction in 32-bit mode.
-		 */
-		EMIT5(0xF3, 0x48, 0x0F, 0x1E, 0xF8); /* ibhf */
-	}
-	*pprog = prog;
-	return 0;
-}
-
 static int do_jit(struct bpf_prog *bpf_prog, int *addrs, u8 *image, u8 *rw_image,
 		  int oldproglen, struct jit_context *ctx, bool jmp_padding)
 {

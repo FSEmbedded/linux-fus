@@ -350,12 +350,12 @@ static inline bool xor_unlock_is_negative_byte(unsigned long mask,
 #include <asm-generic/bitops/ffz.h>
 #else
 
-static inline unsigned long find_first_zero_bit(const unsigned long *vaddr,
-						unsigned long size)
+static inline int find_first_zero_bit(const unsigned long *vaddr,
+				      unsigned size)
 {
 	const unsigned long *p = vaddr;
-	unsigned long res = 32;
-	unsigned long words;
+	int res = 32;
+	unsigned int words;
 	unsigned long num;
 
 	if (!size)
@@ -376,9 +376,8 @@ out:
 }
 #define find_first_zero_bit find_first_zero_bit
 
-static inline unsigned long find_next_zero_bit(const unsigned long *vaddr,
-					       unsigned long size,
-					       unsigned long offset)
+static inline int find_next_zero_bit(const unsigned long *vaddr, int size,
+				     int offset)
 {
 	const unsigned long *p = vaddr + (offset >> 5);
 	int bit = offset & 31UL, res;
@@ -407,12 +406,11 @@ static inline unsigned long find_next_zero_bit(const unsigned long *vaddr,
 }
 #define find_next_zero_bit find_next_zero_bit
 
-static inline unsigned long find_first_bit(const unsigned long *vaddr,
-					   unsigned long size)
+static inline int find_first_bit(const unsigned long *vaddr, unsigned size)
 {
 	const unsigned long *p = vaddr;
-	unsigned long res = 32;
-	unsigned long words;
+	int res = 32;
+	unsigned int words;
 	unsigned long num;
 
 	if (!size)
@@ -433,9 +431,8 @@ out:
 }
 #define find_first_bit find_first_bit
 
-static inline unsigned long find_next_bit(const unsigned long *vaddr,
-					  unsigned long size,
-					  unsigned long offset)
+static inline int find_next_bit(const unsigned long *vaddr, int size,
+				int offset)
 {
 	const unsigned long *p = vaddr + (offset >> 5);
 	int bit = offset & 31UL, res;

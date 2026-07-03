@@ -378,8 +378,6 @@ struct slim_device *slim_get_device(struct slim_controller *ctrl,
 		sbdev = slim_alloc_device(ctrl, e_addr, NULL);
 		if (!sbdev)
 			return ERR_PTR(-ENOMEM);
-
-		get_device(&sbdev->dev);
 	}
 
 	return sbdev;
@@ -498,24 +496,21 @@ int slim_device_report_present(struct slim_controller *ctrl,
 	if (ctrl->sched.clk_state != SLIM_CLK_ACTIVE) {
 		dev_err(ctrl->dev, "slim ctrl not active,state:%d, ret:%d\n",
 				    ctrl->sched.clk_state, ret);
-		goto out_put_rpm;
+		goto slimbus_not_active;
 	}
 
 	sbdev = slim_get_device(ctrl, e_addr);
-	if (IS_ERR(sbdev)) {
-		ret = -ENODEV;
-		goto out_put_rpm;
-	}
+	if (IS_ERR(sbdev))
+		return -ENODEV;
 
 	if (sbdev->is_laddr_valid) {
 		*laddr = sbdev->laddr;
-		ret = 0;
-	} else {
-		ret = slim_device_alloc_laddr(sbdev, true);
+		return 0;
 	}
 
-	put_device(&sbdev->dev);
-out_put_rpm:
+	ret = slim_device_alloc_laddr(sbdev, true);
+
+slimbus_not_active:
 	pm_runtime_mark_last_busy(ctrl->dev);
 	pm_runtime_put_autosuspend(ctrl->dev);
 	return ret;

@@ -370,12 +370,6 @@ xfsaild_resubmit_item(
 	return XFS_ITEM_SUCCESS;
 }
 
-/*
- * Push a single log item from the AIL.
- *
- * @lip may have been released and freed by the time this function returns,
- * so callers must not dereference the log item afterwards.
- */
 static inline uint
 xfsaild_push_item(
 	struct xfs_ail		*ailp,
@@ -525,17 +519,14 @@ xfsaild_push(
 		 * Note that iop_push may unlock and reacquire the AIL lock.  We
 		 * rely on the AIL cursor implementation to be able to deal with
 		 * the dropped lock.
-		 *
-		 * The log item may have been freed by the push, so it must not
-		 * be accessed or dereferenced below this line.
 		 */
 		lock_result = xfsaild_push_item(ailp, lip);
 		switch (lock_result) {
 		case XFS_ITEM_SUCCESS:
 			XFS_STATS_INC(mp, xs_push_ail_success);
-			trace_xfs_ail_push(ailp, type, flags, item_lsn);
+			trace_xfs_ail_push(lip);
 
-			ailp->ail_last_pushed_lsn = item_lsn;
+			ailp->ail_last_pushed_lsn = lsn;
 			break;
 
 		case XFS_ITEM_FLUSHING:
@@ -551,22 +542,22 @@ xfsaild_push(
 			 * AIL is being flushed.
 			 */
 			XFS_STATS_INC(mp, xs_push_ail_flushing);
-			trace_xfs_ail_flushing(ailp, type, flags, item_lsn);
+			trace_xfs_ail_flushing(lip);
 
 			flushing++;
-			ailp->ail_last_pushed_lsn = item_lsn;
+			ailp->ail_last_pushed_lsn = lsn;
 			break;
 
 		case XFS_ITEM_PINNED:
 			XFS_STATS_INC(mp, xs_push_ail_pinned);
-			trace_xfs_ail_pinned(ailp, type, flags, item_lsn);
+			trace_xfs_ail_pinned(lip);
 
 			stuck++;
 			ailp->ail_log_flush++;
 			break;
 		case XFS_ITEM_LOCKED:
 			XFS_STATS_INC(mp, xs_push_ail_locked);
-			trace_xfs_ail_locked(ailp, type, flags, item_lsn);
+			trace_xfs_ail_locked(lip);
 
 			stuck++;
 			break;

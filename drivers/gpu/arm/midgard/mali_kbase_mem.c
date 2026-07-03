@@ -50,9 +50,6 @@
 /* Static key used to determine if large pages are enabled or not */
 static DEFINE_STATIC_KEY_FALSE(large_pages_static_key);
 
-/* Static key used to determine if large pages are enabled or not */
-static DEFINE_STATIC_KEY_FALSE(large_pages_static_key);
-
 #define VA_REGION_SLAB_NAME_PREFIX "va-region-slab-"
 #define VA_REGION_SLAB_NAME_SIZE (DEVNAME_SIZE + sizeof(VA_REGION_SLAB_NAME_PREFIX) + 1)
 
@@ -208,9 +205,6 @@ int kbase_mem_init(struct kbase_device *kbdev)
 {
 	int err = 0;
 	char va_region_slab_name[VA_REGION_SLAB_NAME_SIZE];
-#if GPU_PAGES_PER_CPU_PAGE > 1
-	char page_metadata_slab_name[PAGE_METADATA_SLAB_NAME_SIZE];
-#endif
 #if IS_ENABLED(CONFIG_OF)
 	struct device_node *mgm_node = NULL;
 #endif
@@ -235,17 +229,6 @@ int kbase_mem_init(struct kbase_device *kbdev)
 		dev_err(kbdev->dev, "Failed to create va_region_slab\n");
 		return -ENOMEM;
 	}
-
-#if GPU_PAGES_PER_CPU_PAGE > 1
-	scnprintf(page_metadata_slab_name, PAGE_METADATA_SLAB_NAME_SIZE,
-		  PAGE_METADATA_SLAB_NAME_PREFIX "%s", kbdev->devname);
-	kbdev->page_metadata_slab = kmem_cache_create(
-		page_metadata_slab_name, sizeof(struct kbase_page_metadata), 0, 0, NULL);
-	if (kbdev->page_metadata_slab == NULL) {
-		dev_err(kbdev->dev, "Failed to create page_metadata_slab");
-		return -ENOMEM;
-	}
-#endif
 
 	kbase_mem_migrate_init(kbdev);
 
@@ -2195,36 +2178,6 @@ bool kbase_check_alloc_flags(struct kbase_context *kctx, unsigned long flags)
 	if ((flags & BASE_MEM_UNUSED_BIT_27) &&
 	    (mali_kbase_supports_reject_alloc_mem_unused_bit_27(kctx->api_version)))
 		return false;
-
-	/* Cannot be set only allocation, only with base_mem_set */
-	if ((flags & BASE_MEM_DONT_NEED) &&
-	    (mali_kbase_supports_reject_alloc_mem_dont_need(kctx->api_version)))
-		return false;
-
-	/* Cannot directly allocate protected memory, it is imported instead */
-	if ((flags & BASE_MEM_PROTECTED) &&
-	    (mali_kbase_supports_reject_alloc_mem_protected_in_unprotected_allocs(
-		    kctx->api_version)))
-		return false;
-
-/* No unused bits are valid for allocations */
-#if MALI_USE_CSF
-	if ((flags & BASE_MEM_UNUSED_BIT_20) &&
-	    (mali_kbase_supports_reject_alloc_mem_unused_bit_20(kctx->api_version)))
-		return false;
-
-	if ((flags & BASE_MEM_UNUSED_BIT_27) &&
-	    (mali_kbase_supports_reject_alloc_mem_unused_bit_27(kctx->api_version)))
-		return false;
-#else /* MALI_USE_CSF */
-	if ((flags & BASE_MEM_UNUSED_BIT_8) &&
-	    (mali_kbase_supports_reject_alloc_mem_unused_bit_8(kctx->api_version)))
-		return false;
-
-	if ((flags & BASE_MEM_UNUSED_BIT_19) &&
-	    (mali_kbase_supports_reject_alloc_mem_unused_bit_19(kctx->api_version)))
-		return false;
-#endif /* MALI_USE_CSF */
 
 	return true;
 }

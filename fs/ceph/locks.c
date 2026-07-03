@@ -221,10 +221,7 @@ static int ceph_lock_wait_for_completion(struct ceph_mds_client *mdsc,
 	if (err && err != -ERESTARTSYS)
 		return err;
 
-	err = wait_for_completion_killable(&req->r_safe_completion);
-	if (err)
-		return err;
-
+	wait_for_completion_killable(&req->r_safe_completion);
 	return 0;
 }
 

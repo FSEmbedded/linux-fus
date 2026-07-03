@@ -191,18 +191,6 @@ allOf:
         - resets
         - reset-names
 
-  - if:
-      not:
-        properties:
-          compatible:
-            contains:
-              enum:
-                - nvidia,tegra194-i2c
-    then:
-      required:
-        - resets
-        - reset-names
-
 unevaluatedProperties: false
 
 examples:

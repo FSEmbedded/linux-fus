@@ -269,21 +269,16 @@ struct event_file_link {
 	struct list_head		list;
 };
 
-static inline unsigned int trace_probe_load_flag(struct trace_probe *tp)
-{
-	return smp_load_acquire(&tp->event->flags);
-}
-
 static inline bool trace_probe_test_flag(struct trace_probe *tp,
 					 unsigned int flag)
 {
-	return !!(trace_probe_load_flag(tp) & flag);
+	return !!(tp->event->flags & flag);
 }
 
 static inline void trace_probe_set_flag(struct trace_probe *tp,
 					unsigned int flag)
 {
-	smp_store_release(&tp->event->flags, tp->event->flags | flag);
+	tp->event->flags |= flag;
 }
 
 static inline void trace_probe_clear_flag(struct trace_probe *tp,
@@ -549,8 +544,7 @@ extern int traceprobe_define_arg_fields(struct trace_event_call *event_call,
 	C(NO_BTF_FIELD,		"This field is not found."),	\
 	C(BAD_BTF_TID,		"Failed to get BTF type info."),\
 	C(BAD_TYPE4STR,		"This type does not fit for string."),\
-	C(NEED_STRING_TYPE,	"$comm and immediate-string only accepts string type"),\
-	C(EVENT_TOO_BIG,	"Event too big (too many fields?)"),
+	C(NEED_STRING_TYPE,	"$comm and immediate-string only accepts string type"),
 
 #undef C
 #define C(a, b)		TP_ERR_##a

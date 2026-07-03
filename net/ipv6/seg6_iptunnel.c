@@ -48,8 +48,7 @@ static size_t seg6_lwt_headroom(struct seg6_iptunnel_encap *tuninfo)
 }
 
 struct seg6_lwt {
-	struct dst_cache cache_input;
-	struct dst_cache cache_output;
+	struct dst_cache cache;
 	struct seg6_iptunnel_encap tuninfo[];
 };
 
@@ -498,11 +497,6 @@ static int seg6_input_core(struct net *net, struct sock *sk,
 
 	if (!dst) {
 		ip6_route_input(skb);
-
-		/* ip6_route_input() sets a NOREF dst; force a refcount on it
-		 * before caching or further use.
-		 */
-		skb_dst_force(skb);
 		dst = skb_dst(skb);
 
 		/* cache only if we don't create a dst reference loop */
@@ -568,7 +562,7 @@ static int seg6_output_core(struct net *net, struct sock *sk,
 	slwt = seg6_lwt_lwtunnel(orig_dst->lwtstate);
 
 	local_bh_disable();
-	dst = dst_cache_get(&slwt->cache_output);
+	dst = dst_cache_get(&slwt->cache);
 	local_bh_enable();
 
 	err = seg6_do_srh(skb, dst);
@@ -705,21 +699,18 @@ static int seg6_build_state(struct net *net, struct nlattr *nla,
 
 	slwt = seg6_lwt_lwtunnel(newts);
 
-	err = dst_cache_init(&slwt->cache_input, GFP_ATOMIC);
-	if (err)
-		goto err_free_newts;
-
-	err = dst_cache_init(&slwt->cache_output, GFP_ATOMIC);
-	if (err)
-		goto err_destroy_input;
+	err = dst_cache_init(&slwt->cache, GFP_ATOMIC);
+	if (err) {
+		kfree(newts);
+		return err;
+	}
 
 	memcpy(&slwt->tuninfo, tuninfo, tuninfo_len);
 
 	newts->type = LWTUNNEL_ENCAP_SEG6;
 	newts->flags |= LWTUNNEL_STATE_INPUT_REDIRECT;
 
-	if (tuninfo->mode != SEG6_IPTUN_MODE_L2ENCAP &&
-	    tuninfo->mode != SEG6_IPTUN_MODE_L2ENCAP_RED)
+	if (tuninfo->mode != SEG6_IPTUN_MODE_L2ENCAP)
 		newts->flags |= LWTUNNEL_STATE_OUTPUT_REDIRECT;
 
 	newts->headroom = seg6_lwt_headroom(tuninfo);
@@ -727,20 +718,11 @@ static int seg6_build_state(struct net *net, struct nlattr *nla,
 	*ts = newts;
 
 	return 0;
-
-err_destroy_input:
-	dst_cache_destroy(&slwt->cache_input);
-err_free_newts:
-	kfree(newts);
-	return err;
 }
 
 static void seg6_destroy_state(struct lwtunnel_state *lwt)
 {
-	struct seg6_lwt *slwt = seg6_lwt_lwtunnel(lwt);
-
-	dst_cache_destroy(&slwt->cache_input);
-	dst_cache_destroy(&slwt->cache_output);
+	dst_cache_destroy(&seg6_lwt_lwtunnel(lwt)->cache);
 }
 
 static int seg6_fill_encap_info(struct sk_buff *skb,

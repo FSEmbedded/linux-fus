@@ -1646,12 +1646,8 @@ static void tasdevice_parse_dt(struct tasdevice_priv *tas_priv)
 		} else {
 			ndev = (ndev < ARRAY_SIZE(dev_addrs))
 				? ndev : ARRAY_SIZE(dev_addrs);
-			rc = device_property_read_u32_array(&client->dev,
+			ndev = device_property_read_u32_array(&client->dev,
 				"ti,audio-slots", dev_addrs, ndev);
-			if (rc != 0) {
-				ndev = 1;
-				dev_addrs[0] = client->addr;
-			}
 		}
 
 		tas_priv->irq =

@@ -702,13 +702,8 @@ static int cw_bat_probe(struct i2c_client *client)
 	if (!cw_bat->battery_workqueue)
 		return -ENOMEM;
 
-	ret = devm_delayed_work_autocancel(&client->dev, &cw_bat->battery_delay_work, cw_bat_work);
-	if (ret) {
-		dev_err_probe(&client->dev, ret,
-			"Failed to register delayed work\n");
-		return ret;
-	}
-
+	devm_delayed_work_autocancel(&client->dev,
+							  &cw_bat->battery_delay_work, cw_bat_work);
 	queue_delayed_work(cw_bat->battery_workqueue,
 			   &cw_bat->battery_delay_work, msecs_to_jiffies(10));
 	return 0;

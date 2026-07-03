@@ -5,7 +5,6 @@
 #include <linux/err.h>
 #include <linux/of_graph.h>
 #if IS_ENABLED(CONFIG_OF) && IS_ENABLED(CONFIG_DRM_PANEL_BRIDGE)
-#include <linux/of.h>
 #include <drm/drm_bridge.h>
 #endif
 
@@ -86,7 +85,7 @@ drm_of_component_match_add(struct device *master,
 {
 }
 
-static inline int drm_of_component_probe_with_match(struct device *dev,
+static int drm_of_component_probe_with_match(struct device *dev,
 			   struct component_match *match,
 			   int (*compare_of)(struct device *, void *),
 			   const struct component_master_ops *m_ops)
@@ -177,8 +176,6 @@ static inline int drm_of_panel_bridge_remove(const struct device_node *np,
 
 	bridge = of_drm_find_bridge(remote);
 	drm_panel_bridge_remove(bridge);
-
-	of_node_put(remote);
 
 	return 0;
 #else

@@ -790,9 +790,3 @@ void kbase_mem_migrate_term(struct kbase_device *kbdev)
 	iput(mem_migrate->inode);
 #endif
 }
-
-bool kbase_is_page_migration_enabled(void)
-{
-	return static_branch_unlikely(&page_migration_static_key);
-}
-KBASE_EXPORT_TEST_API(kbase_is_page_migration_enabled);

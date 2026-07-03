@@ -3659,17 +3659,7 @@ vm_fault_t filemap_map_pages(struct vm_fault *vmf,
 	if (!folio)
 		goto out;
 
-	/*
-	 * Do not allow to map with PTEs beyond i_size and with PMD
-	 * across i_size to preserve SIGBUS semantics.
-	 *
-	 * Make an exception for shmem/tmpfs that for long time
-	 * intentionally mapped with PMDs across i_size.
-	 */
-	can_map_large = shmem_mapping(mapping) ||
-		file_end >= folio_next_index(folio);
-
-	if (can_map_large && filemap_map_pmd(vmf, folio, start_pgoff)) {
+	if (filemap_map_pmd(vmf, folio, start_pgoff)) {
 		ret = VM_FAULT_NOPAGE;
 		goto out;
 	}

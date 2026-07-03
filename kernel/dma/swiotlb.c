@@ -30,7 +30,6 @@
 #include <linux/gfp.h>
 #include <linux/highmem.h>
 #include <linux/io.h>
-#include <linux/kmsan-checks.h>
 #include <linux/iommu-helper.h>
 #include <linux/init.h>
 #include <linux/memblock.h>
@@ -904,19 +903,10 @@ static void swiotlb_bounce(struct device *dev, phys_addr_t tlb_addr, size_t size
 
 			local_irq_save(flags);
 			page = pfn_to_page(pfn);
-			if (dir == DMA_TO_DEVICE) {
-				/*
-				 * Ideally, kmsan_check_highmem_page()
-				 * could be used here to detect infoleaks,
-				 * but callers may map uninitialized buffers
-				 * that will be written by the device,
-				 * causing false positives.
-				 */
+			if (dir == DMA_TO_DEVICE)
 				memcpy_from_page(vaddr, page, offset, sz);
-			} else {
-				kmsan_unpoison_memory(vaddr, sz);
+			else
 				memcpy_to_page(page, offset, vaddr, sz);
-			}
 			local_irq_restore(flags);
 
 			size -= sz;
@@ -925,15 +915,8 @@ static void swiotlb_bounce(struct device *dev, phys_addr_t tlb_addr, size_t size
 			offset = 0;
 		}
 	} else if (dir == DMA_TO_DEVICE) {
-		/*
-		 * Ideally, kmsan_check_memory() could be used here to detect
-		 * infoleaks (uninitialized data being sent to device), but
-		 * callers may map uninitialized buffers that will be written
-		 * by the device, causing false positives.
-		 */
 		memcpy(vaddr, phys_to_virt(orig_addr), size);
 	} else {
-		kmsan_unpoison_memory(vaddr, size);
 		memcpy(phys_to_virt(orig_addr), vaddr, size);
 	}
 }

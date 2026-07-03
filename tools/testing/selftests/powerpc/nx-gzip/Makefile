@@ -6,6 +6,4 @@ include ../flags.mk
 
 CFLAGS = -O3 -m64 -I./include -I../include
 
-CFLAGS = -O3 -m64 -I./include -I../include
-
 $(TEST_GEN_FILES): gzip_vas.c ../utils.c

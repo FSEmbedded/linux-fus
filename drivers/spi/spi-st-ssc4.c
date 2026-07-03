@@ -375,8 +375,6 @@ static void spi_st_remove(struct platform_device *pdev)
 
 	clk_disable_unprepare(spi_st->clk);
 
-	spi_controller_put(host);
-
 	pinctrl_pm_select_sleep_state(&pdev->dev);
 }
 

@@ -683,7 +683,7 @@ static struct page *__dma_alloc_pages(struct device *dev, size_t size,
 		return dma_common_alloc_pages(dev, size, dma_handle, dir, gfp);
 	if (!ops->alloc_pages_op)
 		return NULL;
-	return ops->alloc_pages(dev, size, dma_handle, dir, gfp);
+	return ops->alloc_pages_op(dev, size, dma_handle, dir, gfp);
 }
 
 struct page *dma_alloc_pages(struct device *dev, size_t size,

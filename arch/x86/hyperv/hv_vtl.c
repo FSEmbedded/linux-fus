@@ -68,7 +68,7 @@ static void hv_vtl_ap_entry(void)
 
 static int hv_vtl_bringup_vcpu(u32 target_vp_index, int cpu, u64 eip_ignored)
 {
-	u64 status, rsp, rip;
+	u64 status;
 	int ret = 0;
 	struct hv_enable_vp_vtl *input;
 	unsigned long irq_flags;
@@ -81,11 +81,9 @@ static int hv_vtl_bringup_vcpu(u32 target_vp_index, int cpu, u64 eip_ignored)
 	struct desc_struct *gdt;
 
 	struct task_struct *idle = idle_thread_get(cpu);
-	if (IS_ERR(idle))
-		return PTR_ERR(idle);
+	u64 rsp = (unsigned long)idle->thread.sp;
 
-	rsp = (unsigned long)idle->thread.sp;
-	rip = (u64)&hv_vtl_ap_entry;
+	u64 rip = (u64)&hv_vtl_ap_entry;
 
 	native_store_gdt(&gdt_ptr);
 	store_idt(&idt_ptr);

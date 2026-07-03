@@ -566,6 +566,18 @@ nfsd4_decode_state_owner4(struct nfsd4_compoundargs *argp,
 }
 
 #ifdef CONFIG_NFSD_PNFS
+static __be32
+nfsd4_decode_deviceid4(struct nfsd4_compoundargs *argp,
+		       struct nfsd4_deviceid *devid)
+{
+	__be32 *p;
+
+	p = xdr_inline_decode(argp->xdr, NFS4_DEVICEID4_SIZE);
+	if (!p)
+		return nfserr_bad_xdr;
+	memcpy(devid, p, sizeof(*devid));
+	return nfs_ok;
+}
 
 static __be32
 nfsd4_decode_layoutupdate4(struct nfsd4_compoundargs *argp,
@@ -1750,7 +1762,7 @@ nfsd4_decode_getdeviceinfo(struct nfsd4_compoundargs *argp,
 	__be32 status;
 
 	memset(gdev, 0, sizeof(*gdev));
-	status = nfsd4_decode_deviceid4(argp->xdr, &gdev->gd_devid);
+	status = nfsd4_decode_deviceid4(argp, &gdev->gd_devid);
 	if (status)
 		return status;
 	if (xdr_stream_decode_u32(argp->xdr, &gdev->gd_layout_type) < 0)
@@ -5809,9 +5821,6 @@ nfsd4_encode_operation(struct nfsd4_compoundres *resp, struct nfsd4_op *op)
 		so->so_replay.rp_buflen = len;
 		read_bytes_from_xdr_buf(xdr->buf, op_status_offset + XDR_UNIT,
 						so->so_replay.rp_buf, len);
-		} else {
-			so->so_replay.rp_buflen = 0;
-		}
 	}
 status:
 	op->status = nfsd4_map_status(op->status,
@@ -5875,22 +5884,6 @@ nfs4svc_decode_compoundargs(struct svc_rqst *rqstp, struct xdr_stream *xdr)
 	args->xdr = xdr;
 	args->ops = args->iops;
 	args->rqstp = rqstp;
-
-	/*
-	 * NFSv4 operation decoders can invoke svc cache lookups
-	 * that trigger svc_defer() when RQ_USEDEFERRAL is set,
-	 * setting RQ_DROPME. This creates two problems:
-	 *
-	 * 1. Non-idempotency: Compounds make it too hard to avoid
-	 *    problems if a request is deferred and replayed.
-	 *
-	 * 2. Session slot leakage (NFSv4.1+): If RQ_DROPME is set
-	 *    during decode but SEQUENCE executes successfully, the
-	 *    session slot will be marked INUSE. The request is then
-	 *    dropped before encoding, so the slot is never released,
-	 *    rendering it permanently unusable by the client.
-	 */
-	clear_bit(RQ_USEDEFERRAL, &rqstp->rq_flags);
 
 	return nfsd4_decode_compound(args);
 }

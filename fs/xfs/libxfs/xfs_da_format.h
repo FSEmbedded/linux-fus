@@ -739,10 +739,6 @@ struct xfs_attr3_leafblock {
 	{ XFS_ATTR_SECURE,	"secure" }, \
 	{ XFS_ATTR_PARENT,	"parent" }
 
-#define XFS_ATTR_ONDISK_MASK	(XFS_ATTR_NSP_ONDISK_MASK | \
-				 XFS_ATTR_LOCAL | \
-				 XFS_ATTR_INCOMPLETE)
-
 /*
  * Alignment for namelist and valuelist entries (since they are mixed
  * there can be only one alignment value)

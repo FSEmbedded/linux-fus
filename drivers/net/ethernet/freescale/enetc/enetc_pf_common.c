@@ -857,24 +857,6 @@ static int enetc_msg_validate_delete_macs(struct enetc_pf *pf, u16 si_bit,
 	return 0;
 }
 
-static int enetc_msg_validate_delete_macs(struct enetc_pf *pf, u16 si_bit,
-					  struct enetc_mac_entry *mac,
-					  int mac_cnt)
-{
-	struct enetc_mac_list_entry *entry;
-	int i;
-
-	for (i = 0; i < mac_cnt; i++) {
-		entry = enetc_mac_list_lookup_entry(pf, mac[i].addr);
-		if (entry && (entry->mfe.si_bitmap & si_bit))
-			continue;
-
-		return -EINVAL;
-	}
-
-	return 0;
-}
-
 static u16 enetc_msg_pf_del_vf_mac_entries(struct enetc_pf *pf, int vf_id)
 {
 	struct enetc_msg_swbd *msg_swbd = &pf->rxmsg[vf_id];
@@ -1242,24 +1224,6 @@ no_resource_check:
 				      ENETC_PF_RC_VLAN_FILTER_NO_RESOURCE);
 
 	return ENETC_MSG_CODE_SUCCESS;
-}
-
-static int enetc_msg_validate_delete_vlans(struct enetc_pf *pf, u16 si_bit,
-					   struct enetc_vlan_entry *vlan,
-					   int vlan_cnt)
-{
-	struct enetc_vlan_list_entry *entry;
-	int i;
-
-	for (i = 0; i < vlan_cnt; i++) {
-		entry = enetc_vlan_list_lookup_entry(pf, &vlan[i]);
-		if (entry && (entry->vfe.si_bitmap & si_bit))
-			continue;
-
-		return -EINVAL;
-	}
-
-	return 0;
 }
 
 static int enetc_msg_validate_delete_vlans(struct enetc_pf *pf, u16 si_bit,

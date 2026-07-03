@@ -140,24 +140,22 @@ u8 *rtw_get_ie(u8 *pbuf, signed int index, signed int *len, signed int limit)
 	signed int tmp, i;
 	u8 *p;
 
-	if (limit < 2)
+	if (limit < 1)
 		return NULL;
 
 	p = pbuf;
 	i = 0;
 	*len = 0;
-	while (i + 2 <= limit) {
-		tmp = *(p + 1);
-		if (i + 2 + tmp > limit)
-			break;
-
+	while (1) {
 		if (*p == index) {
-			*len = tmp;
+			*len = *(p + 1);
 			return p;
 		}
-
+		tmp = *(p + 1);
 		p += (tmp + 2);
 		i += (tmp + 2);
+		if (i >= limit)
+			break;
 	}
 	return NULL;
 }
@@ -187,25 +185,20 @@ u8 *rtw_get_ie_ex(u8 *in_ie, uint in_len, u8 eid, u8 *oui, u8 oui_len, u8 *ie, u
 
 	cnt = 0;
 
-	while (cnt + 2 <= in_len) {
-		u8 ie_len = in_ie[cnt + 1];
-
-		if (cnt + 2 + ie_len > in_len)
-			break;
-
+	while (cnt < in_len) {
 		if (eid == in_ie[cnt]
-			&& (!oui || (ie_len >= oui_len && !memcmp(&in_ie[cnt + 2], oui, oui_len)))) {
+			&& (!oui || !memcmp(&in_ie[cnt+2], oui, oui_len))) {
 			target_ie = &in_ie[cnt];
 
 			if (ie)
-				memcpy(ie, &in_ie[cnt], ie_len + 2);
+				memcpy(ie, &in_ie[cnt], in_ie[cnt+1]+2);
 
 			if (ielen)
-				*ielen = ie_len + 2;
+				*ielen = in_ie[cnt+1]+2;
 
 			break;
 		}
-		cnt += ie_len + 2; /* goto next */
+		cnt += in_ie[cnt+1]+2; /* goto next */
 	}
 
 	return target_ie;

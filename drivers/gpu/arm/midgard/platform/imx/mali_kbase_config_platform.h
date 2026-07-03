@@ -20,8 +20,6 @@
  *
  */
 
-#include <linux/version.h>
-
 /**
  * POWER_MANAGEMENT_CALLBACKS - Power management configuration
  *

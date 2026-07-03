@@ -1230,8 +1230,6 @@ err_master:
 err_driver:
 	kfree(fake_bridge);
 err_struct:
-	root_device_unregister(vme_root);
-
 	return retval;
 }
 

@@ -120,7 +120,7 @@ log_subsection()
 
 run_cmd()
 {
-	local cmd="$1"
+	local cmd="$*"
 	local out
 	local rc
 
@@ -145,7 +145,7 @@ get_linklocal()
 	local pfx
 	local addr
 
-	addr=$(${pfx} ${IP} -6 -br addr show dev ${dev} | \
+	addr=$(${pfx} ip -6 -br addr show dev ${dev} | \
 	awk '{
 		for (i = 3; i <= NF; ++i) {
 			if ($i ~ /^fe80/)
@@ -177,38 +177,38 @@ setup()
 	setup_ns PEER_NS
 
 	# add vrf table
-	${IP} li add ${VRF} type vrf table ${VRF_TABLE}
-	${IP} li set ${VRF} up
-	${IP} ro add table ${VRF_TABLE} unreachable default metric 8192
-	${IP} -6 ro add table ${VRF_TABLE} unreachable default metric 8192
+	ip li add ${VRF} type vrf table ${VRF_TABLE}
+	ip li set ${VRF} up
+	ip ro add table ${VRF_TABLE} unreachable default metric 8192
+	ip -6 ro add table ${VRF_TABLE} unreachable default metric 8192
 
 	# create test interfaces
-	${IP} li add ${NETIFS[p1]} type veth peer name ${NETIFS[p2]}
-	${IP} li add ${NETIFS[p3]} type veth peer name ${NETIFS[p4]}
-	${IP} li add ${NETIFS[p5]} type veth peer name ${NETIFS[p6]}
-	${IP} li add ${NETIFS[p7]} type veth peer name ${NETIFS[p8]}
+	ip li add ${NETIFS[p1]} type veth peer name ${NETIFS[p2]}
+	ip li add ${NETIFS[p3]} type veth peer name ${NETIFS[p4]}
+	ip li add ${NETIFS[p5]} type veth peer name ${NETIFS[p6]}
+	ip li add ${NETIFS[p7]} type veth peer name ${NETIFS[p8]}
 
 	# enslave vrf interfaces
 	for n in 5 7; do
-		${IP} li set ${NETIFS[p${n}]} vrf ${VRF}
+		ip li set ${NETIFS[p${n}]} vrf ${VRF}
 	done
 
 	# add addresses
 	for n in 1 3 5 7; do
-		${IP} li set ${NETIFS[p${n}]} up
-		${IP} addr add ${V4ADDRS[p${n}]}/24 dev ${NETIFS[p${n}]}
-		${IP} addr add ${V6ADDRS[p${n}]}/64 dev ${NETIFS[p${n}]} nodad
+		ip li set ${NETIFS[p${n}]} up
+		ip addr add ${V4ADDRS[p${n}]}/24 dev ${NETIFS[p${n}]}
+		ip addr add ${V6ADDRS[p${n}]}/64 dev ${NETIFS[p${n}]} nodad
 	done
 
 	# move peer interfaces to namespace and add addresses
 	for n in 2 4 6 8; do
-		${IP} li set ${NETIFS[p${n}]} netns ${ns2} up
-		ip -netns $ns2 addr add ${V4ADDRS[p${n}]}/24 dev ${NETIFS[p${n}]}
-		ip -netns $ns2 addr add ${V6ADDRS[p${n}]}/64 dev ${NETIFS[p${n}]} nodad
+		ip li set ${NETIFS[p${n}]} netns ${PEER_NS} up
+		ip -netns ${PEER_NS} addr add ${V4ADDRS[p${n}]}/24 dev ${NETIFS[p${n}]}
+		ip -netns ${PEER_NS} addr add ${V6ADDRS[p${n}]}/64 dev ${NETIFS[p${n}]} nodad
 	done
 
-	${IP} -6 ro add default via ${V6ADDRS[p3]/::[0-9]/::64}
-	${IP} -6 ro add table ${VRF_TABLE} default via ${V6ADDRS[p7]/::[0-9]/::64}
+	ip -6 ro add default via ${V6ADDRS[p3]/::[0-9]/::64}
+	ip -6 ro add table ${VRF_TABLE} default via ${V6ADDRS[p7]/::[0-9]/::64}
 
 	set +e
 }
@@ -241,7 +241,7 @@ run_ip()
 	# dev arg may be empty
 	[ -n "${dev}" ] && dev="dev ${dev}"
 
-	run_cmd "${IP} ro add table ${table} ${prefix}/32 via ${gw} ${dev} onlink"
+	run_cmd ip ro add table "${table}" "${prefix}"/32 via "${gw}" "${dev}" onlink
 	log_test $? ${exp_rc} "${desc}"
 }
 
@@ -257,8 +257,8 @@ run_ip_mpath()
 	# dev arg may be empty
 	[ -n "${dev}" ] && dev="dev ${dev}"
 
-	run_cmd "${IP} ro add table ${table} ${prefix}/32 \
-		nexthop via ${nh1} nexthop via ${nh2}"
+	run_cmd ip ro add table "${table}" "${prefix}"/32 \
+		nexthop via ${nh1} nexthop via ${nh2}
 	log_test $? ${exp_rc} "${desc}"
 }
 
@@ -339,7 +339,7 @@ run_ip6()
 	# dev arg may be empty
 	[ -n "${dev}" ] && dev="dev ${dev}"
 
-	run_cmd "${IP} -6 ro add table ${table} ${prefix}/128 via ${gw} ${dev} onlink"
+	run_cmd ip -6 ro add table "${table}" "${prefix}"/128 via "${gw}" "${dev}" onlink
 	log_test $? ${exp_rc} "${desc}"
 }
 
@@ -353,8 +353,8 @@ run_ip6_mpath()
 	local exp_rc="$6"
 	local desc="$7"
 
-	run_cmd "${IP} -6 ro add table ${table} ${prefix}/128 ${opts} \
-		nexthop via ${nh1} nexthop via ${nh2}"
+	run_cmd ip -6 ro add table "${table}" "${prefix}"/128 "${opts}" \
+		nexthop via ${nh1} nexthop via ${nh2}
 	log_test $? ${exp_rc} "${desc}"
 }
 
@@ -491,9 +491,10 @@ do
 	esac
 done
 
+cleanup
 setup
 run_onlink_tests
-cleanup_ns ${ns1} ${ns2}
+cleanup
 
 if [ "$TESTS" != "none" ]; then
 	printf "\nTests passed: %3d\n" ${nsuccess}

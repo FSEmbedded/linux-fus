@@ -428,7 +428,7 @@ static int tcx_probe(struct platform_device *op)
 			j = i;
 			break;
 		}
-		par->mmap_map[i].poff = op->resource[j].start - info->fix.smem_start;
+		par->mmap_map[i].poff = op->resource[j].start;
 	}
 
 	info->fbops = &tcx_ops;

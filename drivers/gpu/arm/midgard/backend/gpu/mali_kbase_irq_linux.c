@@ -25,7 +25,6 @@
 #include <mali_kbase_io.h>
 
 
-
 #include <linux/interrupt.h>
 
 #if IS_ENABLED(CONFIG_MALI_REAL_HW)

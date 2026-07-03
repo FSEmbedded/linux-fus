@@ -310,7 +310,7 @@ int rxrpc_send_abort_packet(struct rxrpc_call *call)
 
 	iov_iter_kvec(&msg.msg_iter, WRITE, iov, 1, sizeof(pkt));
 	ret = do_udp_sendmsg(conn->local->socket, &msg, sizeof(pkt));
-	rxrpc_peer_mark_tx(conn->peer);
+	conn->peer->last_tx_at = ktime_get_seconds();
 	if (ret < 0)
 		trace_rxrpc_tx_fail(call->debug_id, serial, ret,
 				    rxrpc_tx_point_call_abort);
@@ -486,7 +486,7 @@ retry:
 	 */
 	rxrpc_inc_stat(call->rxnet, stat_tx_data_send);
 	ret = do_udp_sendmsg(conn->local->socket, &msg, len);
-	rxrpc_peer_mark_tx(conn->peer);
+	conn->peer->last_tx_at = ktime_get_seconds();
 
 	if (ret < 0) {
 		rxrpc_inc_stat(call->rxnet, stat_tx_data_send_fail);
@@ -573,7 +573,7 @@ void rxrpc_send_conn_abort(struct rxrpc_connection *conn)
 
 	trace_rxrpc_tx_packet(conn->debug_id, &whdr, rxrpc_tx_point_conn_abort);
 
-	rxrpc_peer_mark_tx(conn->peer);
+	conn->peer->last_tx_at = ktime_get_seconds();
 }
 
 /*
@@ -692,7 +692,7 @@ void rxrpc_send_keepalive(struct rxrpc_peer *peer)
 		trace_rxrpc_tx_packet(peer->debug_id, &whdr,
 				      rxrpc_tx_point_version_keepalive);
 
-	rxrpc_peer_mark_tx(peer);
+	peer->last_tx_at = ktime_get_seconds();
 	_leave("");
 }
 

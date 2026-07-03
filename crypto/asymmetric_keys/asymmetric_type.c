@@ -11,7 +11,6 @@
 #include <crypto/public_key.h>
 #include <linux/seq_file.h>
 #include <linux/module.h>
-#include <linux/overflow.h>
 #include <linux/slab.h>
 #include <linux/ctype.h>
 #include <keys/system_keyring.h>
@@ -152,17 +151,12 @@ struct asymmetric_key_id *asymmetric_key_generate_id(const void *val_1,
 						     size_t len_2)
 {
 	struct asymmetric_key_id *kid;
-	size_t kid_sz;
-	size_t len;
 
-	if (check_add_overflow(len_1, len_2, &len))
-		return ERR_PTR(-EOVERFLOW);
-	if (check_add_overflow(sizeof(struct asymmetric_key_id), len, &kid_sz))
-		return ERR_PTR(-EOVERFLOW);
-	kid = kmalloc(kid_sz, GFP_KERNEL);
+	kid = kmalloc(sizeof(struct asymmetric_key_id) + len_1 + len_2,
+		      GFP_KERNEL);
 	if (!kid)
 		return ERR_PTR(-ENOMEM);
-	kid->len = len;
+	kid->len = len_1 + len_2;
 	memcpy(kid->data, val_1, len_1);
 	memcpy(kid->data + len_1, val_2, len_2);
 	return kid;

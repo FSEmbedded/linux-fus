@@ -66,7 +66,6 @@
 #include <linux/seq_file.h>
 
 #include <crypto/hash.h>
-#include <crypto/utils.h>
 #include <linux/scatterlist.h>
 
 #include <trace/events/tcp.h>

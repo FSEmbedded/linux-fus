@@ -778,23 +778,8 @@ int nfc_llcp_send_ui_frame(struct nfc_llcp_sock *sock, u8 ssap, u8 dsap,
 		if (likely(frag_len > 0))
 			skb_put_data(pdu, msg_ptr, frag_len);
 
-		spin_lock(&local->tx_queue.lock);
-
-		if (list_empty(&local->list)) {
-			spin_unlock(&local->tx_queue.lock);
-
-			kfree_skb(pdu);
-
-			len -= remaining_len;
-			if (len == 0)
-				len = -ENXIO;
-			break;
-		}
-
 		/* No need to check for the peer RW for UI frames */
-		__skb_queue_tail(&local->tx_queue, pdu);
-
-		spin_unlock(&local->tx_queue.lock);
+		skb_queue_tail(&local->tx_queue, pdu);
 
 		remaining_len -= frag_len;
 		msg_ptr += frag_len;

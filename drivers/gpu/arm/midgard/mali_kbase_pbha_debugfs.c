@@ -87,14 +87,10 @@ static ssize_t int_id_overrides_write(struct file *file, const char __user *ubuf
 
 	CSTD_UNUSED(ppos);
 
-	raw_str = kvmalloc(count + 1, GFP_KERNEL);
-	if (!raw_str)
-		return -ENOMEM;
-
-	if (copy_from_user(raw_str, ubuf, count)) {
-		kvfree(raw_str);
+	if (count >= sizeof(raw_str))
+		return -E2BIG;
+	if (copy_from_user(raw_str, ubuf, count))
 		return -EINVAL;
-	}
 	raw_str[count] = '\0';
 
 	raw_ptr = raw_str;
@@ -107,12 +103,9 @@ static ssize_t int_id_overrides_write(struct file *file, const char __user *ubuf
 	token = strsep(&raw_ptr, " ");
 	if (token == NULL || kstrtou32(token, 16, &w_val) < 0)
 		return -EINVAL;
-	}
 
-	if (kbase_pbha_record_settings(kbdev, true, id, r_val, w_val)) {
-		kvfree(raw_str);
+	if (kbase_pbha_record_settings(kbdev, true, id, r_val, w_val))
 		return -EINVAL;
-	}
 
 	/* This is a debugfs config write, so reset GPU such that changes take effect ASAP */
 	kbase_pm_context_active(kbdev);
@@ -122,8 +115,6 @@ static ssize_t int_id_overrides_write(struct file *file, const char __user *ubuf
 	}
 
 	kbase_pm_context_idle(kbdev);
-
-	kvfree(raw_str);
 
 	return (ssize_t)count;
 }
@@ -179,32 +170,24 @@ static ssize_t propagate_bits_write(struct file *file, const char __user *ubuf, 
 	struct seq_file *sfile = file->private_data;
 	struct kbase_device *kbdev = sfile->private;
 	/* 32 characters should be enough for the input string in any base */
-	char *raw_str = NULL;
+	char raw_str[32];
 	unsigned long propagate_bits;
 
 	CSTD_UNUSED(ppos);
 
-	raw_str = kvmalloc(count + 1, GFP_KERNEL);
-	if (!raw_str)
-		return -ENOMEM;
-
-	if (copy_from_user(raw_str, ubuf, count)) {
-		kvfree(raw_str);
+	if (count >= sizeof(raw_str))
+		return -E2BIG;
+	if (copy_from_user(raw_str, ubuf, count))
 		return -EINVAL;
-	}
 	raw_str[count] = '\0';
-	if (kstrtoul(raw_str, 0, &propagate_bits)) {
-		kvfree(raw_str);
+	if (kstrtoul(raw_str, 0, &propagate_bits))
 		return -EINVAL;
-	}
 
 	/* Check propagate_bits input argument does not
 	 * exceed the maximum size of the propagate_bits mask.
 	 */
-	if (propagate_bits > (L2_CONFIG_PBHA_HWU_MASK >> L2_CONFIG_PBHA_HWU_SHIFT)) {
-		kvfree(raw_str);
+	if (propagate_bits > (L2_CONFIG_PBHA_HWU_MASK >> L2_CONFIG_PBHA_HWU_SHIFT))
 		return -EINVAL;
-	}
 	/* Cast to u8 is safe as check is done already to ensure size is within
 	 * correct limits.
 	 */
@@ -216,7 +199,6 @@ static ssize_t propagate_bits_write(struct file *file, const char __user *ubuf, 
 		kbase_reset_gpu_wait(kbdev);
 	}
 
-	kvfree(raw_str);
 	return (ssize_t)count;
 }
 

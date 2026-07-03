@@ -460,10 +460,8 @@ gmbus_xfer_read_chunk(struct drm_i915_private *i915,
 
 		val = intel_de_read_fw(i915, GMBUS3(i915));
 		do {
-			if (extra_byte_added && len == 1) {
-				len--;
+			if (extra_byte_added && len == 1)
 				break;
-			}
 
 			*buf++ = val & 0xff;
 			val >>= 8;

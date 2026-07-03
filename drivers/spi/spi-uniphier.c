@@ -666,7 +666,7 @@ static int uniphier_spi_probe(struct platform_device *pdev)
 	}
 	priv->base_dma_addr = res->start;
 
-	priv->clk = devm_clk_get_enabled(&pdev->dev, NULL);
+	priv->clk = devm_clk_get(&pdev->dev, NULL);
 	if (IS_ERR(priv->clk)) {
 		dev_err(&pdev->dev, "failed to get clock\n");
 		ret = PTR_ERR(priv->clk);
@@ -680,14 +680,14 @@ static int uniphier_spi_probe(struct platform_device *pdev)
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0) {
 		ret = irq;
-		goto out_host_put;
+		goto out_disable_clk;
 	}
 
 	ret = devm_request_irq(&pdev->dev, irq, uniphier_spi_handler,
 			       0, "uniphier-spi", priv);
 	if (ret) {
 		dev_err(&pdev->dev, "failed to request IRQ\n");
-		goto out_host_put;
+		goto out_disable_clk;
 	}
 
 	init_completion(&priv->xfer_done);
@@ -717,7 +717,7 @@ static int uniphier_spi_probe(struct platform_device *pdev)
 	if (IS_ERR_OR_NULL(host->dma_tx)) {
 		if (PTR_ERR(host->dma_tx) == -EPROBE_DEFER) {
 			ret = -EPROBE_DEFER;
-			goto out_host_put;
+			goto out_disable_clk;
 		}
 		host->dma_tx = NULL;
 		dma_tx_burst = INT_MAX;
@@ -785,14 +785,7 @@ static void uniphier_spi_remove(struct platform_device *pdev)
 	if (host->dma_rx)
 		dma_release_channel(host->dma_rx);
 
-	spi_unregister_controller(host);
-
-	if (host->dma_tx)
-		dma_release_channel(host->dma_tx);
-	if (host->dma_rx)
-		dma_release_channel(host->dma_rx);
-
-	spi_controller_put(host);
+	clk_disable_unprepare(priv->clk);
 }
 
 static const struct of_device_id uniphier_spi_match[] = {

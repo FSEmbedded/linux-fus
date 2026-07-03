@@ -622,7 +622,7 @@ int ip_options_rcv_srr(struct sk_buff *skb, struct net_device *dev)
 		rt2 = skb_rtable(skb);
 		if (err || (rt2->rt_type != RTN_UNICAST && rt2->rt_type != RTN_LOCAL)) {
 			skb_dst_drop(skb);
-			skb_dstref_restore(skb, orefdst);
+			skb->_skb_refdst = orefdst;
 			return -EINVAL;
 		}
 		refdst_drop(orefdst);

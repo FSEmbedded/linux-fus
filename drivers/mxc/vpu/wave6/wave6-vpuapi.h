@@ -965,9 +965,6 @@ struct vpu_instance {
 	enum v4l2_xfer_func xfer_func;
 	enum v4l2_ycbcr_encoding ycbcr_enc;
 	enum v4l2_quantization quantization;
-	u32 fb_num;
-	u32 mv_num;
-	u32 src_change;
 
 	enum vpu_instance_state state;
 	enum vpu_instance_state state_in_seek;

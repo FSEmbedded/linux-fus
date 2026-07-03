@@ -3550,16 +3550,6 @@ schedule_delayed_monitor_work(struct kfree_rcu_cpu *krcp)
 }
 
 static void
-schedule_delayed_monitor_work(struct kfree_rcu_cpu *krcp)
-{
-	unsigned long flags;
-
-	raw_spin_lock_irqsave(&krcp->lock, flags);
-	__schedule_delayed_monitor_work(krcp);
-	raw_spin_unlock_irqrestore(&krcp->lock, flags);
-}
-
-static void
 kvfree_rcu_drain_ready(struct kfree_rcu_cpu *krcp)
 {
 	struct list_head bulk_ready[FREE_N_CHANNELS];

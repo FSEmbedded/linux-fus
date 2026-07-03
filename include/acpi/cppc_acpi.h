@@ -177,10 +177,6 @@ static inline int cppc_get_highest_perf(int cpunum, u64 *highest_perf)
 {
 	return -EOPNOTSUPP;
 }
-static inline int cppc_get_highest_perf(int cpunum, u64 *highest_perf)
-{
-	return -ENOTSUPP;
-}
 static inline int cppc_get_perf_ctrs(int cpu, struct cppc_perf_fb_ctrs *perf_fb_ctrs)
 {
 	return -EOPNOTSUPP;

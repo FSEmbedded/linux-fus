@@ -79,8 +79,6 @@ static int bond_option_tlb_dynamic_lb_set(struct bonding *bond,
 				  const struct bond_opt_value *newval);
 static int bond_option_ad_actor_sys_prio_set(struct bonding *bond,
 					     const struct bond_opt_value *newval);
-static int bond_option_actor_port_prio_set(struct bonding *bond,
-					   const struct bond_opt_value *newval);
 static int bond_option_ad_actor_system_set(struct bonding *bond,
 					   const struct bond_opt_value *newval);
 static int bond_option_ad_user_port_key_set(struct bonding *bond,
@@ -478,13 +476,6 @@ static const struct bond_option bond_opts[BOND_OPT_LAST] = {
 		.values = bond_ad_actor_sys_prio_tbl,
 		.set = bond_option_ad_actor_sys_prio_set,
 	},
-	[BOND_OPT_ACTOR_PORT_PRIO] = {
-		.id = BOND_OPT_ACTOR_PORT_PRIO,
-		.name = "actor_port_prio",
-		.unsuppmodes = BOND_MODE_ALL_EX(BIT(BOND_MODE_8023AD)),
-		.flags = BOND_OPTFLAG_RAWVAL,
-		.set = bond_option_actor_port_prio_set,
-	},
 	[BOND_OPT_AD_ACTOR_SYSTEM] = {
 		.id = BOND_OPT_AD_ACTOR_SYSTEM,
 		.name = "ad_actor_system",
@@ -877,9 +868,6 @@ static bool bond_set_xfrm_features(struct bonding *bond)
 static int bond_option_mode_set(struct bonding *bond,
 				const struct bond_opt_value *newval)
 {
-	if (bond->xdp_prog && !bond_xdp_check(bond, newval->value))
-		return -EOPNOTSUPP;
-
 	if (!bond_mode_uses_arp(newval->value)) {
 		if (bond->params.arp_interval) {
 			netdev_dbg(bond->dev, "%s mode is incompatible with arp monitoring, start mii monitoring\n",
@@ -902,13 +890,6 @@ static int bond_option_mode_set(struct bonding *bond,
 	/* don't cache arp_validate between modes */
 	bond->params.arp_validate = BOND_ARP_VALIDATE_NONE;
 	bond->params.mode = newval->value;
-
-	/* When changing mode, the bond device is down, we may reduce
-	 * the bond_bcast_neigh_enabled in bond_close() if broadcast_neighbor
-	 * enabled in 8023ad mode. Therefore, only clear broadcast_neighbor
-	 * to 0.
-	 */
-	bond->params.broadcast_neighbor = 0;
 
 	if (bond->dev->reg_state == NETREG_REGISTERED) {
 		bool update = false;
@@ -1140,7 +1121,7 @@ static void _bond_options_arp_ip_target_set(struct bonding *bond, int slot,
 
 	if (slot >= 0 && slot < BOND_MAX_ARP_TARGETS) {
 		bond_for_each_slave(bond, slave, iter)
-			WRITE_ONCE(slave->target_last_arp_rx[slot], last_rx);
+			slave->target_last_arp_rx[slot] = last_rx;
 		targets[slot] = target;
 	}
 }
@@ -1209,8 +1190,8 @@ static int bond_option_arp_ip_target_rem(struct bonding *bond, __be32 target)
 	bond_for_each_slave(bond, slave, iter) {
 		targets_rx = slave->target_last_arp_rx;
 		for (i = ind; (i < BOND_MAX_ARP_TARGETS-1) && targets[i+1]; i++)
-			WRITE_ONCE(targets_rx[i], READ_ONCE(targets_rx[i+1]));
-		WRITE_ONCE(targets_rx[i], 0);
+			targets_rx[i] = targets_rx[i+1];
+		targets_rx[i] = 0;
 	}
 	for (i = ind; (i < BOND_MAX_ARP_TARGETS-1) && targets[i+1]; i++)
 		targets[i] = targets[i+1];
@@ -1562,8 +1543,6 @@ static int bond_option_fail_over_mac_set(struct bonding *bond,
 static int bond_option_xmit_hash_policy_set(struct bonding *bond,
 					    const struct bond_opt_value *newval)
 {
-	if (bond->xdp_prog && !__bond_xdp_check(BOND_MODE(bond), newval->value))
-		return -EOPNOTSUPP;
 	netdev_dbg(bond->dev, "Setting xmit hash policy to %s (%llu)\n",
 		   newval->string, newval->value);
 	bond->params.xmit_policy = newval->value;
@@ -1807,26 +1786,6 @@ static int bond_option_ad_actor_sys_prio_set(struct bonding *bond,
 		   newval->value);
 
 	bond->params.ad_actor_sys_prio = newval->value;
-	bond_3ad_update_ad_actor_settings(bond);
-
-	return 0;
-}
-
-static int bond_option_actor_port_prio_set(struct bonding *bond,
-					   const struct bond_opt_value *newval)
-{
-	struct slave *slave;
-
-	slave = bond_slave_get_rtnl(newval->slave_dev);
-	if (!slave) {
-		netdev_dbg(bond->dev, "%s called on NULL slave\n", __func__);
-		return -ENODEV;
-	}
-
-	netdev_dbg(newval->slave_dev, "Setting actor_port_prio to %llu\n",
-		   newval->value);
-
-	SLAVE_AD_INFO(slave)->port_priority = newval->value;
 	bond_3ad_update_ad_actor_settings(bond);
 
 	return 0;

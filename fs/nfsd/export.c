@@ -1017,7 +1017,7 @@ exp_rootfh(struct net *net, struct auth_domain *clp, char *name,
 {
 	struct svc_export	*exp;
 	struct path		path;
-	struct inode		*inode __maybe_unused;
+	struct inode		*inode;
 	struct svc_fh		fh;
 	int			err;
 	struct nfsd_net		*nn = net_generic(net, nfsd_net_id);
@@ -1101,41 +1101,21 @@ __be32 check_nfsd_access(struct svc_export *exp, struct svc_rqst *rqstp)
 
 	if (exp->ex_xprtsec_modes & NFSEXP_XPRTSEC_NONE) {
 		if (!test_bit(XPT_TLS_SESSION, &xprt->xpt_flags))
-			return nfs_ok;
+			goto ok;
 	}
 	if (exp->ex_xprtsec_modes & NFSEXP_XPRTSEC_TLS) {
 		if (test_bit(XPT_TLS_SESSION, &xprt->xpt_flags) &&
 		    !test_bit(XPT_PEER_AUTH, &xprt->xpt_flags))
-			return nfs_ok;
+			goto ok;
 	}
 	if (exp->ex_xprtsec_modes & NFSEXP_XPRTSEC_MTLS) {
 		if (test_bit(XPT_TLS_SESSION, &xprt->xpt_flags) &&
 		    test_bit(XPT_PEER_AUTH, &xprt->xpt_flags))
-			return nfs_ok;
+			goto ok;
 	}
+	goto denied;
 
-	return rqstp->rq_vers < 4 ? nfserr_acces : nfserr_wrongsec;
-}
-
-/**
- * check_security_flavor - check if access to export is allowed by the
- * 			  xprtsec policy
- * @exp: svc_export that is being accessed.
- * @rqstp: svc_rqst attempting to access @exp.
- *
- * Helper function for check_nfsd_access().  Note that callers should be
- * using check_nfsd_access() instead of calling this function directly.  The
- * one exception is fh_verify() since it has logic that may result in one
- * or both of the helpers being skipped.
- *
- * Return values:
- *   %nfs_ok if access is granted, or
- *   %nfserr_acces or %nfserr_wrongsec if access is denied
- */
-__be32 check_security_flavor(struct svc_export *exp, struct svc_rqst *rqstp)
-{
-	struct exp_flavor_info *f, *end = exp->ex_flavors + exp->ex_nflavors;
-
+ok:
 	/* legacy gss-only clients are always OK: */
 	if (exp->ex_client == rqstp->rq_gssclient)
 		return nfs_ok;
@@ -1162,17 +1142,6 @@ __be32 check_security_flavor(struct svc_export *exp, struct svc_rqst *rqstp)
 
 denied:
 	return nfserr_wrongsec;
-}
-
-__be32 check_nfsd_access(struct svc_export *exp, struct svc_rqst *rqstp)
-{
-	__be32 status;
-
-	status = check_xprtsec_policy(exp, rqstp);
-	if (status != nfs_ok)
-		return status;
-
-	return check_security_flavor(exp, rqstp);
 }
 
 /*

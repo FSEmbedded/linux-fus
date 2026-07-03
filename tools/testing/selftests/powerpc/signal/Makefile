@@ -14,6 +14,4 @@ include ../flags.mk
 
 CFLAGS += -maltivec
 
-CFLAGS += -maltivec
-
 $(TEST_GEN_PROGS): ../harness.c ../utils.c signal.S

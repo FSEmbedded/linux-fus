@@ -1210,7 +1210,11 @@ static int apple_nvme_get_address(struct nvme_ctrl *ctrl, char *buf, int size)
 
 static void apple_nvme_free_ctrl(struct nvme_ctrl *ctrl)
 {
-	put_device(ctrl->dev);
+	struct apple_nvme *anv = ctrl_to_apple_nvme(ctrl);
+
+	if (anv->ctrl.admin_q)
+		blk_put_queue(anv->ctrl.admin_q);
+	put_device(anv->dev);
 }
 
 static const struct nvme_ctrl_ops nvme_ctrl_ops = {

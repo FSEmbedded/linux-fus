@@ -281,9 +281,9 @@ static void macb_set_hwaddr(struct macb *bp)
 	u32 bottom;
 	u16 top;
 
-	bottom = get_unaligned_le32(bp->dev->dev_addr);
+	bottom = cpu_to_le32(*((u32 *)bp->dev->dev_addr));
 	macb_or_gem_writel(bp, SA1B, bottom);
-	top = get_unaligned_le16(bp->dev->dev_addr + 4);
+	top = cpu_to_le16(*((u16 *)(bp->dev->dev_addr + 4)));
 	macb_or_gem_writel(bp, SA1T, top);
 
 	if (gem_has_ptp(bp)) {
@@ -719,97 +719,6 @@ static void macb_mac_link_down(struct phylink_config *config, unsigned int mode,
 	netif_tx_stop_all_queues(ndev);
 }
 
-/* Use juggling algorithm to left rotate tx ring and tx skb array */
-static void gem_shuffle_tx_one_ring(struct macb_queue *queue)
-{
-	unsigned int head, tail, count, ring_size, desc_size;
-	struct macb_tx_skb tx_skb, *skb_curr, *skb_next;
-	struct macb_dma_desc *desc_curr, *desc_next;
-	unsigned int i, cycles, shift, curr, next;
-	struct macb *bp = queue->bp;
-	unsigned char desc[24];
-	unsigned long flags;
-
-	desc_size = macb_dma_desc_get_size(bp);
-
-	if (WARN_ON_ONCE(desc_size > ARRAY_SIZE(desc)))
-		return;
-
-	spin_lock_irqsave(&queue->tx_ptr_lock, flags);
-	head = queue->tx_head;
-	tail = queue->tx_tail;
-	ring_size = bp->tx_ring_size;
-	count = CIRC_CNT(head, tail, ring_size);
-
-	if (!(tail % ring_size))
-		goto unlock;
-
-	if (!count) {
-		queue->tx_head = 0;
-		queue->tx_tail = 0;
-		goto unlock;
-	}
-
-	shift = tail % ring_size;
-	cycles = gcd(ring_size, shift);
-
-	for (i = 0; i < cycles; i++) {
-		memcpy(&desc, macb_tx_desc(queue, i), desc_size);
-		memcpy(&tx_skb, macb_tx_skb(queue, i),
-		       sizeof(struct macb_tx_skb));
-
-		curr = i;
-		next = (curr + shift) % ring_size;
-
-		while (next != i) {
-			desc_curr = macb_tx_desc(queue, curr);
-			desc_next = macb_tx_desc(queue, next);
-
-			memcpy(desc_curr, desc_next, desc_size);
-
-			if (next == ring_size - 1)
-				desc_curr->ctrl &= ~MACB_BIT(TX_WRAP);
-			if (curr == ring_size - 1)
-				desc_curr->ctrl |= MACB_BIT(TX_WRAP);
-
-			skb_curr = macb_tx_skb(queue, curr);
-			skb_next = macb_tx_skb(queue, next);
-			memcpy(skb_curr, skb_next, sizeof(struct macb_tx_skb));
-
-			curr = next;
-			next = (curr + shift) % ring_size;
-		}
-
-		desc_curr = macb_tx_desc(queue, curr);
-		memcpy(desc_curr, &desc, desc_size);
-		if (i == ring_size - 1)
-			desc_curr->ctrl &= ~MACB_BIT(TX_WRAP);
-		if (curr == ring_size - 1)
-			desc_curr->ctrl |= MACB_BIT(TX_WRAP);
-		memcpy(macb_tx_skb(queue, curr), &tx_skb,
-		       sizeof(struct macb_tx_skb));
-	}
-
-	queue->tx_head = count;
-	queue->tx_tail = 0;
-
-	/* Make descriptor updates visible to hardware */
-	wmb();
-
-unlock:
-	spin_unlock_irqrestore(&queue->tx_ptr_lock, flags);
-}
-
-/* Rotate the queue so that the tail is at index 0 */
-static void gem_shuffle_tx_rings(struct macb *bp)
-{
-	struct macb_queue *queue;
-	int q;
-
-	for (q = 0, queue = bp->queues; q < bp->num_queues; q++, queue++)
-		gem_shuffle_tx_one_ring(queue);
-}
-
 static void macb_mac_link_up(struct phylink_config *config,
 			     struct phy_device *phy,
 			     unsigned int mode, phy_interface_t interface,
@@ -847,10 +756,15 @@ static void macb_mac_link_up(struct phylink_config *config,
 		if (rx_pause)
 			ctrl |= MACB_BIT(PAE);
 
-		for (q = 0, queue = bp->queues; q < bp->num_queues; ++q, ++queue) {
+		/* Initialize rings & buffers as clearing MACB_BIT(TE) in link down
+		 * cleared the pipeline and control registers.
+		 */
+		bp->macbgem_ops.mog_init_rings(bp);
+		macb_init_buffers(bp);
+
+		for (q = 0, queue = bp->queues; q < bp->num_queues; ++q, ++queue)
 			queue_writel(queue, IER,
 				     bp->rx_intr_mask | MACB_TX_INT_FLAGS | MACB_BIT(HRESP));
-		}
 	}
 
 	macb_or_gem_writel(bp, NCFGR, ctrl);
@@ -861,10 +775,8 @@ static void macb_mac_link_up(struct phylink_config *config,
 
 	spin_unlock_irqrestore(&bp->lock, flags);
 
-	if (!(bp->caps & MACB_CAPS_MACB_IS_EMAC)) {
+	if (!(bp->caps & MACB_CAPS_MACB_IS_EMAC))
 		macb_set_tx_clk(bp, speed);
-		gem_shuffle_tx_rings(bp);
-	}
 
 	/* Enable Rx and Tx; Enable PTP unicast */
 	ctrl = macb_readl(bp, NCR);
@@ -1128,7 +1040,7 @@ static void macb_tx_unmap(struct macb *bp, struct macb_tx_skb *tx_skb, int budge
 	}
 
 	if (tx_skb->skb) {
-		dev_consume_skb_any(tx_skb->skb);
+		napi_consume_skb(tx_skb->skb, budget);
 		tx_skb->skb = NULL;
 	}
 }
@@ -2716,7 +2628,10 @@ static void gem_init_rings(struct macb *bp)
 		queue->tx_head = 0;
 		queue->tx_tail = 0;
 
-		gem_init_rx_ring(queue);
+		queue->rx_tail = 0;
+		queue->rx_prepared_head = 0;
+
+		gem_rx_refill(queue);
 	}
 
 	macb_init_tieoff(bp);
@@ -3069,9 +2984,6 @@ static int macb_open(struct net_device *dev)
 			   err);
 		goto pm_exit;
 	}
-
-	bp->macbgem_ops.mog_init_rings(bp);
-	macb_init_buffers(bp);
 
 	for (q = 0, queue = bp->queues; q < bp->num_queues; ++q, ++queue) {
 		napi_enable(&queue->napi_rx);
@@ -3835,9 +3747,6 @@ static int gem_set_rxnfc(struct net_device *netdev, struct ethtool_rxnfc *cmd)
 {
 	struct macb *bp = netdev_priv(netdev);
 	int ret;
-
-	if (!(netdev->hw_features & NETIF_F_NTUPLE))
-		return -EOPNOTSUPP;
 
 	switch (cmd->cmd) {
 	case ETHTOOL_SRXCLSRLINS:
@@ -5413,9 +5322,9 @@ static int __maybe_unused macb_suspend(struct device *dev)
 				dev_err(dev,
 					"Unable to request IRQ %d (error %d)\n",
 					bp->queues[0].irq, err);
+				spin_unlock_irqrestore(&bp->lock, flags);
 				return err;
 			}
-			spin_lock_irqsave(&bp->lock, flags);
 			queue_writel(bp->queues, IER, GEM_BIT(WOL));
 			gem_writel(bp, WOL, tmp);
 		} else {
@@ -5425,12 +5334,13 @@ static int __maybe_unused macb_suspend(struct device *dev)
 				dev_err(dev,
 					"Unable to request IRQ %d (error %d)\n",
 					bp->queues[0].irq, err);
+				spin_unlock_irqrestore(&bp->lock, flags);
 				return err;
 			}
-			spin_lock_irqsave(&bp->lock, flags);
 			queue_writel(bp->queues, IER, MACB_BIT(WOL));
 			macb_writel(bp, WOL, tmp);
 		}
+		spin_unlock_irqrestore(&bp->lock, flags);
 
 		enable_irq_wake(bp->queues[0].irq);
 	}
@@ -5497,8 +5407,6 @@ static int __maybe_unused macb_resume(struct device *dev)
 		queue_readl(bp->queues, ISR);
 		if (bp->caps & MACB_CAPS_ISR_CLEAR_ON_WRITE)
 			queue_writel(bp->queues, ISR, -1);
-		spin_unlock_irqrestore(&bp->lock, flags);
-
 		/* Replace interrupt handler on queue 0 */
 		devm_free_irq(dev, bp->queues[0].irq, bp->queues);
 		err = devm_request_irq(dev, bp->queues[0].irq, macb_interrupt,
@@ -5507,8 +5415,10 @@ static int __maybe_unused macb_resume(struct device *dev)
 			dev_err(dev,
 				"Unable to request IRQ %d (error %d)\n",
 				bp->queues[0].irq, err);
+			spin_unlock_irqrestore(&bp->lock, flags);
 			return err;
 		}
+		spin_unlock_irqrestore(&bp->lock, flags);
 
 		disable_irq_wake(bp->queues[0].irq);
 
@@ -5520,18 +5430,8 @@ static int __maybe_unused macb_resume(struct device *dev)
 		rtnl_unlock();
 	}
 
-	if (!(bp->caps & MACB_CAPS_MACB_IS_EMAC))
-		macb_init_buffers(bp);
-
 	for (q = 0, queue = bp->queues; q < bp->num_queues;
 	     ++q, ++queue) {
-		if (!(bp->caps & MACB_CAPS_MACB_IS_EMAC)) {
-			if (macb_is_gem(bp))
-				gem_init_rx_ring(queue);
-			else
-				macb_init_rx_ring(queue);
-		}
-
 		napi_enable(&queue->napi_rx);
 		napi_enable(&queue->napi_tx);
 	}

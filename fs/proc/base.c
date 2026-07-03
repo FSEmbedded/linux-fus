@@ -889,28 +889,6 @@ static bool proc_mem_foll_force(struct file *file, struct mm_struct *mm)
 	}
 }
 
-static bool proc_mem_foll_force(struct file *file, struct mm_struct *mm)
-{
-	struct task_struct *task;
-	bool ptrace_active = false;
-
-	switch (proc_mem_force_override) {
-	case PROC_MEM_FORCE_NEVER:
-		return false;
-	case PROC_MEM_FORCE_PTRACE:
-		task = get_proc_task(file_inode(file));
-		if (task) {
-			ptrace_active =	READ_ONCE(task->ptrace) &&
-					READ_ONCE(task->mm) == mm &&
-					READ_ONCE(task->parent) == current;
-			put_task_struct(task);
-		}
-		return ptrace_active;
-	default:
-		return true;
-	}
-}
-
 static ssize_t mem_rw(struct file *file, char __user *buf,
 			size_t count, loff_t *ppos, int write)
 {

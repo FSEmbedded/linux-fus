@@ -2944,11 +2944,6 @@ static void __ftrace_trace_stack(struct trace_array *tr,
 	struct ftrace_stack *fstack;
 	struct stack_entry *entry;
 	int stackidx;
-	int bit;
-
-	bit = trace_test_and_set_recursion(_THIS_IP_, _RET_IP_, TRACE_EVENT_START);
-	if (bit < 0)
-		return;
 
 	/*
 	 * Add one, for this function and the call to save_stack_trace()
@@ -3020,7 +3015,6 @@ static void __ftrace_trace_stack(struct trace_array *tr,
 	__this_cpu_dec(ftrace_stack_reserve);
 	preempt_enable_notrace();
 
-	trace_clear_recursion(bit);
 }
 
 static inline void ftrace_trace_stack(struct trace_array *tr,
@@ -8668,7 +8662,7 @@ tracing_init_tracefs_percpu(struct trace_array *tr, long cpu)
 	trace_create_cpu_file("stats", TRACE_MODE_READ, d_cpu,
 				tr, cpu, &tracing_stats_fops);
 
-	trace_create_cpu_file("buffer_size_kb", TRACE_MODE_WRITE, d_cpu,
+	trace_create_cpu_file("buffer_size_kb", TRACE_MODE_READ, d_cpu,
 				tr, cpu, &tracing_entries_fops);
 
 	if (tr->range_addr_start)
@@ -9210,7 +9204,7 @@ static void
 init_tracer_tracefs(struct trace_array *tr, struct dentry *d_tracer);
 
 static int
-allocate_trace_buffer(struct trace_array *tr, struct array_buffer *buf, unsigned long size)
+allocate_trace_buffer(struct trace_array *tr, struct array_buffer *buf, int size)
 {
 	enum ring_buffer_flags rb_flags;
 
@@ -9260,7 +9254,7 @@ static void free_trace_buffer(struct array_buffer *buf)
 	}
 }
 
-static int allocate_trace_buffers(struct trace_array *tr, unsigned long size)
+static int allocate_trace_buffers(struct trace_array *tr, int size)
 {
 	int ret;
 
@@ -10462,7 +10456,7 @@ __init static void enable_instances(void)
 
 __init static int tracer_alloc_buffers(void)
 {
-	unsigned long ring_buf_size;
+	int ring_buf_size;
 	int ret = -ENOMEM;
 
 

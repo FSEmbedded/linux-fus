@@ -186,13 +186,13 @@ static ssize_t vidi_store_connection(struct device *dev,
 				const char *buf, size_t len)
 {
 	struct vidi_context *ctx = dev_get_drvdata(dev);
-	int ret, new_connected;
+	int ret;
 
-	ret = kstrtoint(buf, 0, &new_connected);
+	ret = kstrtoint(buf, 0, &ctx->connected);
 	if (ret)
 		return ret;
 
-	if (new_connected > 1)
+	if (ctx->connected > 1)
 		return -EINVAL;
 
 	/*
@@ -201,21 +201,14 @@ static ssize_t vidi_store_connection(struct device *dev,
 	 */
 	if (ctx->raw_edid) {
 		DRM_DEV_DEBUG_KMS(dev, "edid data is not fake data.\n");
-		ret = -EINVAL;
-		goto fail;
+		return -EINVAL;
 	}
-
-	ctx->connected = new_connected;
-	mutex_unlock(&ctx->lock);
 
 	DRM_DEV_DEBUG_KMS(dev, "requested connection.\n");
 
 	drm_helper_hpd_irq_event(ctx->drm_dev);
 
 	return len;
-fail:
-	mutex_unlock(&ctx->lock);
-	return ret;
 }
 
 static DEVICE_ATTR(connection, 0644, vidi_show_connection,
@@ -230,13 +223,8 @@ ATTRIBUTE_GROUPS(vidi);
 int vidi_connection_ioctl(struct drm_device *drm_dev, void *data,
 				struct drm_file *file_priv)
 {
-	struct exynos_drm_private *priv = drm_dev->dev_private;
-	struct device *dev = priv ? priv->vidi_dev : NULL;
-	struct vidi_context *ctx = dev ? dev_get_drvdata(dev) : NULL;
+	struct vidi_context *ctx = dev_get_drvdata(drm_dev->dev);
 	struct drm_exynos_vidi_connection *vidi = data;
-
-	if (!ctx)
-		return -ENODEV;
 
 	if (!vidi) {
 		DRM_DEV_DEBUG_KMS(ctx->dev,
@@ -250,14 +238,11 @@ int vidi_connection_ioctl(struct drm_device *drm_dev, void *data,
 		return -EINVAL;
 	}
 
-	mutex_lock(&ctx->lock);
 	if (ctx->connected == vidi->connection) {
-		mutex_unlock(&ctx->lock);
 		DRM_DEV_DEBUG_KMS(ctx->dev,
 				  "same connection request.\n");
 		return -EINVAL;
 	}
-	mutex_unlock(&ctx->lock);
 
 	if (vidi->connection) {
 		const struct drm_edid *drm_edid;
@@ -284,10 +269,7 @@ int vidi_connection_ioctl(struct drm_device *drm_dev, void *data,
 		ctx->raw_edid = NULL;
 	}
 
-	mutex_lock(&ctx->lock);
 	ctx->connected = vidi->connection;
-	mutex_unlock(&ctx->lock);
-
 	drm_helper_hpd_irq_event(ctx->drm_dev);
 
 	return 0;
@@ -302,7 +284,7 @@ static enum drm_connector_status vidi_detect(struct drm_connector *connector,
 	 * connection request would come from user side
 	 * to do hotplug through specific ioctl.
 	 */
-	return READ_ONCE(ctx->connected) ? connector_status_connected :
+	return ctx->connected ? connector_status_connected :
 			connector_status_disconnected;
 }
 
@@ -339,8 +321,6 @@ static int vidi_get_modes(struct drm_connector *connector)
 
 	drm_edid_free(drm_edid);
 
-fail:
-	mutex_unlock(&ctx->lock);
 	return count;
 }
 
@@ -394,7 +374,6 @@ static int vidi_bind(struct device *dev, struct device *master, void *data)
 {
 	struct vidi_context *ctx = dev_get_drvdata(dev);
 	struct drm_device *drm_dev = data;
-	struct exynos_drm_private *priv = drm_dev->dev_private;
 	struct drm_encoder *encoder = &ctx->encoder;
 	struct exynos_drm_plane *exynos_plane;
 	struct exynos_drm_plane_config plane_config = { 0 };
@@ -402,8 +381,6 @@ static int vidi_bind(struct device *dev, struct device *master, void *data)
 	int ret;
 
 	ctx->drm_dev = drm_dev;
-	if (priv)
-		priv->vidi_dev = dev;
 
 	plane_config.pixel_formats = formats;
 	plane_config.num_pixel_formats = ARRAY_SIZE(formats);
@@ -449,12 +426,8 @@ static int vidi_bind(struct device *dev, struct device *master, void *data)
 static void vidi_unbind(struct device *dev, struct device *master, void *data)
 {
 	struct vidi_context *ctx = dev_get_drvdata(dev);
-	struct drm_device *drm_dev = data;
-	struct exynos_drm_private *priv = drm_dev->dev_private;
 
 	del_timer_sync(&ctx->timer);
-	if (priv)
-		priv->vidi_dev = NULL;
 }
 
 static const struct component_ops vidi_component_ops = {
@@ -488,8 +461,6 @@ static void vidi_remove(struct platform_device *pdev)
 
 	drm_edid_free(ctx->raw_edid);
 	ctx->raw_edid = NULL;
-
-	mutex_unlock(&ctx->lock);
 
 	component_del(&pdev->dev, &vidi_component_ops);
 }

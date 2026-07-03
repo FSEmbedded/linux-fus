@@ -65,29 +65,6 @@ static struct amdgpu_device *dma_buf_attach_adev(struct dma_buf_attachment *atta
 	return NULL;
 }
 
-static const struct dma_buf_attach_ops amdgpu_dma_buf_attach_ops;
-
-/**
- * dma_buf_attach_adev - Helper to get adev of an attachment
- *
- * @attach: attachment
- *
- * Returns:
- * A struct amdgpu_device * if the attaching device is an amdgpu device or
- * partition, NULL otherwise.
- */
-static struct amdgpu_device *dma_buf_attach_adev(struct dma_buf_attachment *attach)
-{
-	if (attach->importer_ops == &amdgpu_dma_buf_attach_ops) {
-		struct drm_gem_object *obj = attach->importer_priv;
-		struct amdgpu_bo *bo = gem_to_amdgpu_bo(obj);
-
-		return amdgpu_ttm_adev(bo->tbo.bdev);
-	}
-
-	return NULL;
-}
-
 /**
  * amdgpu_dma_buf_attach - &dma_buf_ops.attach implementation
  *

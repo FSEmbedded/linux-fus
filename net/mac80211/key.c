@@ -981,31 +981,10 @@ void ieee80211_reenable_keys(struct ieee80211_sub_if_data *sdata)
 
 	if (ieee80211_sdata_running(sdata)) {
 		list_for_each_entry(key, &sdata->key_list, list) {
-			if (!(key->flags & KEY_FLAG_TAINTED))
-				increment_tailroom_need_count(sdata);
+			increment_tailroom_need_count(sdata);
 			ieee80211_key_enable_hw_accel(key);
 		}
 	}
-}
-
-static void
-ieee80211_key_iter(struct ieee80211_hw *hw,
-		   struct ieee80211_vif *vif,
-		   struct ieee80211_key *key,
-		   void (*iter)(struct ieee80211_hw *hw,
-				struct ieee80211_vif *vif,
-				struct ieee80211_sta *sta,
-				struct ieee80211_key_conf *key,
-				void *data),
-		   void *iter_data)
-{
-	/* skip keys of station in removal process */
-	if (key->sta && key->sta->removed)
-		return;
-	if (!(key->flags & KEY_FLAG_UPLOADED_TO_HARDWARE))
-		return;
-	iter(hw, vif, key->sta ? &key->sta->sta : NULL,
-	     &key->conf, iter_data);
 }
 
 static void

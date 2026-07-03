@@ -3420,7 +3420,6 @@ static int dm_resume(void *handle)
 	/* Do mst topology probing after resuming cached state*/
 	drm_connector_list_iter_begin(ddev, &iter);
 	drm_for_each_connector_iter(connector, &iter) {
-		bool init = false;
 
 		if (connector->connector_type == DRM_MODE_CONNECTOR_WRITEBACK)
 			continue;
@@ -10095,7 +10094,7 @@ static void amdgpu_dm_atomic_commit_tail(struct drm_atomic_state *state)
 			continue;
 		}
 		for (j = 0; j < status->plane_count; j++)
-			dummy_updates[j].surface = status->plane_states[j];
+			dummy_updates[j].surface = status->plane_states[0];
 
 		sort(dummy_updates, status->plane_count,
 		     sizeof(*dummy_updates), dm_plane_layer_index_cmp, NULL);
@@ -10449,8 +10448,6 @@ static void get_freesync_config_for_crtc(
 		} else {
 			config.state = VRR_STATE_INACTIVE;
 		}
-	} else {
-		config.state = VRR_STATE_UNSUPPORTED;
 	}
 out:
 	new_crtc_state->freesync_config = config;
@@ -10802,9 +10799,6 @@ static bool should_reset_plane(struct drm_atomic_state *state,
 	 */
 	if (amdgpu_ip_version(adev, DCE_HWIP, 0) < IP_VERSION(3, 2, 0) &&
 	    state->allow_modeset)
-		return true;
-
-	if (amdgpu_in_reset(adev) && state->allow_modeset)
 		return true;
 
 	if (amdgpu_in_reset(adev) && state->allow_modeset)
@@ -11616,11 +11610,6 @@ static int amdgpu_dm_atomic_check(struct drm_device *dev,
 
 	if (dc_resource_is_dsc_encoding_supported(dc)) {
 		for_each_oldnew_crtc_in_state(state, crtc, old_crtc_state, new_crtc_state, i) {
-			dm_new_crtc_state = to_dm_crtc_state(new_crtc_state);
-			dm_new_crtc_state->mode_changed_independent_from_dsc = new_crtc_state->mode_changed;
-		}
-
-		for_each_oldnew_crtc_in_state(state, crtc, old_crtc_state, new_crtc_state, i) {
 			if (drm_atomic_crtc_needs_modeset(new_crtc_state)) {
 				ret = add_affected_mst_dsc_crtcs(state, crtc);
 				if (ret) {
@@ -12210,7 +12199,7 @@ static void parse_edid_displayid_vrr(struct drm_connector *connector,
 	u16 min_vfreq;
 	u16 max_vfreq;
 
-	if (!edid || !edid->extensions)
+	if (edid == NULL || edid->extensions == 0)
 		return;
 
 	/* Find DisplayID extension */
@@ -12220,7 +12209,7 @@ static void parse_edid_displayid_vrr(struct drm_connector *connector,
 			break;
 	}
 
-	if (i == edid->extensions)
+	if (edid_ext == NULL)
 		return;
 
 	while (j < EDID_LENGTH) {
@@ -12361,7 +12350,7 @@ void amdgpu_dm_update_freesync_caps(struct drm_connector *connector,
 
 	dm_con_state = to_dm_connector_state(connector->state);
 
-	if (!adev->dm.freesync_module || !dc_supports_vrr(sink->ctx->dce_version))
+	if (!adev->dm.freesync_module)
 		goto update;
 
 	/* Some eDP panels only have the refresh rate range info in DisplayID */

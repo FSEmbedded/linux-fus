@@ -88,7 +88,6 @@ static int neutron_inference_run(struct neutron_inference *inf)
 {
 	struct neutron_device *ndev;
 	struct neutron_mbox_tx_msg msg;
-	phys_addr_t paddr;
 	u32 i, val;
 	int ret = 0;
 
@@ -274,7 +273,6 @@ static void inference_done_callback(struct work_struct *work)
 	struct neutron_inference *inf, *next_inf;
 	struct neutron_device *ndev;
 	struct neutron_mbox *mbox;
-	phys_addr_t paddr;
 
 	spin_lock_bh(&queue->lock);
 	inf = queue->cur_inf;

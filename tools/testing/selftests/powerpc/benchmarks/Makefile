@@ -10,8 +10,6 @@ include ../flags.mk
 
 CFLAGS += -O2
 
-CFLAGS += -O2
-
 $(TEST_GEN_PROGS): ../harness.c
 
 $(OUTPUT)/context_switch: ../utils.c

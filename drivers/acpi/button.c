@@ -613,10 +613,8 @@ static int acpi_button_add(struct acpi_device *device)
 
 	input_set_drvdata(input, device);
 	error = input_register_device(input);
-	if (error) {
-		input_free_device(input);
+	if (error)
 		goto err_remove_fs;
-	}
 
 	switch (device->device_type) {
 	case ACPI_BUS_TYPE_POWER_BUTTON:

@@ -219,8 +219,9 @@ static int bcm7038_l1_set_affinity(struct irq_data *d,
 }
 #endif
 
-static int bcm7038_l1_init_one(struct device_node *dn, unsigned int idx,
-			       struct bcm7038_l1_chip *intc)
+static int __init bcm7038_l1_init_one(struct device_node *dn,
+				      unsigned int idx,
+				      struct bcm7038_l1_chip *intc)
 {
 	struct resource res;
 	resource_size_t sz;
@@ -394,7 +395,8 @@ static const struct irq_domain_ops bcm7038_l1_domain_ops = {
 	.map			= bcm7038_l1_map,
 };
 
-static int bcm7038_l1_of_init(struct device_node *dn, struct device_node *parent)
+static int __init bcm7038_l1_of_init(struct device_node *dn,
+			      struct device_node *parent)
 {
 	struct bcm7038_l1_chip *intc;
 	int idx, ret;

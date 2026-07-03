@@ -416,8 +416,9 @@ static int hash_accept_parent_nokey(void *private, struct sock *sk)
 	if (!ctx)
 		return -ENOMEM;
 
-	memset(ctx, 0, len);
+	ctx->result = NULL;
 	ctx->len = len;
+	ctx->more = false;
 	crypto_init_wait(&ctx->wait);
 
 	ask->private = ctx;

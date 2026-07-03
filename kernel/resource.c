@@ -297,11 +297,6 @@ int release_resource(struct resource *old)
 
 EXPORT_SYMBOL(release_resource);
 
-static bool is_type_match(struct resource *p, unsigned long flags, unsigned long desc)
-{
-	return (p->flags & flags) == flags && (desc == IORES_DESC_NONE || desc == p->desc);
-}
-
 /**
  * find_next_iomem_res - Finds the lowest iomem resource that covers part of
  *			 [@start..@end].
@@ -323,8 +318,6 @@ static int find_next_iomem_res(resource_size_t start, resource_size_t end,
 			       unsigned long flags, unsigned long desc,
 			       struct resource *res)
 {
-	/* Skip children until we find a top level range that matches */
-	bool skip_children = true;
 	struct resource *p;
 
 	if (!res)
@@ -346,15 +339,13 @@ static int find_next_iomem_res(resource_size_t start, resource_size_t end,
 		if (p->end < start)
 			continue;
 
-		/*
-		 * We found a top level range that matches what we are looking
-		 * for. Time to start checking children too.
-		 */
-		skip_children = false;
+		if ((p->flags & flags) != flags)
+			continue;
+		if ((desc != IORES_DESC_NONE) && (desc != p->desc))
+			continue;
 
 		/* Found a match, break */
-		if (is_type_match(p, flags, desc))
-			break;
+		break;
 	}
 
 	if (p) {

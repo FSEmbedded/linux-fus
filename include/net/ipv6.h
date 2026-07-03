@@ -1005,11 +1005,11 @@ static inline int ip6_default_np_autolabel(struct net *net)
 #if IS_ENABLED(CONFIG_IPV6)
 static inline int ip6_multipath_hash_policy(const struct net *net)
 {
-	return READ_ONCE(net->ipv6.sysctl.multipath_hash_policy);
+	return net->ipv6.sysctl.multipath_hash_policy;
 }
 static inline u32 ip6_multipath_hash_fields(const struct net *net)
 {
-	return READ_ONCE(net->ipv6.sysctl.multipath_hash_fields);
+	return net->ipv6.sysctl.multipath_hash_fields;
 }
 #else
 static inline int ip6_multipath_hash_policy(const struct net *net)
@@ -1275,15 +1275,12 @@ int ipv6_sock_mc_drop(struct sock *sk, int ifindex,
 
 static inline int ip6_sock_set_v6only(struct sock *sk)
 {
-	int ret = 0;
-
-	lock_sock(sk);
 	if (inet_sk(sk)->inet_num)
-		ret = -EINVAL;
-	else
-		sk->sk_ipv6only = true;
+		return -EINVAL;
+	lock_sock(sk);
+	sk->sk_ipv6only = true;
 	release_sock(sk);
-	return ret;
+	return 0;
 }
 
 static inline void ip6_sock_set_recverr(struct sock *sk)

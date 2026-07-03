@@ -198,8 +198,7 @@ static struct hh_flow_state *seek_list(const u32 hash,
 				return NULL;
 			list_del(&flow->flowchain);
 			kfree(flow);
-			WRITE_ONCE(q->hh_flows_current_cnt,
-				   q->hh_flows_current_cnt - 1);
+			q->hh_flows_current_cnt--;
 		} else if (flow->hash_id == hash) {
 			return flow;
 		}
@@ -227,7 +226,7 @@ static struct hh_flow_state *alloc_new_hh(struct list_head *head,
 	}
 
 	if (q->hh_flows_current_cnt >= q->hh_flows_limit) {
-		WRITE_ONCE(q->hh_flows_overlimit, q->hh_flows_overlimit + 1);
+		q->hh_flows_overlimit++;
 		return NULL;
 	}
 	/* Create new entry. */
@@ -235,7 +234,7 @@ static struct hh_flow_state *alloc_new_hh(struct list_head *head,
 	if (!flow)
 		return NULL;
 
-	WRITE_ONCE(q->hh_flows_current_cnt, q->hh_flows_current_cnt + 1);
+	q->hh_flows_current_cnt++;
 	INIT_LIST_HEAD(&flow->flowchain);
 	list_add_tail(&flow->flowchain, head);
 
@@ -310,7 +309,7 @@ static enum wdrr_bucket_idx hhf_classify(struct sk_buff *skb, struct Qdisc *sch)
 			return WDRR_BUCKET_FOR_NON_HH;
 		flow->hash_id = hash;
 		flow->hit_timestamp = now;
-		WRITE_ONCE(q->hh_flows_total_cnt, q->hh_flows_total_cnt + 1);
+		q->hh_flows_total_cnt++;
 
 		/* By returning without updating counters in q->hhf_arrays,
 		 * we implicitly implement "shielding" (see Optimization O1).
@@ -404,7 +403,7 @@ static int hhf_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 		return NET_XMIT_SUCCESS;
 
 	prev_backlog = sch->qstats.backlog;
-	WRITE_ONCE(q->drop_overlimit, q->drop_overlimit + 1);
+	q->drop_overlimit++;
 	/* Return Congestion Notification only if we dropped a packet from this
 	 * bucket.
 	 */
@@ -686,10 +685,10 @@ static int hhf_dump_stats(struct Qdisc *sch, struct gnet_dump *d)
 {
 	struct hhf_sched_data *q = qdisc_priv(sch);
 	struct tc_hhf_xstats st = {
-		.drop_overlimit = READ_ONCE(q->drop_overlimit),
-		.hh_overlimit	= READ_ONCE(q->hh_flows_overlimit),
-		.hh_tot_count	= READ_ONCE(q->hh_flows_total_cnt),
-		.hh_cur_count	= READ_ONCE(q->hh_flows_current_cnt),
+		.drop_overlimit = q->drop_overlimit,
+		.hh_overlimit	= q->hh_flows_overlimit,
+		.hh_tot_count	= q->hh_flows_total_cnt,
+		.hh_cur_count	= q->hh_flows_current_cnt,
 	};
 
 	return gnet_stats_copy_app(d, &st, sizeof(st));

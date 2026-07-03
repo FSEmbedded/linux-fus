@@ -553,17 +553,6 @@ static int ps_setup(struct hci_dev *hdev)
 		device_init_wakeup(&serdev->dev, true);
 	}
 
-	psdata->h2c_ps_gpio = devm_gpiod_get_optional(&serdev->dev, "device-wakeup",
-						      GPIOD_OUT_LOW);
-	if (IS_ERR(psdata->h2c_ps_gpio)) {
-		bt_dev_err(hdev, "Error fetching device-wakeup-gpios: %ld",
-			   PTR_ERR(psdata->h2c_ps_gpio));
-		return PTR_ERR(psdata->h2c_ps_gpio);
-	}
-
-	if (!psdata->h2c_ps_gpio)
-		psdata->h2c_wakeup_gpio = 0xff;
-
 	psdata->hdev = hdev;
 	INIT_WORK(&psdata->work, ps_work_func);
 	mutex_init(&psdata->ps_lock);

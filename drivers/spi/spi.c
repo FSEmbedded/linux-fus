@@ -42,8 +42,6 @@ EXPORT_TRACEPOINT_SYMBOL(spi_transfer_stop);
 
 #include "internals.h"
 
-static int __spi_setup(struct spi_device *spi, bool initial_setup);
-
 static DEFINE_IDR(spi_master_idr);
 
 static void spidev_release(struct device *dev)
@@ -742,7 +740,7 @@ static int __spi_add_device(struct spi_device *spi)
 	 * normally rely on the device being setup.  Devices
 	 * using SPI_CS_HIGH can't coexist well otherwise...
 	 */
-	status = __spi_setup(spi, true);
+	status = spi_setup(spi);
 	if (status < 0) {
 		dev_err(dev, "can't setup %s, status %d\n",
 				dev_name(&spi->dev), status);
@@ -2932,8 +2930,6 @@ static void spi_controller_release(struct device *dev)
 	struct spi_controller *ctlr;
 
 	ctlr = container_of(dev, struct spi_controller, dev);
-
-	free_percpu(ctlr->pcpu_statistics);
 	kfree(ctlr);
 }
 
@@ -3073,12 +3069,6 @@ struct spi_controller *__spi_alloc_controller(struct device *dev,
 	ctlr = kzalloc(size + ctlr_size, GFP_KERNEL);
 	if (!ctlr)
 		return NULL;
-
-	ctlr->pcpu_statistics = spi_alloc_pcpu_stats(NULL);
-	if (!ctlr->pcpu_statistics) {
-		kfree(ctlr);
-		return NULL;
-	}
 
 	device_initialize(&ctlr->dev);
 	INIT_LIST_HEAD(&ctlr->queue);
@@ -3367,8 +3357,17 @@ int spi_register_controller(struct spi_controller *ctlr)
 		dev_info(dev, "controller is unqueued, this is deprecated\n");
 	} else if (ctlr->transfer_one || ctlr->transfer_one_message) {
 		status = spi_controller_initialize_queue(ctlr);
-		if (status)
-			goto del_ctrl;
+		if (status) {
+			device_del(&ctlr->dev);
+			goto free_bus_id;
+		}
+	}
+	/* Add statistics */
+	ctlr->pcpu_statistics = spi_alloc_pcpu_stats(dev);
+	if (!ctlr->pcpu_statistics) {
+		dev_err(dev, "Error allocating per-cpu statistics\n");
+		status = -ENOMEM;
+		goto destroy_queue;
 	}
 
 	mutex_lock(&board_lock);
@@ -3382,8 +3381,8 @@ int spi_register_controller(struct spi_controller *ctlr)
 	acpi_register_spi_devices(ctlr);
 	return status;
 
-del_ctrl:
-	device_del(&ctlr->dev);
+destroy_queue:
+	spi_destroy_queue(ctlr);
 free_bus_id:
 	mutex_lock(&board_lock);
 	idr_remove(&spi_master_idr, ctlr->bus_num);
@@ -3876,7 +3875,27 @@ static int spi_set_cs_timing(struct spi_device *spi)
 	return status;
 }
 
-static int __spi_setup(struct spi_device *spi, bool initial_setup)
+/**
+ * spi_setup - setup SPI mode and clock rate
+ * @spi: the device whose settings are being modified
+ * Context: can sleep, and no requests are queued to the device
+ *
+ * SPI protocol drivers may need to update the transfer mode if the
+ * device doesn't work with its default.  They may likewise need
+ * to update clock rates or word sizes from initial values.  This function
+ * changes those settings, and must be called from a context that can sleep.
+ * Except for SPI_CS_HIGH, which takes effect immediately, the changes take
+ * effect the next time the device is selected and data is transferred to
+ * or from it.  When this function returns, the SPI device is deselected.
+ *
+ * Note that this call will fail if the protocol driver specifies an option
+ * that the underlying controller or its driver does not support.  For
+ * example, not all hardware supports wire transfers using nine bit words,
+ * LSB-first wire encoding, or active-high chipselects.
+ *
+ * Return: zero on success, else a negative error code.
+ */
+int spi_setup(struct spi_device *spi)
 {
 	unsigned	bad_bits, ugly_bits;
 	int		status;
@@ -3961,7 +3980,7 @@ static int __spi_setup(struct spi_device *spi, bool initial_setup)
 	status = spi_set_cs_timing(spi);
 	if (status) {
 		mutex_unlock(&spi->controller->io_mutex);
-		goto err_cleanup;
+		return status;
 	}
 
 	if (spi->controller->auto_runtime_pm && spi->controller->set_cs) {
@@ -3970,7 +3989,7 @@ static int __spi_setup(struct spi_device *spi, bool initial_setup)
 			mutex_unlock(&spi->controller->io_mutex);
 			dev_err(&spi->controller->dev, "Failed to power device: %d\n",
 				status);
-			goto err_cleanup;
+			return status;
 		}
 
 		/*
@@ -4007,37 +4026,6 @@ static int __spi_setup(struct spi_device *spi, bool initial_setup)
 			status);
 
 	return status;
-
-err_cleanup:
-	if (initial_setup)
-		spi_cleanup(spi);
-
-	return status;
-}
-
-/**
- * spi_setup - setup SPI mode and clock rate
- * @spi: the device whose settings are being modified
- * Context: can sleep, and no requests are queued to the device
- *
- * SPI protocol drivers may need to update the transfer mode if the
- * device doesn't work with its default.  They may likewise need
- * to update clock rates or word sizes from initial values.  This function
- * changes those settings, and must be called from a context that can sleep.
- * Except for SPI_CS_HIGH, which takes effect immediately, the changes take
- * effect the next time the device is selected and data is transferred to
- * or from it.  When this function returns, the SPI device is deselected.
- *
- * Note that this call will fail if the protocol driver specifies an option
- * that the underlying controller or its driver does not support.  For
- * example, not all hardware supports wire transfers using nine bit words,
- * LSB-first wire encoding, or active-high chipselects.
- *
- * Return: zero on success, else a negative error code.
- */
-int spi_setup(struct spi_device *spi)
-{
-	return __spi_setup(spi, false);
 }
 EXPORT_SYMBOL_GPL(spi_setup);
 
@@ -4819,7 +4807,7 @@ static int of_spi_notify(struct notifier_block *nb, unsigned long action,
 		 * Clear the flag before adding the device so that fw_devlink
 		 * doesn't skip adding consumers to this device.
 		 */
-		fwnode_clear_flag(&rd->dn->fwnode, FWNODE_FLAG_NOT_DEVICE);
+		rd->dn->fwnode.flags &= ~FWNODE_FLAG_NOT_DEVICE;
 		spi = of_register_spi_device(ctlr, rd->dn);
 		put_device(&ctlr->dev);
 

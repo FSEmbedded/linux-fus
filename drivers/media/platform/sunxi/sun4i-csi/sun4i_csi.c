@@ -50,10 +50,6 @@ static const struct media_entity_operations sun4i_csi_subdev_entity_ops = {
 	.link_validate = v4l2_subdev_link_validate,
 };
 
-static const struct media_entity_operations sun4i_csi_subdev_entity_ops = {
-	.link_validate = v4l2_subdev_link_validate,
-};
-
 static int sun4i_csi_notify_bound(struct v4l2_async_notifier *notifier,
 				  struct v4l2_subdev *subdev,
 				  struct v4l2_async_connection *asd)

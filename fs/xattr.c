@@ -809,13 +809,16 @@ SYSCALL_DEFINE4(lgetxattr, const char __user *, pathname,
 SYSCALL_DEFINE4(fgetxattr, int, fd, const char __user *, name,
 		void __user *, value, size_t, size)
 {
-	CLASS(fd, f)(fd);
+	struct fd f = fdget(fd);
+	ssize_t error = -EBADF;
 
 	if (!fd_file(f))
 		return error;
 	audit_file(fd_file(f));
 	error = getxattr(file_mnt_idmap(fd_file(f)), fd_file(f)->f_path.dentry,
 			 name, value, size);
+	fdput(f);
+	return error;
 }
 
 /*
@@ -882,7 +885,8 @@ SYSCALL_DEFINE3(llistxattr, const char __user *, pathname, char __user *, list,
 
 SYSCALL_DEFINE3(flistxattr, int, fd, char __user *, list, size_t, size)
 {
-	CLASS(fd, f)(fd);
+	struct fd f = fdget(fd);
+	ssize_t error = -EBADF;
 
 	if (!fd_file(f))
 		return error;
@@ -966,6 +970,7 @@ SYSCALL_DEFINE2(fremovexattr, int, fd, const char __user *, name)
 				    fd_file(f)->f_path.dentry, kname);
 		mnt_drop_write_file(fd_file(f));
 	}
+	fdput(f);
 	return error;
 }
 

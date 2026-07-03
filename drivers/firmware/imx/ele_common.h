@@ -3,6 +3,7 @@
  * Copyright 2024-2025 NXP
  */
 
+
 #ifndef __ELE_COMMON_H__
 #define __ELE_COMMON_H__
 

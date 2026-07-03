@@ -980,12 +980,11 @@ static inline __le64 kernel2nt(const struct timespec64 *ts)
  */
 static inline void nt2kernel(const __le64 tm, struct timespec64 *ts)
 {
-	s32 t32;
-	/* use signed 64 bit to support timestamps prior to epoch. xfstest 258. */
-	s64 t = le64_to_cpu(tm) - _100ns2seconds * SecondsToStartOf1970;
+	u64 t = le64_to_cpu(tm) - _100ns2seconds * SecondsToStartOf1970;
 
-	ts->tv_sec = div_s64_rem(t, _100ns2seconds, &t32);
-	ts->tv_nsec = t32 * 100;
+	// WARNING: do_div changes its first argument(!)
+	ts->tv_nsec = do_div(t, _100ns2seconds) * 100;
+	ts->tv_sec = t;
 }
 
 static inline struct ntfs_sb_info *ntfs_sb(struct super_block *sb)

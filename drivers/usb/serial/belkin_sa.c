@@ -435,7 +435,7 @@ static int belkin_sa_tiocmset(struct tty_struct *tty,
 	struct belkin_sa_private *priv = usb_get_serial_port_data(port);
 	unsigned long control_state;
 	unsigned long flags;
-	int retval = 0;
+	int retval;
 	int rts = 0;
 	int dtr = 0;
 
@@ -452,32 +452,26 @@ static int belkin_sa_tiocmset(struct tty_struct *tty,
 	}
 	if (clear & TIOCM_RTS) {
 		control_state &= ~TIOCM_RTS;
-		rts = 1;
+		rts = 0;
 	}
 	if (clear & TIOCM_DTR) {
 		control_state &= ~TIOCM_DTR;
-		dtr = 1;
+		dtr = 0;
 	}
 
 	priv->control_state = control_state;
 	spin_unlock_irqrestore(&priv->lock, flags);
 
-	if (rts) {
-		retval = BSA_USB_CMD(BELKIN_SA_SET_RTS_REQUEST,
-					!!(control_state & TIOCM_RTS));
-		if (retval < 0) {
-			dev_err(&port->dev, "Set RTS error %d\n", retval);
-			goto exit;
-		}
+	retval = BSA_USB_CMD(BELKIN_SA_SET_RTS_REQUEST, rts);
+	if (retval < 0) {
+		dev_err(&port->dev, "Set RTS error %d\n", retval);
+		goto exit;
 	}
 
-	if (dtr) {
-		retval = BSA_USB_CMD(BELKIN_SA_SET_DTR_REQUEST,
-					!!(control_state & TIOCM_DTR));
-		if (retval < 0) {
-			dev_err(&port->dev, "Set DTR error %d\n", retval);
-			goto exit;
-		}
+	retval = BSA_USB_CMD(BELKIN_SA_SET_DTR_REQUEST, dtr);
+	if (retval < 0) {
+		dev_err(&port->dev, "Set DTR error %d\n", retval);
+		goto exit;
 	}
 exit:
 	return retval;

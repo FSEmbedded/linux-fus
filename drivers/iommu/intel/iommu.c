@@ -1772,10 +1772,6 @@ static void switch_to_super_page(struct dmar_domain *domain,
 		    !IS_ALIGNED(end_pfn + 1, lvl_pages)))
 		return;
 
-	if (WARN_ON(!IS_ALIGNED(start_pfn, lvl_pages) ||
-		    !IS_ALIGNED(end_pfn + 1, lvl_pages)))
-		return;
-
 	while (start_pfn <= end_pfn) {
 		if (!pte)
 			pte = pfn_to_dma_pte(domain, start_pfn, &level,
@@ -3956,7 +3952,7 @@ static struct iommu_device *intel_iommu_probe_device(struct device *dev)
 			}
 
 			if (info->ats_supported && ecap_prs(iommu->ecap) &&
-			    ecap_pds(iommu->ecap) && pci_pri_supported(pdev))
+			    pci_pri_supported(pdev))
 				info->pri_supported = 1;
 		}
 	}
@@ -4693,9 +4689,6 @@ static void quirk_iommu_igfx(struct pci_dev *dev)
 	pci_info(dev, "Disabling IOMMU for graphics on this chipset\n");
 	disable_igfx_iommu = 1;
 }
-
-/* Q35 integrated gfx dmar support is totally busted. */
-DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_INTEL, 0x29b2, quirk_iommu_igfx);
 
 /* G4x/GM45 integrated gfx dmar support is totally busted. */
 DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_INTEL, 0x2a40, quirk_iommu_igfx);

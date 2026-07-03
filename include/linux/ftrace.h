@@ -88,13 +88,11 @@ struct ftrace_hash;
 	defined(CONFIG_DYNAMIC_FTRACE)
 int
 ftrace_mod_address_lookup(unsigned long addr, unsigned long *size,
-			  unsigned long *off, char **modname,
-			  const unsigned char **modbuildid, char *sym);
+		   unsigned long *off, char **modname, char *sym);
 #else
 static inline int
 ftrace_mod_address_lookup(unsigned long addr, unsigned long *size,
-			  unsigned long *off, char **modname,
-			  const unsigned char **modbuildid, char *sym)
+		   unsigned long *off, char **modname, char *sym)
 {
 	return 0;
 }

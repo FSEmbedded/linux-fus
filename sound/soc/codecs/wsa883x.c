@@ -441,7 +441,6 @@ struct wsa883x_priv {
 	int active_ports;
 	int dev_mode;
 	int comp_offset;
-	bool hw_init;
 };
 
 enum {
@@ -1052,9 +1051,6 @@ static int wsa883x_update_status(struct sdw_slave *slave,
 				 enum sdw_slave_status status)
 {
 	struct wsa883x_priv *wsa883x = dev_get_drvdata(&slave->dev);
-
-	if (status == SDW_SLAVE_UNATTACHED)
-		wsa883x->hw_init = false;
 
 	if (status == SDW_SLAVE_ATTACHED && slave->dev_num > 0)
 		return wsa883x_init(wsa883x);

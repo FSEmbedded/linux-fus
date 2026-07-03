@@ -403,7 +403,7 @@ static int mhi_ep_read_channel(struct mhi_ep_cntrl *mhi_cntrl,
 {
 	struct mhi_ep_chan *mhi_chan = &mhi_cntrl->mhi_chan[ring->ch_id];
 	struct device *dev = &mhi_cntrl->mhi_dev->dev;
-	size_t tr_len, read_offset;
+	size_t tr_len, read_offset, write_offset;
 	struct mhi_ep_buf_info buf_info = {};
 	u32 len = MHI_EP_DEFAULT_MTU;
 	struct mhi_ring_element *el;
@@ -411,6 +411,8 @@ static int mhi_ep_read_channel(struct mhi_ep_cntrl *mhi_cntrl,
 	void *buf_addr;
 	u32 buf_left;
 	int ret;
+
+	buf_left = len;
 
 	do {
 		/* Don't process the transfer ring if the channel is not in RUNNING state */
@@ -424,20 +426,17 @@ static int mhi_ep_read_channel(struct mhi_ep_cntrl *mhi_cntrl,
 		/* Check if there is data pending to be read from previous read operation */
 		if (mhi_chan->tre_bytes_left) {
 			dev_dbg(dev, "TRE bytes remaining: %u\n", mhi_chan->tre_bytes_left);
-			tr_len = min(len, mhi_chan->tre_bytes_left);
+			tr_len = min(buf_left, mhi_chan->tre_bytes_left);
 		} else {
 			mhi_chan->tre_loc = MHI_TRE_DATA_GET_PTR(el);
 			mhi_chan->tre_size = MHI_TRE_DATA_GET_LEN(el);
 			mhi_chan->tre_bytes_left = mhi_chan->tre_size;
 
-			tr_len = min(len, mhi_chan->tre_size);
+			tr_len = min(buf_left, mhi_chan->tre_size);
 		}
 
 		read_offset = mhi_chan->tre_size - mhi_chan->tre_bytes_left;
-
-		buf_addr = kmem_cache_zalloc(mhi_cntrl->tre_buf_cache, GFP_KERNEL);
-		if (!buf_addr)
-			return -ENOMEM;
+		write_offset = len - buf_left;
 
 		buf_addr = kmem_cache_zalloc(mhi_cntrl->tre_buf_cache, GFP_KERNEL);
 		if (!buf_addr)
@@ -460,6 +459,7 @@ static int mhi_ep_read_channel(struct mhi_ep_cntrl *mhi_cntrl,
 			goto err_free_buf_addr;
 		}
 
+		buf_left -= tr_len;
 		mhi_chan->tre_bytes_left -= tr_len;
 
 		if (!mhi_chan->tre_bytes_left) {

@@ -13,9 +13,6 @@
 
 #define PCIE_LINK_RETRAIN_TIMEOUT_MS	1000
 
-/* Power stable to PERST# inactive from PCIe card Electromechanical Spec */
-#define PCIE_T_PVPERL_MS		100
-
 /*
  * Power stable to PERST# inactive.
  *

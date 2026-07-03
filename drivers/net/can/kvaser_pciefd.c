@@ -1892,9 +1892,6 @@ static void kvaser_pciefd_remove(struct pci_dev *pdev)
 	for (i = 0; i < pcie->nr_channels; ++i)
 		free_candev(pcie->can[i]->can.dev);
 
-	for (i = 0; i < pcie->nr_channels; ++i)
-		free_candev(pcie->can[i]->can.dev);
-
 	pci_iounmap(pdev, pcie->reg_base);
 	pci_release_regions(pdev);
 	pci_disable_device(pdev);

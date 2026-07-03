@@ -294,15 +294,4 @@ static inline int btmtk_usb_shutdown(struct hci_dev *hdev)
 {
 	return -EOPNOTSUPP;
 }
-
-static void btmtk_fw_get_filename(char *buf, size_t size, u32 dev_id,
-				  u32 fw_ver, u32 fw_flavor)
-{
-}
-
-static int btmtk_usb_hci_wmt_sync(struct hci_dev *hdev,
-				  struct btmtk_hci_wmt_params *wmt_params)
-{
-	return -EOPNOTSUPP;
-}
 #endif

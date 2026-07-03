@@ -789,6 +789,7 @@ static int aspeed_acry_probe(struct platform_device *pdev)
 err_engine_rsa_start:
 	crypto_engine_exit(acry_dev->crypt_engine_rsa);
 clk_exit:
+	clk_disable_unprepare(acry_dev->clk);
 
 	return rc;
 }

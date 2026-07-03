@@ -351,25 +351,6 @@ static const struct imx95_blk_ctl_dev_data imx94_dispmix_csr_dev_data = {
 	.rpm_enabled = true,
 };
 
-static const struct imx95_blk_ctrl_clk_dev_data hsio_blk_ctrl_clk_dev_data[] = {
-	[0] = {
-		.name = "hsio_blk_ctrl_clk",
-		.parent_names = (const char *[]){ "hsio_pll", },
-		.num_parents = 1,
-		.reg = 0,
-		.bit_idx = 6,
-		.bit_width = 1,
-		.type = CLK_GATE,
-		.flags = CLK_SET_RATE_PARENT,
-	},
-};
-
-static const struct imx95_blk_ctrl_dev_data hsio_blk_ctrl_dev_data = {
-	.num_clks = 1,
-	.clk_dev_data = hsio_blk_ctrl_clk_dev_data,
-	.clk_reg_offset = 0,
-};
-
 static int imx95_bc_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;

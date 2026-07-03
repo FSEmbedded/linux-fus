@@ -2447,8 +2447,6 @@ static int r8152_tx_agg_fill(struct r8152 *tp, struct tx_agg *agg)
 	ret = usb_submit_urb(agg->urb, GFP_ATOMIC);
 	if (ret < 0)
 		usb_autopm_put_interface_async(tp->intf);
-	else
-		netif_trans_update(tp->netdev);
 
 out_tx_fill:
 	return ret;
@@ -3894,7 +3892,7 @@ static void r8156_ups_en(struct r8152 *tp, bool enable)
 		case RTL_VER_15:
 			ocp_data = ocp_read_word(tp, MCU_TYPE_USB, USB_UPHY_XTAL);
 			ocp_data &= ~OOBS_POLLING;
-			ocp_write_word(tp, MCU_TYPE_USB, USB_UPHY_XTAL, ocp_data);
+			ocp_write_byte(tp, MCU_TYPE_USB, USB_UPHY_XTAL, ocp_data);
 			break;
 		default:
 			break;
@@ -10089,7 +10087,6 @@ static const struct usb_device_id rtl8152_table[] = {
 	{ USB_DEVICE(VENDOR_ID_DLINK,   0xb301) },
 	{ USB_DEVICE(VENDOR_ID_DELL,    0xb097) },
 	{ USB_DEVICE(VENDOR_ID_ASUS,    0x1976) },
-	{ USB_DEVICE(VENDOR_ID_TRENDNET, 0xe02b) },
 	{}
 };
 
@@ -10154,12 +10151,7 @@ static int __init rtl8152_driver_init(void)
 	ret = usb_register_device_driver(&rtl8152_cfgselector_driver, THIS_MODULE);
 	if (ret)
 		return ret;
-
-	ret = usb_register(&rtl8152_driver);
-	if (ret)
-		usb_deregister_device_driver(&rtl8152_cfgselector_driver);
-
-	return ret;
+	return usb_register(&rtl8152_driver);
 }
 
 static void __exit rtl8152_driver_exit(void)

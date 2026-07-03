@@ -163,13 +163,6 @@ void kbase_pm_context_idle(struct kbase_device *kbdev)
 	kbase_pm_unlock(kbdev);
 }
 
-void kbase_pm_context_idle(struct kbase_device *kbdev)
-{
-	kbase_pm_lock(kbdev);
-	kbase_pm_context_idle_locked(kbdev);
-	kbase_pm_unlock(kbdev);
-}
-
 KBASE_EXPORT_TEST_API(kbase_pm_context_idle);
 
 static void reenable_hwcnt_on_resume(struct kbase_device *kbdev)
@@ -222,17 +215,9 @@ int kbase_pm_driver_suspend(struct kbase_device *kbdev)
 	if (kbase_has_arbiter(kbdev)) {
 		unsigned long flags;
 
-#if MALI_USE_CSF
 		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
 		kbase_disjoint_state_up(kbdev);
 		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
-#else
-		unsigned int i;
-
-		spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
-		kbase_disjoint_state_up(kbdev);
-		spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
-#endif
 	}
 
 	/* From now on, the active count will drop towards zero. Sometimes,

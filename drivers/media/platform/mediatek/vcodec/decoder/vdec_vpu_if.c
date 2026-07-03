@@ -75,17 +75,16 @@ static void handle_get_param_msg_ack(const struct vdec_vpu_ipi_get_param_ack *ms
 static bool vpu_dec_check_ap_inst(struct mtk_vcodec_dec_dev *dec_dev, struct vdec_vpu_inst *vpu)
 {
 	struct mtk_vcodec_dec_ctx *ctx;
-	unsigned long flags;
 	int ret = false;
 
-	spin_lock_irqsave(&dec_dev->dev_ctx_lock, flags);
+	mutex_lock(&dec_dev->dev_ctx_lock);
 	list_for_each_entry(ctx, &dec_dev->ctx_list, list) {
 		if (!IS_ERR_OR_NULL(ctx) && ctx->vpu_inst == vpu) {
 			ret = true;
 			break;
 		}
 	}
-	spin_unlock_irqrestore(&dec_dev->dev_ctx_lock, flags);
+	mutex_unlock(&dec_dev->dev_ctx_lock);
 
 	return ret;
 }

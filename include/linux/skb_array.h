@@ -212,7 +212,6 @@ static inline int skb_array_resize_multiple_bh_noprof(struct skb_array **rings,
 #define skb_array_resize_multiple_bh(...)	\
 		alloc_hooks(skb_array_resize_multiple_bh_noprof(__VA_ARGS__))
 
-
 static inline void skb_array_cleanup(struct skb_array *a)
 {
 	ptr_ring_cleanup(&a->ring, __skb_array_destroy_skb);

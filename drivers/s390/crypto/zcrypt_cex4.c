@@ -85,7 +85,8 @@ static ssize_t cca_serialnr_show(struct device *dev,
 
 	memset(&ci, 0, sizeof(ci));
 
-	cca_get_info(ac->id, AUTOSEL_DOM, &ci, zc->online);
+	if (ap_domain_index >= 0)
+		cca_get_info(ac->id, ap_domain_index, &ci, zc->online);
 
 	return sysfs_emit(buf, "%s\n", ci.serial);
 }

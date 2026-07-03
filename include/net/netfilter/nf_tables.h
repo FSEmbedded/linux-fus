@@ -324,18 +324,6 @@ enum nft_iter_type {
 	NFT_ITER_UPDATE,
 };
 
-/**
- * enum nft_iter_type - nftables set iterator type
- *
- * @NFT_ITER_READ: read-only iteration over set elements
- * @NFT_ITER_UPDATE: iteration under mutex to update set element state
- */
-enum nft_iter_type {
-	NFT_ITER_UNSPEC,
-	NFT_ITER_READ,
-	NFT_ITER_UPDATE,
-};
-
 struct nft_set;
 struct nft_set_iter {
 	u8		genmask;
@@ -1105,29 +1093,6 @@ struct nft_rule_blob {
 		__attribute__((aligned(__alignof__(struct nft_rule_dp))));
 };
 
-enum nft_chain_types {
-	NFT_CHAIN_T_DEFAULT = 0,
-	NFT_CHAIN_T_ROUTE,
-	NFT_CHAIN_T_NAT,
-	NFT_CHAIN_T_MAX
-};
-
-/**
- *	struct nft_chain_validate_state - validation state
- *
- *	If a chain is encountered again during table validation it is
- *	possible to avoid revalidation provided the calling context is
- *	compatible.  This structure stores relevant calling context of
- *	previous validations.
- *
- *	@hook_mask: the hook numbers and locations the chain is linked to
- *	@depth: the deepest call chain level the chain is linked to
- */
-struct nft_chain_validate_state {
-	u8			hook_mask[NFT_CHAIN_T_MAX];
-	u8			depth;
-};
-
 /**
  *	struct nft_chain - nf_tables chain
  *
@@ -1165,16 +1130,22 @@ struct nft_chain {
 
 	/* Only used during control plane commit phase: */
 	struct nft_rule_blob		*blob_next;
-	struct nft_chain_validate_state vstate;
 };
 
-int nft_chain_validate(const struct nft_ctx *ctx, struct nft_chain *chain);
+int nft_chain_validate(const struct nft_ctx *ctx, const struct nft_chain *chain);
 int nft_setelem_validate(const struct nft_ctx *ctx, struct nft_set *set,
 			 const struct nft_set_iter *iter,
 			 struct nft_elem_priv *elem_priv);
 int nft_set_catchall_validate(const struct nft_ctx *ctx, struct nft_set *set);
 int nf_tables_bind_chain(const struct nft_ctx *ctx, struct nft_chain *chain);
 void nf_tables_unbind_chain(const struct nft_ctx *ctx, struct nft_chain *chain);
+
+enum nft_chain_types {
+	NFT_CHAIN_T_DEFAULT = 0,
+	NFT_CHAIN_T_ROUTE,
+	NFT_CHAIN_T_NAT,
+	NFT_CHAIN_T_MAX
+};
 
 /**
  * 	struct nft_chain_type - nf_tables chain type info

@@ -33,9 +33,4 @@ CFLAGS += -I$(CURDIR)
 
 ASFLAGS = $(CFLAGS)
 
-# The loops are all 64-bit code
-CFLAGS += -I$(CURDIR)
-
-ASFLAGS = $(CFLAGS)
-
 $(TEST_GEN_PROGS): $(EXTRA_SOURCES)

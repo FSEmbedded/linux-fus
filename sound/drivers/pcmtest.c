@@ -753,24 +753,13 @@ static int __init mod_init(void)
 
 	err = init_debug_files(buf_allocated);
 	if (err)
-		goto err_free_patterns;
+		return err;
 	err = platform_device_register(&pcmtst_pdev);
-	if (err) {
-		platform_device_put(&pcmtst_pdev);
-		goto err_clear_debug;
-	}
+	if (err)
+		return err;
 	err = platform_driver_register(&pcmtst_pdrv);
-	if (err) {
+	if (err)
 		platform_device_unregister(&pcmtst_pdev);
-		goto err_clear_debug;
-	}
-
-	return 0;
-
-err_clear_debug:
-	clear_debug_files();
-err_free_patterns:
-	free_pattern_buffers();
 	return err;
 }
 

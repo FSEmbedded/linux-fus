@@ -86,29 +86,6 @@ static inline void tee_free_cmd_buffer(struct tee_init_ring_cmd *cmd)
 	kfree(cmd);
 }
 
-static bool tee_send_destroy_cmd(struct psp_tee_device *tee)
-{
-	unsigned int reg;
-	int ret;
-
-	ret = psp_mailbox_command(tee->psp, PSP_CMD_TEE_RING_DESTROY, NULL,
-				  TEE_DEFAULT_CMD_TIMEOUT, &reg);
-	if (ret) {
-		dev_err(tee->dev, "tee: ring destroy command timed out, disabling TEE support\n");
-		psp_dead = true;
-		return false;
-	}
-
-	if (FIELD_GET(PSP_CMDRESP_STS, reg)) {
-		dev_err(tee->dev, "tee: ring destroy command failed (%#010lx)\n",
-			FIELD_GET(PSP_CMDRESP_STS, reg));
-		psp_dead = true;
-		return false;
-	}
-
-	return true;
-}
-
 static int tee_init_ring(struct psp_tee_device *tee)
 {
 	int ring_size = MAX_RING_BUFFER_ENTRIES * sizeof(struct tee_ring_cmd);
@@ -145,18 +122,6 @@ static int tee_init_ring(struct psp_tee_device *tee)
 	}
 
 	if (FIELD_GET(PSP_CMDRESP_STS, reg)) {
-		/*
-		 * During the hibernate resume sequence driver may have gotten loaded
-		 * but the ring not properly destroyed. If the ring doesn't work, try
-		 * to destroy and re-init once.
-		 */
-		if (!retry && FIELD_GET(PSP_CMDRESP_STS, reg) == PSP_TEE_STS_RING_BUSY) {
-			dev_info(tee->dev, "tee: ring init command failed with busy status, retrying\n");
-			if (tee_send_destroy_cmd(tee)) {
-				retry = true;
-				goto retry_init;
-			}
-		}
 		dev_err(tee->dev, "tee: ring init command failed (%#010lx)\n",
 			FIELD_GET(PSP_CMDRESP_STS, reg));
 		tee_free_ring(tee);
@@ -171,6 +136,9 @@ free_buf:
 
 static void tee_destroy_ring(struct psp_tee_device *tee)
 {
+	unsigned int reg;
+	int ret;
+
 	if (!tee->rb_mgr.ring_start)
 		return;
 
@@ -397,8 +365,3 @@ int psp_check_tee_status(void)
 	return 0;
 }
 EXPORT_SYMBOL(psp_check_tee_status);
-
-int tee_restore(struct psp_device *psp)
-{
-	return tee_init_ring(psp->tee_data);
-}

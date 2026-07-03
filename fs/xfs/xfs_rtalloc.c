@@ -988,12 +988,6 @@ xfs_growfs_rt(
 			goto out_free;
 	}
 
-	if (old_rextsize != in->extsize) {
-		error = xfs_growfs_rt_fixup_extsize(mp);
-		if (error)
-			goto out_free;
-	}
-
 	/* Update secondary superblocks now the physical grow has completed */
 	error = xfs_update_secondary_sbs(mp);
 

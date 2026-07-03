@@ -788,8 +788,7 @@ static int spdif_passthru_playback_get_resources(struct ct_atc *atc,
 	struct src *src;
 	int err;
 	int n_amixer = apcm->substream->runtime->channels, i;
-	unsigned int pitch;
-	unsigned int rsr = atc->pll_rate ? atc->pll_rate : atc->rsr;
+	unsigned int pitch, rsr = atc->pll_rate;
 
 	/* first release old resources */
 	atc_pcm_release_resources(atc, apcm);

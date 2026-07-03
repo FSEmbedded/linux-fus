@@ -420,12 +420,6 @@ static ssize_t occ_show_freq_2(struct device *dev,
 	return sysfs_emit(buf, "%u\n", val);
 }
 
-static u64 occ_get_powr_avg(u64 accum, u32 samples)
-{
-	return (samples == 0) ? 0 :
-		mul_u64_u32_div(accum, 1000000UL, samples);
-}
-
 static ssize_t occ_show_power_1(struct device *dev,
 				struct device_attribute *attr, char *buf)
 {
@@ -447,8 +441,9 @@ static ssize_t occ_show_power_1(struct device *dev,
 		val = get_unaligned_be16(&power->sensor_id);
 		break;
 	case 1:
-		val = occ_get_powr_avg(get_unaligned_be32(&power->accumulator),
-				       get_unaligned_be32(&power->update_tag));
+		val = get_unaligned_be32(&power->accumulator) /
+			get_unaligned_be32(&power->update_tag);
+		val *= 1000000ULL;
 		break;
 	case 2:
 		val = (u64)get_unaligned_be32(&power->update_tag) *
@@ -730,7 +725,7 @@ static ssize_t occ_show_extended(struct device *dev,
 	switch (sattr->nr) {
 	case 0:
 		if (extn->flags & EXTN_FLAG_SENSOR_ID) {
-			rc = sysfs_emit(buf, "%u\n",
+			rc = sysfs_emit(buf, "%u",
 					get_unaligned_be32(&extn->sensor_id));
 		} else {
 			rc = sysfs_emit(buf, "%4phN\n", extn->name);

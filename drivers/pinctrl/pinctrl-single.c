@@ -485,8 +485,7 @@ static int pcs_pinconf_get(struct pinctrl_dev *pctldev,
 	struct pcs_device *pcs = pinctrl_dev_get_drvdata(pctldev);
 	struct pcs_function *func;
 	enum pin_config_param param;
-	unsigned offset = 0, data = 0, i, j;
-	int ret;
+	unsigned offset = 0, data = 0, i, j, ret;
 
 	ret = pcs_get_function(pctldev, pin, &func);
 	if (ret)
@@ -550,7 +549,7 @@ static int pcs_pinconf_set(struct pinctrl_dev *pctldev,
 {
 	struct pcs_device *pcs = pinctrl_dev_get_drvdata(pctldev);
 	struct pcs_function *func;
-	unsigned offset = 0, shift = 0, i, data;
+	unsigned offset = 0, shift = 0, i, data, ret;
 	u32 arg;
 	int j;
 	enum pin_config_param param;
@@ -590,10 +589,8 @@ static int pcs_pinconf_set(struct pinctrl_dev *pctldev,
 			/* 4 parameters */
 			case PIN_CONFIG_BIAS_PULL_DOWN:
 			case PIN_CONFIG_BIAS_PULL_UP:
-				if (arg) {
+				if (arg)
 					pcs_pinconf_clear_bias(pctldev, pin);
-					data = pcs->read(pcs->base + offset);
-				}
 				fallthrough;
 			case PIN_CONFIG_INPUT_SCHMITT_ENABLE:
 				data &= ~func->conf[i].mask;
@@ -1359,7 +1356,6 @@ static int pcs_add_gpio_func(struct device_node *node, struct pcs_device *pcs)
 		}
 		range = devm_kzalloc(pcs->dev, sizeof(*range), GFP_KERNEL);
 		if (!range) {
-			of_node_put(gpiospec.np);
 			ret = -ENOMEM;
 			break;
 		}
@@ -1369,7 +1365,6 @@ static int pcs_add_gpio_func(struct device_node *node, struct pcs_device *pcs)
 		mutex_lock(&pcs->mutex);
 		list_add_tail(&range->node, &pcs->gpiofuncs);
 		mutex_unlock(&pcs->mutex);
-		of_node_put(gpiospec.np);
 	}
 	return ret;
 }

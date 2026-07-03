@@ -797,7 +797,8 @@ static struct amdgpu_ps *amdgpu_dpm_pick_power_state(struct amdgpu_device *adev,
 	int i;
 	struct amdgpu_ps *ps;
 	u32 ui_class;
-	bool single_display = adev->pm.pm_display_cfg.num_display < 2;
+	bool single_display = (adev->pm.dpm.new_active_crtc_count < 2) ?
+		true : false;
 
 	/* check if the vblank period is too short to adjust the mclk */
 	if (single_display && adev->powerplay.pp_funcs->vblank_too_short) {
@@ -993,8 +994,7 @@ void amdgpu_legacy_dpm_compute_clocks(void *handle)
 {
 	struct amdgpu_device *adev = (struct amdgpu_device *)handle;
 
-	if (!adev->dc_enabled)
-		amdgpu_dpm_get_display_cfg(adev);
+	amdgpu_dpm_get_active_displays(adev);
 
 	amdgpu_dpm_change_power_state_locked(adev);
 }

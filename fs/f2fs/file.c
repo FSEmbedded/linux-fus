@@ -625,10 +625,7 @@ static int f2fs_file_open(struct inode *inode, struct file *filp)
 	if (err)
 		return err;
 
-	err = finish_preallocate_blocks(inode);
-	if (!err)
-		atomic_inc(&F2FS_I(inode)->open_count);
-	return err;
+	return finish_preallocate_blocks(inode);
 }
 
 void f2fs_truncate_data_blocks_range(struct dnode_of_data *dn, int count)
@@ -859,16 +856,8 @@ int f2fs_truncate(struct inode *inode)
 	/* we should check inline_data size */
 	if (!f2fs_may_inline_data(inode)) {
 		err = f2fs_convert_inline_inode(inode);
-		if (err) {
-			/*
-			 * Always truncate page #0 to avoid page cache
-			 * leak in evict() path.
-			 */
-			truncate_inode_pages_range(inode->i_mapping,
-					F2FS_BLK_TO_BYTES(0),
-					F2FS_BLK_END_BYTES(0));
+		if (err)
 			return err;
-		}
 	}
 
 	err = f2fs_truncate_blocks(inode, i_size_read(inode), true);
@@ -1593,11 +1582,8 @@ static int f2fs_do_zero_range(struct dnode_of_data *dn, pgoff_t start,
 		f2fs_set_data_blkaddr(dn, NEW_ADDR);
 	}
 
-	if (index > start) {
-		f2fs_update_read_extent_cache_range(dn, start, 0,
-							index - start);
-		f2fs_update_age_extent_cache_range(dn, start, index - start);
-	}
+	f2fs_update_read_extent_cache_range(dn, start, 0, index - start);
+	f2fs_update_age_extent_cache_range(dn, start, index - start);
 
 	return ret;
 }
@@ -1982,9 +1968,6 @@ out:
 
 static int f2fs_release_file(struct inode *inode, struct file *filp)
 {
-	if (atomic_dec_and_test(&F2FS_I(inode)->open_count))
-		f2fs_remove_donate_inode(inode);
-
 	/*
 	 * f2fs_release_file is called at every close calls. So we should
 	 * not drop any inmemory pages by close called by other process.
@@ -2457,88 +2440,6 @@ static int f2fs_ioc_shutdown(struct file *filp, unsigned long arg)
 		mnt_drop_write_file(filp);
 
 	return ret;
-}
-
-static int f2fs_ioc_shutdown(struct file *filp, unsigned long arg)
-{
-	struct inode *inode = file_inode(filp);
-	struct f2fs_sb_info *sbi = F2FS_I_SB(inode);
-	__u32 in;
-	int ret;
-	bool need_drop = false, readonly = false;
-
-	if (!capable(CAP_SYS_ADMIN))
-		return -EPERM;
-
-	if (get_user(in, (__u32 __user *)arg))
-		return -EFAULT;
-
-	if (in != F2FS_GOING_DOWN_FULLSYNC) {
-		ret = mnt_want_write_file(filp);
-		if (ret) {
-			if (ret != -EROFS)
-				return ret;
-
-			/* fallback to nosync shutdown for readonly fs */
-			in = F2FS_GOING_DOWN_NOSYNC;
-			readonly = true;
-		} else {
-			need_drop = true;
-		}
-	}
-
-	ret = f2fs_do_shutdown(sbi, in, readonly, true);
-
-	if (need_drop)
-		mnt_drop_write_file(filp);
-
-	return ret;
-}
-
-static void f2fs_keep_noreuse_range(struct inode *inode,
-				loff_t offset, loff_t len)
-{
-	struct f2fs_sb_info *sbi = F2FS_I_SB(inode);
-	u64 max_bytes = F2FS_BLK_TO_BYTES(max_file_blocks(inode));
-	u64 start, end;
-
-	if (!S_ISREG(inode->i_mode))
-		return;
-
-	if (offset >= max_bytes || len > max_bytes ||
-	    (offset + len) > max_bytes)
-		return;
-
-	start = offset >> PAGE_SHIFT;
-	end = DIV_ROUND_UP(offset + len, PAGE_SIZE);
-
-	inode_lock(inode);
-	if (f2fs_is_atomic_file(inode)) {
-		inode_unlock(inode);
-		return;
-	}
-
-	spin_lock(&sbi->inode_lock[DONATE_INODE]);
-	/* let's remove the range, if len = 0 */
-	if (!len) {
-		if (!list_empty(&F2FS_I(inode)->gdonate_list)) {
-			list_del_init(&F2FS_I(inode)->gdonate_list);
-			sbi->donate_files--;
-		}
-	} else {
-		if (list_empty(&F2FS_I(inode)->gdonate_list)) {
-			list_add_tail(&F2FS_I(inode)->gdonate_list,
-					&sbi->inode_list[DONATE_INODE]);
-			sbi->donate_files++;
-		} else {
-			list_move_tail(&F2FS_I(inode)->gdonate_list,
-					&sbi->inode_list[DONATE_INODE]);
-		}
-		F2FS_I(inode)->donate_start = start;
-		F2FS_I(inode)->donate_end = end - 1;
-	}
-	spin_unlock(&sbi->inode_lock[DONATE_INODE]);
-	inode_unlock(inode);
 }
 
 static int f2fs_ioc_fitrim(struct file *filp, unsigned long arg)
@@ -5234,16 +5135,12 @@ static int f2fs_file_fadvise(struct file *filp, loff_t offset, loff_t len,
 	}
 
 	err = generic_fadvise(filp, offset, len, advice);
-	if (err)
-		return err;
-
-	if (advice == POSIX_FADV_DONTNEED &&
-	    (test_opt(F2FS_I_SB(inode), COMPRESS_CACHE) &&
-	     f2fs_compressed_file(inode)))
+	if (!err && advice == POSIX_FADV_DONTNEED &&
+		test_opt(F2FS_I_SB(inode), COMPRESS_CACHE) &&
+		f2fs_compressed_file(inode))
 		f2fs_invalidate_compress_pages(F2FS_I_SB(inode), inode->i_ino);
-	else if (advice == POSIX_FADV_NOREUSE)
-		f2fs_keep_noreuse_range(inode, offset, len);
-	return 0;
+
+	return err;
 }
 
 #ifdef CONFIG_COMPAT

@@ -756,23 +756,17 @@ static int es8328_resume(struct snd_soc_component *component)
 					es8328->supplies);
 	if (ret) {
 		dev_err(component->dev, "unable to enable regulators\n");
-		goto err_clk;
+		return ret;
 	}
 
 	regcache_mark_dirty(regmap);
 	ret = regcache_sync(regmap);
 	if (ret) {
 		dev_err(component->dev, "unable to sync regcache\n");
-		goto err_regulators;
+		return ret;
 	}
 
 	return 0;
-
-err_regulators:
-	regulator_bulk_disable(ARRAY_SIZE(es8328->supplies), es8328->supplies);
-err_clk:
-	clk_disable_unprepare(es8328->clk);
-	return ret;
 }
 
 static int es8328_component_probe(struct snd_soc_component *component)

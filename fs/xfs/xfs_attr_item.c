@@ -1107,7 +1107,6 @@ xlog_recover_attri_commit_pass2(
 			return -EFSCORRUPTED;
 		i++;
 	}
-	i++;
 
 	/* Validate the attr value, if present */
 	if (value_len != 0) {

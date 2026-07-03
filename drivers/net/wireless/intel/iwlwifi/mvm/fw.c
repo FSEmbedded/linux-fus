@@ -1218,22 +1218,6 @@ static bool iwl_mvm_eval_dsm_rfi(struct iwl_mvm *mvm)
 	return bios_enable_rfi;
 }
 
-enum iwl_dsm_unii4_bitmap {
-	DSM_VALUE_UNII4_US_OVERRIDE_MSK		= BIT(0),
-	DSM_VALUE_UNII4_US_EN_MSK		= BIT(1),
-	DSM_VALUE_UNII4_ETSI_OVERRIDE_MSK	= BIT(2),
-	DSM_VALUE_UNII4_ETSI_EN_MSK		= BIT(3),
-	DSM_VALUE_UNII4_CANADA_OVERRIDE_MSK	= BIT(4),
-	DSM_VALUE_UNII4_CANADA_EN_MSK		= BIT(5),
-};
-
-#define DSM_UNII4_ALLOW_BITMAP (DSM_VALUE_UNII4_US_OVERRIDE_MSK		|\
-				DSM_VALUE_UNII4_US_EN_MSK		|\
-				DSM_VALUE_UNII4_ETSI_OVERRIDE_MSK	|\
-				DSM_VALUE_UNII4_ETSI_EN_MSK		|\
-				DSM_VALUE_UNII4_CANADA_OVERRIDE_MSK	|\
-				DSM_VALUE_UNII4_CANADA_EN_MSK)
-
 static void iwl_mvm_lari_cfg(struct iwl_mvm *mvm)
 {
 	struct iwl_lari_config_change_cmd cmd;

@@ -22,7 +22,6 @@
 #include <linux/irq.h>
 #include <linux/kexec.h>
 #include <linux/entry-common.h>
-#include <linux/nospec.h>
 
 #include <asm/asm-prototypes.h>
 #include <asm/bug.h>
@@ -342,7 +341,6 @@ void do_trap_ecall_u(struct pt_regs *regs)
 
 		if (syscall >= 0 && syscall < NR_syscalls)
 			syscall_handler(regs, syscall);
-		}
 
 		/*
 		 * Ultimately, this value will get limited by KSTACK_OFFSET_MAX(),

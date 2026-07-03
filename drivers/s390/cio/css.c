@@ -236,7 +236,7 @@ struct subchannel *css_alloc_subchannel(struct subchannel_id schid,
 	return sch;
 
 err:
-	put_device(&sch->dev);
+	kfree(sch);
 	return ERR_PTR(ret);
 }
 
@@ -354,6 +354,7 @@ static DEVICE_ATTR_RW(driver_override);
 static struct attribute *subch_attrs[] = {
 	&dev_attr_type.attr,
 	&dev_attr_modalias.attr,
+	&dev_attr_driver_override.attr,
 	NULL,
 };
 
@@ -1357,11 +1358,9 @@ static int css_bus_match(struct device *dev, const struct device_driver *drv)
 	struct subchannel *sch = to_subchannel(dev);
 	const struct css_driver *driver = to_cssdriver(drv);
 	struct css_device_id *id;
-	int ret;
 
 	/* When driver_override is set, only bind to the matching driver */
-	ret = device_match_driver_override(dev, drv);
-	if (ret == 0)
+	if (sch->driver_override && strcmp(sch->driver_override, drv->name))
 		return 0;
 
 	for (id = driver->subchannel_type; id->match_flags; id++) {
@@ -1418,7 +1417,6 @@ static int css_uevent(const struct device *dev, struct kobj_uevent_env *env)
 
 static const struct bus_type css_bus_type = {
 	.name     = "css",
-	.driver_override = true,
 	.match    = css_bus_match,
 	.probe    = css_probe,
 	.remove   = css_remove,

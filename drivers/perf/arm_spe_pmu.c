@@ -96,13 +96,10 @@ struct arm_spe_pmu {
 #define to_spe_pmu(p) (container_of(p, struct arm_spe_pmu, pmu))
 
 /* Convert a free-running index from perf into an SPE buffer offset */
-#define PERF_IDX2OFF(idx, buf) \
-	((idx) % ((unsigned long)(buf)->nr_pages << PAGE_SHIFT))
+#define PERF_IDX2OFF(idx, buf)	((idx) % ((buf)->nr_pages << PAGE_SHIFT))
 
 /* Keep track of our dynamic hotplug state */
 static enum cpuhp_state arm_spe_pmu_online;
-
-static void arm_spe_pmu_stop(struct perf_event *event, int flags);
 
 enum arm_spe_pmu_buf_fault_action {
 	SPE_PMU_BUF_FAULT_ACT_SPURIOUS,
@@ -499,8 +496,8 @@ static u64 arm_spe_pmu_next_off(struct perf_output_handle *handle)
 	return limit;
 }
 
-static int arm_spe_perf_aux_output_begin(struct perf_output_handle *handle,
-					 struct perf_event *event)
+static void arm_spe_perf_aux_output_begin(struct perf_output_handle *handle,
+					  struct perf_event *event)
 {
 	u64 base, limit;
 	struct arm_spe_pmu_buf *buf;
@@ -508,6 +505,7 @@ static int arm_spe_perf_aux_output_begin(struct perf_output_handle *handle,
 	/* Start a new aux session */
 	buf = perf_aux_output_begin(handle, event);
 	if (!buf) {
+		event->hw.state |= PERF_HES_STOPPED;
 		/*
 		 * We still need to clear the limit pointer, since the
 		 * profiler might only be disabled by virtue of a fault.
@@ -527,7 +525,6 @@ static int arm_spe_perf_aux_output_begin(struct perf_output_handle *handle,
 
 out_write_limit:
 	write_sysreg_s(limit, SYS_PMBLIMITR_EL1);
-	return (limit & PMBLIMITR_EL1_E) ? 0 : -EIO;
 }
 
 static void arm_spe_perf_aux_output_end(struct perf_output_handle *handle)
@@ -667,10 +664,7 @@ static irqreturn_t arm_spe_pmu_irq_handler(int irq, void *dev)
 		 * when we get to it.
 		 */
 		if (!(handle->aux_flags & PERF_AUX_FLAG_TRUNCATED)) {
-			if (arm_spe_perf_aux_output_begin(handle, event)) {
-				arm_spe_pmu_stop(event, PERF_EF_UPDATE);
-				break;
-			}
+			arm_spe_perf_aux_output_begin(handle, event);
 			isb();
 		}
 		break;
@@ -765,10 +759,9 @@ static void arm_spe_pmu_start(struct perf_event *event, int flags)
 	struct perf_output_handle *handle = this_cpu_ptr(spe_pmu->handle);
 
 	hwc->state = 0;
-	if (arm_spe_perf_aux_output_begin(handle, event)) {
-		arm_spe_pmu_stop(event, 0);
+	arm_spe_perf_aux_output_begin(handle, event);
+	if (hwc->state)
 		return;
-	}
 
 	reg = arm_spe_event_to_pmsfcr(event);
 	write_sysreg_s(reg, SYS_PMSFCR_EL1);

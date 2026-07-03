@@ -112,13 +112,6 @@ struct bitmap_operations {
 	void (*free)(void *data);
 };
 
-struct md_bitmap_stats {
-	unsigned long	missing_pages;
-	unsigned long	sync_size;
-	unsigned long	pages;
-	struct file	*file;
-};
-
 /* the bitmap API */
 void mddev_set_bitmap_ops(struct mddev *mddev);
 

@@ -7,7 +7,6 @@
 
 #include <linux/pm_runtime.h>
 #include <linux/delay.h>
-#include <linux/swiotlb.h>
 #include "wave6-vpu.h"
 #include "wave6-vpu-dbg.h"
 #include "wave6-trace.h"
@@ -467,11 +466,7 @@ static void wave6_update_color_info(struct vpu_instance *inst,
 	inst->xfer_func = to_v4l2_xfer_func(color->transfer_characteristics);
 	inst->ycbcr_enc = to_v4l2_ycbcr_encoding(color->matrix_coefficients);
 
-	if (!inst->src_change) {
-		if (inst->colorspace != colorspace || inst->xfer_func != xfer_func ||
-		    inst->ycbcr_enc != ycbcr_enc || inst->quantization != quantization)
-			inst->src_change = V4L2_EVENT_SRC_CH_COLORSPACE;
-	}
+	return;
 
 set_default_all:
 	inst->quantization = V4L2_QUANTIZATION_DEFAULT;
@@ -782,7 +777,7 @@ static void wave6_event_src_ch_colorsapce(struct vpu_instance *inst)
 
 static void wave6_event_src_ch_resolution(struct vpu_instance *inst)
 {
-	struct v4l2_event vpu_event_src_ch = {
+	static const struct v4l2_event vpu_event_src_ch = {
 		.type = V4L2_EVENT_SOURCE_CHANGE,
 		.u.src_change.changes = V4L2_EVENT_SRC_CH_RESOLUTION,
 	};
@@ -1488,10 +1483,8 @@ static int wave6_vpu_dec_prepare_fb(struct vpu_instance *inst)
 	unsigned int chroma_size;
 	struct dec_info *p_dec_info = &inst->codec_info->dec_info;
 
-	fb_num = inst->fb_num;
-	mv_num = inst->mv_num;
-	fb_stride = ALIGN(inst->src_fmt.width, W6_DEC_ALIGNMENT);
-	fb_height = ALIGN(inst->src_fmt.height, W6_DEC_ALIGNMENT);
+	fb_num = p_dec_info->initial_info.min_frame_buffer_count;
+	mv_num = p_dec_info->initial_info.req_mv_buffer_count;
 
 	fb_stride = ALIGN(inst->src_fmt.width, W6_FBC_BUF_ALIGNMENT);
 	fb_height = ALIGN(inst->src_fmt.height, W6_FBC_BUF_ALIGNMENT);
@@ -1645,8 +1638,6 @@ static int wave6_vpu_dec_seek_header(struct vpu_instance *inst)
 			ret = 0;
 		}
 	} else {
-		/* The initial source change must be a resolution change */
-		inst->src_change = V4L2_EVENT_SRC_CH_RESOLUTION;
 		wave6_vpu_dec_handle_source_change(inst, &initial_info);
 		inst->v4l2_fh.m2m_ctx->ignore_cap_streaming = false;
 		v4l2_m2m_set_dst_buffered(inst->v4l2_fh.m2m_ctx, false);

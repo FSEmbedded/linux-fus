@@ -58,8 +58,7 @@ enum {
 	BYT_RT5651_OVCD_SF_1P5	= (RT5651_OVCD_SF_1P5 << 13),
 };
 
-#define BYT_RT5651_MAP_MASK		GENMASK(3, 0)
-#define BYT_RT5651_MAP(quirk)		((quirk) & BYT_RT5651_MAP_MASK)
+#define BYT_RT5651_MAP(quirk)		((quirk) & GENMASK(3, 0))
 #define BYT_RT5651_JDSRC(quirk)		(((quirk) & GENMASK(7, 4)) >> 4)
 #define BYT_RT5651_OVCD_TH(quirk)	(((quirk) & GENMASK(12, 8)) >> 8)
 #define BYT_RT5651_OVCD_SF(quirk)	(((quirk) & GENMASK(14, 13)) >> 13)
@@ -101,29 +100,14 @@ MODULE_PARM_DESC(quirk, "Board-specific quirk override");
 
 static void log_quirks(struct device *dev)
 {
-	int map;
-
-	map = BYT_RT5651_MAP(byt_rt5651_quirk);
-	switch (map) {
-	case BYT_RT5651_DMIC_MAP:
+	if (BYT_RT5651_MAP(byt_rt5651_quirk) == BYT_RT5651_DMIC_MAP)
 		dev_info(dev, "quirk DMIC_MAP enabled");
-		break;
-	case BYT_RT5651_IN1_MAP:
+	if (BYT_RT5651_MAP(byt_rt5651_quirk) == BYT_RT5651_IN1_MAP)
 		dev_info(dev, "quirk IN1_MAP enabled");
-		break;
-	case BYT_RT5651_IN2_MAP:
+	if (BYT_RT5651_MAP(byt_rt5651_quirk) == BYT_RT5651_IN2_MAP)
 		dev_info(dev, "quirk IN2_MAP enabled");
-		break;
-	case BYT_RT5651_IN1_IN2_MAP:
+	if (BYT_RT5651_MAP(byt_rt5651_quirk) == BYT_RT5651_IN1_IN2_MAP)
 		dev_info(dev, "quirk IN1_IN2_MAP enabled");
-		break;
-	default:
-		dev_warn_once(dev, "quirk sets invalid input map: 0x%x, default to DMIC_MAP\n", map);
-		byt_rt5651_quirk &= ~BYT_RT5651_MAP_MASK;
-		byt_rt5651_quirk |= BYT_RT5651_DMIC_MAP;
-		break;
-	}
-
 	if (BYT_RT5651_JDSRC(byt_rt5651_quirk)) {
 		dev_info(dev, "quirk realtek,jack-detect-source %ld\n",
 			 BYT_RT5651_JDSRC(byt_rt5651_quirk));

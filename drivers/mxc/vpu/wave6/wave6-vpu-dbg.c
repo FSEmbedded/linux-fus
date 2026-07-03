@@ -37,9 +37,8 @@ static int wave6_vpu_dbg_instance(struct seq_file *s, void *data)
 	if (seq_write(s, str, num))
 		return 0;
 
-	num = scnprintf(str, sizeof(str), "state = %s, pause request %d\n",
-			wave6_vpu_instance_state_name(inst->state),
-			inst->dev->pause_request);
+	num = scnprintf(str, sizeof(str), "state = %s\n",
+			wave6_vpu_instance_state_name(inst->state));
 	if (seq_write(s, str, num))
 		return 0;
 

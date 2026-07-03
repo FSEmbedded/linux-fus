@@ -251,7 +251,6 @@ static void print_data_reloc_error(const struct btrfs_inode *inode, u64 file_off
 	if (ret < 0) {
 		btrfs_err_rl(fs_info, "failed to lookup extent item for logical %llu: %d",
 			     logical, ret);
-		btrfs_release_path(&path);
 		return;
 	}
 	eb = path.nodes[0];
@@ -656,22 +655,19 @@ static noinline int __cow_file_range_inline(struct btrfs_inode *inode, u64 offse
 	struct btrfs_drop_extents_args drop_args = { 0 };
 	struct btrfs_root *root = inode->root;
 	struct btrfs_fs_info *fs_info = root->fs_info;
-	struct btrfs_trans_handle *trans = NULL;
+	struct btrfs_trans_handle *trans;
 	u64 data_len = (compressed_size ?: size);
 	int ret;
 	struct btrfs_path *path;
 
 	path = btrfs_alloc_path();
-	if (!path) {
-		ret = -ENOMEM;
-		goto out;
-	}
+	if (!path)
+		return -ENOMEM;
 
 	trans = btrfs_join_transaction(root);
 	if (IS_ERR(trans)) {
-		ret = PTR_ERR(trans);
-		trans = NULL;
-		goto out;
+		btrfs_free_path(path);
+		return PTR_ERR(trans);
 	}
 	trans->block_rsv = &inode->block_rsv;
 
@@ -715,15 +711,10 @@ out:
 	 * it won't count as data extent, free them directly here.
 	 * And at reserve time, it's always aligned to page size, so
 	 * just free one page here.
-	 *
-	 * If we fallback to non-inline (ret == 1) due to -ENOSPC, then we need
-	 * to keep the data reservation.
 	 */
-	if (ret <= 0)
-		btrfs_qgroup_free_data(inode, NULL, 0, fs_info->sectorsize, NULL);
+	btrfs_qgroup_free_data(inode, NULL, 0, PAGE_SIZE, NULL);
 	btrfs_free_path(path);
-	if (trans)
-		btrfs_end_transaction(trans);
+	btrfs_end_transaction(trans);
 	return ret;
 }
 
@@ -1291,7 +1282,7 @@ out_free_reserve:
 				     NULL, &cached,
 				     EXTENT_LOCKED | EXTENT_DELALLOC |
 				     EXTENT_DELALLOC_NEW |
-				     EXTENT_DEFRAG | EXTENT_CLEAR_META_RESV,
+				     EXTENT_DEFRAG | EXTENT_DO_ACCOUNTING,
 				     PAGE_UNLOCK | PAGE_START_WRITEBACK |
 				     PAGE_END_WRITEBACK);
 	free_async_extent_pages(async_extent);
@@ -3183,10 +3174,9 @@ int btrfs_finish_one_ordered(struct btrfs_ordered_extent *ordered_extent)
 		goto out;
 	}
 
-	ret = btrfs_zone_finish_endio(fs_info, ordered_extent->disk_bytenr,
-				      ordered_extent->disk_num_bytes);
-	if (ret)
-		goto out;
+	if (btrfs_is_zoned(fs_info))
+		btrfs_zone_finish_endio(fs_info, ordered_extent->disk_bytenr,
+					ordered_extent->disk_num_bytes);
 
 	if (test_bit(BTRFS_ORDERED_TRUNCATED, &ordered_extent->flags)) {
 		truncated = true;
@@ -4738,7 +4728,7 @@ out_up_write:
 	return ret;
 }
 
-static int btrfs_rmdir(struct inode *vfs_dir, struct dentry *dentry)
+static int btrfs_rmdir(struct inode *dir, struct dentry *dentry)
 {
 	struct inode *inode = d_inode(dentry);
 	struct btrfs_fs_info *fs_info = BTRFS_I(inode)->root->fs_info;
@@ -4746,15 +4736,15 @@ static int btrfs_rmdir(struct inode *vfs_dir, struct dentry *dentry)
 	struct btrfs_trans_handle *trans;
 	struct fscrypt_name fname;
 
-	if (inode->vfs_inode.i_size > BTRFS_EMPTY_DIR_SIZE)
+	if (inode->i_size > BTRFS_EMPTY_DIR_SIZE)
 		return -ENOTEMPTY;
-	if (btrfs_ino(inode) == BTRFS_FIRST_FREE_OBJECTID) {
+	if (btrfs_ino(BTRFS_I(inode)) == BTRFS_FIRST_FREE_OBJECTID) {
 		if (unlikely(btrfs_fs_incompat(fs_info, EXTENT_TREE_V2))) {
 			btrfs_err(fs_info,
 			"extent tree v2 doesn't support snapshot deletion yet");
 			return -EOPNOTSUPP;
 		}
-		return btrfs_delete_subvolume(dir, dentry);
+		return btrfs_delete_subvolume(BTRFS_I(dir), dentry);
 	}
 
 	ret = fscrypt_setup_filename(dir, &dentry->d_name, 1, &fname);
@@ -4763,7 +4753,7 @@ static int btrfs_rmdir(struct inode *vfs_dir, struct dentry *dentry)
 
 	/* This needs to handle no-key deletions later on */
 
-	trans = __unlink_start_trans(dir);
+	trans = __unlink_start_trans(BTRFS_I(dir));
 	if (IS_ERR(trans)) {
 		ret = PTR_ERR(trans);
 		goto out_notrans;
@@ -6356,25 +6346,6 @@ int btrfs_create_new_inode(struct btrfs_trans_handle *trans,
 	unsigned long ptr;
 	int ret;
 	bool xa_reserved = false;
-
-	if (!args->orphan && !args->subvol) {
-		/*
-		 * Before anything else, check if we can add the name to the
-		 * parent directory. We want to avoid a dir item overflow in
-		 * case we have an existing dir item due to existing name
-		 * hash collisions. We do this check here before we call
-		 * btrfs_add_link() down below so that we can avoid a
-		 * transaction abort (which could be exploited by malicious
-		 * users).
-		 *
-		 * For subvolumes we already do this in btrfs_mksubvol().
-		 */
-		ret = btrfs_check_dir_item_collision(BTRFS_I(dir)->root,
-						     btrfs_ino(BTRFS_I(dir)),
-						     name);
-		if (ret < 0)
-			return ret;
-	}
 
 	path = btrfs_alloc_path();
 	if (!path)

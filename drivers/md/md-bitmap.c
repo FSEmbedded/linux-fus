@@ -2345,7 +2345,6 @@ static void bitmap_set_pages(void *data, unsigned long pages)
 
 	bitmap->counts.pages = pages;
 }
-EXPORT_SYMBOL_GPL(md_bitmap_get_stats);
 
 static int bitmap_get_stats(void *data, struct md_bitmap_stats *stats)
 {
@@ -2466,7 +2465,6 @@ static int __bitmap_resize(struct bitmap *bitmap, sector_t blocks,
 		memcpy(page_address(store.sb_page),
 		       page_address(bitmap->storage.sb_page),
 		       sizeof(bitmap_super_t));
-	mutex_lock(&bitmap->mddev->bitmap_info.mutex);
 	spin_lock_irq(&bitmap->counts.lock);
 	md_bitmap_file_unmap(&bitmap->storage);
 	bitmap->storage = store;
@@ -2574,7 +2572,7 @@ static int __bitmap_resize(struct bitmap *bitmap, sector_t blocks,
 			set_page_attr(bitmap, i, BITMAP_PAGE_DIRTY);
 	}
 	spin_unlock_irq(&bitmap->counts.lock);
-	mutex_unlock(&bitmap->mddev->bitmap_info.mutex);
+
 	if (!init) {
 		__bitmap_unplug(bitmap);
 		bitmap->mddev->pers->quiesce(bitmap->mddev, 0);

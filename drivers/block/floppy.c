@@ -331,7 +331,7 @@ static bool initialized;
  * This default is used whenever the current disk size is unknown.
  * [Now it is rather a minimum]
  */
-#define MAX_DISK_SIZE (PAGE_SIZE / 1024)
+#define MAX_DISK_SIZE 4		/* 3984 */
 
 /*
  * globals used by 'result()'

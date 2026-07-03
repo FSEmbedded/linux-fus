@@ -206,12 +206,7 @@ static ssize_t cmpc_accel_sensitivity_show_v4(struct device *dev,
 
 	acpi = to_acpi_device(dev);
 	inputdev = dev_get_drvdata(&acpi->dev);
-	if (!inputdev)
-		return -ENXIO;
-
 	accel = dev_get_drvdata(&inputdev->dev);
-	if (!accel)
-		return -ENXIO;
 
 	return sprintf(buf, "%d\n", accel->sensitivity);
 }
@@ -228,12 +223,7 @@ static ssize_t cmpc_accel_sensitivity_store_v4(struct device *dev,
 
 	acpi = to_acpi_device(dev);
 	inputdev = dev_get_drvdata(&acpi->dev);
-	if (!inputdev)
-		return -ENXIO;
-
 	accel = dev_get_drvdata(&inputdev->dev);
-	if (!accel)
-		return -ENXIO;
 
 	r = kstrtoul(buf, 0, &sensitivity);
 	if (r)
@@ -265,12 +255,7 @@ static ssize_t cmpc_accel_g_select_show_v4(struct device *dev,
 
 	acpi = to_acpi_device(dev);
 	inputdev = dev_get_drvdata(&acpi->dev);
-	if (!inputdev)
-		return -ENXIO;
-
 	accel = dev_get_drvdata(&inputdev->dev);
-	if (!accel)
-		return -ENXIO;
 
 	return sprintf(buf, "%d\n", accel->g_select);
 }
@@ -287,12 +272,7 @@ static ssize_t cmpc_accel_g_select_store_v4(struct device *dev,
 
 	acpi = to_acpi_device(dev);
 	inputdev = dev_get_drvdata(&acpi->dev);
-	if (!inputdev)
-		return -ENXIO;
-
 	accel = dev_get_drvdata(&inputdev->dev);
-	if (!accel)
-		return -ENXIO;
 
 	r = kstrtoul(buf, 0, &g_select);
 	if (r)
@@ -321,8 +301,6 @@ static int cmpc_accel_open_v4(struct input_dev *input)
 
 	acpi = to_acpi_device(input->dev.parent);
 	accel = dev_get_drvdata(&input->dev);
-	if (!accel)
-		return -ENXIO;
 
 	cmpc_accel_set_sensitivity_v4(acpi->handle, accel->sensitivity);
 	cmpc_accel_set_g_select_v4(acpi->handle, accel->g_select);
@@ -570,12 +548,7 @@ static ssize_t cmpc_accel_sensitivity_show(struct device *dev,
 
 	acpi = to_acpi_device(dev);
 	inputdev = dev_get_drvdata(&acpi->dev);
-	if (!inputdev)
-		return -ENXIO;
-
 	accel = dev_get_drvdata(&inputdev->dev);
-	if (!accel)
-		return -ENXIO;
 
 	return sprintf(buf, "%d\n", accel->sensitivity);
 }
@@ -592,12 +565,7 @@ static ssize_t cmpc_accel_sensitivity_store(struct device *dev,
 
 	acpi = to_acpi_device(dev);
 	inputdev = dev_get_drvdata(&acpi->dev);
-	if (!inputdev)
-		return -ENXIO;
-
 	accel = dev_get_drvdata(&inputdev->dev);
-	if (!accel)
-		return -ENXIO;
 
 	r = kstrtoul(buf, 0, &sensitivity);
 	if (r)

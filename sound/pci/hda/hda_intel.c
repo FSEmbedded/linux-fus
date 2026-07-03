@@ -2106,27 +2106,6 @@ static const struct dmi_system_id driver_denylist_dmi[] = {
 	{}
 };
 
-static struct pci_device_id driver_denylist_ideapad_z570[] = {
-	{ PCI_DEVICE_SUB(0x10de, 0x0bea, 0x0000, 0x0000) }, /* NVIDIA GF108 HDA */
-	{}
-};
-
-/* DMI-based denylist, to be used when:
- *  - PCI subsystem IDs are zero, impossible to distinguish from valid sound cards.
- *  - Different modifications of the same laptop use different GPU models.
- */
-static const struct dmi_system_id driver_denylist_dmi[] = {
-	{
-		/* No HDA in NVIDIA DGPU. BIOS disables it, but quirk_nvidia_hda() reenables. */
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
-			DMI_MATCH(DMI_PRODUCT_VERSION, "Ideapad Z570"),
-		},
-		.driver_data = &driver_denylist_ideapad_z570,
-	},
-	{}
-};
-
 static const struct hda_controller_ops pci_hda_ops = {
 	.disable_msi_reset_irq = disable_msi_reset_irq,
 	.position_check = azx_position_check,

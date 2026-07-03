@@ -294,26 +294,24 @@ out:
 	return data;
 }
 
-static int temp1_input_read(struct device *dev, long *temp)
+static int temp1_input_read(struct device *dev)
 {
 	struct sht3x_data *data = sht3x_update_client(dev);
 
 	if (IS_ERR(data))
 		return PTR_ERR(data);
 
-	*temp = data->temperature;
-	return 0;
+	return data->temperature;
 }
 
-static int humidity1_input_read(struct device *dev, long *humidity)
+static int humidity1_input_read(struct device *dev)
 {
 	struct sht3x_data *data = sht3x_update_client(dev);
 
 	if (IS_ERR(data))
 		return PTR_ERR(data);
 
-	*humidity = data->humidity;
-	return 0;
+	return data->humidity;
 }
 
 /*
@@ -711,7 +709,6 @@ static int sht3x_read(struct device *dev, enum hwmon_sensor_types type,
 		      u32 attr, int channel, long *val)
 {
 	enum sht3x_limits index;
-	int ret;
 
 	switch (type) {
 	case hwmon_chip:
@@ -726,12 +723,10 @@ static int sht3x_read(struct device *dev, enum hwmon_sensor_types type,
 	case hwmon_temp:
 		switch (attr) {
 		case hwmon_temp_input:
-			return temp1_input_read(dev, val);
+			*val = temp1_input_read(dev);
+			break;
 		case hwmon_temp_alarm:
-			ret = temp1_alarm_read(dev);
-			if (ret < 0)
-				return ret;
-			*val = ret;
+			*val = temp1_alarm_read(dev);
 			break;
 		case hwmon_temp_max:
 			index = limit_max;
@@ -756,12 +751,10 @@ static int sht3x_read(struct device *dev, enum hwmon_sensor_types type,
 	case hwmon_humidity:
 		switch (attr) {
 		case hwmon_humidity_input:
-			return humidity1_input_read(dev, val);
+			*val = humidity1_input_read(dev);
+			break;
 		case hwmon_humidity_alarm:
-			ret = humidity1_alarm_read(dev);
-			if (ret < 0)
-				return ret;
-			*val = ret;
+			*val = humidity1_alarm_read(dev);
 			break;
 		case hwmon_humidity_max:
 			index = limit_max;

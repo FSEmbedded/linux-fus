@@ -648,17 +648,6 @@ static void _hci_cmd_sync_cancel_entry(struct hci_dev *hdev,
 	kfree(entry);
 }
 
-static void _hci_cmd_sync_cancel_entry(struct hci_dev *hdev,
-				       struct hci_cmd_sync_work_entry *entry,
-				       int err)
-{
-	if (entry->destroy)
-		entry->destroy(hdev, entry->data, err);
-
-	list_del(&entry->list);
-	kfree(entry);
-}
-
 void hci_cmd_sync_clear(struct hci_dev *hdev)
 {
 	struct hci_cmd_sync_work_entry *entry, *tmp;
@@ -1374,12 +1363,10 @@ int hci_setup_ext_adv_instance_sync(struct hci_dev *hdev, u8 instance)
 		return -EPERM;
 
 	/* Set require_privacy to true only when non-connectable
-	 * advertising is used and it is not periodic.
-	 * In that case it is fine to use a non-resolvable private address.
+	 * advertising is used. In that case it is fine to use a
+	 * non-resolvable private address.
 	 */
-	require_privacy = !connectable && !(adv && adv->periodic);
-
-	err = hci_get_random_address(hdev, require_privacy,
+	err = hci_get_random_address(hdev, !connectable,
 				     adv_use_rpa(hdev, flags), adv,
 				     &own_addr_type, &random_addr);
 	if (err < 0)
@@ -1610,7 +1597,7 @@ int hci_disable_per_advertising_sync(struct hci_dev *hdev, u8 instance)
 
 	/* If periodic advertising already disabled there is nothing to do. */
 	adv = hci_find_adv_instance(hdev, instance);
-	if (!adv || !adv->periodic_enabled)
+	if (!adv || !adv->periodic || !adv->enabled)
 		return 0;
 
 	memset(&cp, 0, sizeof(cp));
@@ -1675,7 +1662,7 @@ static int hci_enable_per_advertising_sync(struct hci_dev *hdev, u8 instance)
 
 	/* If periodic advertising already enabled there is nothing to do. */
 	adv = hci_find_adv_instance(hdev, instance);
-	if (adv && adv->periodic_enabled)
+	if (adv && adv->periodic && adv->enabled)
 		return 0;
 
 	memset(&cp, 0, sizeof(cp));
@@ -2617,12 +2604,6 @@ static int hci_resume_advertising_sync(struct hci_dev *hdev)
 			hci_remove_ext_adv_instance_sync(hdev, adv->instance,
 							 NULL);
 		}
-
-		/* If current advertising instance is set to instance 0x00
-		 * then we need to re-enable it.
-		 */
-		if (hci_dev_test_and_clear_flag(hdev, HCI_LE_ADV_0))
-			err = hci_enable_ext_advertising_sync(hdev, 0x00);
 	} else {
 		/* Schedule for most recent instance to be restarted and begin
 		 * the software rotation loop
@@ -6557,8 +6538,8 @@ static int hci_le_create_conn_sync(struct hci_dev *hdev, void *data)
 	 * state.
 	 */
 	if (hci_dev_test_flag(hdev, HCI_LE_SCAN)) {
-		hci_dev_set_flag(hdev, HCI_LE_SCAN_INTERRUPTED);
 		hci_scan_disable_sync(hdev);
+		hci_dev_set_flag(hdev, HCI_LE_SCAN_INTERRUPTED);
 	}
 
 	/* Update random address, but set require_privacy to false so

@@ -2509,12 +2509,6 @@ void serial8250_do_shutdown(struct uart_port *port)
 	 * the IRQ chain.
 	 */
 	serial_port_in(port, UART_RX);
-	/*
-	 * LCR writes on DW UART can trigger late (unmaskable) IRQs.
-	 * Handle them before releasing the handler.
-	 */
-	synchronize_irq(port->irq);
-
 	serial8250_rpm_put(up);
 
 	up->ops->release_irq(up);
@@ -2527,14 +2521,6 @@ static void serial8250_shutdown(struct uart_port *port)
 		port->shutdown(port);
 	else
 		serial8250_do_shutdown(port);
-}
-
-static void serial8250_flush_buffer(struct uart_port *port)
-{
-	struct uart_8250_port *up = up_to_u8250p(port);
-
-	if (up->dma)
-		serial8250_tx_dma_flush(up);
 }
 
 static void serial8250_flush_buffer(struct uart_port *port)

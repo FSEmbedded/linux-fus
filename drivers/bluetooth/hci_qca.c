@@ -1987,23 +1987,19 @@ retry:
 	}
 
 out:
-	if (ret) {
+	if (ret && retries < MAX_INIT_RETRIES) {
+		bt_dev_warn(hdev, "Retry BT power ON:%d", retries);
 		qca_power_shutdown(hu);
-
-		if (retries < MAX_INIT_RETRIES) {
-			bt_dev_warn(hdev, "Retry BT power ON:%d", retries);
-			if (hu->serdev) {
-				serdev_device_close(hu->serdev);
-				ret = serdev_device_open(hu->serdev);
-				if (ret) {
-					bt_dev_err(hdev, "failed to open port");
-					return ret;
-				}
+		if (hu->serdev) {
+			serdev_device_close(hu->serdev);
+			ret = serdev_device_open(hu->serdev);
+			if (ret) {
+				bt_dev_err(hdev, "failed to open port");
+				return ret;
 			}
-			retries++;
-			goto retry;
 		}
-		return ret;
+		retries++;
+		goto retry;
 	}
 
 	/* Setup bdaddr */

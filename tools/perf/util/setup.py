@@ -1,7 +1,6 @@
 from os import getenv, path
 from subprocess import Popen, PIPE
 from re import sub
-import shlex
 
 cc = getenv("CC")
 

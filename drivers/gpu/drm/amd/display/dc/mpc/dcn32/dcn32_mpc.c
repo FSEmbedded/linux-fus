@@ -721,7 +721,8 @@ bool mpc32_program_shaper(
 		return false;
 	}
 
-	mpc32_power_on_shaper_3dlut(mpc, mpcc_id, true);
+	if (mpc->ctx->dc->debug.enable_mem_low_power.bits.mpc)
+		mpc32_power_on_shaper_3dlut(mpc, mpcc_id, true);
 
 	current_mode = mpc32_get_shaper_current(mpc, mpcc_id);
 

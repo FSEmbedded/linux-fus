@@ -17,7 +17,6 @@
 #include "fanotify/fanotify.h"
 #include "fdinfo.h"
 #include "fsnotify.h"
-#include "../internal.h"
 
 #if defined(CONFIG_PROC_FS)
 

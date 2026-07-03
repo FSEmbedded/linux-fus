@@ -52,7 +52,7 @@ struct receiver {
 	struct hlist_node list;
 	canid_t can_id;
 	canid_t mask;
-	atomic_long_t matches;
+	unsigned long matches;
 	void (*func)(struct sk_buff *skb, void *data);
 	void *data;
 	char *ident;

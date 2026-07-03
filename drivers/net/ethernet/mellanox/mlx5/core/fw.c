@@ -803,63 +803,48 @@ mlx5_fw_image_pending(struct mlx5_core_dev *dev,
 	return 0;
 }
 
-void mlx5_fw_version_query(struct mlx5_core_dev *dev,
-			   u32 *running_ver, u32 *pending_ver)
+int mlx5_fw_version_query(struct mlx5_core_dev *dev,
+			  u32 *running_ver, u32 *pending_ver)
 {
 	u32 reg_mcqi_version[MLX5_ST_SZ_DW(mcqi_version)] = {};
 	bool pending_version_exists;
 	int component_index;
 	int err;
 
-	*running_ver = 0;
-	*pending_ver = 0;
-
 	if (!MLX5_CAP_GEN(dev, mcam_reg) || !MLX5_CAP_MCAM_REG(dev, mcqi) ||
 	    !MLX5_CAP_MCAM_REG(dev, mcqs)) {
 		mlx5_core_warn(dev, "fw query isn't supported by the FW\n");
-		return;
+		return -EOPNOTSUPP;
 	}
 
 	component_index = mlx5_get_boot_img_component_index(dev);
-	if (component_index < 0) {
-		mlx5_core_warn(dev, "fw query failed to find boot img component index, err %d\n",
-			       component_index);
-		return;
-	}
+	if (component_index < 0)
+		return component_index;
 
-	*running_ver = U32_MAX; /* indicate failure */
 	err = mlx5_reg_mcqi_version_query(dev, component_index,
 					  MCQI_FW_RUNNING_VERSION,
 					  reg_mcqi_version);
-	if (!err)
-		*running_ver = MLX5_GET(mcqi_version, reg_mcqi_version,
-					version);
-	else
-		mlx5_core_warn(dev, "failed to query running version, err %d\n",
-			       err);
+	if (err)
+		return err;
 
-	*pending_ver = U32_MAX; /* indicate failure */
+	*running_ver = MLX5_GET(mcqi_version, reg_mcqi_version, version);
+
 	err = mlx5_fw_image_pending(dev, component_index, &pending_version_exists);
-	if (err) {
-		mlx5_core_warn(dev, "failed to query pending image, err %d\n",
-			       err);
-		return;
-	}
+	if (err)
+		return err;
 
 	if (!pending_version_exists) {
 		*pending_ver = 0;
-		return;
+		return 0;
 	}
 
 	err = mlx5_reg_mcqi_version_query(dev, component_index,
 					  MCQI_FW_STORED_VERSION,
 					  reg_mcqi_version);
-	if (!err)
-		*pending_ver = MLX5_GET(mcqi_version, reg_mcqi_version,
-					version);
-	else
-		mlx5_core_warn(dev, "failed to query pending version, err %d\n",
-			       err);
+	if (err)
+		return err;
 
-	return;
+	*pending_ver = MLX5_GET(mcqi_version, reg_mcqi_version, version);
+
+	return 0;
 }

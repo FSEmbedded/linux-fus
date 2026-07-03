@@ -2756,14 +2756,6 @@ static int allocate_hiq_sdma_mqd(struct device_queue_manager *dqm)
 	return retval;
 }
 
-static void deallocate_hiq_sdma_mqd(struct kfd_node *dev,
-				    struct kfd_mem_obj *mqd)
-{
-	WARN(!mqd, "No hiq sdma mqd trunk to free");
-
-	amdgpu_amdkfd_free_gtt_mem(dev->adev, &mqd->gtt_mem);
-}
-
 struct device_queue_manager *device_queue_manager_init(struct kfd_node *dev)
 {
 	struct device_queue_manager *dqm;
@@ -2886,9 +2878,6 @@ struct device_queue_manager *device_queue_manager_init(struct kfd_node *dev)
 		init_waitqueue_head(&dqm->destroy_wait);
 		return dqm;
 	}
-
-	if (!dev->kfd->shared_resources.enable_mes)
-		deallocate_hiq_sdma_mqd(dev, &dqm->hiq_sdma_mqd);
 
 out_free:
 	kfree(dqm);

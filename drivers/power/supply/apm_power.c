@@ -364,8 +364,7 @@ static int __init apm_battery_init(void)
 
 static void __exit apm_battery_exit(void)
 {
-	if (apm_get_power_status == apm_battery_apm_get_power_status)
-		apm_get_power_status = NULL;
+	apm_get_power_status = NULL;
 }
 
 module_init(apm_battery_init);

@@ -348,11 +348,6 @@ again:
 		goto again;
 	}
 
-	if (error == -ENODEV) {
-		gfs2_glock_free(gl);
-		return;
-	}
-
 	if (error) {
 		fs_err(sdp, "gdlm_unlock %x,%llx err=%d\n",
 		       gl->gl_name.ln_type,

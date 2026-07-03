@@ -432,17 +432,6 @@ static int neutron_open(struct inode *inode,
 	return nonseekable_open(inode, file);
 }
 
-static int neutron_release(struct inode *inode, struct file *file)
-{
-	struct neutron_device *ndev =
-		container_of(inode->i_cdev, struct neutron_device, cdev);
-
-	pm_runtime_mark_last_busy(ndev->dev);
-	pm_runtime_put_autosuspend(ndev->dev);
-
-	return 0;
-}
-
 /* function to read neutron log */
 static ssize_t neutron_read(struct file *file, char __user *buf,
 			    size_t count, loff_t *f_pos)
@@ -640,7 +629,6 @@ static long neutron_ioctl(struct file *file,
 static const struct file_operations ndev_fops = {
 	.owner		= THIS_MODULE,
 	.open		= &neutron_open,
-	.release	= &neutron_release,
 	.read		= &neutron_read,
 	.unlocked_ioctl	= &neutron_ioctl,
 #ifdef CONFIG_COMPAT

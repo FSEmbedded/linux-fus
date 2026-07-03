@@ -1099,7 +1099,7 @@ static int do_chaninfo_ioctl(struct comedi_device *dev,
 		for (i = 0; i < s->n_chan; i++) {
 			int x;
 
-			x = (it->subdev << 24) | (i << 16) |
+			x = (dev->minor << 28) | (it->subdev << 24) | (i << 16) |
 			    (s->range_table_list[i]->length);
 			if (put_user(x, it->rangelist + i))
 				return -EFAULT;
@@ -2971,12 +2971,7 @@ static int compat_chaninfo(struct file *file, unsigned long arg)
 	chaninfo.rangelist = compat_ptr(chaninfo32.rangelist);
 
 	mutex_lock(&dev->mutex);
-	if (!dev->attached) {
-		dev_dbg(dev->class_dev, "no driver attached\n");
-		err = -ENODEV;
-	} else {
-		err = do_chaninfo_ioctl(dev, &chaninfo);
-	}
+	err = do_chaninfo_ioctl(dev, &chaninfo);
 	mutex_unlock(&dev->mutex);
 	return err;
 }
@@ -2997,12 +2992,7 @@ static int compat_rangeinfo(struct file *file, unsigned long arg)
 	rangeinfo.range_ptr = compat_ptr(rangeinfo32.range_ptr);
 
 	mutex_lock(&dev->mutex);
-	if (!dev->attached) {
-		dev_dbg(dev->class_dev, "no driver attached\n");
-		err = -ENODEV;
-	} else {
-		err = do_rangeinfo_ioctl(dev, &rangeinfo);
-	}
+	err = do_rangeinfo_ioctl(dev, &rangeinfo);
 	mutex_unlock(&dev->mutex);
 	return err;
 }
@@ -3078,12 +3068,7 @@ static int compat_cmd(struct file *file, unsigned long arg)
 		return rc;
 
 	mutex_lock(&dev->mutex);
-	if (!dev->attached) {
-		dev_dbg(dev->class_dev, "no driver attached\n");
-		rc = -ENODEV;
-	} else {
-		rc = do_cmd_ioctl(dev, &cmd, &copy, file);
-	}
+	rc = do_cmd_ioctl(dev, &cmd, &copy, file);
 	mutex_unlock(&dev->mutex);
 	if (copy) {
 		/* Special case: copy cmd back to user. */
@@ -3108,12 +3093,7 @@ static int compat_cmdtest(struct file *file, unsigned long arg)
 		return rc;
 
 	mutex_lock(&dev->mutex);
-	if (!dev->attached) {
-		dev_dbg(dev->class_dev, "no driver attached\n");
-		rc = -ENODEV;
-	} else {
-		rc = do_cmdtest_ioctl(dev, &cmd, &copy, file);
-	}
+	rc = do_cmdtest_ioctl(dev, &cmd, &copy, file);
 	mutex_unlock(&dev->mutex);
 	if (copy) {
 		err = put_compat_cmd(compat_ptr(arg), &cmd);
@@ -3173,12 +3153,7 @@ static int compat_insnlist(struct file *file, unsigned long arg)
 	}
 
 	mutex_lock(&dev->mutex);
-	if (!dev->attached) {
-		dev_dbg(dev->class_dev, "no driver attached\n");
-		rc = -ENODEV;
-	} else {
-		rc = do_insnlist_ioctl(dev, insns, insnlist32.n_insns, file);
-	}
+	rc = do_insnlist_ioctl(dev, insns, insnlist32.n_insns, file);
 	mutex_unlock(&dev->mutex);
 	kfree(insns);
 	return rc;
@@ -3197,12 +3172,7 @@ static int compat_insn(struct file *file, unsigned long arg)
 		return rc;
 
 	mutex_lock(&dev->mutex);
-	if (!dev->attached) {
-		dev_dbg(dev->class_dev, "no driver attached\n");
-		rc = -ENODEV;
-	} else {
-		rc = do_insn_ioctl(dev, &insn, file);
-	}
+	rc = do_insn_ioctl(dev, &insn, file);
 	mutex_unlock(&dev->mutex);
 	return rc;
 }

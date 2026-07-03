@@ -891,39 +891,6 @@ static int fsl_asoc_card_probe(struct platform_device *pdev)
 	priv->dai_link[2].codecs = &dlc[8];
 	priv->dai_link[2].num_codecs = 1;
 
-	/*
-	 * "Default ASoC DAI Link": 1 cpus, 1 codecs, 1 platforms
-	 * "DPCM Link Front-End":  1 cpus, 1 codecs (dummy), 1 platforms
-	 * "DPCM Link Back-End": 1 cpus, 1 codecs, 1 platforms (dummy)
-	 * totally 7 components (remove dummy)
-	 */
-	dlc = devm_kcalloc(&pdev->dev, 7, sizeof(*dlc), GFP_KERNEL);
-	if (!dlc) {
-		ret = -ENOMEM;
-		goto asrc_fail;
-	}
-
-	priv->dai_link[0].cpus = &dlc[0];
-	priv->dai_link[0].num_cpus = 1;
-	priv->dai_link[0].codecs = &dlc[1];
-	priv->dai_link[0].num_codecs = 1;
-	priv->dai_link[0].platforms = &dlc[2];
-	priv->dai_link[0].num_platforms = 1;
-
-	priv->dai_link[1].cpus = &dlc[3];
-	priv->dai_link[1].num_cpus = 1;
-	priv->dai_link[1].codecs = &asoc_dummy_dlc;
-	priv->dai_link[1].num_codecs = 1; /* dummy */
-	priv->dai_link[1].platforms = &dlc[4];
-	priv->dai_link[1].num_platforms = 1;
-
-	priv->dai_link[2].cpus = &dlc[5];
-	priv->dai_link[2].num_cpus = 1;
-	priv->dai_link[2].codecs = &dlc[6];
-	priv->dai_link[2].num_codecs = 1;
-	priv->dai_link[2].platforms = &asoc_dummy_dlc; /* dummy */
-	priv->dai_link[2].num_platforms = 1;
-
 	priv->card.dapm_routes = audio_map;
 	priv->card.num_dapm_routes = ARRAY_SIZE(audio_map);
 	priv->card.driver_name = DRIVER_NAME;

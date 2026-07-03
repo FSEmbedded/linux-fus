@@ -506,9 +506,8 @@ void fib6_rt_update(struct net *net, struct fib6_info *rt,
 void inet6_rt_notify(int event, struct fib6_info *rt, struct nl_info *info,
 		     unsigned int flags);
 
-void fib6_age_exceptions(struct fib6_info *rt, struct fib6_gc_args *gc_args,
-			 unsigned long now);
 void fib6_run_gc(unsigned long expires, struct net *net, bool force);
+
 void fib6_gc_cleanup(void);
 
 int fib6_init(void);

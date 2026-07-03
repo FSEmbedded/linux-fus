@@ -94,8 +94,7 @@ mmhub_v2_3_print_l2_protection_fault_status(struct amdgpu_device *adev,
 	case IP_VERSION(2, 3, 0):
 	case IP_VERSION(2, 4, 0):
 	case IP_VERSION(2, 4, 1):
-		mmhub_cid = cid < ARRAY_SIZE(mmhub_client_ids_vangogh) ?
-			mmhub_client_ids_vangogh[cid][rw] : NULL;
+		mmhub_cid = mmhub_client_ids_vangogh[cid][rw];
 		break;
 	default:
 		mmhub_cid = NULL;

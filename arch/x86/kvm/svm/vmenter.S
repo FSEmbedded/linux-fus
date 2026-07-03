@@ -341,9 +341,6 @@ SYM_FUNC_START(__svm_sev_es_vcpu_run)
 	/* Clobbers EFLAGS.ZF */
 	VM_CLEAR_CPU_BUFFERS
 
-	/* Clobbers EFLAGS.ZF */
-	VM_CLEAR_CPU_BUFFERS
-
 	/* Enter guest mode */
 1:	vmrun %rax
 2:

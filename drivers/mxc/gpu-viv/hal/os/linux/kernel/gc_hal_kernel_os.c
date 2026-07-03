@@ -102,11 +102,6 @@ gctBOOL memTraceFlag = 1;
 #endif
 #endif
 
-#if gcdENABLE_GPU_WORK_PERIOD_TRACE
-#   include "gc_hal_kernel_trace_gpu_work.h"
-#   define ANDROID_FIRST_APPLICATION_UID    10000
-#endif
-
 #define _GC_OBJ_ZONE        gcvZONE_OS
 #define USING_PFN_FOLLOW    0
 

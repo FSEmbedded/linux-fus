@@ -443,13 +443,14 @@ static void cpsw_ale_flush_mcast(struct cpsw_ale *ale, u32 *ale_entry,
 				      ale->port_mask_bits);
 	if ((mask & port_mask) == 0)
 		return; /* ports dont intersect, not interested */
-	mask &= (~port_mask | ALE_PORT_HOST);
+	mask &= ~port_mask;
 
-	if (mask == 0x0 || mask == ALE_PORT_HOST)
-		cpsw_ale_set_entry_type(ale_entry, ALE_TYPE_FREE);
-	else
+	/* free if only remaining port is host port */
+	if (mask)
 		cpsw_ale_set_port_mask(ale_entry, mask,
 				       ale->port_mask_bits);
+	else
+		cpsw_ale_set_entry_type(ale_entry, ALE_TYPE_FREE);
 }
 
 int cpsw_ale_flush_multicast(struct cpsw_ale *ale, int port_mask, int vid)

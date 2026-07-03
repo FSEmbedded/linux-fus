@@ -637,14 +637,6 @@ static void cleanup_net(struct work_struct *work)
 	unregister_netdevice_many(&dev_kill_list);
 	rtnl_unlock();
 
-	rtnl_lock();
-	list_for_each_entry_reverse(ops, &pernet_list, list) {
-		if (ops->exit_batch_rtnl)
-			ops->exit_batch_rtnl(&net_exit_list, &dev_kill_list);
-	}
-	unregister_netdevice_many(&dev_kill_list);
-	rtnl_unlock();
-
 	/* Run all of the network namespace exit methods */
 	list_for_each_entry_reverse(ops, &pernet_list, list)
 		ops_exit_list(ops, &net_exit_list);

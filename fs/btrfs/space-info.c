@@ -183,7 +183,7 @@ void btrfs_clear_space_info_full(struct btrfs_fs_info *info)
 	struct btrfs_space_info *found;
 
 	list_for_each_entry(found, head, list)
-		found->full = false;
+		found->full = 0;
 }
 
 /*
@@ -225,8 +225,7 @@ void btrfs_update_space_info_chunk_size(struct btrfs_space_info *space_info,
 	WRITE_ONCE(space_info->chunk_size, chunk_size);
 }
 
-static void init_space_info(struct btrfs_fs_info *info,
-			    struct btrfs_space_info *space_info, u64 flags)
+static int create_space_info(struct btrfs_fs_info *info, u64 flags)
 {
 
 	struct btrfs_space_info *space_info;
@@ -249,59 +248,11 @@ static void init_space_info(struct btrfs_fs_info *info,
 	INIT_LIST_HEAD(&space_info->priority_tickets);
 	space_info->clamp = 1;
 	btrfs_update_space_info_chunk_size(space_info, calc_chunk_size(info, flags));
-	space_info->subgroup_id = BTRFS_SUB_GROUP_PRIMARY;
 
 	if (btrfs_is_zoned(info))
 		space_info->bg_reclaim_threshold = BTRFS_DEFAULT_ZONED_RECLAIM_THRESH;
-}
 
-static int create_space_info_sub_group(struct btrfs_space_info *parent, u64 flags,
-				       enum btrfs_space_info_sub_group id, int index)
-{
-	struct btrfs_fs_info *fs_info = parent->fs_info;
-	struct btrfs_space_info *sub_group;
-	int ret;
-
-	ASSERT(parent->subgroup_id == BTRFS_SUB_GROUP_PRIMARY);
-	ASSERT(id != BTRFS_SUB_GROUP_PRIMARY);
-
-	sub_group = kzalloc(sizeof(*sub_group), GFP_NOFS);
-	if (!sub_group)
-		return -ENOMEM;
-
-	init_space_info(fs_info, sub_group, flags);
-	parent->sub_group[index] = sub_group;
-	sub_group->parent = parent;
-	sub_group->subgroup_id = id;
-
-	ret = btrfs_sysfs_add_space_info_type(sub_group);
-	if (ret)
-		parent->sub_group[index] = NULL;
-	return ret;
-}
-
-static int create_space_info(struct btrfs_fs_info *info, u64 flags)
-{
-
-	struct btrfs_space_info *space_info;
-	int ret = 0;
-
-	space_info = kzalloc(sizeof(*space_info), GFP_NOFS);
-	if (!space_info)
-		return -ENOMEM;
-
-	init_space_info(info, space_info, flags);
-
-	if (btrfs_is_zoned(info)) {
-		if (flags & BTRFS_BLOCK_GROUP_DATA)
-			ret = create_space_info_sub_group(space_info, flags,
-							  BTRFS_SUB_GROUP_DATA_RELOC,
-							  0);
-		if (ret)
-			goto out_free;
-	}
-
-	ret = btrfs_sysfs_add_space_info_type(space_info);
+	ret = btrfs_sysfs_add_space_info_type(info, space_info);
 	if (ret)
 		return ret;
 
@@ -309,10 +260,6 @@ static int create_space_info(struct btrfs_fs_info *info, u64 flags)
 	if (flags & BTRFS_BLOCK_GROUP_DATA)
 		info->data_sinfo = space_info;
 
-	return ret;
-
-out_free:
-	kfree(space_info);
 	return ret;
 }
 
@@ -371,7 +318,7 @@ void btrfs_add_bg_to_space_info(struct btrfs_fs_info *info,
 	found->bytes_readonly += block_group->bytes_super;
 	btrfs_space_info_update_bytes_zone_unusable(info, found, block_group->zone_unusable);
 	if (block_group->length > 0)
-		found->full = false;
+		found->full = 0;
 	btrfs_try_granting_tickets(info, found);
 	spin_unlock(&found->lock);
 
@@ -602,9 +549,8 @@ static void __btrfs_dump_space_info(const struct btrfs_fs_info *fs_info,
 	lockdep_assert_held(&info->lock);
 
 	/* The free space could be negative in case of overcommit */
-	btrfs_info(fs_info,
-		   "space_info %s (sub-group id %d) has %lld free, is %sfull",
-		   flag_str, info->subgroup_id,
+	btrfs_info(fs_info, "space_info %s has %lld free, is %sfull",
+		   flag_str,
 		   (s64)(info->total_bytes - btrfs_space_info_used(info, true)),
 		   info->full ? "" : "not ");
 	btrfs_info(fs_info,
@@ -1147,7 +1093,7 @@ static void btrfs_async_reclaim_metadata_space(struct work_struct *work)
 	spin_lock(&space_info->lock);
 	to_reclaim = btrfs_calc_reclaim_metadata_size(fs_info, space_info);
 	if (!to_reclaim) {
-		space_info->flush = false;
+		space_info->flush = 0;
 		spin_unlock(&space_info->lock);
 		return;
 	}
@@ -1159,7 +1105,7 @@ static void btrfs_async_reclaim_metadata_space(struct work_struct *work)
 		flush_space(fs_info, space_info, to_reclaim, flush_state, false);
 		spin_lock(&space_info->lock);
 		if (list_empty(&space_info->tickets)) {
-			space_info->flush = false;
+			space_info->flush = 0;
 			spin_unlock(&space_info->lock);
 			return;
 		}
@@ -1202,7 +1148,7 @@ static void btrfs_async_reclaim_metadata_space(struct work_struct *work)
 					flush_state = FLUSH_DELAYED_ITEMS_NR;
 					commit_cycles--;
 				} else {
-					space_info->flush = false;
+					space_info->flush = 0;
 				}
 			} else {
 				flush_state = FLUSH_DELAYED_ITEMS_NR;
@@ -1364,7 +1310,7 @@ static void btrfs_async_reclaim_data_space(struct work_struct *work)
 
 	spin_lock(&space_info->lock);
 	if (list_empty(&space_info->tickets)) {
-		space_info->flush = false;
+		space_info->flush = 0;
 		spin_unlock(&space_info->lock);
 		return;
 	}
@@ -1375,7 +1321,7 @@ static void btrfs_async_reclaim_data_space(struct work_struct *work)
 		flush_space(fs_info, space_info, U64_MAX, ALLOC_CHUNK_FORCE, false);
 		spin_lock(&space_info->lock);
 		if (list_empty(&space_info->tickets)) {
-			space_info->flush = false;
+			space_info->flush = 0;
 			spin_unlock(&space_info->lock);
 			return;
 		}
@@ -1392,7 +1338,7 @@ static void btrfs_async_reclaim_data_space(struct work_struct *work)
 			    data_flush_states[flush_state], false);
 		spin_lock(&space_info->lock);
 		if (list_empty(&space_info->tickets)) {
-			space_info->flush = false;
+			space_info->flush = 0;
 			spin_unlock(&space_info->lock);
 			return;
 		}
@@ -1409,7 +1355,7 @@ static void btrfs_async_reclaim_data_space(struct work_struct *work)
 				if (maybe_fail_all_tickets(fs_info, space_info))
 					flush_state = 0;
 				else
-					space_info->flush = false;
+					space_info->flush = 0;
 			} else {
 				flush_state = 0;
 			}
@@ -1425,7 +1371,7 @@ static void btrfs_async_reclaim_data_space(struct work_struct *work)
 
 aborted_fs:
 	maybe_fail_all_tickets(fs_info, space_info);
-	space_info->flush = false;
+	space_info->flush = 0;
 	spin_unlock(&space_info->lock);
 }
 
@@ -1794,7 +1740,7 @@ static int __reserve_bytes(struct btrfs_fs_info *fs_info,
 				 */
 				maybe_clamp_preempt(fs_info, space_info);
 
-				space_info->flush = true;
+				space_info->flush = 1;
 				trace_btrfs_trigger_flush(fs_info,
 							  space_info->flags,
 							  orig_bytes, flush,

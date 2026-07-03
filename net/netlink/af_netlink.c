@@ -2315,8 +2315,6 @@ static int netlink_dump(struct sock *sk, bool lock_taken)
 	netlink_skb_set_owner_r(skb, sk);
 
 	if (nlk->dump_done_errno > 0) {
-		struct mutex *extra_mutex = nlk->dump_cb_mutex;
-
 		cb->extack = &extack;
 
 		nlk->dump_done_errno = cb->dump(skb, cb);

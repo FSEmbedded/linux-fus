@@ -527,7 +527,6 @@ void kbase_csf_firmware_trigger_gpu_suspend(struct kbase_device *kbdev);
  */
 int kbase_csf_firmware_wait_for_gpu_suspend(struct kbase_device *kbdev);
 
-
 /**
  * kbase_csf_firmware_trigger_reload() - Trigger the reboot of MCU firmware, for
  *                                       the cold boot case firmware image would

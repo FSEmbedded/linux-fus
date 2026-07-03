@@ -732,23 +732,6 @@ handle_ep_halt_changes(struct xhci_dbc *dbc, struct dbc_ep *dep, bool halted)
 }
 
 static void
-handle_ep_halt_changes(struct xhci_dbc *dbc, struct dbc_ep *dep, bool halted)
-{
-	if (halted) {
-		dev_info(dbc->dev, "DbC Endpoint halted\n");
-		dep->halted = 1;
-
-	} else if (dep->halted) {
-		dev_info(dbc->dev, "DbC Endpoint halt cleared\n");
-		dep->halted = 0;
-
-		if (!list_empty(&dep->list_pending))
-			writel(DBC_DOOR_BELL_TARGET(dep->direction),
-			       &dbc->regs->doorbell);
-	}
-}
-
-static void
 dbc_handle_port_status(struct xhci_dbc *dbc, union xhci_trb *event)
 {
 	u32			portsc;
@@ -908,8 +891,7 @@ static enum evtreturn xhci_dbc_do_handle_events(struct xhci_dbc *dbc)
 			dev_info(dbc->dev, "DbC configured\n");
 			portsc = readl(&dbc->regs->portsc);
 			writel(portsc, &dbc->regs->portsc);
-			ret = EVT_GSER;
-			break;
+			return EVT_GSER;
 		}
 
 		return EVT_DONE;
@@ -1405,15 +1387,8 @@ int xhci_dbc_suspend(struct xhci_hcd *xhci)
 	if (!dbc)
 		return 0;
 
-	switch (dbc->state) {
-	case DS_ENABLED:
-	case DS_CONNECTED:
-	case DS_CONFIGURED:
+	if (dbc->state == DS_CONFIGURED)
 		dbc->resume_required = 1;
-		break;
-	default:
-		break;
-	}
 
 	xhci_dbc_stop(dbc);
 

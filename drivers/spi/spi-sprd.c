@@ -978,7 +978,7 @@ static int sprd_spi_probe(struct platform_device *pdev)
 		goto err_rpm_put;
 	}
 
-	ret = spi_register_controller(sctlr);
+	ret = devm_spi_register_controller(&pdev->dev, sctlr);
 	if (ret)
 		goto err_rpm_put;
 
@@ -993,8 +993,7 @@ err_rpm_put:
 disable_clk:
 	clk_disable_unprepare(ss->clk);
 release_dma:
-	if (ss->dma.enable)
-		sprd_spi_dma_release(ss);
+	sprd_spi_dma_release(ss);
 free_controller:
 	spi_controller_put(sctlr);
 
@@ -1011,9 +1010,7 @@ static void sprd_spi_remove(struct platform_device *pdev)
 	if (ret < 0)
 		dev_err(ss->dev, "failed to resume SPI controller\n");
 
-	spi_controller_get(sctlr);
-
-	spi_unregister_controller(sctlr);
+	spi_controller_suspend(sctlr);
 
 	if (ret >= 0) {
 		if (ss->dma.enable)
@@ -1022,8 +1019,6 @@ static void sprd_spi_remove(struct platform_device *pdev)
 	}
 	pm_runtime_put_noidle(&pdev->dev);
 	pm_runtime_disable(&pdev->dev);
-
-	spi_controller_put(sctlr);
 }
 
 static int __maybe_unused sprd_spi_runtime_suspend(struct device *dev)

@@ -53,11 +53,6 @@ struct smcd_gid {
 	u64	gid_ext;
 };
 
-struct smcd_gid {
-	u64	gid;
-	u64	gid_ext;
-};
-
 struct smcd_ops {
 	int (*query_remote_gid)(struct smcd_dev *dev, struct smcd_gid *rgid,
 				u32 vid_valid, u32 vid);

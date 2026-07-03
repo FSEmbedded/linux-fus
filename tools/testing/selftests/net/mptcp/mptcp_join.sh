@@ -91,24 +91,6 @@ CBPF_MPTCP_SUBOPTION_ADD_ADDR="14,
 			       6 0 0 65535,
 			       6 0 0 0"
 
-# IPv4: TCP hdr of 48B, a first suboption of 12B (DACK8), the RM_ADDR suboption
-# generated using "nfbpf_compile '(ip[32] & 0xf0) == 0xc0 && ip[53] == 0x0c &&
-#				  (ip[66] & 0xf0) == 0x40'"
-CBPF_MPTCP_SUBOPTION_RM_ADDR="13,
-			      48 0 0 0,
-			      84 0 0 240,
-			      21 0 9 64,
-			      48 0 0 32,
-			      84 0 0 240,
-			      21 0 6 192,
-			      48 0 0 53,
-			      21 0 4 12,
-			      48 0 0 66,
-			      84 0 0 240,
-			      21 0 1 64,
-			      6 0 0 65535,
-			      6 0 0 0"
-
 init_partial()
 {
 	capout=$(mktemp)
@@ -2178,16 +2160,17 @@ signal_address_tests()
 		ip netns exec $ns1 sysctl -q net.mptcp.add_addr_timeout=1
 		speed=slow \
 			run_tests $ns1 $ns2 10.0.1.1
-		chk_join_nr 3 3 3
 
 		# It is not directly linked to the commit introducing this
 		# symbol but for the parent one which is linked anyway.
-		if mptcp_lib_kallsyms_has "mptcp_pm_subflow_check_next$"; then
+		if ! mptcp_lib_kallsyms_has "mptcp_pm_subflow_check_next$"; then
+			chk_join_nr 3 3 2
+			chk_add_nr 4 4
+		else
+			chk_join_nr 3 3 3
 			# the server will not signal the address terminating
 			# the MPC subflow
 			chk_add_nr 3 3
-		else
-			chk_add_nr 4 4
 		fi
 	fi
 }
@@ -2336,7 +2319,7 @@ remove_tests()
 	if reset "remove single subflow"; then
 		pm_nl_set_limits $ns1 0 1
 		pm_nl_set_limits $ns2 0 1
-		pm_nl_add_endpoint $ns2 10.0.3.2 flags subflow,backup
+		pm_nl_add_endpoint $ns2 10.0.3.2 flags subflow
 		addr_nr_ns2=-1 speed=slow \
 			run_tests $ns1 $ns2 10.0.1.1
 		chk_join_nr 1 1 1
@@ -2349,8 +2332,8 @@ remove_tests()
 	if reset "remove multiple subflows"; then
 		pm_nl_set_limits $ns1 0 2
 		pm_nl_set_limits $ns2 0 2
-		pm_nl_add_endpoint $ns2 10.0.2.2 flags subflow,backup
-		pm_nl_add_endpoint $ns2 10.0.3.2 flags subflow,backup
+		pm_nl_add_endpoint $ns2 10.0.2.2 flags subflow
+		pm_nl_add_endpoint $ns2 10.0.3.2 flags subflow
 		addr_nr_ns2=-2 speed=slow \
 			run_tests $ns1 $ns2 10.0.1.1
 		chk_join_nr 2 2 2
@@ -2361,7 +2344,7 @@ remove_tests()
 	# single address, remove
 	if reset "remove single address"; then
 		pm_nl_set_limits $ns1 0 1
-		pm_nl_add_endpoint $ns1 10.0.2.1 flags signal,backup
+		pm_nl_add_endpoint $ns1 10.0.2.1 flags signal
 		pm_nl_set_limits $ns2 1 1
 		addr_nr_ns1=-1 speed=slow \
 			run_tests $ns1 $ns2 10.0.1.1
@@ -2374,9 +2357,9 @@ remove_tests()
 	# subflow and signal, remove
 	if reset "remove subflow and signal"; then
 		pm_nl_set_limits $ns1 0 2
-		pm_nl_add_endpoint $ns1 10.0.2.1 flags signal,backup
+		pm_nl_add_endpoint $ns1 10.0.2.1 flags signal
 		pm_nl_set_limits $ns2 1 2
-		pm_nl_add_endpoint $ns2 10.0.3.2 flags subflow,backup
+		pm_nl_add_endpoint $ns2 10.0.3.2 flags subflow
 		addr_nr_ns1=-1 addr_nr_ns2=-1 speed=slow \
 			run_tests $ns1 $ns2 10.0.1.1
 		chk_join_nr 2 2 2
@@ -2388,10 +2371,10 @@ remove_tests()
 	# subflows and signal, remove
 	if reset "remove subflows and signal"; then
 		pm_nl_set_limits $ns1 0 3
-		pm_nl_add_endpoint $ns1 10.0.2.1 flags signal,backup
+		pm_nl_add_endpoint $ns1 10.0.2.1 flags signal
 		pm_nl_set_limits $ns2 1 3
-		pm_nl_add_endpoint $ns2 10.0.3.2 flags subflow,backup
-		pm_nl_add_endpoint $ns2 10.0.4.2 flags subflow,backup
+		pm_nl_add_endpoint $ns2 10.0.3.2 flags subflow
+		pm_nl_add_endpoint $ns2 10.0.4.2 flags subflow
 		addr_nr_ns1=-1 addr_nr_ns2=-2 speed=10 \
 			run_tests $ns1 $ns2 10.0.1.1
 		chk_join_nr 3 3 3
@@ -2400,25 +2383,12 @@ remove_tests()
 		chk_rst_nr 0 0
 	fi
 
-	# signal+subflow with limits, remove
-	if reset "remove signal+subflow with limits"; then
-		pm_nl_set_limits $ns1 0 0
-		pm_nl_add_endpoint $ns1 10.0.2.1 flags signal,subflow
-		pm_nl_set_limits $ns2 0 0
-		addr_nr_ns1=-1 speed=slow \
-			run_tests $ns1 $ns2 10.0.1.1
-		chk_join_nr 0 0 0
-		chk_add_nr 1 1
-		chk_rm_nr 1 0 invert
-		chk_rst_nr 0 0
-	fi
-
 	# addresses remove
 	if reset "remove addresses"; then
 		pm_nl_set_limits $ns1 3 3
-		pm_nl_add_endpoint $ns1 10.0.2.1 flags signal,backup id 250
-		pm_nl_add_endpoint $ns1 10.0.3.1 flags signal,backup
-		pm_nl_add_endpoint $ns1 10.0.4.1 flags signal,backup
+		pm_nl_add_endpoint $ns1 10.0.2.1 flags signal id 250
+		pm_nl_add_endpoint $ns1 10.0.3.1 flags signal
+		pm_nl_add_endpoint $ns1 10.0.4.1 flags signal
 		pm_nl_set_limits $ns2 3 3
 		addr_nr_ns1=-3 speed=10 \
 			run_tests $ns1 $ns2 10.0.1.1
@@ -2431,10 +2401,10 @@ remove_tests()
 	# invalid addresses remove
 	if reset "remove invalid addresses"; then
 		pm_nl_set_limits $ns1 3 3
-		pm_nl_add_endpoint $ns1 10.0.12.1 flags signal,backup
+		pm_nl_add_endpoint $ns1 10.0.12.1 flags signal
 		# broadcast IP: no packet for this address will be received on ns1
-		pm_nl_add_endpoint $ns1 224.0.0.1 flags signal,backup
-		pm_nl_add_endpoint $ns1 10.0.3.1 flags signal,backup
+		pm_nl_add_endpoint $ns1 224.0.0.1 flags signal
+		pm_nl_add_endpoint $ns1 10.0.3.1 flags signal
 		pm_nl_set_limits $ns2 2 2
 		addr_nr_ns1=-3 speed=10 \
 			run_tests $ns1 $ns2 10.0.1.1
@@ -2448,10 +2418,10 @@ remove_tests()
 	# subflows and signal, flush
 	if reset "flush subflows and signal"; then
 		pm_nl_set_limits $ns1 0 3
-		pm_nl_add_endpoint $ns1 10.0.2.1 flags signal,backup
+		pm_nl_add_endpoint $ns1 10.0.2.1 flags signal
 		pm_nl_set_limits $ns2 1 3
-		pm_nl_add_endpoint $ns2 10.0.3.2 flags subflow,backup
-		pm_nl_add_endpoint $ns2 10.0.4.2 flags subflow,backup
+		pm_nl_add_endpoint $ns2 10.0.3.2 flags subflow
+		pm_nl_add_endpoint $ns2 10.0.4.2 flags subflow
 		addr_nr_ns1=-8 addr_nr_ns2=-8 speed=slow \
 			run_tests $ns1 $ns2 10.0.1.1
 		chk_join_nr 3 3 3
@@ -2464,9 +2434,9 @@ remove_tests()
 	if reset "flush subflows"; then
 		pm_nl_set_limits $ns1 3 3
 		pm_nl_set_limits $ns2 3 3
-		pm_nl_add_endpoint $ns2 10.0.2.2 flags subflow,backup id 150
-		pm_nl_add_endpoint $ns2 10.0.3.2 flags subflow,backup
-		pm_nl_add_endpoint $ns2 10.0.4.2 flags subflow,backup
+		pm_nl_add_endpoint $ns2 10.0.2.2 flags subflow id 150
+		pm_nl_add_endpoint $ns2 10.0.3.2 flags subflow
+		pm_nl_add_endpoint $ns2 10.0.4.2 flags subflow
 		addr_nr_ns1=-8 addr_nr_ns2=-8 speed=slow \
 			run_tests $ns1 $ns2 10.0.1.1
 		chk_join_nr 3 3 3
@@ -2483,9 +2453,9 @@ remove_tests()
 	# addresses flush
 	if reset "flush addresses"; then
 		pm_nl_set_limits $ns1 3 3
-		pm_nl_add_endpoint $ns1 10.0.2.1 flags signal,backup id 250
-		pm_nl_add_endpoint $ns1 10.0.3.1 flags signal,backup
-		pm_nl_add_endpoint $ns1 10.0.4.1 flags signal,backup
+		pm_nl_add_endpoint $ns1 10.0.2.1 flags signal id 250
+		pm_nl_add_endpoint $ns1 10.0.3.1 flags signal
+		pm_nl_add_endpoint $ns1 10.0.4.1 flags signal
 		pm_nl_set_limits $ns2 3 3
 		addr_nr_ns1=-8 addr_nr_ns2=-8 speed=slow \
 			run_tests $ns1 $ns2 10.0.1.1
@@ -2498,9 +2468,9 @@ remove_tests()
 	# invalid addresses flush
 	if reset "flush invalid addresses"; then
 		pm_nl_set_limits $ns1 3 3
-		pm_nl_add_endpoint $ns1 10.0.12.1 flags signal,backup
-		pm_nl_add_endpoint $ns1 10.0.3.1 flags signal,backup
-		pm_nl_add_endpoint $ns1 10.0.14.1 flags signal,backup
+		pm_nl_add_endpoint $ns1 10.0.12.1 flags signal
+		pm_nl_add_endpoint $ns1 10.0.3.1 flags signal
+		pm_nl_add_endpoint $ns1 10.0.14.1 flags signal
 		pm_nl_set_limits $ns2 3 3
 		addr_nr_ns1=-8 speed=slow \
 			run_tests $ns1 $ns2 10.0.1.1
@@ -2942,32 +2912,6 @@ chk_mpc_endp_attempt()
 	fi
 }
 
-chk_mpc_endp_attempt()
-{
-	local retl=$1
-	local attempts=$2
-
-	print_check "Connect"
-
-	if [ ${retl} = 124 ]; then
-		fail_test "timeout on connect"
-	elif [ ${retl} = 0 ]; then
-		fail_test "unexpected successful connect"
-	else
-		print_ok
-
-		print_check "Attempts"
-		count=$(mptcp_lib_get_counter ${ns1} "MPTcpExtMPCapableEndpAttempt")
-		if [ -z "$count" ]; then
-			print_skip
-		elif [ "$count" != "$attempts" ]; then
-			fail_test "got ${count} MPC attempt[s] on port-based endpoint, expected ${attempts}"
-		else
-			print_ok
-		fi
-	fi
-}
-
 add_addr_ports_tests()
 {
 	# signal address with port
@@ -3215,17 +3159,6 @@ deny_join_id0_tests()
 		pm_nl_add_endpoint $ns2 10.0.3.2 flags subflow
 		run_tests $ns1 $ns2 10.0.1.1
 		chk_join_nr 1 1 1
-	fi
-
-	# default limits, server deny join id 0 + signal
-	if reset_with_allow_join_id0 "default limits, server deny join id 0" 0 1; then
-		pm_nl_set_limits $ns1 0 2
-		pm_nl_set_limits $ns2 0 2
-		pm_nl_add_endpoint $ns1 10.0.2.1 flags signal
-		pm_nl_add_endpoint $ns2 10.0.3.2 flags subflow
-		pm_nl_add_endpoint $ns2 10.0.4.2 flags subflow
-		run_tests $ns1 $ns2 10.0.1.1
-		chk_join_nr 2 2 2
 	fi
 }
 
@@ -3670,7 +3603,7 @@ userspace_tests()
 		chk_mptcp_info subflows 0 subflows 0
 		chk_subflows_total 1 1
 		kill_events_pids
-		mptcp_lib_kill_group_wait $tests_pid
+		mptcp_lib_kill_wait $tests_pid
 	fi
 
 	# userspace pm create destroy subflow
@@ -3698,58 +3631,7 @@ userspace_tests()
 		chk_mptcp_info subflows 0 subflows 0
 		chk_subflows_total 1 1
 		kill_events_pids
-		mptcp_lib_kill_group_wait $tests_pid
-	fi
-
-	# userspace pm create id 0 subflow
-	if reset_with_events "userspace pm create id 0 subflow" &&
-	   continue_if mptcp_lib_has_file '/proc/sys/net/mptcp/pm_type'; then
-		set_userspace_pm $ns2
-		pm_nl_set_limits $ns1 0 1
-		speed=5 \
-			run_tests $ns1 $ns2 10.0.1.1 &
-		local tests_pid=$!
-		wait_mpj $ns2
-		chk_mptcp_info subflows 0 subflows 0
-		chk_subflows_total 1 1
-		userspace_pm_add_sf $ns2 10.0.3.2 0
-		userspace_pm_chk_dump_addr "${ns2}" \
-			"id 0 flags subflow 10.0.3.2" "id 0 subflow"
-		chk_join_nr 1 1 1
-		chk_mptcp_info subflows 1 subflows 1
-		chk_subflows_total 2 2
-		kill_events_pids
-		mptcp_lib_kill_group_wait $tests_pid
-	fi
-
-	# userspace pm no duplicated spurious close events after an error
-	if reset_with_events "userspace pm no dup close events after error" &&
-	   continue_if mptcp_lib_has_file '/proc/sys/net/mptcp/pm_type'; then
-		set_userspace_pm $ns2
-		pm_nl_set_limits $ns1 0 2
-		{ timeout_test=120 test_linkfail=128 speed=slow \
-			run_tests $ns1 $ns2 10.0.1.1 & } 2>/dev/null
-		local tests_pid=$!
-		wait_event ns2 MPTCP_LIB_EVENT_ESTABLISHED 1
-		userspace_pm_add_sf $ns2 10.0.3.2 20
-		chk_mptcp_info subflows 1 subflows 1
-		chk_subflows_total 2 2
-
-		# force quick loss
-		ip netns exec $ns2 sysctl -q net.ipv4.tcp_syn_retries=1
-		if ip netns exec "${ns1}" ${iptables} -A INPUT -s "10.0.1.2" \
-		      -p tcp --tcp-option 30 -j REJECT --reject-with tcp-reset &&
-		   ip netns exec "${ns2}" ${iptables} -A INPUT -d "10.0.1.2" \
-		      -p tcp --tcp-option 30 -j REJECT --reject-with tcp-reset; then
-			wait_event ns2 MPTCP_LIB_EVENT_SUB_CLOSED 1
-			wait_event ns1 MPTCP_LIB_EVENT_SUB_CLOSED 1
-			chk_subflows_total 1 1
-			userspace_pm_add_sf $ns2 10.0.1.2 0
-			wait_event ns2 MPTCP_LIB_EVENT_SUB_CLOSED 2
-			chk_evt_nr ns2 MPTCP_LIB_EVENT_SUB_CLOSED 2 error 2
-		fi
-		kill_events_pids
-		mptcp_lib_kill_group_wait $tests_pid
+		mptcp_lib_kill_wait $tests_pid
 	fi
 
 	# userspace pm create id 0 subflow
@@ -3829,7 +3711,7 @@ endpoint_tests()
 	# subflow_rebuild_header is needed to support the implicit flag
 	# userspace pm type prevents add_addr
 	if reset "implicit EP" &&
-	   continue_if mptcp_lib_kallsyms_has "subflow_rebuild_header$"; then
+	   mptcp_lib_kallsyms_has "subflow_rebuild_header$"; then
 		pm_nl_set_limits $ns1 2 2
 		pm_nl_set_limits $ns2 2 2
 		pm_nl_add_endpoint $ns1 10.0.2.1 flags signal
@@ -3850,7 +3732,7 @@ endpoint_tests()
 		pm_nl_add_endpoint $ns2 10.0.2.2 flags signal
 		pm_nl_check_endpoint "modif is allowed" \
 			$ns2 10.0.2.2 id 1 flags signal
-		mptcp_lib_kill_group_wait $tests_pid
+		mptcp_lib_kill_wait $tests_pid
 	fi
 
 	if reset_with_tcp_filter "delete and re-add" ns2 10.0.3.2 REJECT OUTPUT &&

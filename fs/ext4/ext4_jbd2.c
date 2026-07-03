@@ -276,16 +276,9 @@ int __ext4_forget(const char *where, unsigned int line, handle_t *handle,
 		  bh, is_metadata, inode->i_mode,
 		  test_opt(inode->i_sb, DATA_FLAGS));
 
-	/*
-	 * In the no journal case, we should wait for the ongoing buffer
-	 * to complete and do a forget.
-	 */
+	/* In the no journal case, we can just do a bforget and return */
 	if (!ext4_handle_valid(handle)) {
-		if (bh) {
-			clear_buffer_dirty(bh);
-			wait_on_buffer(bh);
-			__bforget(bh);
-		}
+		bforget(bh);
 		return 0;
 	}
 

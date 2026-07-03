@@ -736,11 +736,11 @@ int lirc_register(struct rc_dev *dev)
 
 	cdev_init(&dev->lirc_cdev, &lirc_fops);
 
-	get_device(&dev->dev);
-
 	err = cdev_device_add(&dev->lirc_cdev, &dev->lirc_dev);
 	if (err)
-		goto out_put_device;
+		goto out_ida;
+
+	get_device(&dev->dev);
 
 	switch (dev->driver_type) {
 	case RC_DRIVER_SCANCODE:
@@ -764,8 +764,7 @@ int lirc_register(struct rc_dev *dev)
 
 	return 0;
 
-out_put_device:
-	put_device(&dev->lirc_dev);
+out_ida:
 	ida_free(&lirc_ida, minor);
 	return err;
 }

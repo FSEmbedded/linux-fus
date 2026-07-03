@@ -351,37 +351,6 @@ static int __init imx8_soc_init(void)
 	return 0;
 }
 
-static struct platform_driver imx8m_soc_driver = {
-	.probe = imx8m_soc_probe,
-	.driver = {
-		.name = "imx8m-soc",
-	},
-};
-
-static int __init imx8_soc_init(void)
-{
-	struct platform_device *pdev;
-	int ret;
-
-	/* No match means this is non-i.MX8M hardware, do nothing. */
-	if (!of_match_node(imx8_soc_match, of_root))
-		return 0;
-
-	ret = platform_driver_register(&imx8m_soc_driver);
-	if (ret) {
-		pr_err("Failed to register imx8m-soc platform driver: %d\n", ret);
-		return ret;
-	}
-
-	pdev = platform_device_register_simple("imx8m-soc", -1, NULL, 0);
-	if (IS_ERR(pdev)) {
-		pr_err("Failed to register imx8m-soc platform device: %ld\n", PTR_ERR(pdev));
-		platform_driver_unregister(&imx8m_soc_driver);
-		return PTR_ERR(pdev);
-	}
-
-	return 0;
-}
 device_initcall(imx8_soc_init);
 MODULE_DESCRIPTION("NXP i.MX8M SoC driver");
 MODULE_LICENSE("GPL");

@@ -446,7 +446,7 @@ static int starfive_wdt_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, wdt);
 	pm_runtime_enable(&pdev->dev);
 	if (pm_runtime_enabled(&pdev->dev)) {
-		ret = pm_runtime_resume_and_get(&pdev->dev);
+		ret = pm_runtime_get_sync(&pdev->dev);
 		if (ret < 0)
 			return ret;
 	} else {
@@ -500,14 +500,12 @@ static int starfive_wdt_probe(struct platform_device *pdev)
 		if (pm_runtime_enabled(&pdev->dev)) {
 			ret = pm_runtime_put_sync(&pdev->dev);
 			if (ret)
-				goto err_unregister_wdt;
+				goto err_exit;
 		}
 	}
 
 	return 0;
 
-err_unregister_wdt:
-	watchdog_unregister_device(&wdt->wdd);
 err_exit:
 	starfive_wdt_disable_clock(wdt);
 	pm_runtime_disable(&pdev->dev);

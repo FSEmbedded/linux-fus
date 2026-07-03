@@ -156,6 +156,7 @@
 
 		gpio = <&tlmm 88 0>;
 		enable-active-high;
+		regulator-boot-on;
 	};
 };
 
@@ -802,8 +803,8 @@
 		bias-disable;
 	};
 
-	alert_slider_default: alert-slider-default-state {
-		pins = "gpio126", "gpio52", "gpio24";
+	tri_state_key_default: tri-state-key-default-state {
+		pins = "gpio40", "gpio42", "gpio26";
 		function = "gpio";
 		drive-strength = <2>;
 		bias-disable;

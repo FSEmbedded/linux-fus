@@ -515,7 +515,6 @@ static int kbase_devfreq_init_core_mask_table(struct kbase_device *kbdev)
 			}
 		}
 
-
 		core_count_p = of_get_property(node, "opp-core-count", NULL);
 		if (core_count_p) {
 			u64 remaining_core_mask = kbdev->gpu_props.shader_present;

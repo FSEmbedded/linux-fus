@@ -219,11 +219,10 @@ static int __init r8a77970_cpg_mssr_init(struct device *dev)
 
 static struct clk * __init r8a77970_cpg_clk_register(struct device *dev,
 	const struct cpg_core_clk *core, const struct cpg_mssr_info *info,
-	struct cpg_mssr_pub *pub)
+	struct clk **clks, void __iomem *base,
+	struct raw_notifier_head *notifiers)
 {
 	const struct clk_div_table *table;
-	void __iomem *base = pub->base0;
-	struct clk **clks = pub->clks;
 	const struct clk *parent;
 	unsigned int shift;
 
@@ -237,7 +236,8 @@ static struct clk * __init r8a77970_cpg_clk_register(struct device *dev,
 		shift = 4;
 		break;
 	default:
-		return rcar_gen3_cpg_clk_register(dev, core, info, pub);
+		return rcar_gen3_cpg_clk_register(dev, core, info, clks, base,
+						  notifiers);
 	}
 
 	parent = clks[core->parent];

@@ -702,7 +702,6 @@ static int qcom_flash_register_led_device(struct device *dev,
 	u32 current_ua, timeout_us;
 	u32 channels[4];
 	int i, rc, count;
-	u8 torch_clamp;
 
 	count = fwnode_property_count_u32(node, "led-sources");
 	if (count <= 0) {
@@ -751,12 +750,6 @@ static int qcom_flash_register_led_device(struct device *dev,
 
 	current_ua = min_t(u32, current_ua, TORCH_CURRENT_MAX_UA * led->chan_count);
 	led->max_torch_current_ma = current_ua / UA_PER_MA;
-
-	torch_clamp = (current_ua / led->chan_count) / TORCH_IRES_UA;
-	if (torch_clamp != 0)
-		torch_clamp--;
-
-	flash_data->torch_clamp = max_t(u8, flash_data->torch_clamp, torch_clamp);
 
 	if (fwnode_property_present(node, "flash-max-microamp")) {
 		flash->led_cdev.flags |= LED_DEV_CAP_FLASH;
@@ -925,7 +918,8 @@ static int qcom_flash_led_probe(struct platform_device *pdev)
 		flash_data->leds_count++;
 	}
 
-	return regmap_field_write(flash_data->r_fields[REG_TORCH_CLAMP], flash_data->torch_clamp);
+	return 0;
+
 release:
 	fwnode_handle_put(child);
 	while (flash_data->v4l2_flash[flash_data->leds_count] && flash_data->leds_count)

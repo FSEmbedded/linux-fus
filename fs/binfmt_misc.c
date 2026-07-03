@@ -875,10 +875,8 @@ out:
 	inode_unlock(d_inode(root));
 
 	if (err) {
-		if (f) {
-			allow_write_access(f);
+		if (f)
 			filp_close(f, NULL);
-		}
 		kfree(e);
 		return err;
 	}

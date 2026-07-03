@@ -205,9 +205,9 @@ int ceph_handle_auth_reply(struct ceph_auth_client *ac,
 	s32 result;
 	u64 global_id;
 	void *payload, *payload_end;
-	u32 payload_len;
+	int payload_len;
 	char *result_msg;
-	u32 result_msg_len;
+	int result_msg_len;
 	int ret = -EINVAL;
 
 	mutex_lock(&ac->mutex);
@@ -217,12 +217,10 @@ int ceph_handle_auth_reply(struct ceph_auth_client *ac,
 	result = ceph_decode_32(&p);
 	global_id = ceph_decode_64(&p);
 	payload_len = ceph_decode_32(&p);
-	ceph_decode_need(&p, end, payload_len, bad);
 	payload = p;
 	p += payload_len;
 	ceph_decode_need(&p, end, sizeof(u32), bad);
 	result_msg_len = ceph_decode_32(&p);
-	ceph_decode_need(&p, end, result_msg_len, bad);
 	result_msg = p;
 	p += result_msg_len;
 	if (p != end)
@@ -245,7 +243,7 @@ int ceph_handle_auth_reply(struct ceph_auth_client *ac,
 			ac->protocol = 0;
 			ac->ops = NULL;
 		}
-		if (!ac->protocol) {
+		if (ac->protocol != protocol) {
 			ret = init_protocol(ac, protocol);
 			if (ret) {
 				pr_err("auth protocol '%s' init failed: %d\n",
@@ -257,7 +255,7 @@ int ceph_handle_auth_reply(struct ceph_auth_client *ac,
 		ac->negotiating = false;
 	}
 
-	if (result < 0) {
+	if (result) {
 		pr_err("auth protocol '%s' mauth authentication failed: %d\n",
 		       ceph_auth_proto_name(ac->protocol), result);
 		ret = result;

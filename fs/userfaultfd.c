@@ -1215,6 +1215,8 @@ static __always_inline int validate_unaligned_range(
 		return -EINVAL;
 	if (!len)
 		return -EINVAL;
+	if (start < mmap_min_addr)
+		return -EINVAL;
 	if (start >= task_size)
 		return -EINVAL;
 	if (len > task_size - start)

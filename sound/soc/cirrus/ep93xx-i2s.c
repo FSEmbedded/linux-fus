@@ -91,28 +91,16 @@ static inline unsigned ep93xx_i2s_read_reg(struct ep93xx_i2s_info *info,
 	return __raw_readl(info->regs + reg);
 }
 
-static int ep93xx_i2s_enable(struct ep93xx_i2s_info *info, int stream)
+static void ep93xx_i2s_enable(struct ep93xx_i2s_info *info, int stream)
 {
 	unsigned base_reg;
-	int err;
 
 	if ((ep93xx_i2s_read_reg(info, EP93XX_I2S_TX0EN) & 0x1) == 0 &&
 	    (ep93xx_i2s_read_reg(info, EP93XX_I2S_RX0EN) & 0x1) == 0) {
 		/* Enable clocks */
-		err = clk_prepare_enable(info->mclk);
-		if (err)
-			return err;
-		err = clk_prepare_enable(info->sclk);
-		if (err) {
-			clk_disable_unprepare(info->mclk);
-			return err;
-		}
-		err = clk_prepare_enable(info->lrclk);
-		if (err) {
-			clk_disable_unprepare(info->sclk);
-			clk_disable_unprepare(info->mclk);
-			return err;
-		}
+		clk_prepare_enable(info->mclk);
+		clk_prepare_enable(info->sclk);
+		clk_prepare_enable(info->lrclk);
 
 		/* Enable i2s */
 		ep93xx_i2s_write_reg(info, EP93XX_I2S_GLCTRL, 1);
@@ -131,8 +119,6 @@ static int ep93xx_i2s_enable(struct ep93xx_i2s_info *info, int stream)
 		ep93xx_i2s_write_reg(info, EP93XX_I2S_TXCTRL,
 				     EP93XX_I2S_TXCTRL_TXEMPTY_LVL |
 				     EP93XX_I2S_TXCTRL_TXUFIE);
-
-	return 0;
 }
 
 static void ep93xx_i2s_disable(struct ep93xx_i2s_info *info, int stream)
@@ -209,7 +195,9 @@ static int ep93xx_i2s_startup(struct snd_pcm_substream *substream,
 {
 	struct ep93xx_i2s_info *info = snd_soc_dai_get_drvdata(dai);
 
-	return ep93xx_i2s_enable(info, substream->stream);
+	ep93xx_i2s_enable(info, substream->stream);
+
+	return 0;
 }
 
 static void ep93xx_i2s_shutdown(struct snd_pcm_substream *substream,
@@ -385,16 +373,14 @@ static int ep93xx_i2s_suspend(struct snd_soc_component *component)
 static int ep93xx_i2s_resume(struct snd_soc_component *component)
 {
 	struct ep93xx_i2s_info *info = snd_soc_component_get_drvdata(component);
-	int err;
 
 	if (!snd_soc_component_active(component))
 		return 0;
 
-	err = ep93xx_i2s_enable(info, SNDRV_PCM_STREAM_PLAYBACK);
-	if (err)
-		return err;
+	ep93xx_i2s_enable(info, SNDRV_PCM_STREAM_PLAYBACK);
+	ep93xx_i2s_enable(info, SNDRV_PCM_STREAM_CAPTURE);
 
-	return ep93xx_i2s_enable(info, SNDRV_PCM_STREAM_CAPTURE);
+	return 0;
 }
 #else
 #define ep93xx_i2s_suspend	NULL

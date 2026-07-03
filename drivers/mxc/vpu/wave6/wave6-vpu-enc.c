@@ -6,7 +6,6 @@
  */
 
 #include <linux/pm_runtime.h>
-#include <linux/swiotlb.h>
 #include "wave6-vpu.h"
 #include "wave6-vpu-dbg.h"
 #include "wave6-trace.h"

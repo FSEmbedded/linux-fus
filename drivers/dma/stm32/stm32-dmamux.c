@@ -90,25 +90,23 @@ static void *stm32_dmamux_route_allocate(struct of_phandle_args *dma_spec,
 	struct stm32_dmamux_data *dmamux = platform_get_drvdata(pdev);
 	struct stm32_dmamux *mux;
 	u32 i, min, max;
-	int ret = -EINVAL;
+	int ret;
 	unsigned long flags;
 
 	if (dma_spec->args_count != 3) {
 		dev_err(&pdev->dev, "invalid number of dma mux args\n");
-		goto err_put_pdev;
+		return ERR_PTR(-EINVAL);
 	}
 
 	if (dma_spec->args[0] > dmamux->dmamux_requests) {
 		dev_err(&pdev->dev, "invalid mux request number: %d\n",
 			dma_spec->args[0]);
-		goto err_put_pdev;
+		return ERR_PTR(-EINVAL);
 	}
 
 	mux = kzalloc(sizeof(*mux), GFP_KERNEL);
-	if (!mux) {
-		ret = -ENOMEM;
-		goto err_put_pdev;
-	}
+	if (!mux)
+		return ERR_PTR(-ENOMEM);
 
 	spin_lock_irqsave(&dmamux->lock, flags);
 	mux->chan_id = find_first_zero_bit(dmamux->dma_inuse,
@@ -135,6 +133,7 @@ static void *stm32_dmamux_route_allocate(struct of_phandle_args *dma_spec,
 	dma_spec->np = of_parse_phandle(ofdma->of_node, "dma-masters", i - 1);
 	if (!dma_spec->np) {
 		dev_err(&pdev->dev, "can't get dma master\n");
+		ret = -EINVAL;
 		goto error;
 	}
 
@@ -143,7 +142,7 @@ static void *stm32_dmamux_route_allocate(struct of_phandle_args *dma_spec,
 	ret = pm_runtime_resume_and_get(&pdev->dev);
 	if (ret < 0) {
 		spin_unlock_irqrestore(&dmamux->lock, flags);
-		goto err_put_dma_spec_np;
+		goto error;
 	}
 	spin_unlock_irqrestore(&dmamux->lock, flags);
 
@@ -161,20 +160,13 @@ static void *stm32_dmamux_route_allocate(struct of_phandle_args *dma_spec,
 	dev_dbg(&pdev->dev, "Mapping DMAMUX(%u) to DMA%u(%u)\n",
 		mux->request, mux->master, mux->chan_id);
 
-	put_device(&pdev->dev);
-
 	return mux;
 
-err_put_dma_spec_np:
-	of_node_put(dma_spec->np);
 error:
 	clear_bit(mux->chan_id, dmamux->dma_inuse);
 
 error_chan_id:
 	kfree(mux);
-err_put_pdev:
-	put_device(&pdev->dev);
-
 	return ERR_PTR(ret);
 }
 

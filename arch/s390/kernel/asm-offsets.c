@@ -4,7 +4,6 @@
  * This code generates raw asm output which is post-processed to extract
  * and format the required data.
  */
-#define COMPILE_OFFSETS
 
 #define ASM_OFFSETS_C
 

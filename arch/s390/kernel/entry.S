@@ -286,7 +286,6 @@ SYM_CODE_START(system_call)
 	xgr	%r9,%r9
 	xgr	%r10,%r10
 	xgr	%r11,%r11
-	xgr	%r12,%r12
 	la	%r2,STACK_FRAME_OVERHEAD(%r15)	# pointer to pt_regs
 	mvc	__PT_R8(64,%r2),__LC_SAVE_AREA(%r13)
 	MBEAR	%r2,%r13
@@ -368,7 +367,6 @@ SYM_CODE_START(pgm_check_handler)
 	xgr	%r5,%r5
 	xgr	%r6,%r6
 	xgr	%r7,%r7
-	xgr	%r12,%r12
 	lgr	%r2,%r11
 	brasl	%r14,__do_pgm_check
 	tmhh	%r8,0x0001		# returning to user space?
@@ -433,7 +431,6 @@ SYM_CODE_START(\name)
 	xgr	%r6,%r6
 	xgr	%r7,%r7
 	xgr	%r10,%r10
-	xgr	%r12,%r12
 	xc	__PT_FLAGS(8,%r11),__PT_FLAGS(%r11)
 	mvc	__PT_R8(64,%r11),__LC_SAVE_AREA(%r13)
 	MBEAR	%r11,%r13

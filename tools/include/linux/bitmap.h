@@ -3,7 +3,6 @@
 #define _TOOLS_LINUX_BITMAP_H
 
 #include <string.h>
-#include <asm-generic/bitsperlong.h>
 #include <linux/align.h>
 #include <linux/bitops.h>
 #include <linux/find.h>

@@ -961,21 +961,6 @@ bool cpu_wants_rethunk_at(void *addr)
 	return !((unsigned long)addr & 0x20);
 }
 
-bool cpu_wants_rethunk(void)
-{
-	return cpu_feature_enabled(X86_FEATURE_RETHUNK);
-}
-
-bool cpu_wants_rethunk_at(void *addr)
-{
-	if (!cpu_feature_enabled(X86_FEATURE_RETHUNK))
-		return false;
-	if (x86_return_thunk != its_return_thunk)
-		return true;
-
-	return !((unsigned long)addr & 0x20);
-}
-
 /*
  * Rewrite the compiler generated return thunk tail-calls.
  *

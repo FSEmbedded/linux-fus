@@ -4317,23 +4317,6 @@ static struct gpio_desc *gpiod_find_by_fwnode(struct fwnode_handle *fwnode,
 	return desc;
 }
 
-static struct gpio_desc *gpiod_fwnode_lookup(struct fwnode_handle *fwnode,
-					     struct device *consumer,
-					     const char *con_id,
-					     unsigned int idx,
-					     enum gpiod_flags *flags,
-					     unsigned long *lookupflags)
-{
-	struct gpio_desc *desc;
-
-	desc = gpiod_find_by_fwnode(fwnode, consumer, con_id, idx, flags, lookupflags);
-	if (gpiod_not_found(desc) && !IS_ERR_OR_NULL(fwnode))
-		desc = gpiod_find_by_fwnode(fwnode->secondary, consumer, con_id,
-					    idx, flags, lookupflags);
-
-	return desc;
-}
-
 struct gpio_desc *gpiod_find_and_request(struct device *consumer,
 					 struct fwnode_handle *fwnode,
 					 const char *con_id,

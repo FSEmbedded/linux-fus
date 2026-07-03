@@ -2180,18 +2180,6 @@ enum dc_status dc_commit_streams(struct dc *dc, struct dc_commit_streams_params 
 		goto fail;
 	}
 
-	/*
-	 * If not already seamless, make transition seamless by inserting intermediate minimal transition
-	 */
-	if (dc->hwss.is_pipe_topology_transition_seamless &&
-			!dc->hwss.is_pipe_topology_transition_seamless(dc, dc->current_state, context)) {
-		res = commit_minimal_transition_state(dc, context);
-		if (res != DC_OK) {
-			BREAK_TO_DEBUGGER();
-			goto fail;
-		}
-	}
-
 	res = dc_commit_state_no_check(dc, context);
 
 	for (i = 0; i < params->stream_count; i++) {
@@ -3033,9 +3021,6 @@ static void copy_stream_update_to_stream(struct dc *dc,
 	if (update->adaptive_sync_infopacket)
 		stream->adaptive_sync_infopacket = *update->adaptive_sync_infopacket;
 
-	if (update->avi_infopacket)
-		stream->avi_infopacket = *update->avi_infopacket;
-
 	if (update->dither_option)
 		stream->dither_option = *update->dither_option;
 
@@ -3326,8 +3311,7 @@ static void commit_planes_do_stream_update(struct dc *dc,
 					stream_update->vsp_infopacket ||
 					stream_update->hfvsif_infopacket ||
 					stream_update->adaptive_sync_infopacket ||
-					stream_update->vtem_infopacket ||
-					stream_update->avi_infopacket) {
+					stream_update->vtem_infopacket) {
 				resource_build_info_frame(pipe_ctx);
 				dc->hwss.update_info_frame(pipe_ctx);
 
@@ -4761,7 +4745,6 @@ static bool full_update_required(struct dc *dc,
 			stream_update->hfvsif_infopacket ||
 			stream_update->vtem_infopacket ||
 			stream_update->adaptive_sync_infopacket ||
-			stream_update->avi_infopacket ||
 			stream_update->dpms_off ||
 			stream_update->allow_freesync ||
 			stream_update->vrr_active_variable ||
@@ -5659,11 +5642,7 @@ bool dc_process_dmub_aux_transfer_async(struct dc *dc,
 	uint8_t action;
 	union dmub_rb_cmd cmd = {0};
 
-	if (link_index >= dc->link_count || !dc->links[link_index])
-		return false;
-
-	if (payload->length > sizeof(cmd.dp_aux_access.aux_control.dpaux.data))
-		return false;
+	ASSERT(payload->length <= 16);
 
 	cmd.dp_aux_access.header.type = DMUB_CMD__DP_AUX_ACCESS;
 	cmd.dp_aux_access.header.payload_bytes = 0;

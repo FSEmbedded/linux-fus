@@ -109,11 +109,6 @@ fi
 if [ ! -e "/lib/modules/%{KERNELRELEASE}/modules.dep" ]; then
 	/usr/sbin/depmod %{KERNELRELEASE}
 fi
-for file in vmlinuz System.map config; do
-	if ! cmp --silent "/lib/modules/%{KERNELRELEASE}/${file}" "/boot/${file}-%{KERNELRELEASE}"; then
-		cp "/lib/modules/%{KERNELRELEASE}/${file}" "/boot/${file}-%{KERNELRELEASE}"
-	fi
-done
 
 %preun
 if [ -x /usr/bin/kernel-install ]; then

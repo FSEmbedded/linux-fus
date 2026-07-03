@@ -880,14 +880,6 @@ static int __io_read(struct io_kiocb *req, unsigned int issue_flags)
 	if (ret == -EOPNOTSUPP && force_nonblock)
 		ret = -EAGAIN;
 
-	/*
-	 * Some file systems like to return -EOPNOTSUPP for an IOCB_NOWAIT
-	 * issue, even though they should be returning -EAGAIN. To be safe,
-	 * retry from blocking context for either.
-	 */
-	if (ret == -EOPNOTSUPP && force_nonblock)
-		ret = -EAGAIN;
-
 	if (ret == -EAGAIN || (req->flags & REQ_F_REISSUE)) {
 		req->flags &= ~REQ_F_REISSUE;
 		/* If we can poll, just do that. */
@@ -1099,11 +1091,6 @@ int io_write(struct io_kiocb *req, unsigned int issue_flags)
 		ret2 = loop_rw_iter(WRITE, rw, &io->iter);
 	else
 		ret2 = -EINVAL;
-
-	if (ret2 == -EIOCBQUEUED) {
-		req->flags |= REQ_F_PARTIAL_IO;
-		io_kbuf_recycle(req, issue_flags);
-	}
 
 	if (req->flags & REQ_F_REISSUE) {
 		req->flags &= ~REQ_F_REISSUE;

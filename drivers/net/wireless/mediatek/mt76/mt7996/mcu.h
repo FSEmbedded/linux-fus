@@ -25,8 +25,8 @@ struct mt7996_mcu_rxd {
 };
 
 struct mt7996_mcu_uni_event {
-	__le16 cid;
-	u8 __rsv[2];
+	u8 cid;
+	u8 __rsv[3];
 	__le32 status; /* 0: success, others: fail */
 } __packed;
 

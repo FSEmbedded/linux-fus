@@ -33,6 +33,7 @@ struct ksmbd_tree_connect {
 	int				maximal_access;
 	bool				posix_extensions;
 	atomic_t			refcount;
+	wait_queue_head_t		refcount_q;
 	unsigned int			t_state;
 };
 

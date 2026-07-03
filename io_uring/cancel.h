@@ -6,8 +6,10 @@
 
 struct io_cancel_data {
 	struct io_ring_ctx *ctx;
-	u64 data;
-	struct file *file;
+	union {
+		u64 data;
+		struct file *file;
+	};
 	u8 opcode;
 	u32 flags;
 	int seq;

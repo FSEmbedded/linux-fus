@@ -512,8 +512,6 @@ uvc_v4l2_subscribe_event(struct v4l2_fh *fh,
 	if (sub->type < UVC_EVENT_FIRST || sub->type > UVC_EVENT_LAST)
 		return -EINVAL;
 
-	guard(mutex)(&uvc->lock);
-
 	if (sub->type == UVC_EVENT_SETUP && uvc->func_connected)
 		return -EBUSY;
 
@@ -535,8 +533,7 @@ static void uvc_v4l2_disable(struct uvc_device *uvc)
 	uvc_function_disconnect(uvc);
 	uvcg_video_disable(&uvc->video);
 	uvcg_free_buffers(&uvc->video.queue);
-	scoped_guard(mutex, &uvc->lock)
-		uvc->func_connected = false;
+	uvc->func_connected = false;
 	wake_up_interruptible(&uvc->func_connected_queue);
 }
 

@@ -33,8 +33,7 @@ FIXTURE_SETUP(migration)
 {
 	int n;
 
-	if (numa_available() < 0)
-		SKIP(return, "NUMA not available");
+	ASSERT_EQ(numa_available(), 0);
 	self->nthreads = numa_num_task_cpus() - 1;
 	self->n1 = -1;
 	self->n2 = -1;

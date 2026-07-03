@@ -74,6 +74,7 @@ struct spidev_data {
 	struct list_head	device_entry;
 
 	/* TX/RX buffers are NULL unless this device is open (users > 0) */
+	struct mutex		buf_lock;
 	unsigned		users;
 	u8			*tx_buffer;
 	u8			*rx_buffer;
@@ -101,6 +102,24 @@ spidev_sync_unlocked(struct spi_device *spi, struct spi_message *message)
 	return status;
 }
 
+static ssize_t
+spidev_sync(struct spidev_data *spidev, struct spi_message *message)
+{
+	ssize_t status;
+	struct spi_device *spi;
+
+	mutex_lock(&spidev->spi_lock);
+	spi = spidev->spi;
+
+	if (spi == NULL)
+		status = -ESHUTDOWN;
+	else
+		status = spidev_sync_unlocked(spi, message);
+
+	mutex_unlock(&spidev->spi_lock);
+	return status;
+}
+
 static inline ssize_t
 spidev_sync_write(struct spidev_data *spidev, size_t len)
 {
@@ -113,8 +132,7 @@ spidev_sync_write(struct spidev_data *spidev, size_t len)
 
 	spi_message_init(&m);
 	spi_message_add_tail(&t, &m);
-
-	return spidev_sync_unlocked(spidev->spi, &m);
+	return spidev_sync(spidev, &m);
 }
 
 static inline ssize_t
@@ -129,8 +147,7 @@ spidev_sync_read(struct spidev_data *spidev, size_t len)
 
 	spi_message_init(&m);
 	spi_message_add_tail(&t, &m);
-
-	return spidev_sync_unlocked(spidev->spi, &m);
+	return spidev_sync(spidev, &m);
 }
 
 /*-------------------------------------------------------------------------*/
@@ -140,7 +157,7 @@ static ssize_t
 spidev_read(struct file *filp, char __user *buf, size_t count, loff_t *f_pos)
 {
 	struct spidev_data	*spidev;
-	ssize_t			status = -ESHUTDOWN;
+	ssize_t			status;
 
 	/* chipselect only toggles at start or end of operation */
 	if (count > bufsiz)
@@ -148,11 +165,7 @@ spidev_read(struct file *filp, char __user *buf, size_t count, loff_t *f_pos)
 
 	spidev = filp->private_data;
 
-	mutex_lock(&spidev->spi_lock);
-
-	if (spidev->spi == NULL)
-		goto err_spi_removed;
-
+	mutex_lock(&spidev->buf_lock);
 	status = spidev_sync_read(spidev, count);
 	if (status > 0) {
 		unsigned long	missing;
@@ -163,9 +176,7 @@ spidev_read(struct file *filp, char __user *buf, size_t count, loff_t *f_pos)
 		else
 			status = status - missing;
 	}
-
-err_spi_removed:
-	mutex_unlock(&spidev->spi_lock);
+	mutex_unlock(&spidev->buf_lock);
 
 	return status;
 }
@@ -176,7 +187,7 @@ spidev_write(struct file *filp, const char __user *buf,
 		size_t count, loff_t *f_pos)
 {
 	struct spidev_data	*spidev;
-	ssize_t			status = -ESHUTDOWN;
+	ssize_t			status;
 	unsigned long		missing;
 
 	/* chipselect only toggles at start or end of operation */
@@ -185,19 +196,13 @@ spidev_write(struct file *filp, const char __user *buf,
 
 	spidev = filp->private_data;
 
-	mutex_lock(&spidev->spi_lock);
-
-	if (spidev->spi == NULL)
-		goto err_spi_removed;
-
+	mutex_lock(&spidev->buf_lock);
 	missing = copy_from_user(spidev->tx_buffer, buf, count);
 	if (missing == 0)
 		status = spidev_sync_write(spidev, count);
 	else
 		status = -EFAULT;
-
-err_spi_removed:
-	mutex_unlock(&spidev->spi_lock);
+	mutex_unlock(&spidev->buf_lock);
 
 	return status;
 }
@@ -505,6 +510,7 @@ spidev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		break;
 	}
 
+	mutex_unlock(&spidev->buf_lock);
 	spi_dev_put(spi);
 	mutex_unlock(&spidev->spi_lock);
 	return retval;
@@ -535,6 +541,9 @@ spidev_compat_ioc_message(struct file *filp, unsigned int cmd,
 		return -ESHUTDOWN;
 	}
 
+	/* SPI_IOC_MESSAGE needs the buffer locked "normally" */
+	mutex_lock(&spidev->buf_lock);
+
 	/* Check message and copy into scratch area */
 	ioc = spidev_get_ioc_message(cmd, u_ioc, &n_ioc);
 	if (IS_ERR(ioc)) {
@@ -555,6 +564,7 @@ spidev_compat_ioc_message(struct file *filp, unsigned int cmd,
 	kfree(ioc);
 
 done:
+	mutex_unlock(&spidev->buf_lock);
 	spi_dev_put(spi);
 	mutex_unlock(&spidev->spi_lock);
 	return retval;
@@ -780,6 +790,7 @@ static int spidev_probe(struct spi_device *spi)
 	/* Initialize the driver data */
 	spidev->spi = spi;
 	mutex_init(&spidev->spi_lock);
+	mutex_init(&spidev->buf_lock);
 
 	INIT_LIST_HEAD(&spidev->device_entry);
 

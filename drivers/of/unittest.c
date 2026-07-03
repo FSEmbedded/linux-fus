@@ -4094,6 +4094,7 @@ static int testdrv_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	size = info->dtbo_end - info->dtbo_begin;
 	ret = of_overlay_fdt_apply(info->dtbo_begin, size, &ovcs_id, dn);
+	of_node_put(dn);
 	if (ret)
 		return ret;
 
@@ -4190,7 +4191,6 @@ static int of_unittest_pci_node_verify(struct pci_dev *pdev, bool add)
 		unittest(!np, "Child device tree node is not removed\n");
 		child_dev = device_find_any_child(&pdev->dev);
 		unittest(!child_dev, "Child device is not removed\n");
-		put_device(child_dev);
 	}
 
 failed:

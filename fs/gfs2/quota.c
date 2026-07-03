@@ -719,9 +719,6 @@ static void do_qc(struct gfs2_quota_data *qd, s64 change)
 	if (needs_put) {
 		slot_put(qd);
 		qd_put(qd);
-	} else if (!test_and_set_bit(QDF_CHANGE, &qd->qd_flags)) {
-		qd_hold(qd);
-		slot_hold(qd);
 	}
 	if (change < 0) /* Reset quiet flag if we freed some blocks */
 		clear_bit(QDF_QMSG_QUIET, &qd->qd_flags);

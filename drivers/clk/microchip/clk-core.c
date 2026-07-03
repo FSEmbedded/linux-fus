@@ -281,13 +281,14 @@ static u8 roclk_get_parent(struct clk_hw *hw)
 
 	v = (readl(refo->ctrl_reg) >> REFO_SEL_SHIFT) & REFO_SEL_MASK;
 
-	if (refo->parent_map) {
-		for (i = 0; i < clk_hw_get_num_parents(hw); i++)
-			if (refo->parent_map[i] == v)
-				return i;
-	}
+	if (!refo->parent_map)
+		return v;
 
-	return v;
+	for (i = 0; i < clk_hw_get_num_parents(hw); i++)
+		if (refo->parent_map[i] == v)
+			return i;
+
+	return -EINVAL;
 }
 
 static unsigned long roclk_calc_rate(unsigned long parent_rate,
@@ -822,13 +823,13 @@ static u8 sclk_get_parent(struct clk_hw *hw)
 
 	v = (readl(sclk->mux_reg) >> OSC_CUR_SHIFT) & OSC_CUR_MASK;
 
-	if (sclk->parent_map) {
-		for (i = 0; i < clk_hw_get_num_parents(hw); i++)
-			if (sclk->parent_map[i] == v)
-				return i;
-	}
+	if (!sclk->parent_map)
+		return v;
 
-	return v;
+	for (i = 0; i < clk_hw_get_num_parents(hw); i++)
+		if (sclk->parent_map[i] == v)
+			return i;
+	return -EINVAL;
 }
 
 static int sclk_set_parent(struct clk_hw *hw, u8 index)

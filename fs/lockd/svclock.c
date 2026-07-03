@@ -628,13 +628,7 @@ nlmsvc_testlock(struct svc_rqst *rqstp, struct nlm_file *file,
 	}
 
 	mode = lock_to_openmode(&lock->fl);
-	locks_init_lock(&conflock->fl);
-	/* vfs_test_lock only uses start, end, and owner, but tests fl_file */
-	conflock->fl.fl_file = lock->fl.fl_file;
-	conflock->fl.fl_start = lock->fl.fl_start;
-	conflock->fl.fl_end = lock->fl.fl_end;
-	conflock->fl.fl_owner = lock->fl.fl_owner;
-	error = vfs_test_lock(file->f_file[mode], &conflock->fl);
+	error = vfs_test_lock(file->f_file[mode], &lock->fl);
 	if (error) {
 		/* We can't currently deal with deferred test requests */
 		if (error == FILE_LOCK_DEFERRED)

@@ -88,10 +88,8 @@ int xfrm6_rcv_encap(struct sk_buff *skb, int nexthdr, __be32 spi,
 
 		dst = ip6_route_input_lookup(dev_net(skb->dev), skb->dev, &fl6,
 					     skb, flags);
-		if (dst->error) {
-			dst_release(dst);
+		if (dst->error)
 			goto drop;
-		}
 		skb_dst_set(skb, dst);
 	}
 

@@ -270,8 +270,6 @@ static int patch_text_cb(void *data)
 		local_flush_icache_all();
 	}
 
-	local_flush_icache_all();
-
 	return ret;
 }
 NOKPROBE_SYMBOL(patch_text_cb);

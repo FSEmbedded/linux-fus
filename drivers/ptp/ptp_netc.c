@@ -342,26 +342,9 @@ static u64 netc_timer_get_gclk_period(struct netc_timer *priv)
 	return div_u64(dividend, priv->clk_freq);
 }
 
-static void netc_timer_set_oclk_prsc(struct netc_timer *priv, u32 oclk_prsc)
-{
-	if (oclk_prsc < NETC_TMR_PRSC_OCK_MAX) {
-		if (oclk_prsc % 2 != 0)
-			oclk_prsc++;
-	} else {
-		oclk_prsc = NETC_TMR_PRSC_OCK_MAX;
-	}
-	priv->oclk_prsc = oclk_prsc;
-
-	if (oclk_prsc == netc_timer_read_reg(priv, NETC_TMR_PRSC))
-		return;
-
-	netc_timer_write_reg(priv, NETC_TMR_PRSC, priv->oclk_prsc);
-}
-
 static u32 netc_timer_calculate_fiper_pulse_width(struct netc_timer *priv,
 						  u32 fiper)
 {
-	u32 oclk_prsc = NETC_TMR_DEFAULT_PRSC;
 	u64 pw;
 
 	/* Set the FIPER pulse width to half FIPER interval by default.

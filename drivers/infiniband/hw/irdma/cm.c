@@ -2240,12 +2240,11 @@ irdma_make_cm_node(struct irdma_cm_core *cm_core, struct irdma_device *iwdev,
 	int oldarpindex;
 	int arpindex;
 	struct net_device *netdev = iwdev->netdev;
-	int ret;
 
 	/* create an hte and cm_node for this instance */
 	cm_node = kzalloc(sizeof(*cm_node), GFP_ATOMIC);
 	if (!cm_node)
-		return ERR_PTR(-ENOMEM);
+		return NULL;
 
 	/* set our node specific transport info */
 	cm_node->ipv4 = cm_info->ipv4;
@@ -2348,10 +2347,8 @@ irdma_make_cm_node(struct irdma_cm_core *cm_core, struct irdma_device *iwdev,
 			arpindex = -EINVAL;
 	}
 
-	if (arpindex < 0) {
-		ret = -EINVAL;
+	if (arpindex < 0)
 		goto err;
-	}
 
 	ether_addr_copy(cm_node->rem_mac,
 			iwdev->rf->arp_table[arpindex].mac_addr);
@@ -2362,7 +2359,7 @@ irdma_make_cm_node(struct irdma_cm_core *cm_core, struct irdma_device *iwdev,
 err:
 	kfree(cm_node);
 
-	return ERR_PTR(ret);
+	return NULL;
 }
 
 static void irdma_destroy_connection(struct irdma_cm_node *cm_node)
@@ -3023,8 +3020,8 @@ static int irdma_create_cm_node(struct irdma_cm_core *cm_core,
 
 	/* create a CM connection node */
 	cm_node = irdma_make_cm_node(cm_core, iwdev, cm_info, NULL);
-	if (IS_ERR(cm_node))
-		return PTR_ERR(cm_node);
+	if (!cm_node)
+		return -ENOMEM;
 
 	/* set our node side to client (active) side */
 	cm_node->tcp_cntxt.client = 1;
@@ -3221,9 +3218,9 @@ void irdma_receive_ilq(struct irdma_sc_vsi *vsi, struct irdma_puda_buf *rbuf)
 		cm_info.cm_id = listener->cm_id;
 		cm_node = irdma_make_cm_node(cm_core, iwdev, &cm_info,
 					     listener);
-		if (IS_ERR(cm_node)) {
+		if (!cm_node) {
 			ibdev_dbg(&cm_core->iwdev->ibdev,
-				  "CM: allocate node failed ret=%ld\n", PTR_ERR(cm_node));
+				  "CM: allocate node failed\n");
 			refcount_dec(&listener->refcnt);
 			return;
 		}
@@ -3712,7 +3709,7 @@ int irdma_accept(struct iw_cm_id *cm_id, struct iw_cm_conn_param *conn_param)
 	iwpd = iwqp->iwpd;
 	tagged_offset = (uintptr_t)iwqp->ietf_mem.va;
 	ibmr = irdma_reg_phys_mr(&iwpd->ibpd, iwqp->ietf_mem.pa, buf_len,
-				 IB_ACCESS_LOCAL_WRITE, &tagged_offset, false);
+				 IB_ACCESS_LOCAL_WRITE, &tagged_offset);
 	if (IS_ERR(ibmr)) {
 		ret = -ENOMEM;
 		goto error;
@@ -4241,21 +4238,21 @@ static void irdma_cm_event_handler(struct work_struct *work)
 		irdma_cm_event_reset(event);
 		break;
 	case IRDMA_CM_EVENT_CONNECTED:
-		if (!cm_node->cm_id ||
-		    cm_node->state != IRDMA_CM_STATE_OFFLOADED)
+		if (!event->cm_node->cm_id ||
+		    event->cm_node->state != IRDMA_CM_STATE_OFFLOADED)
 			break;
 		irdma_cm_event_connected(event);
 		break;
 	case IRDMA_CM_EVENT_MPA_REJECT:
-		if (!cm_node->cm_id ||
+		if (!event->cm_node->cm_id ||
 		    cm_node->state == IRDMA_CM_STATE_OFFLOADED)
 			break;
 		irdma_send_cm_event(cm_node, cm_node->cm_id,
 				    IW_CM_EVENT_CONNECT_REPLY, -ECONNREFUSED);
 		break;
 	case IRDMA_CM_EVENT_ABORTED:
-		if (!cm_node->cm_id ||
-		    cm_node->state == IRDMA_CM_STATE_OFFLOADED)
+		if (!event->cm_node->cm_id ||
+		    event->cm_node->state == IRDMA_CM_STATE_OFFLOADED)
 			break;
 		irdma_event_connect_error(event);
 		break;
@@ -4265,7 +4262,7 @@ static void irdma_cm_event_handler(struct work_struct *work)
 		break;
 	}
 
-	irdma_rem_ref_cm_node(cm_node);
+	irdma_rem_ref_cm_node(event->cm_node);
 	kfree(event);
 }
 

@@ -5,7 +5,6 @@
  * Copyright (C) 2025 CHIPS&MEDIA INC
  */
 
-#include <linux/clk.h>
 #include <linux/iopoll.h>
 #include "wave6-vpu.h"
 #include "wave6-hw.h"

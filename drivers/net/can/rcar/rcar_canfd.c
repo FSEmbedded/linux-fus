@@ -681,6 +681,26 @@ static void rcar_canfd_tx_failure_cleanup(struct net_device *ndev)
 		can_free_echo_skb(ndev, i, NULL);
 }
 
+static void rcar_canfd_set_mode(struct rcar_canfd_global *gpriv)
+{
+	if (is_gen4(gpriv)) {
+		u32 ch, val = gpriv->fdmode ? RCANFD_GEN4_FDCFG_FDOE
+					    : RCANFD_GEN4_FDCFG_CLOE;
+
+		for_each_set_bit(ch, &gpriv->channels_mask,
+				 gpriv->info->max_channels)
+			rcar_canfd_set_bit(gpriv->base, RCANFD_GEN4_FDCFG(ch),
+					   val);
+	} else {
+		if (gpriv->fdmode)
+			rcar_canfd_set_bit(gpriv->base, RCANFD_GRMCFG,
+					   RCANFD_GRMCFG_RCMC);
+		else
+			rcar_canfd_clear_bit(gpriv->base, RCANFD_GRMCFG,
+					     RCANFD_GRMCFG_RCMC);
+	}
+}
+
 static int rcar_canfd_reset_controller(struct rcar_canfd_global *gpriv)
 {
 	u32 sts, ch;
@@ -713,14 +733,7 @@ static int rcar_canfd_reset_controller(struct rcar_canfd_global *gpriv)
 	rcar_canfd_write(gpriv->base, RCANFD_GERFL, 0x0);
 
 	/* Set the controller into appropriate mode */
-	if (!is_gen4(gpriv)) {
-		if (gpriv->fdmode)
-			rcar_canfd_set_bit(gpriv->base, RCANFD_GRMCFG,
-					   RCANFD_GRMCFG_RCMC);
-		else
-			rcar_canfd_clear_bit(gpriv->base, RCANFD_GRMCFG,
-					     RCANFD_GRMCFG_RCMC);
-	}
+	rcar_canfd_set_mode(gpriv);
 
 	/* Transition all Channels to reset mode */
 	for_each_set_bit(ch, &gpriv->channels_mask, gpriv->info->max_channels) {
@@ -740,28 +753,7 @@ static int rcar_canfd_reset_controller(struct rcar_canfd_global *gpriv)
 				"channel %u reset failed\n", ch);
 			return err;
 		}
-
-		/* Set the controller into appropriate mode */
-		if (is_gen4(gpriv)) {
-			/* Do not set CLOE and FDOE simultaneously */
-			if (!gpriv->fdmode) {
-				rcar_canfd_clear_bit(gpriv->base,
-						     RCANFD_GEN4_FDCFG(ch),
-						     RCANFD_GEN4_FDCFG_FDOE);
-				rcar_canfd_set_bit(gpriv->base,
-						   RCANFD_GEN4_FDCFG(ch),
-						   RCANFD_GEN4_FDCFG_CLOE);
-			} else {
-				rcar_canfd_clear_bit(gpriv->base,
-						     RCANFD_GEN4_FDCFG(ch),
-						     RCANFD_GEN4_FDCFG_FDOE);
-				rcar_canfd_clear_bit(gpriv->base,
-						     RCANFD_GEN4_FDCFG(ch),
-						     RCANFD_GEN4_FDCFG_CLOE);
-			}
-		}
 	}
-
 	return 0;
 }
 

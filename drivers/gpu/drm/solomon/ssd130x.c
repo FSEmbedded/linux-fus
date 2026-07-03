@@ -812,7 +812,7 @@ static int ssd130x_update_rect(struct ssd130x_device *ssd130x,
 		 */
 		if (ssd130x->page_address_mode) {
 			ret = ssd130x_set_page_pos(ssd130x,
-						   page_start + i,
+						   ssd130x->page_offset + i,
 						   ssd130x->col_offset + x);
 			if (ret < 0)
 				return ret;
@@ -1263,12 +1263,6 @@ static void ssd132x_primary_plane_atomic_update(struct drm_plane *plane,
 	struct drm_rect dst_clip;
 	struct drm_rect damage;
 	int idx;
-
-	if (!plane_state->crtc)
-		return;
-
-	crtc_state = drm_atomic_get_new_crtc_state(state, plane_state->crtc);
-	ssd130x_crtc_state = to_ssd130x_crtc_state(crtc_state);
 
 	if (!drm_dev_enter(drm, &idx))
 		return;

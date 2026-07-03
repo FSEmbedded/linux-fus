@@ -70,11 +70,11 @@ static int dwc3_of_simple_probe(struct platform_device *pdev)
 	simple->num_clocks = ret;
 	ret = clk_bulk_prepare_enable(simple->num_clocks, simple->clks);
 	if (ret)
-		goto err_clk_put_all;
+		goto err_resetc_assert;
 
 	ret = of_platform_populate(np, NULL, NULL, dev);
 	if (ret)
-		goto err_clk_disable;
+		goto err_clk_put;
 
 	pm_runtime_set_active(dev);
 	pm_runtime_enable(dev);
@@ -82,9 +82,8 @@ static int dwc3_of_simple_probe(struct platform_device *pdev)
 
 	return 0;
 
-err_clk_disable:
+err_clk_put:
 	clk_bulk_disable_unprepare(simple->num_clocks, simple->clks);
-err_clk_put_all:
 	clk_bulk_put_all(simple->num_clocks, simple->clks);
 
 err_resetc_assert:

@@ -1317,10 +1317,6 @@ static void b53_force_port_config(struct b53_device *dev, int port,
 	else
 		reg &= ~PORT_OVERRIDE_FULL_DUPLEX;
 
-	reg &= ~(0x3 << GMII_PO_SPEED_S);
-	if (is5301x(dev) || is58xx(dev))
-		reg &= ~PORT_OVERRIDE_SPEED_2000M;
-
 	switch (speed) {
 	case 2000:
 		reg |= PORT_OVERRIDE_SPEED_2000M;
@@ -1927,7 +1923,7 @@ static int b53_arl_search_wait(struct b53_device *dev)
 	do {
 		b53_read8(dev, B53_ARLIO_PAGE, B53_ARL_SRCH_CTL, &reg);
 		if (!(reg & ARL_SRCH_STDN))
-			return -ENOENT;
+			return 0;
 
 		if (reg & ARL_SRCH_VLID)
 			return 0;
@@ -1955,9 +1951,6 @@ static int b53_fdb_copy(int port, const struct b53_arl_entry *ent,
 			dsa_fdb_dump_cb_t *cb, void *data)
 {
 	if (!ent->is_valid)
-		return 0;
-
-	if (is_multicast_ether_addr(ent->mac))
 		return 0;
 
 	if (port != ent->port)
@@ -2162,11 +2155,6 @@ void b53_br_leave(struct dsa_switch *ds, int port, struct dsa_bridge bridge)
 		vl->members |= BIT(port);
 		b53_set_vlan_entry(dev, pvid, vl);
 	}
-
-	b53_get_vlan_entry(dev, pvid, vl);
-	vl->members |= BIT(port) | BIT(cpu_port);
-	vl->untag |= BIT(port) | BIT(cpu_port);
-	b53_set_vlan_entry(dev, pvid, vl);
 }
 EXPORT_SYMBOL(b53_br_leave);
 

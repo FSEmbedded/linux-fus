@@ -3238,6 +3238,7 @@ static void serial_core_remove_one_port(struct uart_driver *drv,
 	struct uart_state *state = drv->state + uport->line;
 	struct tty_port *port = &state->port;
 	struct uart_port *uart_port;
+	struct tty_struct *tty;
 
 	mutex_lock(&port->mutex);
 	uart_port = uart_port_check(state);
@@ -3256,7 +3257,11 @@ static void serial_core_remove_one_port(struct uart_driver *drv,
 	 */
 	tty_port_unregister_device(port, drv->tty_driver, uport->line);
 
-	tty_port_tty_vhangup(port);
+	tty = tty_port_tty_get(port);
+	if (tty) {
+		tty_vhangup(port->tty);
+		tty_kref_put(tty);
+	}
 
 	/*
 	 * If the port is used as a console, unregister it

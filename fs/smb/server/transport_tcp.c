@@ -41,7 +41,6 @@ static const struct ksmbd_transport_ops ksmbd_tcp_transport_ops;
 
 static void tcp_stop_kthread(struct task_struct *kthread);
 static struct interface *alloc_iface(char *ifname);
-static void ksmbd_tcp_disconnect(struct ksmbd_transport *t);
 
 #define KSMBD_TRANS(t)	(&(t)->transport)
 #define TCP_TRANS(t)	((struct tcp_transport *)container_of(t, \
@@ -203,8 +202,6 @@ static int ksmbd_tcp_new_connection(struct socket *client_sk)
 	t = alloc_transport(client_sk);
 	if (!t) {
 		sock_release(client_sk);
-		if (server_conf.max_connections)
-			atomic_dec(&active_num_conn);
 		return -ENOMEM;
 	}
 
@@ -222,7 +219,7 @@ static int ksmbd_tcp_new_connection(struct socket *client_sk)
 	if (IS_ERR(handler)) {
 		pr_err("cannot start conn thread\n");
 		rc = PTR_ERR(handler);
-		ksmbd_tcp_disconnect(KSMBD_TRANS(t));
+		free_transport(t);
 	}
 	return rc;
 
@@ -289,7 +286,7 @@ static int ksmbd_kthread_fn(void *p)
 			continue;
 
 		if (server_conf.max_connections &&
-		    atomic_inc_return(&active_num_conn) > server_conf.max_connections) {
+		    atomic_inc_return(&active_num_conn) >= server_conf.max_connections) {
 			pr_info_ratelimited("Limit the maximum number of connections(%u)\n",
 					    atomic_read(&active_num_conn));
 			atomic_dec(&active_num_conn);
@@ -473,13 +470,12 @@ static int create_socket(struct interface *iface)
 	struct socket *ksmbd_socket;
 	bool ipv4 = false;
 
-	ret = sock_create_kern(current->nsproxy->net_ns, PF_INET6, SOCK_STREAM,
-			IPPROTO_TCP, &ksmbd_socket);
+	ret = sock_create(PF_INET6, SOCK_STREAM, IPPROTO_TCP, &ksmbd_socket);
 	if (ret) {
 		if (ret != -EAFNOSUPPORT)
 			pr_err("Can't create socket for ipv6, fallback to ipv4: %d\n", ret);
-		ret = sock_create_kern(current->nsproxy->net_ns, PF_INET,
-				SOCK_STREAM, IPPROTO_TCP, &ksmbd_socket);
+		ret = sock_create(PF_INET, SOCK_STREAM, IPPROTO_TCP,
+				  &ksmbd_socket);
 		if (ret) {
 			pr_err("Can't create socket for ipv4: %d\n", ret);
 			goto out_clear;

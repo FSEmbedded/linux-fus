@@ -937,13 +937,12 @@ int i40e_ptp_get_ts_config(struct i40e_pf *pf, struct ifreq *ifr)
  *
  * Release memory allocated for PTP pins.
  **/
-void i40e_ptp_free_pins(struct i40e_pf *pf)
+static void i40e_ptp_free_pins(struct i40e_pf *pf)
 {
 	if (i40e_is_ptp_pin_dev(&pf->hw)) {
 		kfree(pf->ptp_pins);
 		kfree(pf->ptp_caps.pin_config);
 		pf->ptp_pins = NULL;
-		pf->ptp_caps.pin_config = NULL;
 	}
 }
 

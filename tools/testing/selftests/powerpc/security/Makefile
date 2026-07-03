@@ -10,8 +10,6 @@ include ../flags.mk
 
 CFLAGS += $(KHDR_INCLUDES)
 
-CFLAGS += $(KHDR_INCLUDES)
-
 $(TEST_GEN_PROGS): ../harness.c ../utils.c
 
 $(OUTPUT)/spectre_v2: CFLAGS += -m64

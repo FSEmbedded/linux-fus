@@ -82,7 +82,7 @@ void amdgpu_driver_unload_kms(struct drm_device *dev)
 {
 	struct amdgpu_device *adev = drm_to_adev(dev);
 
-	if (adev == NULL || !adev->num_ip_blocks)
+	if (adev == NULL)
 		return;
 
 	amdgpu_unregister_gpu_instance(adev);
@@ -707,8 +707,7 @@ int amdgpu_info_ioctl(struct drm_device *dev, void *data, struct drm_file *filp)
 		ui64 = atomic64_read(&adev->num_vram_cpu_page_faults);
 		return copy_to_user(out, &ui64, min(size, 8u)) ? -EFAULT : 0;
 	case AMDGPU_INFO_VRAM_USAGE:
-		ui64 = ttm_resource_manager_used(&adev->mman.vram_mgr.manager) ?
-			ttm_resource_manager_usage(&adev->mman.vram_mgr.manager) : 0;
+		ui64 = ttm_resource_manager_usage(&adev->mman.vram_mgr.manager);
 		return copy_to_user(out, &ui64, min(size, 8u)) ? -EFAULT : 0;
 	case AMDGPU_INFO_VIS_VRAM_USAGE:
 		ui64 = amdgpu_vram_mgr_vis_usage(&adev->mman.vram_mgr);
@@ -754,8 +753,8 @@ int amdgpu_info_ioctl(struct drm_device *dev, void *data, struct drm_file *filp)
 		mem.vram.usable_heap_size = adev->gmc.real_vram_size -
 			atomic64_read(&adev->vram_pin_size) -
 			AMDGPU_VM_RESERVED_VRAM;
-		mem.vram.heap_usage = ttm_resource_manager_used(&adev->mman.vram_mgr.manager) ?
-				ttm_resource_manager_usage(vram_man) : 0;
+		mem.vram.heap_usage =
+			ttm_resource_manager_usage(vram_man);
 		mem.vram.max_allocation = mem.vram.usable_heap_size * 3 / 4;
 
 		mem.cpu_accessible_vram.total_heap_size =
@@ -789,9 +788,6 @@ int amdgpu_info_ioctl(struct drm_device *dev, void *data, struct drm_file *filp)
 		unsigned int sh_num = (info->read_mmr_reg.instance >>
 				   AMDGPU_INFO_MMR_SH_INDEX_SHIFT) &
 				  AMDGPU_INFO_MMR_SH_INDEX_MASK;
-		unsigned int alloc_size;
-		uint32_t *regs;
-		int ret;
 
 		if (!down_read_trylock(&adev->reset_domain->sem))
 			return -ENOENT;
@@ -826,10 +822,7 @@ int amdgpu_info_ioctl(struct drm_device *dev, void *data, struct drm_file *filp)
 
 		alloc_size = info->read_mmr_reg.count * sizeof(*regs);
 
-		down_read(&adev->reset_domain->sem);
-		alloc_size = info->read_mmr_reg.count * sizeof(*regs);
 		amdgpu_gfx_off_ctrl(adev, false);
-		ret = 0;
 		for (i = 0; i < info->read_mmr_reg.count; i++) {
 			if (amdgpu_asic_read_register(adev, se_num, sh_num,
 						      info->read_mmr_reg.dword_offset + i,
@@ -843,12 +836,7 @@ int amdgpu_info_ioctl(struct drm_device *dev, void *data, struct drm_file *filp)
 			}
 		}
 		amdgpu_gfx_off_ctrl(adev, true);
-		up_read(&adev->reset_domain->sem);
-
-		if (!ret) {
-			ret = copy_to_user(out, regs, min(size, alloc_size))
-				? -EFAULT : 0;
-		}
+		n = copy_to_user(out, regs, min(size, alloc_size));
 		kfree(regs);
 		ret = (n ? -EFAULT : 0);
 out:

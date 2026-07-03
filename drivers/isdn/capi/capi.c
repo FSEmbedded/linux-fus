@@ -306,9 +306,15 @@ static void capincci_alloc_minor(struct capidev *cdev, struct capincci *np)
 static void capincci_free_minor(struct capincci *np)
 {
 	struct capiminor *mp = np->minorp;
+	struct tty_struct *tty;
 
 	if (mp) {
-		tty_port_tty_vhangup(&mp->port);
+		tty = tty_port_tty_get(&mp->port);
+		if (tty) {
+			tty_vhangup(tty);
+			tty_kref_put(tty);
+		}
+
 		capiminor_free(mp);
 	}
 }

@@ -186,12 +186,6 @@ static void _wdt_update_timeout(unsigned int t)
 		superio_outb(t >> 8, WDTVALMSB);
 }
 
-/* Internal function, should be called after superio_select(GPIO) */
-static bool _wdt_running(void)
-{
-	return superio_inb(WDTVALLSB) || (max_units > 255 && superio_inb(WDTVALMSB));
-}
-
 static int wdt_update_timeout(unsigned int t)
 {
 	int ret;

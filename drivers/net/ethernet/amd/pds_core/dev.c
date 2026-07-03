@@ -166,8 +166,8 @@ static int pdsc_devcmd_wait(struct pdsc *pdsc, u8 opcode, int max_seconds)
 		dev_err(dev, "DEVCMD %d %s timeout, done %d timeout %d max_seconds=%d\n",
 			opcode, pdsc_devcmd_str(opcode), done, timeout,
 			max_seconds);
+		err = -ETIMEDOUT;
 		pdsc_devcmd_clean(pdsc);
-		return -ETIMEDOUT;
 	}
 
 	status = pdsc_devcmd_status(pdsc);

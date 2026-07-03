@@ -595,8 +595,7 @@ static void kbasep_hwcnt_backend_csf_init_layout(
 }
 
 static void
-kbasep_hwcnt_backend_csf_reset_internal_buffers(struct kbase_hwcnt_backend_csf *backend_csf,
-						bool user_bufs)
+kbasep_hwcnt_backend_csf_reset_internal_buffers(struct kbase_hwcnt_backend_csf *backend_csf)
 {
 	size_t user_buf_bytes = backend_csf->info->metadata->dump_buf_bytes;
 	size_t block_state_bytes = backend_csf->phys_layout.payload_block_cnt *
@@ -1945,12 +1944,6 @@ static int kbasep_hwcnt_backend_csf_dump_get(struct kbase_hwcnt_backend *backend
 
 	*dump_time_ns = backend_csf->dump_time_ns;
 	kbasep_hwcnt_backend_csf_reset_consumed_buffers(backend_csf);
-
-	/* Clear consumed user buffers. */
-	memset(backend_csf->to_user_buf, 0, backend_csf->info->metadata->dump_buf_bytes);
-	memset(backend_csf->to_user_block_states, 0,
-	       backend_csf->phys_layout.block_cnt * KBASE_HWCNT_BLOCK_STATE_BYTES *
-		       KBASE_HWCNT_BLOCK_STATE_STRIDE);
 
 	return ret;
 }

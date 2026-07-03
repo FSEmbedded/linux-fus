@@ -26,9 +26,6 @@ int lock_contention_prepare(struct lock_contention *con)
 	struct evlist *evlist = con->evlist;
 	struct target *target = con->target;
 
-	/* make sure it loads the kernel map before lookup */
-	map__load(machine__kernel_map(con->machine));
-
 	skel = lock_contention_bpf__open();
 	if (!skel) {
 		pr_err("Failed to open lock-contention BPF skeleton\n");

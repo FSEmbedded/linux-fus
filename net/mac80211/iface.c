@@ -234,16 +234,12 @@ static int ieee80211_can_powered_addr_change(struct ieee80211_sub_if_data *sdata
 			ret = -EBUSY;
 	}
 
-	/*
-	 * More interface types could be added here but changing the
-	 * address while powered makes the most sense in client modes.
-	 */
 	switch (sdata->vif.type) {
 	case NL80211_IFTYPE_STATION:
 	case NL80211_IFTYPE_P2P_CLIENT:
-		/* refuse while connecting */
-		if (sdata->u.mgd.auth_data || sdata->u.mgd.assoc_data)
-			return -EBUSY;
+		/* More interface types could be added here but changing the
+		 * address while powered makes the most sense in client modes.
+		 */
 		break;
 	default:
 		ret = -EOPNOTSUPP;
@@ -341,8 +337,6 @@ static int ieee80211_check_concurrent_iface(struct ieee80211_sub_if_data *sdata,
 	/* we hold the RTNL here so can safely walk the list */
 	list_for_each_entry(nsdata, &local->interfaces, list) {
 		if (nsdata != sdata && ieee80211_sdata_running(nsdata)) {
-			struct ieee80211_link_data *link;
-
 			/*
 			 * Only OCB and monitor mode may coexist
 			 */
@@ -369,10 +363,8 @@ static int ieee80211_check_concurrent_iface(struct ieee80211_sub_if_data *sdata,
 			 * will not add another interface while any channel
 			 * switch is active.
 			 */
-			for_each_link_data(nsdata, link) {
-				if (link->conf->csa_active)
-					return -EBUSY;
-			}
+			if (nsdata->vif.bss_conf.csa_active)
+				return -EBUSY;
 
 			/*
 			 * The remaining checks are only performed for interfaces

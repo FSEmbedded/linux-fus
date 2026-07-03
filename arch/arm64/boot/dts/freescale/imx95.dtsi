@@ -1844,20 +1844,6 @@
 			};
 		};
 
-		v2x_mu7: mailbox@47330000 {
-			compatible = "fsl,imx95-mu-v2x";
-			reg = <0x0 0x47330000 0x0 0x10000>;
-			interrupts = <GIC_SPI 28 IRQ_TYPE_LEVEL_HIGH>;
-			#mbox-cells = <2>;
-		};
-
-		v2x_mu8: mailbox@47340000 {
-			compatible = "fsl,imx95-mu-v2x";
-			reg = <0x0 0x47340000 0x0 0x10000>;
-			interrupts = <GIC_SPI 239 IRQ_TYPE_LEVEL_HIGH>;
-			#mbox-cells = <2>;
-		};
-
 		cameramix_csr: syscon@4ac10000 {
 			compatible = "nxp,imx95-camera-csr", "syscon";
 			#address-cells = <1>;
@@ -3231,17 +3217,5 @@
 		compatible = "fsl,imx95-se";
 		mbox-names = "tx", "rx";
 		mboxes = <&v2x_mu8 0 0>, <&v2x_mu8 1 0>;
-	};
-
-	v2x_sg0: secure-enclave-4 {
-		 compatible = "fsl,imx95-se";
-		 mbox-names = "tx", "rx";
-		 mboxes = <&v2x_mu7 0 0>, <&v2x_mu7 1 0>;
-	};
-
-	v2x_sg1: secure-enclave-5 {
-		 compatible = "fsl,imx95-se";
-		 mbox-names = "tx", "rx";
-		 mboxes = <&v2x_mu8 0 0>, <&v2x_mu8 1 0>;
 	};
 };

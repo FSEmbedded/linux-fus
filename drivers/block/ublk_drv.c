@@ -1020,13 +1020,6 @@ static inline bool ubq_daemon_is_dying(struct ublk_queue *ubq)
 	return ubq->ubq_daemon->flags & PF_EXITING;
 }
 
-static void ublk_end_request(struct request *req, blk_status_t error)
-{
-	local_bh_disable();
-	blk_mq_end_request(req, error);
-	local_bh_enable();
-}
-
 /* todo: handle partial completion */
 static inline void __ublk_complete_rq(struct request *req)
 {
@@ -1034,7 +1027,6 @@ static inline void __ublk_complete_rq(struct request *req)
 	struct ublk_io *io = &ubq->ios[req->tag];
 	unsigned int unmapped_bytes;
 	blk_status_t res = BLK_STS_OK;
-	bool requeue;
 
 	/* called from ublk_abort_queue() code path */
 	if (io->flags & UBLK_IO_FLAG_ABORTED) {
@@ -1072,30 +1064,14 @@ static inline void __ublk_complete_rq(struct request *req)
 	if (unlikely(unmapped_bytes < io->res))
 		io->res = unmapped_bytes;
 
-	/*
-	 * Run bio->bi_end_io() with softirqs disabled. If the final fput
-	 * happens off this path, then that will prevent ublk's blkdev_release()
-	 * from being called on current's task work, see fput() implementation.
-	 *
-	 * Otherwise, ublk server may not provide forward progress in case of
-	 * reading the partition table from bdev_open() with disk->open_mutex
-	 * held, and causes dead lock as we could already be holding
-	 * disk->open_mutex here.
-	 *
-	 * Preferably we would not be doing IO with a mutex held that is also
-	 * used for release, but this work-around will suffice for now.
-	 */
-	local_bh_disable();
-	requeue = blk_update_request(req, BLK_STS_OK, io->res);
-	local_bh_enable();
-	if (requeue)
+	if (blk_update_request(req, BLK_STS_OK, io->res))
 		blk_mq_requeue_request(req, true);
 	else
 		__blk_mq_end_request(req, BLK_STS_OK);
 
 	return;
 exit:
-	ublk_end_request(req, res);
+	blk_mq_end_request(req, res);
 }
 
 static void ublk_complete_rq(struct kref *ref)
@@ -1792,7 +1768,7 @@ static int __ublk_ch_uring_cmd(struct io_uring_cmd *cmd,
 {
 	struct ublk_device *ub = cmd->file->private_data;
 	struct ublk_queue *ubq;
-	struct ublk_io *io = NULL;
+	struct ublk_io *io;
 	u32 cmd_op = cmd->cmd_op;
 	unsigned tag = ub_cmd->tag;
 	int ret = -EINVAL;
@@ -2825,8 +2801,6 @@ static int ublk_ctrl_start_recovery(struct ublk_device *ub,
 		goto out_unlock;
 	if (!ub->nr_queues_ready)
 		goto out_unlock;
-	if (!ub->nr_queues_ready)
-		goto out_unlock;
 	/*
 	 * START_RECOVERY is only allowd after:
 	 *
@@ -3028,10 +3002,10 @@ static int ublk_ctrl_uring_cmd(struct io_uring_cmd *cmd,
 	if (issue_flags & IO_URING_F_NONBLOCK)
 		return -EAGAIN;
 
-	if (!(issue_flags & IO_URING_F_SQE128))
-		return -EINVAL;
-
 	ublk_ctrl_cmd_dump(cmd);
+
+	if (!(issue_flags & IO_URING_F_SQE128))
+		goto out;
 
 	ret = ublk_check_cmd_op(cmd_op);
 	if (ret)

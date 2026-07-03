@@ -846,10 +846,6 @@ __xfs_trans_commit(
 	if (error)
 		goto out_unreserve;
 
-	error = xfs_trans_run_precommits(tp);
-	if (error)
-		goto out_unreserve;
-
 	/*
 	 * If there is nothing to be logged by the transaction,
 	 * then unlock all of the items associated with the

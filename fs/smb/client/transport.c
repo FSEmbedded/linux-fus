@@ -22,7 +22,6 @@
 #include <linux/mempool.h>
 #include <linux/sched/signal.h>
 #include <linux/task_io_accounting_ops.h>
-#include <linux/task_work.h>
 #include "cifspdu.h"
 #include "cifsglob.h"
 #include "cifsproto.h"
@@ -213,16 +212,9 @@ smb_send_kvec(struct TCP_Server_Info *server, struct msghdr *smb_msg,
 		 * send a packet.  In most cases if we fail to send
 		 * after the retries we will kill the socket and
 		 * reconnect which may clear the network problem.
-		 *
-		 * Even if regular signals are masked, EINTR might be
-		 * propagated from sk_stream_wait_memory() to here when
-		 * TIF_NOTIFY_SIGNAL is used for task work. For example,
-		 * certain io_uring completions will use that. Treat
-		 * having EINTR with pending task work the same as EAGAIN
-		 * to avoid unnecessary reconnects.
 		 */
 		rc = sock_sendmsg(ssocket, smb_msg);
-		if (rc == -EAGAIN || unlikely(rc == -EINTR && task_work_pending(current))) {
+		if (rc == -EAGAIN) {
 			retries++;
 			if (retries >= 14 ||
 			    (!server->noblocksnd && (retries > 2))) {
@@ -1026,21 +1018,16 @@ cifs_cancelled_callback(struct mid_q_entry *mid)
 }
 
 /*
- * cifs_pick_channel - pick an eligible channel for network operations
+ * Return a channel (master if none) of @ses that can be used to send
+ * regular requests.
  *
- * @ses: session reference
- *
- * Select an eligible channel (not terminating and not marked as needing
- * reconnect), preferring the least loaded one. If no eligible channel is
- * found, fall back to the primary channel (index 0).
- *
- * Return: TCP_Server_Info pointer for the chosen channel, or NULL if @ses is
- * NULL.
+ * If we are currently binding a new channel (negprot/sess.setup),
+ * return the new incomplete channel.
  */
 struct TCP_Server_Info *cifs_pick_channel(struct cifs_ses *ses)
 {
 	uint index = 0;
-	unsigned int min_in_flight = UINT_MAX;
+	unsigned int min_in_flight = UINT_MAX, max_in_flight = 0;
 	struct TCP_Server_Info *server = NULL;
 	int i, start, cur;
 
@@ -1055,7 +1042,7 @@ struct TCP_Server_Info *cifs_pick_channel(struct cifs_ses *ses)
 		if (!server || server->terminate)
 			continue;
 
-		if (CIFS_CHAN_NEEDS_RECONNECT(ses, cur))
+		if (CIFS_CHAN_NEEDS_RECONNECT(ses, i))
 			continue;
 
 		/*

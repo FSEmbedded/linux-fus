@@ -1453,11 +1453,6 @@ static unsigned long __mmap_region(struct file *file, unsigned long addr,
 		goto free_vma;
 	}
 
-	if (vma_iter_prealloc(&vmi, vma)) {
-		error = -ENOMEM;
-		goto free_vma;
-	}
-
 	if (file) {
 		vma->vm_file = get_file(file);
 		error = mmap_file(file, vma);

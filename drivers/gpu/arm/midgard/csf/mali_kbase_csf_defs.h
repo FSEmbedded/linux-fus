@@ -931,17 +931,6 @@ struct kbase_csf_event {
 };
 
 /**
- * struct kbase_csf_user_io_context - Object containing members to manage the mapping
- *                                     of USER io page for a context.
- *
- * @vma:                Pointer to the VMA corresponding to the virtual mapping
- *                      of the USER io page.
- */
-struct kbase_csf_user_io_context {
-	struct vm_area_struct *vma;
-};
-
-/**
  * struct kbase_csf_user_reg_context - Object containing members to manage the mapping
  *                                     of USER Register page for a context.
  *

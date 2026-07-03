@@ -123,19 +123,17 @@ static void tls_device_queue_ctx_destruction(struct tls_context *ctx)
 /* We assume that the socket is already connected */
 static struct net_device *get_netdev_for_sock(struct sock *sk)
 {
-	struct net_device *dev, *lowest_dev = NULL;
-	struct dst_entry *dst;
+	struct dst_entry *dst = sk_dst_get(sk);
+	struct net_device *netdev = NULL;
 
-	rcu_read_lock();
-	dst = __sk_dst_get(sk);
-	dev = dst ? dst_dev_rcu(dst) : NULL;
-	if (likely(dev)) {
-		lowest_dev = netdev_sk_get_lowest_dev(dev, sk);
-		dev_hold(lowest_dev);
+	if (likely(dst)) {
+		netdev = netdev_sk_get_lowest_dev(dst->dev, sk);
+		dev_hold(netdev);
 	}
-	rcu_read_unlock();
 
-	return lowest_dev;
+	dst_release(dst);
+
+	return netdev;
 }
 
 static void destroy_record(struct tls_record_info *record)
@@ -723,10 +721,8 @@ tls_device_rx_resync_async(struct tls_offload_resync_async *resync_async,
 		/* shouldn't get to wraparound:
 		 * too long in async stage, something bad happened
 		 */
-		if (WARN_ON_ONCE(resync_async->rcd_delta == USHRT_MAX)) {
-			tls_offload_rx_resync_async_request_cancel(resync_async);
+		if (WARN_ON_ONCE(resync_async->rcd_delta == USHRT_MAX))
 			return false;
-		}
 
 		/* asynchronous stage: log all headers seq such that
 		 * req_seq <= seq <= end_seq, and wait for real resync request

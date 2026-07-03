@@ -203,13 +203,6 @@ static int i2c_dw_init_master(struct dw_i2c_dev *dev)
 	/* Disable the adapter */
 	__i2c_dw_disable(dev);
 
-	/*
-	 * Mask SMBus interrupts to block storms from broken
-	 * firmware that leaves IC_SMBUS=1; the handler never
-	 * services them.
-	 */
-	regmap_write(dev->map, DW_IC_SMBUS_INTR_MASK, 0);
-
 	/* Write standard speed timing parameters */
 	regmap_write(dev->map, DW_IC_SS_SCL_HCNT, dev->ss_hcnt);
 	regmap_write(dev->map, DW_IC_SS_SCL_LCNT, dev->ss_lcnt);
@@ -277,34 +270,6 @@ static void i2c_dw_xfer_init(struct dw_i2c_dev *dev)
 	/* Clear and enable interrupts */
 	regmap_read(dev->map, DW_IC_CLR_INTR, &dummy);
 	__i2c_dw_write_intr_mask(dev, DW_IC_INTR_MASTER_MASK);
-}
-
-/*
- * This function waits for the controller to be idle before disabling I2C
- * When the controller is not in the IDLE state, the MST_ACTIVITY bit
- * (IC_STATUS[5]) is set.
- *
- * Values:
- * 0x1 (ACTIVE): Controller not idle
- * 0x0 (IDLE): Controller is idle
- *
- * The function is called after completing the current transfer.
- *
- * Returns:
- * False when the controller is in the IDLE state.
- * True when the controller is in the ACTIVE state.
- */
-static bool i2c_dw_is_controller_active(struct dw_i2c_dev *dev)
-{
-	u32 status;
-
-	regmap_read(dev->map, DW_IC_STATUS, &status);
-	if (!(status & DW_IC_STATUS_MASTER_ACTIVITY))
-		return false;
-
-	return regmap_read_poll_timeout(dev->map, DW_IC_STATUS, status,
-				       !(status & DW_IC_STATUS_MASTER_ACTIVITY),
-				       1100, 20000) != 0;
 }
 
 /*

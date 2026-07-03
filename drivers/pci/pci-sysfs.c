@@ -190,15 +190,9 @@ static ssize_t max_link_speed_show(struct device *dev,
 				   struct device_attribute *attr, char *buf)
 {
 	struct pci_dev *pdev = to_pci_dev(dev);
-	ssize_t ret;
 
-	/* We read PCI_EXP_LNKCAP, so we need the device to be accessible. */
-	pci_config_pm_runtime_get(pdev);
-	ret = sysfs_emit(buf, "%s\n",
-			 pci_speed_string(pcie_get_speed_cap(pdev)));
-	pci_config_pm_runtime_put(pdev);
-
-	return ret;
+	return sysfs_emit(buf, "%s\n",
+			  pci_speed_string(pcie_get_speed_cap(pdev)));
 }
 static DEVICE_ATTR_RO(max_link_speed);
 
@@ -206,14 +200,8 @@ static ssize_t max_link_width_show(struct device *dev,
 				   struct device_attribute *attr, char *buf)
 {
 	struct pci_dev *pdev = to_pci_dev(dev);
-	ssize_t ret;
 
-	/* We read PCI_EXP_LNKCAP, so we need the device to be accessible. */
-	pci_config_pm_runtime_get(pdev);
-	ret = sysfs_emit(buf, "%u\n", pcie_get_width_cap(pdev));
-	pci_config_pm_runtime_put(pdev);
-
-	return ret;
+	return sysfs_emit(buf, "%u\n", pcie_get_width_cap(pdev));
 }
 static DEVICE_ATTR_RO(max_link_width);
 
@@ -225,10 +213,7 @@ static ssize_t current_link_speed_show(struct device *dev,
 	int err;
 	enum pci_bus_speed speed;
 
-	pci_config_pm_runtime_get(pci_dev);
 	err = pcie_capability_read_word(pci_dev, PCI_EXP_LNKSTA, &linkstat);
-	pci_config_pm_runtime_put(pci_dev);
-
 	if (err)
 		return -EINVAL;
 
@@ -245,10 +230,7 @@ static ssize_t current_link_width_show(struct device *dev,
 	u16 linkstat;
 	int err;
 
-	pci_config_pm_runtime_get(pci_dev);
 	err = pcie_capability_read_word(pci_dev, PCI_EXP_LNKSTA, &linkstat);
-	pci_config_pm_runtime_put(pci_dev);
-
 	if (err)
 		return -EINVAL;
 
@@ -264,10 +246,7 @@ static ssize_t secondary_bus_number_show(struct device *dev,
 	u8 sec_bus;
 	int err;
 
-	pci_config_pm_runtime_get(pci_dev);
 	err = pci_read_config_byte(pci_dev, PCI_SECONDARY_BUS, &sec_bus);
-	pci_config_pm_runtime_put(pci_dev);
-
 	if (err)
 		return -EINVAL;
 
@@ -283,10 +262,7 @@ static ssize_t subordinate_bus_number_show(struct device *dev,
 	u8 sub_bus;
 	int err;
 
-	pci_config_pm_runtime_get(pci_dev);
 	err = pci_read_config_byte(pci_dev, PCI_SUBORDINATE_BUS, &sub_bus);
-	pci_config_pm_runtime_put(pci_dev);
-
 	if (err)
 		return -EINVAL;
 

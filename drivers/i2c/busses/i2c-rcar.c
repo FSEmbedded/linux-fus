@@ -132,8 +132,6 @@
 
 #define ID_SLAVE_NACK		BIT(0)
 
-#define ID_SLAVE_NACK		BIT(0)
-
 enum rcar_i2c_type {
 	I2C_RCAR_GEN1,
 	I2C_RCAR_GEN2,

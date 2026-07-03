@@ -279,7 +279,6 @@ static int fts_input_report_b(struct fts_ts_data *ts_data, struct ts_event *even
 		if (EVENT_DOWN(events[i].flag)) {
 			input_mt_slot(input_dev, events[i].id);
 			input_mt_report_slot_state(input_dev, MT_TOOL_FINGER, true);
-			input_report_key(input_dev, BTN_TOUCH, 1);
 			input_report_abs(input_dev, ABS_MT_TOUCH_MAJOR, events[i].area);
 			input_report_abs(input_dev, ABS_MT_WIDTH_MAJOR, events[i].minor);
 
@@ -311,7 +310,6 @@ static int fts_input_report_b(struct fts_ts_data *ts_data, struct ts_event *even
 					dev_dbg(&ts_data->client->dev, "[B]P%d UP!", i);
 				input_mt_slot(input_dev, i);
 				input_mt_report_slot_state(input_dev, MT_TOOL_FINGER, false);
-				input_report_key(input_dev, BTN_TOUCH, 0);
 			}
 		}
 	}

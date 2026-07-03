@@ -372,9 +372,6 @@ v3d_csd_job_run(struct drm_sched_job *sched_job)
 	if (unlikely(job->base.base.s_fence->finished.error))
 		return NULL;
 
-	if (unlikely(job->base.base.s_fence->finished.error))
-		return NULL;
-
 	v3d->csd_job = job;
 
 	v3d_invalidate_caches(v3d);

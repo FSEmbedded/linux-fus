@@ -473,18 +473,11 @@ struct nfs4_client_reclaim {
 	struct xdr_netobj	cr_princhash;
 };
 
-/*
- * REPLAY_ISIZE is sized for an OPEN response with delegation:
- *   4(status) + 8(stateid) + 20(changeinfo) + 4(rflags) +
- *   8(verifier) + 4(deleg. type) + 8(deleg. stateid) +
- *   4(deleg. recall flag) + 20(deleg. space limit) +
- *   ~32(deleg. ace) = 112 bytes
- *
- * Some responses can exceed this. A LOCK denial includes the conflicting
- * lock owner, which can be up to 1024 bytes (NFS4_OPAQUE_LIMIT). Responses
- * larger than REPLAY_ISIZE are not cached in rp_ibuf; only rp_status is
- * saved. Enlarging this constant increases the size of every
- * nfs4_stateowner.
+/* A reasonable value for REPLAY_ISIZE was estimated as follows:  
+ * The OPEN response, typically the largest, requires 
+ *   4(status) + 8(stateid) + 20(changeinfo) + 4(rflags) +  8(verifier) + 
+ *   4(deleg. type) + 8(deleg. stateid) + 4(deleg. recall flag) + 
+ *   20(deleg. space limit) + ~32(deleg. ace) = 112 bytes 
  */
 
 #define NFSD4_REPLAY_ISIZE       112 
@@ -774,7 +767,7 @@ static inline void nfsd4_revoke_states(struct net *net, struct super_block *sb)
 #endif
 
 /* grace period management */
-bool nfsd4_force_end_grace(struct nfsd_net *nn);
+void nfsd4_end_grace(struct nfsd_net *nn);
 
 /* nfs4recover operations */
 extern int nfsd4_client_tracking_init(struct net *net);

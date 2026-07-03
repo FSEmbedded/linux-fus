@@ -9056,8 +9056,8 @@ simple:
 	return p;
 
 idle:
-	if (rf) {
-		new_tasks = sched_balance_newidle(rq, rf);
+	if (!rf)
+		return NULL;
 
 	new_tasks = sched_balance_newidle(rq, rf);
 
@@ -9148,19 +9148,7 @@ static void yield_task_fair(struct rq *rq)
 	 */
 	rq_clock_skip_update(rq);
 
-	/*
-	 * Forfeit the remaining vruntime, only if the entity is eligible. This
-	 * condition is necessary because in core scheduling we prefer to run
-	 * ineligible tasks rather than force idling. If this happens we may
-	 * end up in a loop where the core scheduler picks the yielding task,
-	 * which yields immediately again; without the condition the vruntime
-	 * ends up quickly running away.
-	 */
-	if (entity_eligible(cfs_rq, se)) {
-		se->vruntime = se->deadline;
-		se->deadline += calc_delta_fair(se->slice, se);
-		update_min_vruntime(cfs_rq);
-	}
+	se->deadline += calc_delta_fair(se->slice, se);
 }
 
 static bool yield_to_task_fair(struct rq *rq, struct task_struct *p)
@@ -12226,27 +12214,8 @@ void update_max_interval(void)
 	max_load_balance_interval = HZ*num_online_cpus()/10;
 }
 
-static inline void update_newidle_stats(struct sched_domain *sd, unsigned int success)
+static inline bool update_newidle_cost(struct sched_domain *sd, u64 cost)
 {
-	sd->newidle_call++;
-	sd->newidle_success += success;
-
-	if (sd->newidle_call >= 1024) {
-		sd->newidle_ratio = sd->newidle_success;
-		sd->newidle_call /= 2;
-		sd->newidle_success /= 2;
-	}
-}
-
-static inline bool
-update_newidle_cost(struct sched_domain *sd, u64 cost, unsigned int success)
-{
-	unsigned long next_decay = sd->last_decay_max_lb_cost + HZ;
-	unsigned long now = jiffies;
-
-	if (cost)
-		update_newidle_stats(sd, success);
-
 	if (cost > sd->max_newidle_lb_cost) {
 		/*
 		 * Track max cost of a domain to make sure to not delay the
@@ -12267,7 +12236,8 @@ update_newidle_cost(struct sched_domain *sd, u64 cost, unsigned int success)
 		 * shorter.
 		 */
 		sd->max_newidle_lb_cost = (sd->max_newidle_lb_cost * 253) / 256;
-		sd->last_decay_max_lb_cost = now;
+		sd->last_decay_max_lb_cost = jiffies;
+
 		return true;
 	}
 
@@ -12299,7 +12269,7 @@ static void sched_balance_domains(struct rq *rq, enum cpu_idle_type idle)
 		 * Decay the newidle max times here because this is a regular
 		 * visit to all the domains.
 		 */
-		need_decay = update_newidle_cost(sd, 0, 0);
+		need_decay = update_newidle_cost(sd, 0);
 		max_cost += sd->max_newidle_lb_cost;
 
 		/*
@@ -12928,10 +12898,6 @@ static int sched_balance_newidle(struct rq *this_rq, struct rq_flags *rf)
 
 	rcu_read_lock();
 	sd = rcu_dereference_check_sched_domain(this_rq->sd);
-	if (!sd) {
-		rcu_read_unlock();
-		goto out;
-	}
 
 	if (!get_rd_overloaded(this_rq->rd) ||
 	    (sd && this_rq->avg_idle < sd->max_newidle_lb_cost)) {
@@ -12939,6 +12905,7 @@ static int sched_balance_newidle(struct rq *this_rq, struct rq_flags *rf)
 		if (sd)
 			update_next_balance(sd, &next_balance);
 		rcu_read_unlock();
+
 		goto out;
 	}
 	rcu_read_unlock();
@@ -12958,22 +12925,6 @@ static int sched_balance_newidle(struct rq *this_rq, struct rq_flags *rf)
 			break;
 
 		if (sd->flags & SD_BALANCE_NEWIDLE) {
-			unsigned int weight = 1;
-
-			if (sched_feat(NI_RANDOM)) {
-				/*
-				 * Throw a 1k sided dice; and only run
-				 * newidle_balance according to the success
-				 * rate.
-				 */
-				u32 d1k = sched_rng() % 1024;
-				weight = 1 + sd->newidle_ratio;
-				if (d1k > weight) {
-					update_newidle_stats(sd, 0);
-					continue;
-				}
-				weight = (1024 + weight/2) / weight;
-			}
 
 			pulled_task = sched_balance_rq(this_cpu, this_rq,
 						   sd, CPU_NEWLY_IDLE,

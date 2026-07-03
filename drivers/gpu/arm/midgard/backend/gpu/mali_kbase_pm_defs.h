@@ -496,7 +496,6 @@ struct kbase_pm_backend_data {
 	enum kbase_shader_core_state shaders_state;
 	u64 shaders_avail;
 	bool mcu_desired;
-	bool mcu_poweron_required;
 	bool policy_change_clamp_state_to_off;
 	bool waiting_for_mmu_fault_handling;
 	unsigned int csf_pm_sched_flags;

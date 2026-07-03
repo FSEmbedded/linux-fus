@@ -81,10 +81,6 @@ static const struct file_operations dbfs_ops = {
 	.read		= dbfs_read,
 };
 
-static const struct file_operations dbfs_ops = {
-	.read		= dbfs_read,
-};
-
 void hypfs_dbfs_create_file(struct hypfs_dbfs_file *df)
 {
 	const struct file_operations *fops = &dbfs_ops;

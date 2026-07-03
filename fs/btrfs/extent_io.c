@@ -355,13 +355,6 @@ again:
 	/* step one, find a bunch of delalloc bytes starting at start */
 	delalloc_start = *start;
 	delalloc_end = 0;
-
-	/*
-	 * If @max_bytes is smaller than a block, btrfs_find_delalloc_range() can
-	 * return early without handling any dirty ranges.
-	 */
-	ASSERT(max_bytes >= fs_info->sectorsize);
-
 	found = btrfs_find_delalloc_range(tree, &delalloc_start, &delalloc_end,
 					  max_bytes, &cached_state);
 	if (!found || delalloc_end <= *start || delalloc_start > orig_end) {
@@ -398,7 +391,7 @@ again:
 		free_extent_state(cached_state);
 		cached_state = NULL;
 		if (!loops) {
-			max_bytes = fs_info->sectorsize;
+			max_bytes = PAGE_SIZE;
 			loops = 1;
 			goto again;
 		} else {
@@ -2042,7 +2035,8 @@ static int submit_eb_page(struct folio *folio, struct btrfs_eb_write_context *ct
 	return 1;
 }
 
-int btree_writepages(struct address_space *mapping, struct writeback_control *wbc)
+int btree_write_cache_pages(struct address_space *mapping,
+				   struct writeback_control *wbc)
 {
 	struct btrfs_eb_write_context ctx = { .wbc = wbc };
 	struct btrfs_fs_info *fs_info = inode_to_fs_info(mapping->host);

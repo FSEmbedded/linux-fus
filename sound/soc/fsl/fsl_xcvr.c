@@ -120,17 +120,10 @@ static int fsl_xcvr_arc_mode_put(struct snd_kcontrol *kcontrol,
 	struct fsl_xcvr *xcvr = snd_soc_dai_get_drvdata(dai);
 	struct soc_enum *e = (struct soc_enum *)kcontrol->private_value;
 	unsigned int *item = ucontrol->value.enumerated.item;
-	int val = snd_soc_enum_item_to_val(e, item[0]);
-	int ret;
 
-	if (val < 0 || val > 1)
-		return -EINVAL;
+	xcvr->arc_mode = snd_soc_enum_item_to_val(e, item[0]);
 
-	ret = (xcvr->arc_mode != val);
-
-	xcvr->arc_mode = val;
-
-	return ret;
+	return 0;
 }
 
 static int fsl_xcvr_arc_mode_get(struct snd_kcontrol *kcontrol,
@@ -230,17 +223,10 @@ static int fsl_xcvr_mode_put(struct snd_kcontrol *kcontrol,
 	struct fsl_xcvr *xcvr = snd_soc_dai_get_drvdata(dai);
 	struct soc_enum *e = (struct soc_enum *)kcontrol->private_value;
 	unsigned int *item = ucontrol->value.enumerated.item;
-	int val = snd_soc_enum_item_to_val(e, item[0]);
 	struct snd_soc_card *card = dai->component->card;
 	struct snd_soc_pcm_runtime *rtd;
-	int ret;
 
-	if (val < FSL_XCVR_MODE_SPDIF || val > FSL_XCVR_MODE_EARC)
-		return -EINVAL;
-
-	ret = (xcvr->mode != val);
-
-	xcvr->mode = val;
+	xcvr->mode = snd_soc_enum_item_to_val(e, item[0]);
 
 	fsl_xcvr_activate_ctl(dai, fsl_xcvr_arc_mode_kctl.name,
 			      (xcvr->mode == FSL_XCVR_MODE_ARC));
@@ -250,7 +236,7 @@ static int fsl_xcvr_mode_put(struct snd_kcontrol *kcontrol,
 	rtd = snd_soc_get_pcm_runtime(card, card->dai_link);
 	rtd->pcm->streams[SNDRV_PCM_STREAM_PLAYBACK].substream_count =
 		(xcvr->mode == FSL_XCVR_MODE_SPDIF ? 1 : 0);
-	return ret;
+	return 0;
 }
 
 static int fsl_xcvr_mode_get(struct snd_kcontrol *kcontrol,
@@ -1414,34 +1400,6 @@ static void edid_work(struct work_struct *work)
 	}
 }
 
-static void reset_rx_work(struct work_struct *work)
-{
-	struct fsl_xcvr *xcvr = container_of(work, struct fsl_xcvr, work_rst);
-	struct device *dev = &xcvr->pdev->dev;
-	unsigned long lock_flags;
-	u32 ext_ctrl;
-
-	dev_dbg(dev, "reset rx path\n");
-	spin_lock_irqsave(&xcvr->lock, lock_flags);
-	regmap_read(xcvr->regmap, FSL_XCVR_EXT_CTRL, &ext_ctrl);
-
-	if (!(ext_ctrl & FSL_XCVR_EXT_CTRL_DMA_RD_DIS)) {
-		regmap_update_bits(xcvr->regmap, FSL_XCVR_EXT_CTRL,
-				   FSL_XCVR_EXT_CTRL_DMA_RD_DIS,
-				   FSL_XCVR_EXT_CTRL_DMA_RD_DIS);
-		regmap_update_bits(xcvr->regmap, FSL_XCVR_EXT_CTRL,
-				   FSL_XCVR_EXT_CTRL_RX_DPTH_RESET,
-				   FSL_XCVR_EXT_CTRL_RX_DPTH_RESET);
-		regmap_update_bits(xcvr->regmap, FSL_XCVR_EXT_CTRL,
-				   FSL_XCVR_EXT_CTRL_DMA_RD_DIS,
-				   0);
-		regmap_update_bits(xcvr->regmap, FSL_XCVR_EXT_CTRL,
-				   FSL_XCVR_EXT_CTRL_RX_DPTH_RESET,
-				   0);
-	}
-	spin_unlock_irqrestore(&xcvr->lock, lock_flags);
-}
-
 static irqreturn_t irq0_isr(int irq, void *devid)
 {
 	struct fsl_xcvr *xcvr = (struct fsl_xcvr *)devid;
@@ -1481,7 +1439,7 @@ static irqreturn_t irq0_isr(int irq, void *devid)
 						bitrev32(val);
 				}
 				/* clear CS control register */
-				writel_relaxed(0, reg_ctrl);
+				memset_io(reg_ctrl, 0, sizeof(val));
 			}
 		} else {
 			regmap_read(xcvr->regmap, FSL_XCVR_RX_CS_DATA_0,

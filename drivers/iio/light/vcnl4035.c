@@ -108,16 +108,14 @@ static irqreturn_t vcnl4035_trigger_consumer_handler(int irq, void *p)
 	u8 buffer[ALIGN(sizeof(u16), sizeof(s64)) + sizeof(s64)]  __aligned(8) = { };
 	int ret;
 
-	ret = regmap_read(data->regmap, VCNL4035_ALS_DATA, &val);
+	ret = regmap_read(data->regmap, VCNL4035_ALS_DATA, (int *)buffer);
 	if (ret < 0) {
 		dev_err(&data->client->dev,
 			"Trigger consumer can't read from sensor.\n");
 		goto fail_read;
 	}
-
-	buffer.als_data = val;
-	iio_push_to_buffers_with_timestamp(indio_dev, &buffer,
-					   iio_get_time_ns(indio_dev));
+	iio_push_to_buffers_with_timestamp(indio_dev, buffer,
+					iio_get_time_ns(indio_dev));
 
 fail_read:
 	iio_trigger_notify_done(indio_dev->trig);
@@ -380,7 +378,7 @@ static const struct iio_chan_spec vcnl4035_channels[] = {
 			.sign = 'u',
 			.realbits = 16,
 			.storagebits = 16,
-			.endianness = IIO_CPU,
+			.endianness = IIO_LE,
 		},
 	},
 	{
@@ -394,7 +392,7 @@ static const struct iio_chan_spec vcnl4035_channels[] = {
 			.sign = 'u',
 			.realbits = 16,
 			.storagebits = 16,
-			.endianness = IIO_CPU,
+			.endianness = IIO_LE,
 		},
 	},
 };

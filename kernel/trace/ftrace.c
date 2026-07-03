@@ -1969,8 +1969,7 @@ static void ftrace_hash_rec_enable_modify(struct ftrace_ops *ops)
  */
 static int __ftrace_hash_update_ipmodify(struct ftrace_ops *ops,
 					 struct ftrace_hash *old_hash,
-					 struct ftrace_hash *new_hash,
-					 bool update_target)
+					 struct ftrace_hash *new_hash)
 {
 	struct ftrace_page *pg;
 	struct dyn_ftrace *rec, *end = NULL;
@@ -2005,13 +2004,10 @@ static int __ftrace_hash_update_ipmodify(struct ftrace_ops *ops,
 		if (rec->flags & FTRACE_FL_DISABLED)
 			continue;
 
-		/*
-		 * Unless we are updating the target of a direct function,
-		 * we only need to update differences of filter_hash
-		 */
+		/* We need to update only differences of filter_hash */
 		in_old = !!ftrace_lookup_ip(old_hash, rec->ip);
 		in_new = !!ftrace_lookup_ip(new_hash, rec->ip);
-		if (!update_target && (in_old == in_new))
+		if (in_old == in_new)
 			continue;
 
 		if (in_new) {
@@ -2022,16 +2018,7 @@ static int __ftrace_hash_update_ipmodify(struct ftrace_ops *ops,
 				if (is_ipmodify)
 					goto rollback;
 
-				/*
-				 * If this is called by __modify_ftrace_direct()
-				 * then it is only changing where the direct
-				 * pointer is jumping to, and the record already
-				 * points to a direct trampoline. If it isn't,
-				 * then it is a bug to update ipmodify on a direct
-				 * caller.
-				 */
-				FTRACE_WARN_ON(!update_target &&
-					       (rec->flags & FTRACE_FL_DIRECT));
+				FTRACE_WARN_ON(rec->flags & FTRACE_FL_DIRECT);
 
 				/*
 				 * Another ops with IPMODIFY is already
@@ -2088,7 +2075,7 @@ static int ftrace_hash_ipmodify_enable(struct ftrace_ops *ops)
 	if (ftrace_hash_empty(hash))
 		hash = NULL;
 
-	return __ftrace_hash_update_ipmodify(ops, EMPTY_HASH, hash, false);
+	return __ftrace_hash_update_ipmodify(ops, EMPTY_HASH, hash);
 }
 
 /* Disabling always succeeds */
@@ -2099,7 +2086,7 @@ static void ftrace_hash_ipmodify_disable(struct ftrace_ops *ops)
 	if (ftrace_hash_empty(hash))
 		hash = NULL;
 
-	__ftrace_hash_update_ipmodify(ops, hash, EMPTY_HASH, false);
+	__ftrace_hash_update_ipmodify(ops, hash, EMPTY_HASH);
 }
 
 static int ftrace_hash_ipmodify_update(struct ftrace_ops *ops,
@@ -2113,7 +2100,7 @@ static int ftrace_hash_ipmodify_update(struct ftrace_ops *ops,
 	if (ftrace_hash_empty(new_hash))
 		new_hash = NULL;
 
-	return __ftrace_hash_update_ipmodify(ops, old_hash, new_hash, false);
+	return __ftrace_hash_update_ipmodify(ops, old_hash, new_hash);
 }
 
 static void print_ip_ins(const char *fmt, const unsigned char *p)
@@ -6002,8 +5989,6 @@ int register_ftrace_direct(struct ftrace_ops *ops, unsigned long addr)
 	ops->direct_call = addr;
 
 	err = register_ftrace_function_nolock(ops);
-	if (err)
-		reset_direct(ops, addr);
 
  out_unlock:
 	mutex_unlock(&direct_mutex);
@@ -6036,6 +6021,7 @@ EXPORT_SYMBOL_GPL(register_ftrace_direct);
 int unregister_ftrace_direct(struct ftrace_ops *ops, unsigned long addr,
 			     bool free_filters)
 {
+	struct ftrace_hash *hash = ops->func_hash->filter_hash;
 	int err;
 
 	if (check_direct_multi(ops))
@@ -6045,8 +6031,12 @@ int unregister_ftrace_direct(struct ftrace_ops *ops, unsigned long addr,
 
 	mutex_lock(&direct_mutex);
 	err = unregister_ftrace_function(ops);
-	reset_direct(ops, addr);
+	remove_direct_functions_hash(hash, addr);
 	mutex_unlock(&direct_mutex);
+
+	/* cleanup for possible another register call */
+	ops->func = NULL;
+	ops->trampoline = 0;
 
 	if (free_filters)
 		ftrace_free_filter(ops);
@@ -6057,7 +6047,7 @@ EXPORT_SYMBOL_GPL(unregister_ftrace_direct);
 static int
 __modify_ftrace_direct(struct ftrace_ops *ops, unsigned long addr)
 {
-	struct ftrace_hash *hash = ops->func_hash->filter_hash;
+	struct ftrace_hash *hash;
 	struct ftrace_func_entry *entry, *iter;
 	static struct ftrace_ops tmp_ops = {
 		.func		= ftrace_stub,
@@ -6078,20 +6068,12 @@ __modify_ftrace_direct(struct ftrace_ops *ops, unsigned long addr)
 		return err;
 
 	/*
-	 * Call __ftrace_hash_update_ipmodify() here, so that we can call
-	 * ops->ops_func for the ops. This is needed because the above
-	 * register_ftrace_function_nolock() worked on tmp_ops.
-	 */
-	err = __ftrace_hash_update_ipmodify(ops, hash, hash, true);
-	if (err)
-		goto out;
-
-	/*
 	 * Now the ftrace_ops_list_func() is called to do the direct callers.
 	 * We can safely change the direct functions attached to each entry.
 	 */
 	mutex_lock(&ftrace_lock);
 
+	hash = ops->func_hash->filter_hash;
 	size = 1 << hash->size_bits;
 	for (i = 0; i < size; i++) {
 		hlist_for_each_entry(iter, &hash->buckets[i], hlist) {
@@ -6106,7 +6088,6 @@ __modify_ftrace_direct(struct ftrace_ops *ops, unsigned long addr)
 
 	mutex_unlock(&ftrace_lock);
 
-out:
 	/* Removing the tmp_ops will add the updated direct callers to the functions */
 	unregister_ftrace_function(&tmp_ops);
 
@@ -7415,8 +7396,6 @@ void ftrace_module_enable(struct module *mod)
 		if (!within_module(rec->ip, mod))
 			break;
 
-		cond_resched();
-
 		/* Weak functions should still be ignored */
 		if (!test_for_valid_rec(rec)) {
 			/* Clear all other flags. Should not be enabled anyway */
@@ -7555,8 +7534,7 @@ ftrace_func_address_lookup(struct ftrace_mod_map *mod_map,
 
 int
 ftrace_mod_address_lookup(unsigned long addr, unsigned long *size,
-			  unsigned long *off, char **modname,
-			  const unsigned char **modbuildid, char *sym)
+		   unsigned long *off, char **modname, char *sym)
 {
 	struct ftrace_mod_map *mod_map;
 	int ret = 0;
@@ -7568,8 +7546,6 @@ ftrace_mod_address_lookup(unsigned long addr, unsigned long *size,
 		if (ret) {
 			if (modname)
 				*modname = mod_map->mod->name;
-			if (modbuildid)
-				*modbuildid = module_buildid(mod_map->mod);
 			break;
 		}
 	}

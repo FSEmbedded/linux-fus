@@ -128,8 +128,8 @@ static int __init ip6table_mangle_init(void)
 
 static void __exit ip6table_mangle_fini(void)
 {
-	xt_unregister_template(&packet_mangler);
 	unregister_pernet_subsys(&ip6table_mangle_net_ops);
+	xt_unregister_template(&packet_mangler);
 	kfree(mangle_ops);
 }
 

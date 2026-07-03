@@ -274,7 +274,7 @@ void hclge_mac_stop_phy(struct hclge_dev *hdev)
 	phy_stop(phydev);
 }
 
-int hclge_read_phy_reg(struct hclge_dev *hdev, u16 reg_addr, u16 *val)
+u16 hclge_read_phy_reg(struct hclge_dev *hdev, u16 reg_addr)
 {
 	struct hclge_phy_reg_cmd *req;
 	struct hclge_desc desc;
@@ -286,14 +286,11 @@ int hclge_read_phy_reg(struct hclge_dev *hdev, u16 reg_addr, u16 *val)
 	req->reg_addr = cpu_to_le16(reg_addr);
 
 	ret = hclge_cmd_send(&hdev->hw, &desc, 1);
-	if (ret) {
+	if (ret)
 		dev_err(&hdev->pdev->dev,
 			"failed to read phy reg, ret = %d.\n", ret);
-		return ret;
-	}
 
-	*val = le16_to_cpu(req->reg_val);
-	return 0;
+	return le16_to_cpu(req->reg_val);
 }
 
 int hclge_write_phy_reg(struct hclge_dev *hdev, u16 reg_addr, u16 val)

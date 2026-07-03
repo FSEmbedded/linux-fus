@@ -144,12 +144,6 @@ static const char * const imx335_supply_name[] = {
 	"dvdd", /* Digital Core (1.2V) supply */
 };
 
-static const char * const imx335_supply_name[] = {
-	"avdd", /* Analog (2.9V) supply */
-	"ovdd", /* Digital I/O (1.8V) supply */
-	"dvdd", /* Digital Core (1.2V) supply */
-};
-
 /**
  * struct imx335_mode - imx335 sensor mode structure
  * @width: Frame width

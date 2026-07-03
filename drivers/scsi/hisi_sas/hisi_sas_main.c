@@ -7,16 +7,6 @@
 #include "hisi_sas.h"
 #define DRV_NAME "hisi_sas"
 
-#define LINK_RATE_BIT_MASK 2
-#define FIS_BUF_SIZE 20
-#define WAIT_CMD_COMPLETE_DELAY 100
-#define WAIT_CMD_COMPLETE_TMROUT 5000
-#define DELAY_FOR_LINK_READY 2000
-#define BLK_CNT_OPTIMIZE_MARK 64
-#define HZ_TO_MHZ 1000000
-#define DELAY_FOR_SOFTRESET_MAX 1000
-#define DELAY_FOR_SOFTRESET_MIN 900
-
 #define DEV_IS_GONE(dev) \
 	((!dev) || (dev->dev_type == SAS_PHY_UNUSED))
 
@@ -137,7 +127,7 @@ u8 hisi_sas_get_prog_phy_linkrate_mask(enum sas_linkrate max)
 
 	max -= SAS_LINK_RATE_1_5_GBPS;
 	for (i = 0; i <= max; i++)
-		rate |= 1 << (i * LINK_RATE_BIT_MASK);
+		rate |= 1 << (i * 2);
 	return rate;
 }
 EXPORT_SYMBOL_GPL(hisi_sas_get_prog_phy_linkrate_mask);
@@ -887,7 +877,7 @@ int hisi_sas_device_configure(struct scsi_device *sdev,
 	if (ret)
 		return ret;
 	if (!dev_is_sata(dev))
-		sas_change_queue_depth(sdev, HISI_SAS_BLK_QUEUE_DEPTH);
+		sas_change_queue_depth(sdev, 64);
 
 	return 0;
 }
@@ -1249,7 +1239,7 @@ static int hisi_sas_phy_set_linkrate(struct hisi_hba *hisi_hba, int phy_no,
 	sas_phy->phy->minimum_linkrate = min;
 
 	hisi_sas_phy_enable(hisi_hba, phy_no, 0);
-	msleep(HISI_SAS_DELAY_FOR_PHY_DISABLE);
+	msleep(100);
 	hisi_hba->hw->phy_set_linkrate(hisi_hba, phy_no, &_r);
 	hisi_sas_phy_enable(hisi_hba, phy_no, 1);
 
@@ -1279,7 +1269,7 @@ static int hisi_sas_control_phy(struct asd_sas_phy *sas_phy, enum phy_func func,
 
 	case PHY_FUNC_LINK_RESET:
 		hisi_sas_phy_enable(hisi_hba, phy_no, 0);
-		msleep(HISI_SAS_DELAY_FOR_PHY_DISABLE);
+		msleep(100);
 		hisi_sas_phy_enable(hisi_hba, phy_no, 1);
 		break;
 
@@ -1334,7 +1324,7 @@ static void hisi_sas_fill_ata_reset_cmd(struct ata_device *dev,
 
 static int hisi_sas_softreset_ata_disk(struct domain_device *device)
 {
-	u8 fis[FIS_BUF_SIZE] = {0};
+	u8 fis[20] = {0};
 	struct ata_port *ap = device->sata_dev.ap;
 	struct ata_link *link;
 	int rc = TMF_RESP_FUNC_FAILED;
@@ -1351,7 +1341,6 @@ static int hisi_sas_softreset_ata_disk(struct domain_device *device)
 	}
 
 	if (rc == TMF_RESP_FUNC_COMPLETE) {
-		usleep_range(DELAY_FOR_SOFTRESET_MIN, DELAY_FOR_SOFTRESET_MAX);
 		ata_for_each_link(link, ap, EDGE) {
 			int pmp = sata_srst_pmp(link);
 
@@ -1470,7 +1459,7 @@ static void hisi_sas_send_ata_reset_each_phy(struct hisi_hba *hisi_hba,
 	struct device *dev = hisi_hba->dev;
 	int rc = TMF_RESP_FUNC_FAILED;
 	struct ata_link *link;
-	u8 fis[FIS_BUF_SIZE] = {0};
+	u8 fis[20] = {0};
 	int i;
 
 	for (i = 0; i < hisi_hba->n_phy; i++) {
@@ -1537,9 +1526,7 @@ void hisi_sas_controller_reset_prepare(struct hisi_hba *hisi_hba)
 	hisi_hba->phy_state = hisi_hba->hw->get_phys_state(hisi_hba);
 
 	scsi_block_requests(shost);
-	hisi_hba->hw->wait_cmds_complete_timeout(hisi_hba,
-						 WAIT_CMD_COMPLETE_DELAY,
-						 WAIT_CMD_COMPLETE_TMROUT);
+	hisi_hba->hw->wait_cmds_complete_timeout(hisi_hba, 100, 5000);
 
 	/*
 	 * hisi_hba->timer is only used for v1/v2 hw, and check hw->sht
@@ -1840,7 +1827,7 @@ static int hisi_sas_debug_I_T_nexus_reset(struct domain_device *device)
 		rc = ata_wait_after_reset(link, jiffies + HISI_SAS_WAIT_PHYUP_TIMEOUT,
 					  smp_ata_check_ready_type);
 	} else {
-		msleep(DELAY_FOR_LINK_READY);
+		msleep(2000);
 	}
 
 	return rc;
@@ -2255,14 +2242,12 @@ int hisi_sas_alloc(struct hisi_hba *hisi_hba)
 		goto err_out;
 
 	/* roundup to avoid overly large block size */
-	max_command_entries_ru = roundup(max_command_entries,
-					 BLK_CNT_OPTIMIZE_MARK);
+	max_command_entries_ru = roundup(max_command_entries, 64);
 	if (hisi_hba->prot_mask & HISI_SAS_DIX_PROT_MASK)
 		sz_slot_buf_ru = sizeof(struct hisi_sas_slot_dif_buf_table);
 	else
 		sz_slot_buf_ru = sizeof(struct hisi_sas_slot_buf_table);
-
-	sz_slot_buf_ru = roundup(sz_slot_buf_ru, BLK_CNT_OPTIMIZE_MARK);
+	sz_slot_buf_ru = roundup(sz_slot_buf_ru, 64);
 	s = max(lcm(max_command_entries_ru, sz_slot_buf_ru), PAGE_SIZE);
 	blk_cnt = (max_command_entries_ru * sz_slot_buf_ru) / s;
 	slots_per_blk = s / sz_slot_buf_ru;
@@ -2427,8 +2412,7 @@ int hisi_sas_get_fw_info(struct hisi_hba *hisi_hba)
 	if (IS_ERR(refclk))
 		dev_dbg(dev, "no ref clk property\n");
 	else
-		hisi_hba->refclk_frequency_mhz = clk_get_rate(refclk) /
-						 HZ_TO_MHZ;
+		hisi_hba->refclk_frequency_mhz = clk_get_rate(refclk) / 1000000;
 
 	if (device_property_read_u32(dev, "phy-count", &hisi_hba->n_phy)) {
 		dev_err(dev, "could not get property phy-count\n");
@@ -2544,8 +2528,8 @@ int hisi_sas_probe(struct platform_device *pdev,
 	shost->transportt = hisi_sas_stt;
 	shost->max_id = HISI_SAS_MAX_DEVICES;
 	shost->max_lun = ~0;
-	shost->max_channel = 0;
-	shost->max_cmd_len = HISI_SAS_MAX_CDB_LEN;
+	shost->max_channel = 1;
+	shost->max_cmd_len = 16;
 	if (hisi_hba->hw->slot_index_alloc) {
 		shost->can_queue = HISI_SAS_MAX_COMMANDS;
 		shost->cmd_per_lun = HISI_SAS_MAX_COMMANDS;

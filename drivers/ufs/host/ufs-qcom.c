@@ -370,10 +370,6 @@ static int ufs_qcom_power_up_sequence(struct ufs_hba *hba)
 		phy_power_off(phy);
 
 
-	if (phy->power_count)
-		phy_power_off(phy);
-
-
 	/* phy initialization - calibrate the phy */
 	ret = phy_init(phy);
 	if (ret) {

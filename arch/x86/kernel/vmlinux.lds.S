@@ -485,9 +485,6 @@ SECTIONS
 	ASSERT(SIZEOF(.rela.dyn) == 0, "Unexpected run-time relocations (.rela) detected!")
 }
 
-/* needed for Clang - see arch/x86/entry/entry.S */
-PROVIDE(__ref_stack_chk_guard = __stack_chk_guard);
-
 /*
  * COMPILE_TEST kernels can be large - CONFIG_KASAN, for example, can cause
  * this.  Let's assume that nobody will be running a COMPILE_TEST kernel and

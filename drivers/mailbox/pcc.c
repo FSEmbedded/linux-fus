@@ -309,6 +309,8 @@ static irqreturn_t pcc_mbox_irq(int irq, void *p)
 {
 	struct pcc_chan_info *pchan;
 	struct mbox_chan *chan = p;
+	u64 val;
+	int ret;
 
 	pchan = chan->con_priv;
 
@@ -661,8 +663,7 @@ static int pcc_parse_subspace_db_reg(struct pcc_chan_info *pchan,
 
 		ret = pcc_chan_reg_init(&pchan->error,
 					&pcct_ext->error_status_register,
-					~pcct_ext->error_status_mask, 0,
-					pcct_ext->error_status_mask,
+					0, 0, pcct_ext->error_status_mask,
 					"Error Status");
 	}
 	return ret;

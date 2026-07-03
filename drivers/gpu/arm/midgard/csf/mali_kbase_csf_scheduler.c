@@ -103,8 +103,7 @@ scheduler_get_protm_enter_async_group(struct kbase_device *const kbdev,
 				      struct kbase_queue_group *const group);
 static struct kbase_queue_group *get_tock_top_group(struct kbase_csf_scheduler *const scheduler);
 static void scheduler_enable_tick_timer_nolock(struct kbase_device *kbdev);
-static int suspend_active_queue_groups(struct kbase_device *kbdev, unsigned long *slot_mask,
-				       bool reset);
+static int suspend_active_queue_groups(struct kbase_device *kbdev, unsigned long *slot_mask);
 static int suspend_active_groups_on_powerdown(struct kbase_device *kbdev, bool system_suspend);
 static void schedule_in_cycle(struct kbase_queue_group *group, bool force);
 static bool queue_group_scheduled_locked(struct kbase_queue_group *group);
@@ -120,11 +119,6 @@ bool is_gpu_level_suspend_supported(struct kbase_device *const kbdev)
 	if ((kbdev->gpu_props.gpu_id.arch_id >= GPU_ID_ARCH_MAKE(14, 8, 0)) &&
 	    static_branch_unlikely(&gpu_level_suspend_static_key))
 		return true;
-	return false;
-}
-
-bool is_gpu_level_suspend_supported(struct kbase_device *const kbdev)
-{
 	return false;
 }
 
@@ -6062,15 +6056,6 @@ redo_local_tock:
 	}
 
 	evict_lru_or_blocked_csg(kbdev);
-
-#ifdef KBASE_PM_RUNTIME
-	if (atomic_read(&scheduler->non_idle_offslot_grps))
-		set_bit(KBASE_GPU_NON_IDLE_OFF_SLOT_GROUPS_AVAILABLE,
-			&kbdev->pm.backend.gpu_sleep_allowed);
-	else
-		clear_bit(KBASE_GPU_NON_IDLE_OFF_SLOT_GROUPS_AVAILABLE,
-			  &kbdev->pm.backend.gpu_sleep_allowed);
-#endif /* KBASE_PM_RUNTIME */
 }
 
 /**
@@ -6361,6 +6346,7 @@ static int suspend_active_queue_groups(struct kbase_device *kbdev, unsigned long
 			suspend_queue_group(group);
 			set_bit(slot_num, slot_mask);
 		}
+	}
 
 	return wait_csg_slots_suspend(kbdev, slot_mask);
 }
@@ -6374,7 +6360,7 @@ static int suspend_active_queue_groups_on_reset(struct kbase_device *kbdev)
 
 	mutex_lock(&scheduler->lock);
 
-	ret = suspend_active_queue_groups(kbdev, slot_mask, true);
+	ret = suspend_active_queue_groups(kbdev, slot_mask);
 
 	if (ret) {
 		dev_warn(

@@ -102,7 +102,7 @@ static int wcd_gpio_probe(struct platform_device *pdev)
 	chip->base = -1;
 	chip->ngpio = WCD934X_NPINS;
 	chip->label = dev_name(dev);
-	chip->can_sleep = true;
+	chip->can_sleep = false;
 
 	return devm_gpiochip_add_data(dev, chip, data);
 }

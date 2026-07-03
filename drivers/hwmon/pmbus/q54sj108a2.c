@@ -78,8 +78,7 @@ static ssize_t q54sj108a2_debugfs_read(struct file *file, char __user *buf,
 	int idx = *idxp;
 	struct q54sj108a2_data *psu = to_psu(idxp, idx);
 	char data[I2C_SMBUS_BLOCK_MAX + 2] = { 0 };
-	char data_char[I2C_SMBUS_BLOCK_MAX * 2 + 2] = { 0 };
-	char *out = data;
+	char data_char[I2C_SMBUS_BLOCK_MAX + 2] = { 0 };
 	char *res;
 
 	switch (idx) {
@@ -150,27 +149,27 @@ static ssize_t q54sj108a2_debugfs_read(struct file *file, char __user *buf,
 		if (rc < 0)
 			return rc;
 
-		res = bin2hex(data_char, data, rc);
-		rc = res - data_char;
-		out = data_char;
+		res = bin2hex(data, data_char, 32);
+		rc = res - data;
+
 		break;
 	case Q54SJ108A2_DEBUGFS_FLASH_KEY:
 		rc = i2c_smbus_read_block_data(psu->client, PMBUS_FLASH_KEY_WRITE, data);
 		if (rc < 0)
 			return rc;
 
-		res = bin2hex(data_char, data, rc);
-		rc = res - data_char;
-		out = data_char;
+		res = bin2hex(data, data_char, 4);
+		rc = res - data;
+
 		break;
 	default:
 		return -EINVAL;
 	}
 
-	out[rc] = '\n';
+	data[rc] = '\n';
 	rc += 2;
 
-	return simple_read_from_buffer(buf, count, ppos, out, rc);
+	return simple_read_from_buffer(buf, count, ppos, data, rc);
 }
 
 static ssize_t q54sj108a2_debugfs_write(struct file *file, const char __user *buf,

@@ -10,7 +10,6 @@
  *
  * On sparc, thread_info data is static and TI_XXX offsets are computed by hand.
  */
-#define COMPILE_OFFSETS
 
 #include <linux/sched.h>
 #include <linux/mm_types.h>

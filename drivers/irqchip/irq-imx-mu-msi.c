@@ -295,8 +295,9 @@ static const struct imx_mu_dcfg imx_mu_cfg_imx8ulp = {
 		  },
 };
 
-static int imx_mu_of_init(struct device_node *dn, struct device_node *parent,
-			  const struct imx_mu_dcfg *cfg)
+static int __init imx_mu_of_init(struct device_node *dn,
+				 struct device_node *parent,
+				 const struct imx_mu_dcfg *cfg)
 {
 	struct platform_device *pdev = of_find_device_by_node(dn);
 	struct device_link *pd_link_a;
@@ -414,17 +415,20 @@ static const struct dev_pm_ops imx_mu_pm_ops = {
 			   imx_mu_runtime_resume, NULL)
 };
 
-static int imx_mu_imx7ulp_of_init(struct device_node *dn, struct device_node *parent)
+static int __init imx_mu_imx7ulp_of_init(struct device_node *dn,
+					 struct device_node *parent)
 {
 	return imx_mu_of_init(dn, parent, &imx_mu_cfg_imx7ulp);
 }
 
-static int imx_mu_imx6sx_of_init(struct device_node *dn, struct device_node *parent)
+static int __init imx_mu_imx6sx_of_init(struct device_node *dn,
+					struct device_node *parent)
 {
 	return imx_mu_of_init(dn, parent, &imx_mu_cfg_imx6sx);
 }
 
-static int imx_mu_imx8ulp_of_init(struct device_node *dn, struct device_node *parent)
+static int __init imx_mu_imx8ulp_of_init(struct device_node *dn,
+					 struct device_node *parent)
 {
 	return imx_mu_of_init(dn, parent, &imx_mu_cfg_imx8ulp);
 }

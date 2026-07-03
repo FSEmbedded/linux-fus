@@ -9,8 +9,6 @@ include ../flags.mk
 
 ASFLAGS += -O2 -Wall -g -nostdlib -m64
 
-ASFLAGS += -O2 -Wall -g -nostdlib -m64
-
 $(OUTPUT)/switch_endian_test: ASFLAGS += -I $(OUTPUT)
 $(OUTPUT)/switch_endian_test: $(OUTPUT)/check-reversed.S
 

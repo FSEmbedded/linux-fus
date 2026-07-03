@@ -26,8 +26,9 @@ static bool can_swap(void)
 
 static bool can_block(struct shrink_control *sc)
 {
-	return (sc->gfp_mask & __GFP_DIRECT_RECLAIM) ||
-	       (current_is_kswapd() && (sc->gfp_mask & __GFP_KSWAPD_RECLAIM));
+	if (!(sc->gfp_mask & __GFP_DIRECT_RECLAIM))
+		return false;
+	return current_is_kswapd() || (sc->gfp_mask & __GFP_RECLAIM);
 }
 
 static unsigned long

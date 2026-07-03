@@ -744,10 +744,6 @@ out:
 	if (ret == 0)
 		snd_soc_dapm_init_bias_level(dapm, level);
 
-	/* success */
-	if (ret == 0)
-		snd_soc_dapm_init_bias_level(dapm, level);
-
 	return ret;
 }
 

@@ -84,13 +84,6 @@ static DEFINE_MUTEX(nb_smu_ind_mutex);
  */
 #define AMD_I3255_STR				"3255"
 
-/*
- * PCI Device IDs for AMD's Family 1Ah-based SOCs.
- * Defining locally as IDs are not shared.
- */
-#define PCI_DEVICE_ID_AMD_1AH_M50H_DF_F3	0x12cb
-#define PCI_DEVICE_ID_AMD_1AH_M90H_DF_F3	0x127b
-
 struct k10temp_data {
 	struct pci_dev *pdev;
 	void (*read_htcreg)(struct pci_dev *pdev, u32 *regval);

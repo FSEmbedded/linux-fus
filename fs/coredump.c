@@ -535,7 +535,6 @@ static void wait_for_dump_helpers(struct file *file)
 static int umh_coredump_setup(struct subprocess_info *info, struct cred *new)
 {
 	struct file *files[2];
-	struct file *pidfs_file = NULL;
 	struct coredump_params *cp = (struct coredump_params *)info->data;
 	int err;
 
@@ -560,7 +559,7 @@ static int umh_coredump_setup(struct subprocess_info *info, struct cred *new)
 
 	err = create_pipe_files(files, 0);
 	if (err)
-		goto out_fail;
+		return err;
 
 	cp->file = files[1];
 

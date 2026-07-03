@@ -685,7 +685,8 @@ static int gswip_add_single_port_br(struct gswip_priv *priv, int port, bool add)
 	return 0;
 }
 
-static int gswip_port_setup(struct dsa_switch *ds, int port)
+static int gswip_port_enable(struct dsa_switch *ds, int port,
+			     struct phy_device *phydev)
 {
 	struct gswip_priv *priv = ds->priv;
 	int err;
@@ -696,24 +697,6 @@ static int gswip_port_setup(struct dsa_switch *ds, int port)
 		err = gswip_add_single_port_br(priv, port, true);
 		if (err)
 			return err;
-
-		if (phydev)
-			mdio_phy = phydev->mdio.addr & GSWIP_MDIO_PHY_ADDR_MASK;
-
-		gswip_mdio_mask(priv, GSWIP_MDIO_PHY_ADDR_MASK, mdio_phy,
-				GSWIP_MDIO_PHYp(port));
-	}
-
-	return 0;
-}
-
-static int gswip_port_enable(struct dsa_switch *ds, int port,
-			     struct phy_device *phydev)
-{
-	struct gswip_priv *priv = ds->priv;
-
-	if (!dsa_is_cpu_port(ds, port)) {
-		u32 mdio_phy = 0;
 
 		if (phydev)
 			mdio_phy = phydev->mdio.addr & GSWIP_MDIO_PHY_ADDR_MASK;
@@ -1376,9 +1359,8 @@ static int gswip_port_fdb(struct dsa_switch *ds, int port,
 	int i;
 	int err;
 
-	/* Operation not supported on the CPU port, don't throw errors */
 	if (!bridge)
-		return 0;
+		return -EINVAL;
 
 	for (i = max_ports; i < ARRAY_SIZE(priv->vlans); i++) {
 		if (priv->vlans[i].bridge == bridge) {
@@ -1847,7 +1829,6 @@ static const struct phylink_mac_ops gswip_phylink_mac_ops = {
 static const struct dsa_switch_ops gswip_xrx200_switch_ops = {
 	.get_tag_protocol	= gswip_get_tag_protocol,
 	.setup			= gswip_setup,
-	.port_setup		= gswip_port_setup,
 	.port_enable		= gswip_port_enable,
 	.port_disable		= gswip_port_disable,
 	.port_bridge_join	= gswip_port_bridge_join,

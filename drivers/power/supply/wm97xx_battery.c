@@ -178,6 +178,12 @@ static int wm97xx_bat_probe(struct platform_device *dev)
 				     "failed to get charge GPIO\n");
 	if (charge_gpiod) {
 		gpiod_set_consumer_name(charge_gpiod, "BATT CHRG");
+		ret = request_irq(gpiod_to_irq(charge_gpiod),
+				wm97xx_chrg_irq, 0,
+				"AC Detect", dev);
+		if (ret)
+			return dev_err_probe(&dev->dev, ret,
+					     "failed to request GPIO irq\n");
 		props++;	/* POWER_SUPPLY_PROP_STATUS */
 	}
 
@@ -193,8 +199,10 @@ static int wm97xx_bat_probe(struct platform_device *dev)
 		props++;	/* POWER_SUPPLY_PROP_VOLTAGE_MIN */
 
 	prop = kcalloc(props, sizeof(*prop), GFP_KERNEL);
-	if (!prop)
-		return -ENOMEM;
+	if (!prop) {
+		ret = -ENOMEM;
+		goto err3;
+	}
 
 	prop[i++] = POWER_SUPPLY_PROP_PRESENT;
 	if (charge_gpiod)
@@ -228,27 +236,15 @@ static int wm97xx_bat_probe(struct platform_device *dev)
 		schedule_work(&bat_work);
 	} else {
 		ret = PTR_ERR(bat_psy);
-		goto free;
-	}
-
-	if (charge_gpiod) {
-		ret = request_irq(gpiod_to_irq(charge_gpiod), wm97xx_chrg_irq,
-				  0, "AC Detect", dev);
-		if (ret) {
-			dev_err_probe(&dev->dev, ret,
-				      "failed to request GPIO irq\n");
-			goto unregister;
-		}
+		goto err4;
 	}
 
 	return 0;
-
-unregister:
-	power_supply_unregister(bat_psy);
-
-free:
+err4:
 	kfree(prop);
-
+err3:
+	if (charge_gpiod)
+		free_irq(gpiod_to_irq(charge_gpiod), dev);
 	return ret;
 }
 

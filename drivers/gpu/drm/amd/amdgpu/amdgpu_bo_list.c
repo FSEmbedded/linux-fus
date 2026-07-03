@@ -36,7 +36,6 @@
 
 #define AMDGPU_BO_LIST_MAX_PRIORITY	32u
 #define AMDGPU_BO_LIST_NUM_BUCKETS	(AMDGPU_BO_LIST_MAX_PRIORITY + 1)
-#define AMDGPU_BO_LIST_MAX_ENTRIES	(128 * 1024)
 
 static void amdgpu_bo_list_free_rcu(struct rcu_head *rcu)
 {
@@ -185,39 +184,43 @@ void amdgpu_bo_list_put(struct amdgpu_bo_list *list)
 int amdgpu_bo_create_list_entry_array(struct drm_amdgpu_bo_list_in *in,
 				      struct drm_amdgpu_bo_list_entry **info_param)
 {
-	const uint32_t info_size = sizeof(struct drm_amdgpu_bo_list_entry);
 	const void __user *uptr = u64_to_user_ptr(in->bo_info_ptr);
-	const uint32_t bo_info_size = in->bo_info_size;
-	const uint32_t bo_number = in->bo_number;
+	const uint32_t info_size = sizeof(struct drm_amdgpu_bo_list_entry);
 	struct drm_amdgpu_bo_list_entry *info;
+	int r;
 
-	if (bo_number > AMDGPU_BO_LIST_MAX_ENTRIES)
-		return -EINVAL;
+	info = kvmalloc_array(in->bo_number, info_size, GFP_KERNEL);
+	if (!info)
+		return -ENOMEM;
 
 	/* copy the handle array from userspace to a kernel buffer */
-	if (likely(info_size == bo_info_size)) {
-		info = vmemdup_array_user(uptr, bo_number, info_size);
-		if (IS_ERR(info))
-			return PTR_ERR(info);
+	r = -EFAULT;
+	if (likely(info_size == in->bo_info_size)) {
+		unsigned long bytes = in->bo_number *
+			in->bo_info_size;
+
+		if (copy_from_user(info, uptr, bytes))
+			goto error_free;
+
 	} else {
-		const uint32_t bytes = min(bo_info_size, info_size);
+		unsigned long bytes = min(in->bo_info_size, info_size);
 		unsigned i;
 
-		info = kvmalloc_array(bo_number, info_size, GFP_KERNEL);
-		if (!info)
-			return -ENOMEM;
+		memset(info, 0, in->bo_number * info_size);
+		for (i = 0; i < in->bo_number; ++i) {
+			if (copy_from_user(&info[i], uptr, bytes))
+				goto error_free;
 
-		memset(info, 0, bo_number * info_size);
-		for (i = 0; i < bo_number; ++i, uptr += bo_info_size) {
-			if (copy_from_user(&info[i], uptr, bytes)) {
-				kvfree(info);
-				return -EFAULT;
-			}
+			uptr += in->bo_info_size;
 		}
 	}
 
 	*info_param = info;
 	return 0;
+
+error_free:
+	kvfree(info);
+	return r;
 }
 
 int amdgpu_bo_list_ioctl(struct drm_device *dev, void *data,

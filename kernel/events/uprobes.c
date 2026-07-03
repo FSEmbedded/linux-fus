@@ -1511,7 +1511,9 @@ static int xol_add_vma(struct mm_struct *mm, struct xol_area *area)
 	}
 
 	if (!area->vaddr) {
-		area->vaddr = arch_uprobe_get_xol_area();
+		/* Try to map as high as possible, this is only a hint. */
+		area->vaddr = get_unmapped_area(NULL, TASK_SIZE - PAGE_SIZE,
+						PAGE_SIZE, 0, 0);
 		if (IS_ERR_VALUE(area->vaddr)) {
 			ret = area->vaddr;
 			goto fail;
@@ -2335,13 +2337,6 @@ static void handle_swbp(struct pt_regs *regs)
 		goto out;
 
 	handler_chain(uprobe, regs);
-
-	/*
-	 * If user decided to take execution elsewhere, it makes little sense
-	 * to execute the original instruction, so let's skip it.
-	 */
-	if (instruction_pointer(regs) != bp_vaddr)
-		goto out;
 
 	if (arch_uprobe_skip_sstep(&uprobe->arch, regs))
 		goto out;

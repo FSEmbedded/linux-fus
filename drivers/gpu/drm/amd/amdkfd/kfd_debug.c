@@ -401,7 +401,7 @@ static int kfd_dbg_get_dev_watch_id(struct kfd_process_device *pdd, int *watch_i
 	return -ENOMEM;
 }
 
-static void kfd_dbg_clear_dev_watch_id(struct kfd_process_device *pdd, u32 watch_id)
+static void kfd_dbg_clear_dev_watch_id(struct kfd_process_device *pdd, int watch_id)
 {
 	spin_lock(&pdd->dev->watch_points_lock);
 
@@ -414,7 +414,7 @@ static void kfd_dbg_clear_dev_watch_id(struct kfd_process_device *pdd, u32 watch
 	spin_unlock(&pdd->dev->watch_points_lock);
 }
 
-static bool kfd_dbg_owns_dev_watch_id(struct kfd_process_device *pdd, u32 watch_id)
+static bool kfd_dbg_owns_dev_watch_id(struct kfd_process_device *pdd, int watch_id)
 {
 	bool owns_watch_id = false;
 
@@ -431,9 +431,6 @@ int kfd_dbg_trap_clear_dev_address_watch(struct kfd_process_device *pdd,
 					uint32_t watch_id)
 {
 	int r;
-
-	if (watch_id >= MAX_WATCH_ADDRESSES)
-		return -EINVAL;
 
 	if (!kfd_dbg_owns_dev_watch_id(pdd, watch_id))
 		return -EINVAL;
@@ -471,9 +468,6 @@ int kfd_dbg_trap_set_dev_address_watch(struct kfd_process_device *pdd,
 
 	if (r)
 		return r;
-
-	if (*watch_id >= MAX_WATCH_ADDRESSES)
-		return -EINVAL;
 
 	if (!pdd->dev->kfd->shared_resources.enable_mes) {
 		r = debug_lock_and_unmap(pdd->dev->dqm);

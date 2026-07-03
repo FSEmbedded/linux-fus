@@ -100,9 +100,6 @@ static int ptp_clock_settime(struct posix_clock *pc, const struct timespec64 *tp
 		return -EBUSY;
 	}
 
-	if (!timespec64_valid_settod(tp))
-		return -EINVAL;
-
 	return  ptp->info->settime64(ptp->info, tp);
 }
 
@@ -133,7 +130,7 @@ static int ptp_clock_adjtime(struct posix_clock *pc, struct __kernel_timex *tx)
 	ops = ptp->info;
 
 	if (tx->modes & ADJ_SETOFFSET) {
-		struct timespec64 ts, ts2;
+		struct timespec64 ts;
 		ktime_t kt;
 		s64 delta;
 
@@ -144,14 +141,6 @@ static int ptp_clock_adjtime(struct posix_clock *pc, struct __kernel_timex *tx)
 			ts.tv_nsec *= 1000;
 
 		if ((unsigned long) ts.tv_nsec >= NSEC_PER_SEC)
-			return -EINVAL;
-
-		/* Make sure the offset is valid */
-		err = ptp_clock_gettime(pc, &ts2);
-		if (err)
-			return err;
-		ts2 = timespec64_add(ts2, ts);
-		if (!timespec64_valid_settod(&ts2))
 			return -EINVAL;
 
 		kt = timespec64_to_ktime(ts);

@@ -2228,7 +2228,6 @@ void kbase_csf_firmware_reload_completed(struct kbase_device *kbdev)
 						    all_core_masks.pm_core_mask_desired);
 	kbase_hwcnt_backend_csf_on_after_mcu_on(&kbdev->hwcnt_gpu_iface);
 
-
 	/* Tell MCU state machine to transit to next state */
 	kbdev->csf.firmware_reloaded = true;
 	kbdev->csf.firmware_booted_once = true;

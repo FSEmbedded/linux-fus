@@ -100,15 +100,6 @@ MODULE_PARM_DESC(joystick, "Enable gameport.");
 #define PFX "sc6000: "
 #define DRV_NAME "SC-6000"
 
-struct snd_sc6000 {
-	char __iomem *vport;
-	char __iomem *vmss_port;
-	u8 mss_config;
-	u8 config;
-	u8 hw_cfg[2];
-	bool old_dsp;
-};
-
 /* hardware dependent functions */
 
 /*
@@ -391,9 +382,14 @@ static int sc6000_init_board(struct device *devptr,
 {
 	char answer[15];
 	char version[2];
+	int mss_config = sc6000_irq_to_softcfg(irq[dev]) |
+			 sc6000_dma_to_softcfg(dma[dev]);
+	int config = mss_config |
+		     sc6000_mpu_irq_to_softcfg(mpu_irq[dev]);
 	int err;
+	int old = 0;
 
-	err = sc6000_dsp_reset(sc6000->vport);
+	err = sc6000_dsp_reset(vport);
 	if (err < 0) {
 		dev_err(devptr, "sc6000_dsp_reset: failed!\n");
 		return err;
@@ -542,7 +538,7 @@ static int snd_sc6000_match(struct device *devptr, unsigned int dev)
 
 static void snd_sc6000_free(struct snd_card *card)
 {
-	struct snd_sc6000 *sc6000 = card->private_data;
+	char __iomem *vport = (char __force __iomem *)card->private_data;
 
 	if (vport)
 		sc6000_setup_board(card->dev, vport, 0);
@@ -556,17 +552,15 @@ static int __snd_sc6000_probe(struct device *devptr, unsigned int dev)
 	int xirq = irq[dev];
 	int xdma = dma[dev];
 	struct snd_card *card;
-	struct snd_sc6000 *sc6000;
 	struct snd_wss *chip;
 	struct snd_opl3 *opl3;
 	char __iomem *vport;
 	char __iomem *vmss_port;
 
 	err = snd_devm_card_new(devptr, index[dev], id[dev], THIS_MODULE,
-				sizeof(*sc6000), &card);
+				0, &card);
 	if (err < 0)
 		return err;
-	sc6000 = card->private_data;
 
 	if (xirq == SNDRV_AUTO_IRQ) {
 		xirq = snd_legacy_find_free_irq(possible_irqs);
@@ -593,7 +587,7 @@ static int __snd_sc6000_probe(struct device *devptr, unsigned int dev)
 		dev_err(devptr, "I/O port cannot be iomapped.\n");
 		return -EBUSY;
 	}
-	sc6000->vport = vport;
+	card->private_data = (void __force *)vport;
 
 	/* to make it marked as used */
 	if (!devm_request_region(devptr, mss_port[dev], 4, DRV_NAME)) {
@@ -606,7 +600,6 @@ static int __snd_sc6000_probe(struct device *devptr, unsigned int dev)
 		dev_err(devptr, "MSS port I/O cannot be iomapped.\n");
 		return -EBUSY;
 	}
-	sc6000->vmss_port = vmss_port;
 
 	dev_dbg(devptr, "Initializing BASE[0x%lx] IRQ[%d] DMA[%d] MIRQ[%d]\n",
 		port[dev], xirq, xdma,

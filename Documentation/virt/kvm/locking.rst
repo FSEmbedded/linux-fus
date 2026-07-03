@@ -9,7 +9,7 @@ KVM Lock Overview
 
 The acquisition orders for mutexes are as follows:
 
-- cpus_read_lock() is taken outside kvm_lock and kvm_usage_lock
+- cpus_read_lock() is taken outside kvm_lock
 
 - kvm_usage_lock is taken outside cpus_read_lock()
 

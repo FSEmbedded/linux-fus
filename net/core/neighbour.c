@@ -3188,10 +3188,11 @@ out_unlock:
 			goto out_kfree_skb;
 		err = dev_queue_xmit(skb);
 	}
+out:
 	return err;
 out_kfree_skb:
 	kfree_skb(skb);
-	return err;
+	goto out;
 }
 EXPORT_SYMBOL(neigh_xmit);
 

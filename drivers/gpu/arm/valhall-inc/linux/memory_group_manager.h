@@ -41,10 +41,6 @@ typedef int vm_fault_t;
 struct memory_group_manager_device;
 struct memory_group_manager_import_data;
 
-enum mgm_pte_flags {
-	MMA_VIOLATION = 0,
-};
-
 /**
  * enum mgm_pte_flags - Memory Group Manager PTE Flags
  * @MMA_VIOLATION:   Bit-number of flag used to indicate that Mismatched Memory Attributes (MMA)

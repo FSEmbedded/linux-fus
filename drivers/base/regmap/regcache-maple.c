@@ -96,13 +96,12 @@ static int regcache_maple_write(struct regmap *map, unsigned int reg,
 
 	mas_unlock(&mas);
 
-	if (ret) {
-		kfree(entry);
-		return ret;
+	if (ret == 0) {
+		kfree(lower);
+		kfree(upper);
 	}
-	kfree(lower);
-	kfree(upper);
-	return 0;
+	
+	return ret;
 }
 
 static int regcache_maple_drop(struct regmap *map, unsigned int min,

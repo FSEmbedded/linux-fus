@@ -27,11 +27,6 @@
 #include "fs_context.h"
 #include "cached_dir.h"
 
-struct tcon_list {
-	struct list_head entry;
-	struct cifs_tcon *tcon;
-};
-
 /* The xid serves as a useful identifier for each incoming vfs request,
    in a similar way to the mid which is useful to track each sent smb,
    and CurrentXid can also provide a running counter (although it
@@ -918,28 +913,11 @@ parse_dfs_referrals(struct get_dfs_referral_rsp *rsp, u32 rsp_size,
 	char *data_end;
 	struct dfs_referral_level_3 *ref;
 
-	if (rsp_size < sizeof(*rsp)) {
-		cifs_dbg(VFS | ONCE,
-			 "%s: header is malformed (size is %u, must be %zu)\n",
-			 __func__, rsp_size, sizeof(*rsp));
-		rc = -EINVAL;
-		goto parse_DFS_referrals_exit;
-	}
-
 	*num_of_nodes = le16_to_cpu(rsp->NumberOfReferrals);
 
 	if (*num_of_nodes < 1) {
 		cifs_dbg(VFS, "num_referrals: must be at least > 0, but we get num_referrals = %d\n",
 			 *num_of_nodes);
-		rc = -EINVAL;
-		goto parse_DFS_referrals_exit;
-	}
-
-	if (sizeof(*rsp) + *num_of_nodes * sizeof(REFERRAL3) > rsp_size) {
-		cifs_dbg(VFS | ONCE,
-			 "%s: malformed buffer (size is %u, must be at least %zu)\n",
-			 __func__, rsp_size,
-			 sizeof(*rsp) + *num_of_nodes * sizeof(REFERRAL3));
 		rc = -EINVAL;
 		goto parse_DFS_referrals_exit;
 	}

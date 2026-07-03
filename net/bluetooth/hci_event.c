@@ -1598,10 +1598,8 @@ static u8 hci_cc_le_set_ext_adv_enable(struct hci_dev *hdev, void *data,
 
 		hci_dev_set_flag(hdev, HCI_LE_ADV);
 
-		if (adv)
+		if (adv && !adv->periodic)
 			adv->enabled = true;
-		else if (!set->handle)
-			hci_dev_set_flag(hdev, HCI_LE_ADV_0);
 
 		conn = hci_lookup_le_connect(hdev);
 		if (conn)
@@ -1612,8 +1610,6 @@ static u8 hci_cc_le_set_ext_adv_enable(struct hci_dev *hdev, void *data,
 		if (cp->num_of_sets) {
 			if (adv)
 				adv->enabled = false;
-			else if (!set->handle)
-				hci_dev_clear_flag(hdev, HCI_LE_ADV_0);
 
 			/* If just one instance was disabled check if there are
 			 * any other instance enabled before clearing HCI_LE_ADV
@@ -3054,18 +3050,8 @@ static void hci_conn_complete_evt(struct hci_dev *hdev, void *data,
 
 	hci_dev_lock(hdev);
 
-	/* Check for existing connection:
-	 *
-	 * 1. If it doesn't exist then it must be receiver/slave role.
-	 * 2. If it does exist confirm that it is connecting/BT_CONNECT in case
-	 *    of initiator/master role since there could be a collision where
-	 *    either side is attempting to connect or something like a fuzzing
-	 *    testing is trying to play tricks to destroy the hcon object before
-	 *    it even attempts to connect (e.g. hcon->state == BT_OPEN).
-	 */
 	conn = hci_conn_hash_lookup_ba(hdev, ev->link_type, &ev->bdaddr);
-	if (!conn ||
-	    (conn->role == HCI_ROLE_MASTER && conn->state != BT_CONNECT)) {
+	if (!conn) {
 		/* In case of error status and there is no connection pending
 		 * just unlock as there is nothing to cleanup.
 		 */
@@ -3284,6 +3270,8 @@ static void hci_conn_request_evt(struct hci_dev *hdev, void *data,
 
 	memcpy(conn->dev_class, ev->dev_class, 3);
 
+	hci_dev_unlock(hdev);
+
 	if (ev->link_type == ACL_LINK ||
 	    (!(flags & HCI_PROTO_DEFER) && !lmp_esco_capable(hdev))) {
 		struct hci_cp_accept_conn_req cp;
@@ -3317,6 +3305,7 @@ static void hci_conn_request_evt(struct hci_dev *hdev, void *data,
 		hci_connect_cfm(conn, 0);
 	}
 
+	return;
 unlock:
 	hci_dev_unlock(hdev);
 }
@@ -3952,11 +3941,8 @@ static u8 hci_cc_le_set_per_adv_enable(struct hci_dev *hdev, void *data,
 		hci_dev_set_flag(hdev, HCI_LE_PER_ADV);
 
 		if (adv)
-			adv->periodic_enabled = true;
+			adv->enabled = true;
 	} else {
-		if (adv)
-			adv->periodic_enabled = false;
-
 		/* If just one instance was disabled check if there are
 		 * any other instance enabled before clearing HCI_LE_PER_ADV.
 		 * The current periodic adv instance will be marked as
@@ -4207,13 +4193,6 @@ static void hci_cmd_complete_evt(struct hci_dev *hdev, void *data,
 	}
 
 	if (i == ARRAY_SIZE(hci_cc_table)) {
-		if (!skb->len) {
-			bt_dev_err(hdev, "Unexpected cc 0x%4.4x with no status",
-				   *opcode);
-			*status = HCI_ERROR_UNSPECIFIED;
-			return;
-		}
-
 		/* Unknown opcode, assume byte 0 contains the status, so
 		 * that e.g. __hci_cmd_sync() properly returns errors
 		 * for vendor specific commands send by HCI drivers.
@@ -5409,11 +5388,9 @@ static void hci_user_passkey_notify_evt(struct hci_dev *hdev, void *data,
 
 	bt_dev_dbg(hdev, "");
 
-	hci_dev_lock(hdev);
-
 	conn = hci_conn_hash_lookup_ba(hdev, ACL_LINK, &ev->bdaddr);
 	if (!conn)
-		goto unlock;
+		return;
 
 	conn->passkey_notify = __le32_to_cpu(ev->passkey);
 	conn->passkey_entered = 0;
@@ -5422,9 +5399,6 @@ static void hci_user_passkey_notify_evt(struct hci_dev *hdev, void *data,
 		mgmt_user_passkey_notify(hdev, &conn->dst, conn->type,
 					 conn->dst_type, conn->passkey_notify,
 					 conn->passkey_entered);
-
-unlock:
-	hci_dev_unlock(hdev);
 }
 
 static void hci_keypress_notify_evt(struct hci_dev *hdev, void *data,
@@ -5435,16 +5409,14 @@ static void hci_keypress_notify_evt(struct hci_dev *hdev, void *data,
 
 	bt_dev_dbg(hdev, "");
 
-	hci_dev_lock(hdev);
-
 	conn = hci_conn_hash_lookup_ba(hdev, ACL_LINK, &ev->bdaddr);
 	if (!conn)
-		goto unlock;
+		return;
 
 	switch (ev->type) {
 	case HCI_KEYPRESS_STARTED:
 		conn->passkey_entered = 0;
-		goto unlock;
+		return;
 
 	case HCI_KEYPRESS_ENTERED:
 		conn->passkey_entered++;
@@ -5459,16 +5431,13 @@ static void hci_keypress_notify_evt(struct hci_dev *hdev, void *data,
 		break;
 
 	case HCI_KEYPRESS_COMPLETED:
-		goto unlock;
+		return;
 	}
 
 	if (hci_dev_test_flag(hdev, HCI_MGMT))
 		mgmt_user_passkey_notify(hdev, &conn->dst, conn->type,
 					 conn->dst_type, conn->passkey_notify,
 					 conn->passkey_entered);
-
-unlock:
-	hci_dev_unlock(hdev);
 }
 
 static void hci_simple_pair_complete_evt(struct hci_dev *hdev, void *data,
@@ -5649,18 +5618,8 @@ static void le_conn_complete_evt(struct hci_dev *hdev, u8 status,
 	 */
 	hci_dev_clear_flag(hdev, HCI_LE_ADV);
 
-	/* Check for existing connection:
-	 *
-	 * 1. If it doesn't exist then use the role to create a new object.
-	 * 2. If it does exist confirm that it is connecting/BT_CONNECT in case
-	 *    of initiator/master role since there could be a collision where
-	 *    either side is attempting to connect or something like a fuzzing
-	 *    testing is trying to play tricks to destroy the hcon object before
-	 *    it even attempts to connect (e.g. hcon->state == BT_OPEN).
-	 */
-	conn = hci_conn_hash_lookup_role(hdev, LE_LINK, role, bdaddr);
-	if (!conn ||
-	    (conn->role == HCI_ROLE_MASTER && conn->state != BT_CONNECT)) {
+	conn = hci_conn_hash_lookup_ba(hdev, LE_LINK, bdaddr);
+	if (!conn) {
 		/* In case of error status and there is no connection pending
 		 * just unlock as there is nothing to cleanup.
 		 */
@@ -6623,30 +6582,24 @@ static void hci_le_remote_conn_param_req_evt(struct hci_dev *hdev, void *data,
 	latency = le16_to_cpu(ev->latency);
 	timeout = le16_to_cpu(ev->timeout);
 
-	hci_dev_lock(hdev);
-
 	hcon = hci_conn_hash_lookup_handle(hdev, handle);
-	if (!hcon || hcon->state != BT_CONNECTED) {
-		send_conn_param_neg_reply(hdev, handle,
-					  HCI_ERROR_UNKNOWN_CONN_ID);
-		goto unlock;
-	}
+	if (!hcon || hcon->state != BT_CONNECTED)
+		return send_conn_param_neg_reply(hdev, handle,
+						 HCI_ERROR_UNKNOWN_CONN_ID);
 
-	if (max > hcon->le_conn_max_interval) {
-		send_conn_param_neg_reply(hdev, handle,
-					  HCI_ERROR_INVALID_LL_PARAMS);
-		goto unlock;
-	}
+	if (max > hcon->le_conn_max_interval)
+		return send_conn_param_neg_reply(hdev, handle,
+						 HCI_ERROR_INVALID_LL_PARAMS);
 
-	if (hci_check_conn_params(min, max, latency, timeout)) {
-		send_conn_param_neg_reply(hdev, handle,
-					  HCI_ERROR_INVALID_LL_PARAMS);
-		goto unlock;
-	}
+	if (hci_check_conn_params(min, max, latency, timeout))
+		return send_conn_param_neg_reply(hdev, handle,
+						 HCI_ERROR_INVALID_LL_PARAMS);
 
 	if (hcon->role == HCI_ROLE_MASTER) {
 		struct hci_conn_params *params;
 		u8 store_hint;
+
+		hci_dev_lock(hdev);
 
 		params = hci_conn_params_lookup(hdev, &hcon->dst,
 						hcon->dst_type);
@@ -6659,6 +6612,8 @@ static void hci_le_remote_conn_param_req_evt(struct hci_dev *hdev, void *data,
 		} else {
 			store_hint = 0x00;
 		}
+
+		hci_dev_unlock(hdev);
 
 		mgmt_new_conn_param(hdev, &hcon->dst, hcon->dst_type,
 				    store_hint, min, max, latency, timeout);
@@ -6673,9 +6628,6 @@ static void hci_le_remote_conn_param_req_evt(struct hci_dev *hdev, void *data,
 	cp.max_ce_len = 0;
 
 	hci_send_cmd(hdev, HCI_OP_LE_CONN_PARAM_REQ_REPLY, sizeof(cp), &cp);
-
-unlock:
-	hci_dev_unlock(hdev);
 }
 
 static void hci_le_direct_adv_report_evt(struct hci_dev *hdev, void *data,

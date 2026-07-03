@@ -3739,8 +3739,8 @@ static int do_setattr(u64 attr, void *value, size_t size)
 	struct task_smack *tsp = smack_cred(current_cred());
 	struct cred *new;
 	struct smack_known *skp;
-	char *labelstr;
-	int rc = 0;
+	struct smack_known_list_elem *sklep;
+	int rc;
 
 	if (!smack_privileged(CAP_MAC_ADMIN) && list_empty(&tsp->smk_relabel))
 		return -EPERM;
@@ -3751,40 +3751,27 @@ static int do_setattr(u64 attr, void *value, size_t size)
 	if (attr != LSM_ATTR_CURRENT)
 		return -EOPNOTSUPP;
 
-	labelstr = smk_parse_smack(value, size);
-	if (IS_ERR(labelstr))
-		return PTR_ERR(labelstr);
+	skp = smk_import_entry(value, size);
+	if (IS_ERR(skp))
+		return PTR_ERR(skp);
 
 	/*
 	 * No process is ever allowed the web ("@") label
 	 * and the star ("*") label.
 	 */
-	if (labelstr[1] == '\0' /* '@', '*' */) {
-		const char c = labelstr[0];
-
-		if (c == *smack_known_web.smk_known ||
-		    c == *smack_known_star.smk_known) {
-			rc = -EPERM;
-			goto free_labelstr;
-		}
-	}
+	if (skp == &smack_known_web || skp == &smack_known_star)
+		return -EINVAL;
 
 	if (!smack_privileged(CAP_MAC_ADMIN)) {
-		const struct smack_known_list_elem *sklep;
-		list_for_each_entry(sklep, &tsp->smk_relabel, list)
-			if (strcmp(sklep->smk_label->smk_known, labelstr) == 0)
-				goto free_labelstr;
 		rc = -EPERM;
+		list_for_each_entry(sklep, &tsp->smk_relabel, list)
+			if (sklep->smk_label == skp) {
+				rc = 0;
+				break;
+			}
+		if (rc)
+			return rc;
 	}
-
-free_labelstr:
-	kfree(labelstr);
-	if (rc)
-		return -EPERM;
-
-	skp = smk_import_entry(value, size);
-	if (IS_ERR(skp))
-		return PTR_ERR(skp);
 
 	new = prepare_creds();
 	if (new == NULL)

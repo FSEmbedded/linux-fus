@@ -48,7 +48,7 @@ mt76_wmac_probe(struct platform_device *pdev)
 
 	return 0;
 error:
-	mt76_free_device(mdev);
+	ieee80211_free_hw(mt76_hw(dev));
 	return ret;
 }
 

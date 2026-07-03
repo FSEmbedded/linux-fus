@@ -507,32 +507,6 @@ enum afs_volume_trace		{ afs_volume_traces } __mode(byte);
 #endif /* end __AFS_GENERATE_TRACE_ENUMS_ONCE_ONLY */
 
 /*
- * Generate enums for tracing information.
- */
-#ifndef __AFS_GENERATE_TRACE_ENUMS_ONCE_ONLY
-#define __AFS_GENERATE_TRACE_ENUMS_ONCE_ONLY
-
-#undef EM
-#undef E_
-#define EM(a, b) a,
-#define E_(a, b) a
-
-enum afs_call_trace		{ afs_call_traces } __mode(byte);
-enum afs_cb_break_reason	{ afs_cb_break_reasons } __mode(byte);
-enum afs_cell_trace		{ afs_cell_traces } __mode(byte);
-enum afs_edit_dir_op		{ afs_edit_dir_ops } __mode(byte);
-enum afs_edit_dir_reason	{ afs_edit_dir_reasons } __mode(byte);
-enum afs_eproto_cause		{ afs_eproto_causes } __mode(byte);
-enum afs_file_error		{ afs_file_errors } __mode(byte);
-enum afs_flock_event		{ afs_flock_events } __mode(byte);
-enum afs_flock_operation	{ afs_flock_operations } __mode(byte);
-enum afs_io_error		{ afs_io_errors } __mode(byte);
-enum afs_server_trace		{ afs_server_traces } __mode(byte);
-enum afs_volume_trace		{ afs_volume_traces } __mode(byte);
-
-#endif /* end __AFS_GENERATE_TRACE_ENUMS_ONCE_ONLY */
-
-/*
  * Export enum symbols via userspace.
  */
 #undef EM

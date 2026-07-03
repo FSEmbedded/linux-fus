@@ -53,8 +53,6 @@
 #define PCIE_LTSSM_ENABLE_ENHANCE	BIT(4)
 #define PCIE_LTSSM_STATUS_MASK		GENMASK(5, 0)
 
-#define PCIE_TYPE0_HDR_DBI2_OFFSET      0x100000
-
 struct rockchip_pcie {
 	struct dw_pcie pci;
 	void __iomem *apb_base;
@@ -225,8 +223,6 @@ static int rockchip_pcie_host_init(struct dw_pcie_rp *pp)
 	irq = of_irq_get_byname(dev->of_node, "legacy");
 	if (irq < 0)
 		return irq;
-
-	pci->dbi_base2 = pci->dbi_base + PCIE_TYPE0_HDR_DBI2_OFFSET;
 
 	ret = rockchip_pcie_init_irq_domain(rockchip);
 	if (ret < 0)

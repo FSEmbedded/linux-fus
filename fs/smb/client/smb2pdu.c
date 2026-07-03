@@ -1666,17 +1666,19 @@ SMB2_auth_kerberos(struct SMB2_sess_data *sess_data)
 	is_binding = (ses->ses_status == SES_GOOD);
 	spin_unlock(&ses->ses_lock);
 
-	kfree_sensitive(ses->auth_key.response);
-	ses->auth_key.response = kmemdup(msg->data,
-					 msg->sesskey_len,
-					 GFP_KERNEL);
-	if (!ses->auth_key.response) {
-		cifs_dbg(VFS, "%s: can't allocate (%u bytes) memory\n",
-			 __func__, msg->sesskey_len);
-		rc = -ENOMEM;
-		goto out_put_spnego_key;
+	/* keep session key if binding */
+	if (!is_binding) {
+		kfree_sensitive(ses->auth_key.response);
+		ses->auth_key.response = kmemdup(msg->data, msg->sesskey_len,
+						 GFP_KERNEL);
+		if (!ses->auth_key.response) {
+			cifs_dbg(VFS, "Kerberos can't allocate (%u bytes) memory\n",
+				 msg->sesskey_len);
+			rc = -ENOMEM;
+			goto out_put_spnego_key;
+		}
+		ses->auth_key.len = msg->sesskey_len;
 	}
-	ses->auth_key.len = msg->sesskey_len;
 
 	sess_data->iov[1].iov_base = msg->data + msg->sesskey_len;
 	sess_data->iov[1].iov_len = msg->secblob_len;
@@ -2854,7 +2856,6 @@ int smb311_posix_mkdir(const unsigned int xid, struct inode *inode,
 
 replay_again:
 	/* reinitialize for possible replay */
-	pc_buf = NULL;
 	flags = 0;
 	n_iov = 2;
 	server = cifs_pick_channel(ses);
@@ -4073,12 +4074,9 @@ replay_again:
 
 		smb_rsp = (struct smb2_change_notify_rsp *)rsp_iov.iov_base;
 
-		rc = smb2_validate_iov(le16_to_cpu(smb_rsp->OutputBufferOffset),
-				le32_to_cpu(smb_rsp->OutputBufferLength),
-				&rsp_iov,
+		smb2_validate_iov(le16_to_cpu(smb_rsp->OutputBufferOffset),
+				le32_to_cpu(smb_rsp->OutputBufferLength), &rsp_iov,
 				sizeof(struct file_notify_information));
-		if (rc)
-			goto cnotify_exit;
 
 		*out_data = kmemdup((char *)smb_rsp + le16_to_cpu(smb_rsp->OutputBufferOffset),
 				le32_to_cpu(smb_rsp->OutputBufferLength), GFP_KERNEL);
@@ -4179,9 +4177,7 @@ void smb2_reconnect_server(struct work_struct *work)
 
 		list_for_each_entry(tcon, &ses->tcon_list, tcon_list) {
 			if (tcon->need_reconnect || tcon->need_reopen_files) {
-				spin_lock(&tcon->tc_lock);
 				tcon->tc_count++;
-				spin_unlock(&tcon->tc_lock);
 				trace_smb3_tcon_ref(tcon->debug_id, tcon->tc_count,
 						    netfs_trace_tcon_ref_get_reconnect_server);
 				list_add_tail(&tcon->rlist, &tmp_list);
@@ -5163,10 +5159,7 @@ replay_again:
 
 	memset(&rqst, 0, sizeof(struct smb_rqst));
 	rqst.rq_iov = iov;
-	/* iov[0] is the SMB header; move payload to rq_iter for encryption safety */
-	rqst.rq_nvec = 1;
-	iov_iter_kvec(&rqst.rq_iter, ITER_SOURCE, &iov[1], n_vec,
-		      io_parms->length);
+	rqst.rq_nvec = n_vec + 1;
 
 	if (retries)
 		smb2_set_replay(server, &rqst);

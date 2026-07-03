@@ -331,10 +331,7 @@ int btrfs_get_dev_zone_info_all_devices(struct btrfs_fs_info *fs_info)
 	if (!btrfs_fs_incompat(fs_info, ZONED))
 		return 0;
 
-	/*
-	 * No need to take the device_list mutex here, we're still in the mount
-	 * path and devices cannot be added to or removed from the list yet.
-	 */
+	mutex_lock(&fs_devices->device_list_mutex);
 	list_for_each_entry(device, &fs_devices->devices, dev_list) {
 		/* We can skip reading of zone info for missing devices */
 		if (!device->bdev)
@@ -344,6 +341,7 @@ int btrfs_get_dev_zone_info_all_devices(struct btrfs_fs_info *fs_info)
 		if (ret)
 			break;
 	}
+	mutex_unlock(&fs_devices->device_list_mutex);
 
 	return ret;
 }
@@ -2386,17 +2384,16 @@ bool btrfs_can_activate_zone(struct btrfs_fs_devices *fs_devices, u64 flags)
 	return ret;
 }
 
-int btrfs_zone_finish_endio(struct btrfs_fs_info *fs_info, u64 logical, u64 length)
+void btrfs_zone_finish_endio(struct btrfs_fs_info *fs_info, u64 logical, u64 length)
 {
 	struct btrfs_block_group *block_group;
 	u64 min_alloc_bytes;
 
 	if (!btrfs_is_zoned(fs_info))
-		return 0;
+		return;
 
 	block_group = btrfs_lookup_block_group(fs_info, logical);
-	if (WARN_ON_ONCE(!block_group))
-		return -ENOENT;
+	ASSERT(block_group);
 
 	/* No MIXED_BG on zoned btrfs. */
 	if (block_group->flags & BTRFS_BLOCK_GROUP_DATA)
@@ -2413,7 +2410,6 @@ int btrfs_zone_finish_endio(struct btrfs_fs_info *fs_info, u64 logical, u64 leng
 
 out:
 	btrfs_put_block_group(block_group);
-	return 0;
 }
 
 static void btrfs_zone_finish_endio_workfn(struct work_struct *work)

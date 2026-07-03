@@ -1429,17 +1429,9 @@ struct inode *ext2_iget (struct super_block *sb, unsigned long ino)
 	 * the test is that same one that e2fsck uses
 	 * NeilBrown 1999oct15
 	 */
-	if (inode->i_nlink == 0) {
-		if (inode->i_mode == 0 || ei->i_dtime) {
-			/* this inode is deleted */
-			ret = -ESTALE;
-		} else {
-			ext2_error(sb, __func__,
-				   "inode %lu has zero i_nlink with mode 0%o and no dtime, "
-				   "filesystem may be corrupt",
-				   ino, inode->i_mode);
-			ret = -EFSCORRUPTED;
-		}
+	if (inode->i_nlink == 0 && (inode->i_mode == 0 || ei->i_dtime)) {
+		/* this inode is deleted */
+		ret = -ESTALE;
 		goto bad_inode;
 	}
 	inode->i_blocks = le32_to_cpu(raw_inode->i_blocks);
