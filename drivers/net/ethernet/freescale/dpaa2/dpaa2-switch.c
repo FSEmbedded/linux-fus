@@ -1659,6 +1659,8 @@ static int dpaa2_switch_port_connect_mac(struct ethsw_port_priv *port_priv)
 		goto out_put_device;
 	}
 
+	dpaa2_mac_driver_detach(dpmac_dev);
+
 	mac = kzalloc(sizeof(*mac), GFP_KERNEL);
 	if (!mac) {
 		err = -ENOMEM;

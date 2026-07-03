@@ -358,6 +358,8 @@ struct aux_buffer {
 struct aux_buffer_info {
 	int num;
 	struct aux_buffer *buf_array;
+	int width;
+	int height;
 	enum aux_buffer_type type;
 };
 
@@ -891,7 +893,6 @@ struct vpu_device {
 	struct v4l2_m2m_dev *m2m_dev;
 	struct video_device *video_dev_dec;
 	struct video_device *video_dev_enc;
-	struct mutex dev_lock; /* the lock for the src,dst v4l2 queues */
 	struct mutex hw_lock; /* lock hw configurations */
 	int irq;
 	u32 fw_version;
@@ -911,10 +912,9 @@ struct vpu_device {
 	struct delayed_work task_timer;
 	struct wave6_vpu_entity entity;
 	bool active;
-	int pause_request;
-	struct mutex pause_lock; /* the lock for the pause/resume m2m job. */
 	const struct wave6_match_data *res;
 	struct dentry *debugfs;
+	struct imx_mur_node *recorder;
 
 	bool force_dma_sync;
 };
@@ -922,11 +922,13 @@ struct vpu_device {
 struct vpu_instance;
 
 struct vpu_instance_ops {
+	int (*prepare_process)(struct vpu_instance *inst);
 	int (*start_process)(struct vpu_instance *inst);
 	void (*finish_process)(struct vpu_instance *inst, bool error);
 };
 
 struct vpu_performance_info {
+	ktime_t ts_start;
 	ktime_t ts_first;
 	ktime_t ts_last;
 	s64 latency_first;
@@ -953,6 +955,7 @@ struct vpu_instance {
 	struct v4l2_fh v4l2_fh;
 	struct v4l2_ctrl_handler v4l2_ctrl_hdl;
 	struct vpu_device *dev;
+	struct mutex queue_lock; /* the lock for the src,dst v4l2 queues */
 
 	struct v4l2_pix_format_mplane src_fmt;
 	struct v4l2_pix_format_mplane dst_fmt;
@@ -976,6 +979,10 @@ struct vpu_instance {
 	} *codec_info;
 	struct frame_buffer frame_buf[WAVE6_MAX_FBS];
 	struct vpu_buf frame_vbuf[WAVE6_MAX_FBS];
+	u32 fbc_buf_required;
+	u32 fbc_buf_acquired;
+	u32 fbc_buf_registered;
+	u32 fbc_buf_used;
 	u32 queued_src_buf_num;
 	u32 queued_dst_buf_num;
 	u32 processed_buf_num;
@@ -1003,6 +1010,12 @@ struct vpu_instance {
 	int roi_mode;
 	struct vpu_buf custom_qp_map;
 	struct vpu_roi_map_info roi_info;
+
+	struct workqueue_struct *workqueue;
+	struct work_struct fb_work;
+	atomic_t fbc_tag;
+
+	struct imx_mur_node *recorder;
 };
 
 void wave6_vdi_writel(struct vpu_device *vpu_device, unsigned int addr, unsigned int data);
@@ -1017,7 +1030,8 @@ int wave6_vpu_dec_get_aux_buffer_size(struct vpu_instance *inst,
 				      struct dec_aux_buffer_size_info info,
 				      uint32_t *size);
 int wave6_vpu_dec_register_aux_buffer(struct vpu_instance *inst, struct aux_buffer_info info);
-int wave6_vpu_dec_register_frame_buffer_ex(struct vpu_instance *inst, int num_of_dec_fbs,
+int wave6_vpu_dec_register_frame_buffer_ex(struct vpu_instance *inst,
+					   int offset, int num_of_dec_fbs,
 					   int stride, int height, int map_type);
 int wave6_vpu_dec_register_display_buffer_ex(struct vpu_instance *inst, struct frame_buffer fb);
 int wave6_vpu_dec_start_one_frame(struct vpu_instance *inst, struct dec_param *param,
@@ -1045,5 +1059,6 @@ int wave6_vpu_enc_start_one_frame(struct vpu_instance *inst, struct enc_param *p
 				  u32 *fail_res);
 int wave6_vpu_enc_get_output_info(struct vpu_instance *inst, struct enc_output_info *info);
 int wave6_vpu_enc_give_command(struct vpu_instance *inst, enum codec_command cmd, void *parameter);
+const char *wave6_vpu_get_aux_name(enum aux_buffer_type type);
 
 #endif /* __WAVE6_VPUAPI_H__ */

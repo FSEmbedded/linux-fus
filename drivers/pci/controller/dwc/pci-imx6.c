@@ -53,6 +53,8 @@
 #define IMX95_PCIE_REF_CLKEN			BIT(23)
 #define IMX95_PCIE_PHY_CR_PARA_SEL		BIT(9)
 #define IMX95_PCIE_SS_RW_REG_1			0xf4
+#define IMX95_PCIE_CLKREQ_OVERRIDE_EN		BIT(8)
+#define IMX95_PCIE_CLKREQ_OVERRIDE_VAL		BIT(9)
 #define IMX95_PCIE_SYS_AUX_PWR_DET		BIT(31)
 
 #define IMX95_PE0_GEN_CTRL_1			0x1050
@@ -165,6 +167,7 @@ struct imx_pcie {
 	int			host_wake_irq;
 	bool			link_is_up;
 	bool			enable_ext_refclk;
+	bool			pll_locked;
 	bool			supports_clkreq;
 	struct clk_bulk_data	*clks;
 	int			num_clks;
@@ -604,9 +607,11 @@ static int imx95_pcie_wait_for_phy_pll_lock(struct imx_pcie *imx_pcie)
 				     PHY_PLL_LOCK_WAIT_USLEEP_MAX,
 				     PHY_PLL_LOCK_WAIT_TIMEOUT)) {
 		dev_err(dev, "PCIe PLL lock timeout\n");
+		imx_pcie->pll_locked = false;
 		return -ETIMEDOUT;
 	}
 
+	imx_pcie->pll_locked = true;
 	return 0;
 }
 
@@ -1367,16 +1372,6 @@ static const struct pci_epc_features imx8q_pcie_epc_features = {
 	.bar[BAR_1] = { .type = BAR_RESERVED, },
 	.bar[BAR_3] = { .type = BAR_RESERVED, },
 	.bar[BAR_5] = { .type = BAR_RESERVED, },
-	.align = SZ_64K,
-};
-
-static const struct pci_epc_features imx8q_pcie_epc_features = {
-	.linkup_notifier = false,
-	.msi_capable = true,
-	.msix_capable = false,
-	.bar[BAR_1] = { .type = BAR_RESERVED, },
-	.bar[BAR_3] = { .type = BAR_RESERVED, },
-	.bar[BAR_5] = { .type = BAR_RESERVED, },
 	.align = SZ_4K,
 };
 
@@ -1514,10 +1509,13 @@ static void imx_pcie_lut_restore(struct imx_pcie *imx_pcie)
 static int imx_pcie_suspend_noirq(struct device *dev)
 {
 	struct imx_pcie *imx_pcie = dev_get_drvdata(dev);
+	struct dw_pcie *pci = imx_pcie->pci;
 
 	if (!(imx_pcie->drvdata->flags & IMX_PCIE_FLAG_SUPPORTS_SUSPEND))
 		return 0;
 
+	if (dw_pcie_link_up(pci))
+		imx_pcie->link_is_up = true;
 	if (imx_check_flag(imx_pcie, IMX_PCIE_FLAG_LINK_NOTIFY))
 		regmap_clear_bits(imx_pcie->iomuxc_gpr, IMX95_LINK_INT_CTRL_STS,
 				  IMX95_LINK_DOWN_INT_EN | IMX95_LINK_UP_INT_EN);
@@ -1543,6 +1541,7 @@ static int imx_pcie_resume_noirq(struct device *dev)
 {
 	int ret;
 	struct imx_pcie *imx_pcie = dev_get_drvdata(dev);
+	struct dw_pcie *pci = imx_pcie->pci;
 
 	if (!(imx_pcie->drvdata->flags & IMX_PCIE_FLAG_SUPPORTS_SUSPEND))
 		return 0;
@@ -1564,8 +1563,27 @@ static int imx_pcie_resume_noirq(struct device *dev)
 			return ret;
 	} else {
 		ret = dw_pcie_resume_noirq(imx_pcie->pci);
-		if (imx_pcie->link_is_up == false && ret == -ETIMEDOUT)
-			ret = 0;
+		/*
+		 * PLL lock might be failed on i.MX95 and i.MX94 randomly in
+		 * corner case, re-initialized it to workaround this issue.
+		 */
+		if ((imx_pcie->drvdata->variant == IMX95) &&
+		    (imx_pcie->pll_locked == false)) {
+			imx_pcie->pci->suspended = true;
+			ret = dw_pcie_resume_noirq(imx_pcie->pci);
+		}
+		if (!dw_pcie_link_up(pci) && (ret == -ETIMEDOUT)) {
+			if (!imx_pcie->link_is_up) {
+				ret = 0;
+			} else {
+				dev_info(dev, "PCIe link is down\n");
+				imx_pcie->pci->suspended = true;
+				dw_pcie_stop_link(pci);
+				if (pci->pp.ops->deinit)
+					pci->pp.ops->deinit(&pci->pp);
+				ret = dw_pcie_resume_noirq(imx_pcie->pci);
+			}
+		}
 		if (ret)
 			return ret;
 	}
@@ -2257,7 +2275,7 @@ static const struct imx_pcie_drvdata drvdata[] = {
 		.mode_mask[0] = IMX6Q_GPR12_DEVICE_TYPE,
 		.mode_off[1] = IOMUXC_GPR12,
 		.mode_mask[1] = IMX8MQ_GPR12_PCIE2_CTRL_DEVICE_TYPE,
-		.epc_features = &imx8q_pcie_epc_features,
+		.epc_features = &imx8mq_pcie_epc_features,
 		.init_phy = imx8mq_pcie_init_phy,
 		.enable_ref_clk = imx8mm_pcie_enable_ref_clk,
 	},
@@ -2288,8 +2306,6 @@ static const struct imx_pcie_drvdata drvdata[] = {
 		.flags = IMX_PCIE_FLAG_HAS_PHYDRV,
 		.mode = DW_PCIE_EP_TYPE,
 		.epc_features = &imx8q_pcie_epc_features,
-		.clk_names = imx8q_clks,
-		.clks_cnt = ARRAY_SIZE(imx8q_clks),
 	},
 	[IMX95_EP] = {
 		.variant = IMX95_EP,

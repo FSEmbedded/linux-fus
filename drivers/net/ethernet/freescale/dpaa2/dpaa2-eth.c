@@ -4761,6 +4761,12 @@ static int dpaa2_eth_connect_mac(struct dpaa2_eth_priv *priv)
 		goto out_put_device;
 	}
 
+#if IS_ENABLED(CONFIG_MACSEC)
+	dpaa2_eth_macsec_init(priv);
+#endif
+
+	dpaa2_mac_driver_detach(dpmac_dev);
+
 	mac = kzalloc(sizeof(struct dpaa2_mac), GFP_KERNEL);
 	if (!mac) {
 		err = -ENOMEM;
