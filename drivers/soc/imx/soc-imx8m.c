@@ -48,6 +48,8 @@ struct imx8_soc_data {
 	int (*soc_revision)(u32 *socrev, u64 *socuid);
 };
 
+static u64 soc_uid_h;
+
 #ifdef CONFIG_HAVE_ARM_SMCCC
 static u32 imx8mq_soc_revision_from_atf(void)
 {
@@ -208,6 +210,23 @@ static __maybe_unused const struct of_device_id imx8_soc_match[] = {
 	{ }
 };
 
+static void imx8mq_noc_init(void)
+{
+	struct arm_smccc_res res;
+
+	pr_info("Config NOC for VPU and CPU\n");
+
+	arm_smccc_smc(IMX_SIP_NOC, IMX_SIP_NOC_PRIORITY, NOC_CPU_PRIORITY,
+			0x80000300, 0, 0, 0, 0, &res);
+	if (res.a0)
+		pr_err("Config NOC for CPU fail!\n");
+
+	arm_smccc_smc(IMX_SIP_NOC, IMX_SIP_NOC_PRIORITY, NOC_VPU_PRIORITY,
+			0x80000300, 0, 0, 0, 0, &res);
+	if (res.a0)
+		pr_err("Config NOC for VPU fail!\n");
+}
+
 #define imx8_revision(dev, soc_rev) \
 	(soc_rev) ? \
 	devm_kasprintf((dev), GFP_KERNEL, "%d.%d", ((soc_rev) >> 4) & 0xf, (soc_rev) & 0xf) : \
@@ -263,7 +282,13 @@ static int imx8m_soc_probe(struct platform_device *pdev)
 	if (!soc_dev_attr->revision)
 		return -ENOMEM;
 
-	soc_dev_attr->serial_number = devm_kasprintf(dev, GFP_KERNEL, "%016llX", soc_uid);
+	if (soc_uid_h) {
+		soc_dev_attr->serial_number = devm_kasprintf(dev, GFP_KERNEL, "%016llX%016llX",
+							     soc_uid_h, soc_uid);
+	} else {
+		soc_dev_attr->serial_number = devm_kasprintf(dev, GFP_KERNEL, "%016llX", soc_uid);
+	}
+
 	if (!soc_dev_attr->serial_number)
 		return -ENOMEM;
 
@@ -325,7 +350,10 @@ static int __init imx8_soc_init(void)
 
 	return 0;
 }
+
 device_initcall(imx8_soc_init);
+MODULE_DESCRIPTION("NXP i.MX8M SoC driver");
+MODULE_LICENSE("GPL");
 
 #define FSL_SIP_SRC                    0xc2000005
 #define FSL_SIP_SRC_M4_START           0x00
@@ -355,4 +383,4 @@ int check_m4_enabled(void)
 EXPORT_SYMBOL_GPL(check_m4_enabled);
 
 MODULE_DESCRIPTION("i.MX8M SoC driver");
-MODULE_LICENSE("GPL");
+MODULE_LICENSE("GPL v2");

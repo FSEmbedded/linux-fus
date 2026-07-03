@@ -386,6 +386,10 @@ static const struct flexcan_devtype_data fsl_lx2160a_r1_devtype_data = {
 		FLEXCAN_QUIRK_SUPPORT_RX_MAILBOX_RTR,
 };
 
+static struct flexcan_devtype_data fsl_s32v234_devtype_data = {
+	.quirks = FLEXCAN_QUIRK_DISABLE_RXFG | FLEXCAN_QUIRK_DISABLE_MECR,
+};
+
 static const struct flexcan_devtype_data nxp_s32g2_devtype_data = {
 	.quirks = FLEXCAN_QUIRK_DISABLE_RXFG | FLEXCAN_QUIRK_ENABLE_EACEN_RRS |
 		FLEXCAN_QUIRK_DISABLE_MECR | FLEXCAN_QUIRK_BROKEN_PERR_STATE |
@@ -2065,6 +2069,7 @@ static const struct of_device_id flexcan_of_match[] = {
 	{ .compatible = "fsl,vf610-flexcan", .data = &fsl_vf610_devtype_data, },
 	{ .compatible = "fsl,ls1021ar2-flexcan", .data = &fsl_ls1021a_r2_devtype_data, },
 	{ .compatible = "fsl,lx2160ar1-flexcan", .data = &fsl_lx2160a_r1_devtype_data, },
+	{ .compatible = "fsl,s32v234-flexcan", .data = &fsl_s32v234_devtype_data, },
 	{ .compatible = "nxp,s32g2-flexcan", .data = &nxp_s32g2_devtype_data, },
 	{ /* sentinel */ },
 };
@@ -2292,7 +2297,6 @@ static int __maybe_unused flexcan_suspend(struct device *device)
 				return err;
 
 			flexcan_chip_interrupts_disable(dev);
-			flexcan_transceiver_disable(priv);
 
 			err = flexcan_transceiver_disable(priv);
 			if (err)
@@ -2327,9 +2331,6 @@ static int __maybe_unused flexcan_resume(struct device *device)
 				return err;
 		} else {
 			err = pinctrl_pm_select_default_state(device);
-			if (err)
-				return err;
-			err = flexcan_transceiver_enable(priv);
 			if (err)
 				return err;
 

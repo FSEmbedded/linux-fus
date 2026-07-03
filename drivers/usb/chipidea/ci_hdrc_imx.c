@@ -333,11 +333,36 @@ static int ci_hdrc_imx_notify_event(struct ci_hdrc *ci, unsigned int event)
 		if (ci->usb_phy)
 			schedule_work(&ci->usb_phy->chg_work);
 		break;
+	case CI_HDRC_CONTROLLER_PULLUP_EVENT:
+		if (ci->role == CI_ROLE_GADGET &&
+		    ci->gadget.speed == USB_SPEED_HIGH)
+			imx_usbmisc_pullup(data->usbmisc_data,
+					   ci->gadget.connected);
+		break;
 	default:
 		break;
 	}
 
 	return ret;
+}
+
+static irqreturn_t ci_wakeup_irq_handler(int irq, void *data)
+{
+	struct platform_device *pdev = data;
+	struct ci_hdrc_imx_data *imx_data = platform_get_drvdata(pdev);
+
+	if (imx_data->in_lpm) {
+		if (imx_data->wakeup_int)
+			return IRQ_HANDLED;
+
+		disable_irq_nosync(irq);
+		imx_data->wakeup_int = true;
+		pm_runtime_resume(&imx_data->ci_pdev->dev);
+
+		return IRQ_HANDLED;
+	}
+
+	return IRQ_NONE;
 }
 
 static void ci_hdrc_imx_disable_regulator(void *arg)
@@ -562,6 +587,7 @@ err_clk:
 err_wakeup_clk:
 	imx_disable_unprepare_clks(dev);
 qos_remove_request:
+	release_bus_freq(BUS_FREQ_HIGH);
 	if (pdata.flags & CI_HDRC_PMQOS)
 		cpu_latency_qos_remove_request(&data->pm_qos_req);
 	data->ci_pdev = NULL;
