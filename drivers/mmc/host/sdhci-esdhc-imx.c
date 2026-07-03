@@ -323,6 +323,7 @@ static struct esdhc_soc_data usdhc_s32g2_data = {
 			| ESDHC_FLAG_HAVE_CAP1 | ESDHC_FLAG_HS200
 			| ESDHC_FLAG_HS400 | ESDHC_FLAG_HS400_ES
 			| ESDHC_FLAG_SKIP_ERR004536 | ESDHC_FLAG_SKIP_CD_WAKE,
+	.quirks = SDHCI_QUIRK_NO_LED,
 };
 
 static struct esdhc_soc_data usdhc_imx7ulp_data = {
@@ -351,23 +352,8 @@ static struct esdhc_soc_data usdhc_imx8mm_data = {
 	.flags = ESDHC_FLAG_USDHC | ESDHC_FLAG_STD_TUNING
 			| ESDHC_FLAG_HAVE_CAP1 | ESDHC_FLAG_HS200
 			| ESDHC_FLAG_HS400 | ESDHC_FLAG_HS400_ES
-			| ESDHC_FLAG_STATE_LOST_IN_LPMODE
-			| ESDHC_FLAG_BUSFREQ,
+			| ESDHC_FLAG_STATE_LOST_IN_LPMODE,
 	.quirks = SDHCI_QUIRK_NO_LED,
-};
-
-static struct esdhc_soc_data usdhc_imx8mq_data = {
-	.flags = ESDHC_FLAG_USDHC | ESDHC_FLAG_STD_TUNING
-			| ESDHC_FLAG_HAVE_CAP1 | ESDHC_FLAG_HS200
-			| ESDHC_FLAG_HS400 | ESDHC_FLAG_PMQOS
-			| ESDHC_FLAG_STATE_LOST_IN_LPMODE
-			| ESDHC_FLAG_BROKEN_AUTO_CMD23
-			| ESDHC_FLAG_BUSFREQ,
-	.quirks = SDHCI_QUIRK_NO_LED,
-};
-
-static struct esdhc_soc_data usdhc_s32v234_data = {
-	.flags = ESDHC_FLAG_USDHC,
 };
 
 struct pltfm_imx_data {
@@ -1854,10 +1840,6 @@ static int sdhci_esdhc_imx_probe(struct platform_device *pdev)
 	imx_data->socdata = device_get_match_data(&pdev->dev);
 
 	host->quirks |= imx_data->socdata->quirks;
-
-	if (imx_data->socdata->flags & ESDHC_FLAG_BUSFREQ)
-		request_bus_freq(BUS_FREQ_HIGH);
-
 	if (imx_data->socdata->flags & ESDHC_FLAG_PMQOS)
 		cpu_latency_qos_add_request(&imx_data->pm_qos_req, 0);
 
