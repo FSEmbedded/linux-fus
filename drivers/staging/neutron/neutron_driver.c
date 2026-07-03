@@ -68,6 +68,9 @@ static int neutron_pdev_probe(struct platform_device *pdev)
 
 	pm_runtime_enable(&pdev->dev);
 
+	pm_runtime_set_autosuspend_delay(&pdev->dev, NEUTRON_AUTOSUSPEND_DELAY);
+	pm_runtime_use_autosuspend(&pdev->dev);
+
 	ret = pm_runtime_resume_and_get(&pdev->dev);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "failed to resume: %d\n", ret);
@@ -80,6 +83,7 @@ static int neutron_pdev_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_put_pm;
 
+	pm_runtime_put_autosuspend(&pdev->dev);
 	set_bit(minor, minors);
 
 	return 0;
@@ -92,7 +96,7 @@ err_free_dev:
 	return ret;
 }
 
-static int neutron_pdev_remove(struct platform_device *pdev)
+static void neutron_pdev_remove(struct platform_device *pdev)
 {
 	struct neutron_device *ndev = platform_get_drvdata(pdev);
 
@@ -100,14 +104,15 @@ static int neutron_pdev_remove(struct platform_device *pdev)
 	clear_bit(MINOR(ndev->devt), minors);
 	neutron_dev_deinit(ndev);
 	pm_runtime_disable(ndev->dev);
-
-	return 0;
 }
 
 #ifdef CONFIG_PM
 static int neutron_runtime_suspend(struct device *dev)
 {
 	struct neutron_device *ndev = dev_get_drvdata(dev);
+
+	if (ndev->power_state == NEUTRON_POWER_ON)
+		neutron_rproc_shutdown(ndev);
 
 	clk_bulk_disable_unprepare(ndev->num_clks, ndev->clks);
 
@@ -123,6 +128,10 @@ static int neutron_runtime_resume(struct device *dev)
 	if (ret)
 		dev_err(ndev->dev, "failed to enable clock\n");
 
+	/* Start the neutron core only when it is ON state before suspend */
+	if (ndev->power_state == NEUTRON_POWER_ON)
+		neutron_rproc_boot(ndev, NULL);
+
 	return 0;
 }
 #endif
@@ -132,8 +141,12 @@ static int neutron_suspend(struct device *dev)
 {
 	struct neutron_device *ndev = dev_get_drvdata(dev);
 
+	pm_runtime_resume_and_get(dev);
+
 	if (ndev->power_state == NEUTRON_POWER_ON)
 		neutron_rproc_shutdown(ndev);
+
+	pm_runtime_put_sync(dev);
 
 	pm_runtime_force_suspend(dev);
 
@@ -150,8 +163,10 @@ static int neutron_resume(struct device *dev)
 		pr_err("neutron: failed to resume\n");
 
 	/* Start the neutron core only when it is ON state before sleeping */
+	pm_runtime_resume_and_get(dev);
 	if (ndev->power_state == NEUTRON_POWER_ON)
 		neutron_rproc_boot(ndev, NULL);
+	pm_runtime_put_sync(dev);
 
 	return 0;
 }

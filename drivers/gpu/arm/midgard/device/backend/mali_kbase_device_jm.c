@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note
 /*
  *
- * (C) COPYRIGHT 2019-2023 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2019-2024 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -32,11 +32,8 @@
 #include <hwcnt/backend/mali_kbase_hwcnt_backend_jm_watchdog.h>
 #include <backend/gpu/mali_kbase_model_linux.h>
 
-#ifdef CONFIG_MALI_ARBITER_SUPPORT
-#include <arbiter/mali_kbase_arbiter_pm.h>
-#endif
-
 #include <mali_kbase.h>
+#include <mali_kbase_io.h>
 #include <backend/gpu/mali_kbase_irq_internal.h>
 #include <backend/gpu/mali_kbase_jm_internal.h>
 #include <backend/gpu/mali_kbase_js_internal.h>
@@ -198,9 +195,15 @@ static void kbase_device_hwcnt_backend_jm_term(struct kbase_device *kbdev)
  */
 static int kbase_device_hwcnt_backend_jm_watchdog_init(struct kbase_device *kbdev)
 {
+	const u32 timer_interval =
+		(kbdev->gpu_props.impl_tech == THREAD_FEATURES_IMPLEMENTATION_TECHNOLOGY_FPGA) ||
+				(kbdev->gpu_props.impl_tech ==
+				 THREAD_FEATURES_IMPLEMENTATION_TECHNOLOGY_SOFTWARE) ?
+			      HWCNT_BACKEND_WATCHDOG_TIMER_INTERVAL_FPGA_MS :
+			      HWCNT_BACKEND_WATCHDOG_TIMER_INTERVAL_MS;
 	return kbase_hwcnt_backend_jm_watchdog_create(&kbdev->hwcnt_gpu_jm_backend,
 						      &kbdev->hwcnt_watchdog_timer,
-						      &kbdev->hwcnt_gpu_iface);
+						      &kbdev->hwcnt_gpu_iface, timer_interval);
 }
 
 /**
@@ -217,16 +220,15 @@ static const struct kbase_device_init dev_init[] = {
 	{ kbase_gpu_device_create, kbase_gpu_device_destroy, "Dummy model initialization failed" },
 #else /* !IS_ENABLED(CONFIG_MALI_REAL_HW) */
 	{ kbase_get_irqs, NULL, "IRQ search failed" },
-#endif /* !IS_ENABLED(CONFIG_MALI_REAL_HW) */
-#if !IS_ENABLED(CONFIG_MALI_NO_MALI)
 	{ registers_map, registers_unmap, "Register map failed" },
-#endif /* !IS_ENABLED(CONFIG_MALI_NO_MALI) */
+#endif /* !IS_ENABLED(CONFIG_MALI_REAL_HW) */
 #if IS_ENABLED(CONFIG_MALI_TRACE_POWER_GPU_WORK_PERIOD)
 	{ kbase_gpu_metrics_init, kbase_gpu_metrics_term, "GPU metrics initialization failed" },
 #endif /* IS_ENABLED(CONFIG_MALI_TRACE_POWER_GPU_WORK_PERIOD) */
+	{ power_control_init, power_control_term, "Power control initialization failed" },
+	{ kbase_io_init, kbase_io_term, "Kbase IO initialization failed" },
 	{ kbase_device_io_history_init, kbase_device_io_history_term,
 	  "Register access history initialization failed" },
-	{ kbase_device_pm_init, kbase_device_pm_term, "Power management initialization failed" },
 	{ kbase_device_early_init, kbase_device_early_term, "Early device initialization failed" },
 	{ kbase_backend_time_init, NULL, "Time backend initialization failed" },
 	{ kbase_device_misc_init, kbase_device_misc_term,

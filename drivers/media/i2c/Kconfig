@@ -289,6 +289,13 @@ config VIDEO_MT9M114
 	  To compile this driver as a module, choose M here: the
 	  module will be called mt9m114.
 
+config VIDEO_MT9M114X
+	tristate "mt9m114x support"
+	depends on I2C && VIDEO_DEV
+	select V4L2_FWNODE
+	help
+	  This driver supports MT9M114x cameras from ON Semiconductor
+
 config VIDEO_MT9P031
 	tristate "Aptina MT9P031 support"
 	select VIDEO_APTINA_PLL
@@ -642,28 +649,7 @@ config VIDEO_OV9734
 	  To compile this driver as a module, choose M here: the
 	  module's name is ov9734.
 
-config VIDEO_OX03C10_LIB
-	tristate "Omnivision OX03C10 camera sensor library."
-	depends on I2C
-	help
-	  This library supports the Omnivision OX03C10 camera sensor. The sensor is usually paired
-	  with a serializer chip in a single module and needs a deserializer on the remote side in
-	  order to interface with the host platform using MIPI-CSI2.
-
-	  To compile this library as a module, choose M here: the module will be called ox03c10.
-
 config VIDEO_AP1302
-	tristate "ON Semiconductor's Advanced Image Coporcessor AP1302 support"
-	depends on OF
-	depends on GPIOLIB && VIDEO_DEV && I2C
-	select MEDIA_CONTROLLER
-	select VIDEO_V4L2_SUBDEV_API
-	select V4L2_FWNODE
-	help
-	  This is a Video4Linux2 sensor driver for the ONSEMI AP1302 camera
-	  sensor with a MIPI CSI-2 interface
-
-config VIDEO_AP130X
        tristate "ON Semiconductor AP130X ISP"
        depends on I2C && VIDEO_DEV
        select VIDEO_V4L2_SUBDEV_API
@@ -676,12 +662,15 @@ config VIDEO_AP130X
          To compile this driver as a module, choose M here: the
          module will be called ap1302.
 
-config VIDEO_MT9M114
-	tristate "mt9m114 support"
-	depends on I2C && VIDEO_DEV
-	select V4L2_FWNODE
+config VIDEO_OX03C10_LIB
+	tristate "Omnivision OX03C10 camera sensor library."
+	depends on I2C
 	help
-	  This driver supports MT9M114 cameras from ON Semiconductor
+	  This library supports the Omnivision OX03C10 camera sensor. The sensor is usually paired
+	  with a serializer chip in a single module and needs a deserializer on the remote side in
+	  order to interface with the host platform using MIPI-CSI2.
+
+	  To compile this library as a module, choose M here: the module will be called ox03c10.
 
 config VIDEO_OX03C10_DRV
 	tristate "OmniVision OX03C10 sensor support"
@@ -1212,7 +1201,7 @@ config VIDEO_KS0127
 	  To compile this driver as a module, choose M here: the
 	  module will be called ks0127.
 
-source "drivers/media/i2c/os08a20/Kconfig"
+source "drivers/media/i2c/ox05b1s/Kconfig"
 
 config VIDEO_MAX9286
 	tristate "Maxim MAX9286 GMSL deserializer support"

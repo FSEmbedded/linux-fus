@@ -20,10 +20,6 @@
 
 #include "clk.h"
 
-#define IMX8MP_AUDIO_BLK_CTRL_EARC_RESET	0
-#define IMX8MP_AUDIO_BLK_CTRL_EARC_PHY_RESET	1
-#define IMX8MP_AUDIO_BLK_CTRL_RESET_NUM		2
-
 #define CLKEN0			0x000
 #define CLKEN1			0x004
 #define EARC			0x200
@@ -139,30 +135,11 @@ static const struct clk_parent_data clk_imx8mp_audiomix_pll_bypass_sels[] = {
 	{ .fw_name = "sai_pll_ref_sel", .name = "sai_pll_ref_sel" },
 };
 
-static int shared_count_pdm;
-
 #define CLK_GATE(gname, cname)						\
 	{								\
 		gname"_cg",						\
 		IMX8MP_CLK_AUDIOMIX_##cname,				\
 		{ .fw_name = "ahb", .name = "ahb" }, NULL, 1,		\
-		CLKEN0 + 4 * !!(AUDIOMIX_##cname / 32),	\
-		1, AUDIOMIX_##cname % 32			\
-	}
-
-#define CLK_GATE_SHARED(gname, cname, pname, reg, width, shift, shcount)\
-	{								\
-		gname,							\
-		IMX8MP_CLK_AUDIOMIX_##cname,				\
-		pname,							\
-		reg, width, shift, shcount				\
-	}
-
-#define CLK_GATE_PARENT(gname, cname, pname)						\
-	{								\
-		gname"_cg",						\
-		IMX8MP_CLK_AUDIOMIX_##cname,				\
-		{ .fw_name = pname, .name = pname }, NULL, 1,		\
 		CLKEN0 + 4 * !!(AUDIOMIX_##cname / 32),	\
 		1, AUDIOMIX_##cname % 32			\
 	}
@@ -224,8 +201,8 @@ static int shared_count_pdm;
 		gname"_cg",						\
 		IMX8MP_CLK_AUDIOMIX_##cname,				\
 		{ .fw_name = pname, .name = pname }, NULL, 1,		\
-		CLKEN0 + 4 * !!(IMX8MP_CLK_AUDIOMIX_##cname / 32),	\
-		1, IMX8MP_CLK_AUDIOMIX_##cname % 32			\
+		CLKEN0 + 4 * !!(AUDIOMIX_##cname / 32),			\
+		1, AUDIOMIX_##cname % 32				\
 	}
 
 struct clk_imx8mp_audiomix_sel {
@@ -241,11 +218,11 @@ struct clk_imx8mp_audiomix_sel {
 
 static struct clk_imx8mp_audiomix_sel sels[] = {
 	CLK_GATE("asrc", ASRC_IPG),
+	CLK_GATE("pdm", PDM_IPG),
 	CLK_GATE("earc", EARC_IPG),
 	CLK_GATE("ocrama", OCRAMA_IPG),
 	CLK_GATE("aud2htx", AUD2HTX_IPG),
 	CLK_GATE_PARENT("earc_phy", EARC_PHY, "sai_pll_out_div2"),
-	CLK_GATE("sdma2", SDMA2_ROOT),
 	CLK_GATE("sdma3", SDMA3_ROOT),
 	CLK_GATE("spba2", SPBA2_ROOT),
 	CLK_GATE("dsp", DSP_ROOT),
@@ -418,18 +395,6 @@ static int clk_imx8mp_audiomix_probe(struct platform_device *pdev)
 		clk_hw_data->hws[sels[i].clkid] = hw;
 	}
 
-	for (i = 0; i < ARRAY_SIZE(pdms); i++) {
-		hw = imx_dev_clk_hw_gate_shared(dev, pdms[i].name,
-						pdms[i].parents,
-						base + pdms[i].reg,
-						pdms[i].shift,
-						pdms[i].shcount);
-		if (IS_ERR(hw))
-			return PTR_ERR(hw);
-
-		priv->hws[pdms[i].clkid] = hw;
-	}
-
 	/* SAI PLL */
 	hw = devm_clk_hw_register_mux_parent_data_table(dev,
 		"sai_pll_ref_sel", clk_imx8mp_audiomix_pll_parents,
@@ -521,7 +486,7 @@ static const struct dev_pm_ops clk_imx8mp_audiomix_pm_ops = {
 };
 
 static const struct of_device_id clk_imx8mp_audiomix_of_match[] = {
-	{ .compatible = "fsl,imx8mp-audio-blk-ctrl", .data = &imx8mp_audiomix_dev_data, },
+	{ .compatible = "fsl,imx8mp-audio-blk-ctrl" },
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, clk_imx8mp_audiomix_of_match);

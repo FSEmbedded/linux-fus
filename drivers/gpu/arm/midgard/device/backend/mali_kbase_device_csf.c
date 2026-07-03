@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note
 /*
  *
- * (C) COPYRIGHT 2019-2023 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2019-2024 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -22,6 +22,7 @@
 #include <device/mali_kbase_device_internal.h>
 #include <device/mali_kbase_device.h>
 
+#include <mali_kbase_config_defaults.h>
 #include <mali_kbase_hwaccess_backend.h>
 #include <hwcnt/backend/mali_kbase_hwcnt_backend_csf_if_fw.h>
 #include <hwcnt/mali_kbase_hwcnt_watchdog_if_timer.h>
@@ -32,6 +33,7 @@
 #include <backend/gpu/mali_kbase_model_linux.h>
 
 #include <mali_kbase.h>
+#include <mali_kbase_io.h>
 #include <backend/gpu/mali_kbase_irq_internal.h>
 #include <backend/gpu/mali_kbase_pm_internal.h>
 #include <backend/gpu/mali_kbase_clk_rate_trace_mgr.h>
@@ -132,11 +134,15 @@ static int kbase_backend_late_init(struct kbase_device *kbdev)
 
 fail_update_l2_features:
 	kbase_backend_devfreq_term(kbdev);
-fail_devfreq_init:
-	kbasep_pm_metrics_term(kbdev);
-fail_pm_metrics_init:
-	kbase_ipa_control_term(kbdev);
 
+fail_devfreq_init:
+	{
+		kbasep_pm_metrics_term(kbdev);
+	}
+fail_pm_metrics_init:
+	{
+		kbase_ipa_control_term(kbdev);
+	}
 #ifdef CONFIG_MALI_DEBUG
 #if IS_ENABLED(CONFIG_MALI_REAL_HW)
 fail_interrupt_test:
@@ -159,9 +165,11 @@ fail_reset_gpu_init:
  */
 static void kbase_backend_late_term(struct kbase_device *kbdev)
 {
-	kbase_backend_devfreq_term(kbdev);
-	kbasep_pm_metrics_term(kbdev);
-	kbase_ipa_control_term(kbdev);
+	{
+		kbase_backend_devfreq_term(kbdev);
+		kbasep_pm_metrics_term(kbdev);
+		kbase_ipa_control_term(kbdev);
+	}
 	kbase_hwaccess_pm_halt(kbdev);
 	kbase_reset_gpu_term(kbdev);
 	kbase_hwaccess_pm_term(kbdev);
@@ -259,10 +267,16 @@ static void kbase_device_hwcnt_backend_csf_if_term(struct kbase_device *kbdev)
  */
 static int kbase_device_hwcnt_backend_csf_init(struct kbase_device *kbdev)
 {
+	const u32 timer_interval =
+		(kbdev->gpu_props.impl_tech == THREAD_FEATURES_IMPLEMENTATION_TECHNOLOGY_FPGA) ||
+				(kbdev->gpu_props.impl_tech ==
+				 THREAD_FEATURES_IMPLEMENTATION_TECHNOLOGY_SOFTWARE) ?
+			      HWCNT_BACKEND_WATCHDOG_TIMER_INTERVAL_FPGA_MS :
+			      HWCNT_BACKEND_WATCHDOG_TIMER_INTERVAL_MS;
 	return kbase_hwcnt_backend_csf_create(&kbdev->hwcnt_backend_csf_if_fw,
 					      KBASE_HWCNT_BACKEND_CSF_RING_BUFFER_COUNT,
-					      &kbdev->hwcnt_watchdog_timer,
-					      &kbdev->hwcnt_gpu_iface);
+					      &kbdev->hwcnt_watchdog_timer, &kbdev->hwcnt_gpu_iface,
+					      timer_interval);
 }
 
 /**
@@ -279,14 +293,13 @@ static const struct kbase_device_init dev_init[] = {
 	{ kbase_gpu_device_create, kbase_gpu_device_destroy, "Dummy model initialization failed" },
 #else /* !IS_ENABLED(CONFIG_MALI_REAL_HW) */
 	{ kbase_get_irqs, NULL, "IRQ search failed" },
-#endif /* !IS_ENABLED(CONFIG_MALI_REAL_HW) */
-#if !IS_ENABLED(CONFIG_MALI_NO_MALI)
 	{ registers_map, registers_unmap, "Register map failed" },
-#endif /* !IS_ENABLED(CONFIG_MALI_NO_MALI) */
+#endif /* !IS_ENABLED(CONFIG_MALI_REAL_HW) */
 #if IS_ENABLED(CONFIG_MALI_TRACE_POWER_GPU_WORK_PERIOD)
 	{ kbase_gpu_metrics_init, kbase_gpu_metrics_term, "GPU metrics initialization failed" },
 #endif /* IS_ENABLED(CONFIG_MALI_TRACE_POWER_GPU_WORK_PERIOD) */
 	{ power_control_init, power_control_term, "Power control initialization failed" },
+	{ kbase_io_init, kbase_io_term, "Kbase IO initialization failed" },
 	{ kbase_device_io_history_init, kbase_device_io_history_term,
 	  "Register access history initialization failed" },
 	{ kbase_device_early_init, kbase_device_early_term, "Early device initialization failed" },

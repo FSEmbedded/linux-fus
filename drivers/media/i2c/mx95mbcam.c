@@ -193,16 +193,6 @@ static int mx95mbcam_get_selection(struct v4l2_subdev *sd, struct v4l2_subdev_st
 	return -EINVAL;
 }
 
-static int mx95mbcam_ctrl_type_op_validate(const struct v4l2_ctrl *ctrl, union v4l2_ctrl_ptr ptr)
-{
-	return true;
-}
-
-static const struct v4l2_ctrl_type_ops mx95mbcam_ctrl_type_ops = {
-	.init		= v4l2_ctrl_type_op_init,
-	.validate	= mx95mbcam_ctrl_type_op_validate,
-};
-
 static const struct v4l2_subdev_video_ops mx95mbcam_video_ops = {
 	.s_stream	= mx95mbcam_s_stream,
 };
@@ -309,6 +299,7 @@ static int mx95mbcam_init(struct mx95mbcam_priv *priv)
 	ret |= max96717_soft_bpp_override(priv->ser, 16); /* RAW16 bpp */
 	ret |= max96717_vc_filter(priv->ser, BIT(0)); /* process only VC0 */
 	ret |= max96717_stream_id_set(priv->ser, 0);
+	ret |= max96717_set_i2c_speed(priv->ser, MAX96717_I2C_BPS_980000);
 
 	return ret ? -EIO : 0;
 }
@@ -360,6 +351,15 @@ static void mx95mbcam_remove(struct i2c_client *client)
 
 	ox03c10_ctrl_handler_free(priv->sensor);
 	v4l2_async_unregister_subdev(&priv->sd);
+	max96717_reset_chip(priv->ser);
+}
+
+static void mx95mbcam_shutdown(struct i2c_client *client)
+{
+	struct v4l2_subdev *subdev = i2c_get_clientdata(client);
+	struct mx95mbcam_priv *priv = container_of(subdev, struct mx95mbcam_priv, sd);
+
+	max96717_reset_chip(priv->ser);
 }
 
 static const struct of_device_id mx95mbcam_dt_ids[] = {
@@ -375,6 +375,7 @@ static struct i2c_driver mx95mbcam_i2c_driver = {
 	},
 	.probe		= mx95mbcam_probe,
 	.remove		= mx95mbcam_remove,
+	.shutdown	= mx95mbcam_shutdown,
 };
 
 module_i2c_driver(mx95mbcam_i2c_driver);

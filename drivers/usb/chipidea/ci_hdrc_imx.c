@@ -365,6 +365,7 @@ static int ci_hdrc_imx_probe(struct platform_device *pdev)
 	struct ci_hdrc_platform_data pdata = {
 		.name		= dev_name(&pdev->dev),
 		.capoffset	= DEF_CAPOFFSET,
+		.flags		= CI_HDRC_HAS_SHORT_PKT_LIMIT,
 		.notify_event	= ci_hdrc_imx_notify_event,
 	};
 	int ret;
@@ -493,11 +494,6 @@ static int ci_hdrc_imx_probe(struct platform_device *pdev)
 	if (pdata.flags & CI_HDRC_SUPPORTS_RUNTIME_PM)
 		data->supports_runtime_pm = true;
 
-	if (of_find_property(np, "ci-disable-lpm", NULL)) {
-		data->supports_runtime_pm = false;
-		pdata.flags &= ~CI_HDRC_SUPPORTS_RUNTIME_PM;
-	}
-
 	data->irq = platform_get_irq_optional(pdev, 1);
 	if (data->irq > 0) {
 		ret = devm_request_threaded_irq(dev, data->irq,
@@ -584,6 +580,7 @@ static void ci_hdrc_imx_remove(struct platform_device *pdev)
 	if (data->ci_pdev) {
 		imx_disable_unprepare_clks(&pdev->dev);
 		clk_disable_unprepare(data->clk_wakeup);
+		release_bus_freq(BUS_FREQ_HIGH);
 		if (data->plat_data->flags & CI_HDRC_PMQOS)
 			cpu_latency_qos_remove_request(&data->pm_qos_req);
 		if (data->hsic_pad_regulator)

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note
 /*
  *
- * (C) COPYRIGHT 2018-2023 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2018-2024 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -89,6 +89,21 @@ static enum kbase_hwcnt_gpu_v5_block_type kbasep_get_sc_block_type(enum kbase_hw
 	}
 }
 
+static enum kbase_hwcnt_gpu_v5_block_type
+kbasep_get_neural_block_type(enum kbase_hwcnt_set counter_set)
+{
+	switch (counter_set) {
+	case KBASE_HWCNT_SET_PRIMARY:
+		return KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_NEURAL;
+	case KBASE_HWCNT_SET_SECONDARY:
+		return KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_NEURAL2;
+	case KBASE_HWCNT_SET_TERTIARY:
+		return KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_NEURAL_UNDEFINED;
+	default:
+		WARN(true, "Invalid counter set for neural core block type: %d", counter_set);
+		return KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_NEURAL_UNDEFINED;
+	}
+}
 
 static enum kbase_hwcnt_gpu_v5_block_type
 kbasep_get_memsys_block_type(enum kbase_hwcnt_set counter_set)
@@ -159,6 +174,7 @@ static int kbasep_hwcnt_backend_gpu_metadata_create(const struct kbase_hwcnt_gpu
 	size_t core_block_count;
 	size_t sc_block_count;
 	size_t blk_idx = 0;
+	size_t ne_block_count = 0;
 
 	if (WARN_ON(!gpu_info))
 		return -EINVAL;
@@ -169,10 +185,15 @@ static int kbasep_hwcnt_backend_gpu_metadata_create(const struct kbase_hwcnt_gpu
 	/* Calculate number of block instances that aren't cores */
 	non_core_block_count = 2 + gpu_info->l2_count;
 	/* Calculate number of block instances that are shader cores */
-	sc_block_count = (size_t)fls64(gpu_info->core_mask);
+	sc_block_count = (size_t)fls64(gpu_info->sc_core_mask);
 	/* Determine the total number of cores */
 	core_block_count = sc_block_count;
 
+	if (gpu_info->has_ne) {
+		/* Number of NE cores is equal to number of SC cores */
+		ne_block_count = sc_block_count;
+		core_block_count += ne_block_count;
+	}
 
 	if (gpu_info->has_fw_counters)
 		non_core_block_count += 1 + gpu_info->csg_cnt;
@@ -258,6 +279,16 @@ static int kbasep_hwcnt_backend_gpu_metadata_create(const struct kbase_hwcnt_gpu
 		.ctr_cnt = gpu_info->prfcnt_values_per_block - KBASE_HWCNT_V5_HEADERS_PER_BLOCK,
 	};
 
+	/* Neural Core blks */
+	if (gpu_info->has_ne) {
+		blks[blk_idx++] = (struct kbase_hwcnt_block_description){
+			.type = kbasep_get_neural_block_type(counter_set),
+			.inst_cnt = ne_block_count,
+			.hdr_cnt = KBASE_HWCNT_V5_HEADERS_PER_BLOCK,
+			.ctr_cnt = gpu_info->prfcnt_values_per_block -
+				   KBASE_HWCNT_V5_HEADERS_PER_BLOCK,
+		};
+	}
 
 	/* Currently, we're only handling a maximum of seven blocks, and this needs
 	 * to be changed whenever the number of blocks increases
@@ -277,8 +308,12 @@ static int kbasep_hwcnt_backend_gpu_metadata_create(const struct kbase_hwcnt_gpu
 	kbase_hwcnt_set_avail_mask(&desc.avail_mask, 0, 0);
 	kbase_hwcnt_set_avail_mask_bits(&desc.avail_mask, 0, non_core_block_count, U64_MAX);
 	kbase_hwcnt_set_avail_mask_bits(&desc.avail_mask, non_core_block_count, sc_block_count,
-					gpu_info->core_mask);
+					gpu_info->sc_core_mask);
 
+	if (gpu_info->has_ne)
+		kbase_hwcnt_set_avail_mask_bits(&desc.avail_mask,
+						non_core_block_count + sc_block_count,
+						ne_block_count, gpu_info->ne_core_mask);
 
 	return kbase_hwcnt_metadata_create(&desc, metadata);
 }
@@ -294,7 +329,7 @@ static size_t kbasep_hwcnt_backend_jm_dump_bytes(const struct kbase_hwcnt_gpu_in
 {
 	WARN_ON(!gpu_info);
 
-	return (2 + gpu_info->l2_count + (size_t)fls64(gpu_info->core_mask)) *
+	return (2 + gpu_info->l2_count + (size_t)fls64(gpu_info->sc_core_mask)) *
 	       gpu_info->prfcnt_values_per_block * KBASE_HWCNT_VALUE_HW_BYTES;
 }
 
@@ -338,14 +373,6 @@ int kbase_hwcnt_jm_metadata_create(const struct kbase_hwcnt_gpu_info *gpu_info,
 	return 0;
 }
 
-void kbase_hwcnt_jm_metadata_destroy(const struct kbase_hwcnt_metadata *metadata)
-{
-	if (!metadata)
-		return;
-
-	kbase_hwcnt_metadata_destroy(metadata);
-}
-
 int kbase_hwcnt_csf_metadata_create(const struct kbase_hwcnt_gpu_info *gpu_info,
 				    enum kbase_hwcnt_set counter_set,
 				    const struct kbase_hwcnt_metadata **out_metadata)
@@ -365,20 +392,22 @@ int kbase_hwcnt_csf_metadata_create(const struct kbase_hwcnt_gpu_info *gpu_info,
 	return 0;
 }
 
-void kbase_hwcnt_csf_metadata_destroy(const struct kbase_hwcnt_metadata *metadata)
-{
-	if (!metadata)
-		return;
-
-	kbase_hwcnt_metadata_destroy(metadata);
-}
-
 bool kbase_hwcnt_is_block_type_shader(const enum kbase_hwcnt_gpu_v5_block_type blk_type)
 {
 	if (blk_type == KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_SC ||
 	    blk_type == KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_SC2 ||
 	    blk_type == KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_SC3 ||
 	    blk_type == KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_SC_UNDEFINED)
+		return true;
+
+	return false;
+}
+
+bool kbase_hwcnt_is_block_type_neural(const enum kbase_hwcnt_gpu_v5_block_type blk_type)
+{
+	if (blk_type == KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_NEURAL ||
+	    blk_type == KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_NEURAL2 ||
+	    blk_type == KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_NEURAL_UNDEFINED)
 		return true;
 
 	return false;
@@ -416,7 +445,7 @@ bool kbase_hwcnt_is_block_type_fe(const enum kbase_hwcnt_gpu_v5_block_type blk_t
 
 int kbase_hwcnt_jm_dump_get(struct kbase_hwcnt_dump_buffer *dst, u64 *src,
 			    const struct kbase_hwcnt_enable_map *dst_enable_map, u64 pm_core_mask,
-			    u64 debug_core_mask, u64 max_core_mask, size_t max_l2_slices,
+			    u64 debug_core_mask, size_t max_l2_slices,
 			    const struct kbase_hwcnt_curr_config *curr_config, bool accumulate)
 {
 	const struct kbase_hwcnt_metadata *metadata;
@@ -466,9 +495,7 @@ int kbase_hwcnt_jm_dump_get(struct kbase_hwcnt_dump_buffer *dst, u64 *src,
 		else
 			hw_res_available = true;
 
-		/*
-		 * Skip block if no values in the destination block are enabled.
-		 */
+		/* Skip block if no values in the destination block are enabled. */
 		if (kbase_hwcnt_enable_map_block_enabled(dst_enable_map, blk, blk_inst)) {
 			u64 *dst_blk = kbase_hwcnt_dump_buffer_block_instance(dst, blk, blk_inst);
 			const u64 *src_blk = dump_src + src_offset;
@@ -581,7 +608,6 @@ int kbase_hwcnt_jm_dump_get(struct kbase_hwcnt_dump_buffer *dst, u64 *src,
 			/* Shift each core mask right by 1 */
 			core_mask >>= 1;
 			debug_core_mask >>= 1;
-			max_core_mask >>= 1;
 			shader_present >>= 1;
 		}
 	}
@@ -592,7 +618,7 @@ int kbase_hwcnt_jm_dump_get(struct kbase_hwcnt_dump_buffer *dst, u64 *src,
 int kbase_hwcnt_csf_dump_get(struct kbase_hwcnt_dump_buffer *dst, u64 *src,
 			     blk_stt_t *src_block_stt,
 			     const struct kbase_hwcnt_enable_map *dst_enable_map,
-			     size_t num_l2_slices, u64 shader_present_bitmap, bool accumulate)
+			     size_t num_l2_slices, u64 powered_shader_core_mask, bool accumulate)
 {
 	const struct kbase_hwcnt_metadata *metadata;
 	const u64 *dump_src = src;
@@ -614,9 +640,7 @@ int kbase_hwcnt_csf_dump_get(struct kbase_hwcnt_dump_buffer *dst, u64 *src,
 		blk_stt_t *dst_blk_stt =
 			kbase_hwcnt_dump_buffer_block_state_instance(dst, blk, blk_inst);
 
-		/*
-		 * Skip block if no values in the destination block are enabled.
-		 */
+		/* Skip block if no values in the destination block are enabled. */
 		if (kbase_hwcnt_enable_map_block_enabled(dst_enable_map, blk, blk_inst)) {
 			u64 *dst_blk = kbase_hwcnt_dump_buffer_block_instance(dst, blk, blk_inst);
 			const u64 *src_blk = dump_src + src_offset;
@@ -704,6 +728,8 @@ void kbase_hwcnt_gpu_enable_map_to_physical(struct kbase_hwcnt_physical_enable_m
 	u64 mmu_l2_bm[EM_COUNT] = { 0 };
 	u64 fw_bm[EM_COUNT] = { 0 };
 	u64 csg_bm[EM_COUNT] = { 0 };
+	u64 neural_bm[EM_COUNT] = { 0 };
+
 	size_t blk, blk_inst;
 
 	if (WARN_ON(!src) || WARN_ON(!dst))
@@ -733,6 +759,9 @@ void kbase_hwcnt_gpu_enable_map_to_physical(struct kbase_hwcnt_physical_enable_m
 				fallthrough;
 			case KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_FW_UNDEFINED:
 				fallthrough;
+			case KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_NEURAL_UNDEFINED:
+				fallthrough;
+
 			case KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_CSG_UNDEFINED:
 				/* Nothing to do in this case. */
 				break;
@@ -772,6 +801,12 @@ void kbase_hwcnt_gpu_enable_map_to_physical(struct kbase_hwcnt_physical_enable_m
 			case KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_CSG3:
 				csg_bm[map_idx] |= blk_map[map_idx];
 				break;
+			case KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_NEURAL:
+				fallthrough;
+			case KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_NEURAL2:
+				neural_bm[map_idx] |= blk_map[map_idx];
+				break;
+
 			default:
 				WARN(true, "Unknown block type %llu", blk_type);
 			}
@@ -787,6 +822,8 @@ void kbase_hwcnt_gpu_enable_map_to_physical(struct kbase_hwcnt_physical_enable_m
 		kbase_hwcnt_backend_gpu_block_map_to_physical(mmu_l2_bm[EM_LO], mmu_l2_bm[EM_HI]);
 	dst->fw_bm = kbase_hwcnt_backend_gpu_block_map_to_physical(fw_bm[EM_LO], fw_bm[EM_HI]);
 	dst->csg_bm = kbase_hwcnt_backend_gpu_block_map_to_physical(csg_bm[EM_LO], csg_bm[EM_HI]);
+	dst->neural_bm =
+		kbase_hwcnt_backend_gpu_block_map_to_physical(neural_bm[EM_LO], neural_bm[EM_HI]);
 }
 
 void kbase_hwcnt_gpu_set_to_physical(enum kbase_hwcnt_physical_set *dst, enum kbase_hwcnt_set src)
@@ -826,6 +863,8 @@ void kbase_hwcnt_gpu_enable_map_from_physical(struct kbase_hwcnt_enable_map *dst
 							 &cm.fw_bm[EM_HI]);
 	kbasep_hwcnt_backend_gpu_block_map_from_physical(src->csg_bm, &cm.csg_bm[EM_LO],
 							 &cm.csg_bm[EM_HI]);
+	kbasep_hwcnt_backend_gpu_block_map_from_physical(src->neural_bm, &cm.neural_bm[EM_LO],
+							 &cm.neural_bm[EM_HI]);
 
 	kbase_hwcnt_gpu_enable_map_from_cm(dst, &cm);
 }
@@ -864,6 +903,8 @@ void kbase_hwcnt_gpu_enable_map_from_cm(struct kbase_hwcnt_enable_map *dst,
 			case KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_FW_UNDEFINED:
 				fallthrough;
 			case KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_CSG_UNDEFINED:
+				fallthrough;
+			case KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_NEURAL_UNDEFINED:
 				/* Nothing to do in this case. */
 				break;
 			case KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_FE:
@@ -901,6 +942,11 @@ void kbase_hwcnt_gpu_enable_map_from_cm(struct kbase_hwcnt_enable_map *dst,
 				fallthrough;
 			case KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_CSG3:
 				blk_map[map_idx] = src->csg_bm[map_idx];
+				break;
+			case KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_NEURAL:
+				fallthrough;
+			case KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_NEURAL2:
+				blk_map[map_idx] = src->neural_bm[map_idx];
 				break;
 			default:
 				WARN(true, "Invalid block type %llu", blk_type);

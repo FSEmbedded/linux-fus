@@ -29,6 +29,7 @@
 #include <linux/regulator/of_regulator.h>
 #include <linux/regulator/machine.h>
 #include <linux/clk.h>
+#include <linux/pinctrl/consumer.h>
 
 /* Default time in millisecond to wait for emergency shutdown */
 #define FV_DEF_EMERG_SHUTDWN_TMO	10

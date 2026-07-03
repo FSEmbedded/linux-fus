@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note
 /*
  *
- * (C) COPYRIGHT 2014-2023 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2014-2024 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -22,6 +22,7 @@
 #include <mali_kbase.h>
 #include <tl/mali_kbase_tracepoints.h>
 #include <backend/gpu/mali_kbase_pm_internal.h>
+#include <mali_kbase_config_platform.h>
 
 #include <linux/of.h>
 #include <linux/clk.h>
@@ -29,11 +30,14 @@
 #if IS_ENABLED(CONFIG_DEVFREQ_THERMAL)
 #include <linux/devfreq_cooling.h>
 #endif
+#include <linux/pm_domain.h>
 
 #include <linux/version.h>
 #include <linux/pm_opp.h>
+#include <linux/pm_domain.h>
 #include "mali_kbase_devfreq.h"
 
+static struct devfreq_simple_ondemand_data ondemand_data;
 /**
  * get_voltage() - Get the voltage value corresponding to the nominal frequency
  *                 used by devfreq.
@@ -118,7 +122,10 @@ static int kbase_devfreq_target(struct device *dev, unsigned long *target_freq, 
 #endif
 	unsigned long volts[BASE_MAX_NR_CLOCKS_REGULATORS] = { 0 };
 	unsigned int i;
+	int err;
 	u64 core_mask;
+	struct kbase_clk_rate_trace_op_conf *callbacks =
+		(struct kbase_clk_rate_trace_op_conf *)CLK_RATE_TRACE_OPS;
 
 	nominal_freq = *target_freq;
 
@@ -136,7 +143,14 @@ static int kbase_devfreq_target(struct device *dev, unsigned long *target_freq, 
 #if KERNEL_VERSION(4, 11, 0) <= LINUX_VERSION_CODE
 	dev_pm_opp_put(opp);
 #endif
-
+#if KERNEL_VERSION(4, 15, 0) <= LINUX_VERSION_CODE
+	err = dev_pm_genpd_set_performance_state(kbdev->dev, nominal_freq);
+	/* For ENODEV or EOPNOTSUPP do not return error code */
+	if (err && !((err == -ENODEV) || (err == -EOPNOTSUPP))) {
+		dev_err(dev, "Failed to set opp (%d) (target %lu)\n", err, *target_freq);
+		return err;
+	}
+#endif
 	/*
 	 * Only update if there is a change of frequency
 	 */
@@ -165,8 +179,6 @@ static int kbase_devfreq_target(struct device *dev, unsigned long *target_freq, 
 	for (i = 0; i < kbdev->nr_clocks; i++) {
 		if (kbdev->regulators[i] && kbdev->current_voltages[i] != volts[i] &&
 		    kbdev->current_freqs[i] < freqs[i]) {
-			int err;
-
 			err = regulator_set_voltage(kbdev->regulators[i], volts[i], volts[i]);
 			if (!err) {
 				kbdev->current_voltages[i] = volts[i];
@@ -179,10 +191,9 @@ static int kbase_devfreq_target(struct device *dev, unsigned long *target_freq, 
 	}
 #endif
 
+#ifdef IMX_USE_CCF
 	for (i = 0; i < kbdev->nr_clocks; i++) {
 		if (kbdev->clocks[i]) {
-			int err;
-
 			err = clk_set_rate(kbdev->clocks[i], freqs[i]);
 			if (!err) {
 #if IS_ENABLED(CONFIG_REGULATOR)
@@ -196,6 +207,34 @@ static int kbase_devfreq_target(struct device *dev, unsigned long *target_freq, 
 			}
 		}
 	}
+#else
+#if KERNEL_VERSION(4, 15, 0) <= LINUX_VERSION_CODE
+	if (kbdev->dev_gpuperf) {
+		err = dev_pm_genpd_set_performance_state(kbdev->dev_gpuperf, nominal_freq/1000);
+		/* For ENODEV or EOPNOTSUPP do not return error code */
+		if (err && !((err == -ENODEV) || (err == -EOPNOTSUPP))) {
+			dev_err(dev, "Failed to set opp (%d) (target %lu)\n",
+					err, nominal_freq/1000);
+			return err;
+		}
+		dev_dbg(dev, "gpu freq set target %lukHz\n", nominal_freq/1000);
+		for (i = 0; i < kbdev->nr_clocks; i++) {
+			struct clk_notifier_data cnd;
+
+			if (callbacks) {
+				cnd.old_rate = kbdev->current_freqs[i];
+				cnd.new_rate = nominal_freq;
+				cnd.clk = kbdev->clocks[i];
+				callbacks->clk_change_notifier(POST_RATE_CHANGE, &cnd);
+			}
+#if IS_ENABLED(CONFIG_REGULATOR)
+			original_freqs[i] = kbdev->current_freqs[i];
+#endif
+			kbdev->current_freqs[i] = freqs[i];
+		}
+	}
+#endif
+#endif
 
 	kbase_devfreq_set_core_mask(kbdev, core_mask);
 
@@ -203,8 +242,6 @@ static int kbase_devfreq_target(struct device *dev, unsigned long *target_freq, 
 	for (i = 0; i < kbdev->nr_clocks; i++) {
 		if (kbdev->regulators[i] && kbdev->current_voltages[i] != volts[i] &&
 		    original_freqs[i] > freqs[i]) {
-			int err;
-
 			err = regulator_set_voltage(kbdev->regulators[i], volts[i], volts[i]);
 			if (!err) {
 				kbdev->current_voltages[i] = volts[i];
@@ -431,7 +468,7 @@ static int kbase_devfreq_init_core_mask_table(struct kbase_device *kbdev)
 		err = of_property_read_u64(node, "opp-hz-real", real_freqs);
 #endif
 		if (err < 0) {
-			dev_warn(kbdev->dev, "Failed to read opp-hz-real property with error %d\n",
+			dev_warn(kbdev->dev, "Failed to read opp-hz-real property with error %d",
 				 err);
 			continue;
 		}
@@ -439,8 +476,8 @@ static int kbase_devfreq_init_core_mask_table(struct kbase_device *kbdev)
 		err = of_property_read_u32_array(node, "opp-microvolt", opp_volts,
 						 kbdev->nr_regulators);
 		if (err < 0) {
-			dev_warn(kbdev->dev,
-				 "Failed to read opp-microvolt property with error %d\n", err);
+			dev_warn(kbdev->dev, "Failed to read opp-microvolt property with error %d",
+				 err);
 			continue;
 		}
 #endif
@@ -450,10 +487,35 @@ static int kbase_devfreq_init_core_mask_table(struct kbase_device *kbdev)
 		if (core_mask != shader_present && corestack_driver_control) {
 			dev_warn(
 				kbdev->dev,
-				"Ignoring OPP %llu - Dynamic Core Scaling not supported on this GPU\n",
+				"Ignoring OPP %llu - Dynamic Core Scaling not supported on this GPU",
 				opp_freq);
 			continue;
 		}
+#if MALI_USE_CSF
+		if (kbase_csf_dev_has_ne(kbdev)) {
+			u64 neural_present = kbdev->gpu_props.neural_present;
+			u64 sc_with_ne = shader_present & neural_present;
+
+			if (!sc_with_ne) {
+				dev_err(kbdev->dev,
+					"No shader cores with NE cores present in configuration with NE!");
+				continue;
+			}
+
+			if ((neural_present & shader_present) != neural_present) {
+				dev_err(kbdev->dev,
+					"Detected NE core without a corresponding shader core: NEURAL_PRESENT %llx SHADER_PRESENT %llx",
+					neural_present, shader_present);
+			}
+
+			if (!(core_mask & sc_with_ne)) {
+				dev_err(kbdev->dev,
+					"Ignoring OPP %d - No shader cores with NE cores present in the given core mask %llx",
+					i, core_mask);
+				continue;
+			}
+		}
+#endif /* MALI_USE_CSF */
 
 		core_count_p = of_get_property(node, "opp-core-count", NULL);
 		if (core_count_p) {
@@ -607,6 +669,7 @@ static void kbase_devfreq_work_term(struct kbase_device *kbdev)
 int kbase_devfreq_init(struct kbase_device *kbdev)
 {
 	struct devfreq_dev_profile *dp;
+	struct device_node *np = kbdev->dev->of_node;
 	int err;
 	unsigned int i;
 	bool free_devfreq_freq_table = true;
@@ -651,7 +714,13 @@ int kbase_devfreq_init(struct kbase_device *kbdev)
 	if (err)
 		goto init_core_mask_table_failed;
 
-	kbdev->devfreq = devfreq_add_device(kbdev->dev, dp, "simple_ondemand", NULL);
+	if (of_property_read_u32(np, "upthreshold", &ondemand_data.upthreshold))
+		ondemand_data.upthreshold = 90;
+	if (of_property_read_u32(np, "downdifferential", &ondemand_data.downdifferential))
+		ondemand_data.downdifferential = 5;
+
+	kbdev->devfreq = devfreq_add_device(kbdev->dev, dp, "simple_ondemand",
+			&ondemand_data);
 	if (IS_ERR(kbdev->devfreq)) {
 		err = PTR_ERR(kbdev->devfreq);
 		kbdev->devfreq = NULL;

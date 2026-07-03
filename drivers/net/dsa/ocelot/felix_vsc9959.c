@@ -1028,7 +1028,8 @@ static int vsc9959_mdio_bus_alloc(struct ocelot *ocelot)
 		size_t num_phys = ocelot_port->serdes ? 1 : 0;
 		struct phylink_pcs *phylink_pcs;
 
-		if (ocelot_port->phy_mode == PHY_INTERFACE_MODE_INTERNAL)
+		/* Skip on internal ports */
+		if (dp->index == 4 || dp->index == 5)
 			continue;
 
 		phylink_pcs = lynx_pcs_create_mdiodev(felix->imdio, dp->index,
@@ -2683,6 +2684,7 @@ static int felix_pci_probe(struct pci_dev *pdev,
 {
 	struct device *dev = &pdev->dev;
 	resource_size_t switch_base;
+	struct felix *felix;
 	int err;
 
 	err = pci_enable_device(pdev);
@@ -2701,10 +2703,16 @@ static int felix_pci_probe(struct pci_dev *pdev,
 	if (err)
 		goto out_disable;
 
-	felix_tsn_enable(ds);
+	felix = pci_get_drvdata(pdev);
+
+	err = felix_tsn_init(felix->ds);
+	if (err)
+		goto out_unregister;
 
 	return 0;
 
+out_unregister:
+	dsa_unregister_switch(felix->ds);
 out_disable:
 	pci_disable_device(pdev);
 	return err;
@@ -2716,6 +2724,8 @@ static void felix_pci_remove(struct pci_dev *pdev)
 
 	if (!felix)
 		return;
+
+	felix_tsn_teardown(felix->ds);
 
 	dsa_unregister_switch(felix->ds);
 

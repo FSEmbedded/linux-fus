@@ -40,6 +40,8 @@ struct irqsteer_data {
 	struct irq_domain	*domain;
 	u32			*saved_reg;
 	struct device		*dev;
+	struct device		*pd_csi;
+	struct device		*pd_isi;
 };
 
 static int imx_irqsteer_get_reg_index(struct irqsteer_data *data,

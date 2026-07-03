@@ -263,7 +263,7 @@ static int find_closest_bigger(unsigned int target, const unsigned int *table,
  * and ramp_mask fields in their descriptor and then use this as their
  * set_ramp_delay operation, saving some code.
  */
-int pf9453_regulator_set_ramp_delay_regmap(struct regulator_dev *rdev,
+static int pf9453_regulator_set_ramp_delay_regmap(struct regulator_dev *rdev,
 					   int ramp_delay)
 {
 	int ret;
@@ -352,10 +352,10 @@ static const struct linear_range pf9453_ldo2_volts[] = {
 
 /*
  * LDOSNVS
- * 0.8 to 3.0V (25mV step)
+ * 1.2 to 3.4V (25mV step)
  */
 static const struct linear_range pf9453_ldosnvs_volts[] = {
-	REGULATOR_LINEAR_RANGE(800000, 0x00, 0x58, 25000),
+	REGULATOR_LINEAR_RANGE(1200000, 0x00, 0x58, 25000),
 };
 
 static int buck_set_dvs(const struct regulator_desc *desc,
@@ -466,6 +466,7 @@ static const struct pf9453_regulator_desc pf9453_regulators[] = {
 			.enable_reg = PF9453_REG_BUCK2CTRL,
 			.enable_mask = BUCK2_ENMODE_MASK,
 			.enable_val = BUCK_ENMODE_ONREQ,
+			.ramp_reg = PF9453_REG_BUCK2CTRL,
 			.ramp_mask = BUCK2_RAMP_MASK,
 			.ramp_delay_table = pf9453_dvs_buck_ramp_table,
 			.n_ramp_values = ARRAY_SIZE(pf9453_dvs_buck_ramp_table),

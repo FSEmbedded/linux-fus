@@ -253,6 +253,8 @@ static void caam_jr_remove(struct platform_device *pdev)
 	ret = caam_jr_shutdown(jrdev);
 	if (ret)
 		dev_err(jrdev, "Failed to shut down job ring\n");
+
+	jr_driver_probed--;
 }
 
 /* Main per-ring interrupt handler */

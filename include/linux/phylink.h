@@ -107,6 +107,16 @@ static inline bool phylink_autoneg_inband(unsigned int mode)
 	return mode == MLO_AN_INBAND;
 }
 
+static inline bool phylink_autoneg_c73(unsigned int mode)
+{
+	return mode == MLO_AN_C73;
+}
+
+static inline bool phylink_autoneg_any(unsigned int mode)
+{
+	return phylink_autoneg_inband(mode) || phylink_autoneg_c73(mode);
+}
+
 /**
  * struct phylink_link_state - link state structure
  * @advertising: ethtool bitmask containing advertised link modes
@@ -174,6 +184,8 @@ struct phylink_config {
 };
 
 void phylink_limit_mac_speed(struct phylink_config *config, u32 max_speed);
+
+int phylink_interface_max_speed(phy_interface_t interface);
 
 /**
  * struct phylink_mac_ops - MAC operations structure.
@@ -417,6 +429,10 @@ struct phylink_pcs_ops;
  *                 to always be on. Standalone PCS drivers which
  *                 do not have access to a PHY device can check
  *                 this instead of PHY_F_RXC_ALWAYS_ON.
+ * @cfg_link_an_mode: phylink sets this to the statically configured link
+ *		      autoneg mode (%MLO_AN_FIXED, %MLO_AN_PHY, %MLO_AN_INBAND,
+ *		      %MLO_AN_C73). Note that in some cases, this may change at
+ *		      runtime (from %MLO_AN_INBAND to %MLO_AN_PHY).
  *
  * This structure is designed to be embedded within the PCS private data,
  * and will be passed between phylink and the PCS.
@@ -430,6 +446,7 @@ struct phylink_pcs {
 	bool neg_mode;
 	bool poll;
 	bool rxc_always_on;
+	unsigned int cfg_link_an_mode;
 };
 
 /**

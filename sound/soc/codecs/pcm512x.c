@@ -50,6 +50,8 @@ struct pcm512x_priv {
 	struct mutex mutex;
 	unsigned int bclk_ratio;
 	int force_pll_on;
+	int num_clocks;
+	int sclk_src;
 };
 
 /*

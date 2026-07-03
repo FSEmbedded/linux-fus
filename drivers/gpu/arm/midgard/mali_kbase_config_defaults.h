@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
 /*
  *
- * (C) COPYRIGHT 2013-2023 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2013-2024 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -78,7 +78,6 @@ enum {
 	KBASE_3BIT_AID_4 = 0x7
 };
 
-#if MALI_USE_CSF
 /*
  * Default value for the TIMER register of the IPA Control interface,
  * expressed in milliseconds.
@@ -88,7 +87,6 @@ enum {
  * milliseconds, while keeping GPU overhead as limited as possible.
  */
 #define IPA_CONTROL_TIMER_DEFAULT_VALUE_MS ((u32)10) /* 10 milliseconds */
-#endif /* MALI_USE_CSF */
 
 /* Default period for DVFS sampling (can be overridden by platform header) */
 #ifndef DEFAULT_PM_DVFS_PERIOD
@@ -167,7 +165,6 @@ enum {
  */
 #define DEFAULT_REF_TIMEOUT_FREQ_KHZ (100000)
 
-#if MALI_USE_CSF
 /* Waiting timeout for status change acknowledgment, in clock cycles.
  *
  * This is also the default timeout to be used when an invalid timeout
@@ -194,14 +191,40 @@ enum {
  */
 #define CSF_CSG_SUSPEND_TIMEOUT_CYCLES (3100000000ull)
 
+/* Waiting timeout in clock cycles for GPU suspend to complete. */
+#define CSF_GPU_SUSPEND_TIMEOUT_CYCLES (CSF_CSG_SUSPEND_TIMEOUT_CYCLES)
+
 /* Waiting timeout in clock cycles for GPU reset to complete. */
 #define CSF_GPU_RESET_TIMEOUT_CYCLES (CSF_CSG_SUSPEND_TIMEOUT_CYCLES * 2)
+
+/* Waiting timeout in clock cycles for a CSG to be terminated.
+ *
+ * Based on 0.6s timeout at 100MHZ, scaled from 0.1s at 600Mhz GPU frequency
+ * which is the timeout defined in FW to wait for iterator to complete the
+ * transitioning to DISABLED state.
+ * More cycles (0.4s @ 100Mhz = 40000000) are added up to ensure that
+ * host timeout is always bigger than FW timeout.
+ */
+#define CSF_CSG_TERM_TIMEOUT_CYCLES (100000000)
 
 /* Waiting timeout in clock cycles for GPU firmware to boot.
  *
  * Based on 250ms timeout at 100MHz, scaled from a 50MHz GPU system.
  */
 #define CSF_FIRMWARE_BOOT_TIMEOUT_CYCLES (25000000)
+
+/* Waiting timeout in clock cycles for GPU firmware to wake up from sleep.
+ *
+ * Based on 25ms timeout at 100MHz, scaled from a 50MHz GPU system.
+ */
+#define CSF_FIRMWARE_WAKE_UP_TIMEOUT_CYCLES (2500000)
+
+/* Waiting timeout in clock cycles for the MCU to become halted after FW has
+ * raised the GLB_IDLE IRQ in preparation for automatic sleeping.
+ *
+ * Based on 10ms timeout at 100MHz, scaled from a 50MHz GPU system.
+ */
+#define CSF_FIRMWARE_SOI_HALT_TIMEOUT_CYCLES (1000000)
 
 /* Waiting timeout for a ping request to be acknowledged, in clock cycles.
  *
@@ -213,10 +236,14 @@ enum {
  *
  * Based on 10s timeout at 100MHz, scaled from a 50MHz GPU system.
  */
-#if IS_ENABLED(CONFIG_MALI_IS_FPGA)
-#define KCPU_FENCE_SIGNAL_TIMEOUT_CYCLES (2500000000ull)
+#if IS_ENABLED(CONFIG_MALI_VECTOR_DUMP)
+/* Set a large value to avoid timing out while vector dumping */
+#define KCPU_FENCE_SIGNAL_TIMEOUT_CYCLES (250000000000ull)
+#define KCPU_FENCE_SIGNAL_TIMEOUT_CYCLES_FPGA (250000000000ull)
 #else
-#define KCPU_FENCE_SIGNAL_TIMEOUT_CYCLES (1000000000ull)
+/*the lower freq of i.MX95 is 500MHz, set it to 5 seconds */
+#define KCPU_FENCE_SIGNAL_TIMEOUT_CYCLES (2500000000ull)
+#define KCPU_FENCE_SIGNAL_TIMEOUT_CYCLES_FPGA (2500000000ull)
 #endif
 
 /* Timeout for polling the GPU in clock cycles.
@@ -231,6 +258,17 @@ enum {
  */
 #define CSF_FIRMWARE_STOP_TIMEOUT_CYCLES (12000000000ull)
 
+/* Waiting timeout to delegate or retract host power control in clock cycles.
+ *
+ * Based on 1ms timeout at 100MHz.
+ */
+#define CSF_PWR_DELEGATE_TIMEOUT_CYCLES (1000000)
+
+/* Waiting timeout to inspect command to complete in clock cycles.
+ *
+ * Based on 1us timeout at 100MHz.
+ */
+#define CSF_PWR_INSPECT_TIMEOUT_CYCLES (1000)
 
 /* Waiting timeout for task execution on an endpoint. Based on the
  * DEFAULT_PROGRESS_TIMEOUT.
@@ -239,29 +277,43 @@ enum {
  */
 #define DEFAULT_PROGRESS_TIMEOUT_CYCLES (2500000000ull)
 
-#else /* MALI_USE_CSF */
+/* MIN value of iterators' suspend timeout*/
+#define CSG_SUSPEND_TIMEOUT_FIRMWARE_MS_MIN (200)
+#if CSG_SUSPEND_TIMEOUT_FIRMWARE_MS_MIN <= 0
+#error "CSG_SUSPEND_TIMEOUT_FIRMWARE_MS_MIN should be larger than 0"
+#endif
 
-/* A default timeout in clock cycles to be used when an invalid timeout
- * selector is used to retrieve the timeout, on JM GPUs.
+/* MAX value of iterators' suspend timeout*/
+#define CSG_SUSPEND_TIMEOUT_FIRMWARE_MS_MAX (60000)
+#if CSG_SUSPEND_TIMEOUT_FIRMWARE_MS_MAX >= (0xFFFFFFFF)
+#error "CSG_SUSPEND_TIMEOUT_FIRMWARE_MS_MAX should be less than U32_MAX"
+#endif
+
+/* Firmware iterators' suspend timeout, default 4000ms. Customer can update this by
+ * using debugfs -- csg_suspend_timeout
  */
-#define JM_DEFAULT_TIMEOUT_CYCLES (150000000)
+#define CSG_SUSPEND_TIMEOUT_FIRMWARE_MS (4000)
 
-/* Default number of milliseconds given for other jobs on the GPU to be
- * soft-stopped when the GPU needs to be reset.
+#define CSG_SUSPEND_TIMEOUT_FIRMWARE_FPGA_MS (31000)
+
+#if (CSG_SUSPEND_TIMEOUT_FIRMWARE_MS < CSG_SUSPEND_TIMEOUT_FIRMWARE_MS_MIN) || \
+	(CSG_SUSPEND_TIMEOUT_FIRMWARE_MS > CSG_SUSPEND_TIMEOUT_FIRMWARE_MS_MAX)
+#error "CSG_SUSPEND_TIMEOUT_FIRMWARE_MS is out of range"
+#endif
+
+/* Additional time in milliseconds added to the firmware iterators' suspend timeout,
+ * default 100ms
  */
-#define JM_DEFAULT_RESET_TIMEOUT_MS (3000) /* 3s */
+#define CSG_SUSPEND_TIMEOUT_HOST_ADDED_MS (100)
 
-/* Default timeout in clock cycles to be used when checking if JS_COMMAND_NEXT
- * is updated on HW side so a Job Slot is considered free.
- * This timeout will only take effect on GPUs with low value for the minimum
- * GPU clock frequency (<= 100MHz).
- *
- * Based on 1ms timeout at 100MHz. Will default to 0ms on GPUs with higher
- * value for minimum GPU clock frequency.
- */
-#define JM_DEFAULT_JS_FREE_TIMEOUT_CYCLES (100000)
+/* Host side CSG suspend timeout */
+#define CSG_SUSPEND_TIMEOUT_MS (CSG_SUSPEND_TIMEOUT_FIRMWARE_MS + CSG_SUSPEND_TIMEOUT_HOST_ADDED_MS)
 
-#endif /* !MALI_USE_CSF */
+#define CSG_SUSPEND_TIMEOUT_FPGA_MS \
+	(CSG_SUSPEND_TIMEOUT_FIRMWARE_FPGA_MS + CSG_SUSPEND_TIMEOUT_HOST_ADDED_MS)
+
+/* MAX allowed timeout value(ms) on host side, should be less than ANR timeout */
+#define MAX_TIMEOUT_MS (4500)
 
 /* Timeout for polling the GPU PRFCNT_ACTIVE bit in clock cycles.
  *
@@ -311,14 +363,6 @@ enum {
  */
 #define DEFAULT_PROGRESS_TIMEOUT ((u64)10 * 1000 * 1024 * 1024)
 
-/* Default threshold at which to switch to incremental rendering
- *
- * Fraction of the maximum size of an allocation that grows on GPU page fault
- * that can be used up before the driver switches to incremental rendering,
- * in 256ths. 0 means disable incremental rendering.
- */
-#define DEFAULT_IR_THRESHOLD (192)
-
 /* Waiting time in clock cycles for the completion of a MMU operation.
  *
  * Ideally 1.6M GPU cycles required for the L2 cache (512KiB slice) flush.
@@ -332,5 +376,9 @@ enum {
 /* Default value of the time interval at which GPU metrics tracepoints are emitted. */
 #define DEFAULT_GPU_METRICS_TP_EMIT_INTERVAL_NS (500000000u) /* 500 ms */
 #endif
+
+#define HWCNT_BACKEND_WATCHDOG_TIMER_INTERVAL_MS ((u32)1000)
+
+#define HWCNT_BACKEND_WATCHDOG_TIMER_INTERVAL_FPGA_MS ((u32)18000)
 
 #endif /* _KBASE_CONFIG_DEFAULTS_H_ */

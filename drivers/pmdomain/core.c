@@ -310,13 +310,13 @@ static inline void genpd_debug_remove(struct generic_pm_domain *genpd) {}
 static inline void genpd_update_accounting(struct generic_pm_domain *genpd) {}
 #endif
 
-void pm_genpd_disable_clks(struct generic_pm_domain *genpd)
+static void pm_genpd_disable_clks(struct generic_pm_domain *genpd)
 {
 	if (genpd->flags & GENPD_FLAG_PM_PD_CLK && genpd->num_clks > 0)
 		clk_bulk_disable_unprepare(genpd->num_clks, genpd->clks);
 }
 
-int pm_genpd_enable_clks(struct generic_pm_domain *genpd)
+static int pm_genpd_enable_clks(struct generic_pm_domain *genpd)
 {
 	int ret;
 

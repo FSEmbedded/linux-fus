@@ -11,6 +11,15 @@
 
 #include "enetc_pf.h"
 
+void enetc_get_ip_revision(struct enetc_si *si)
+{
+	struct enetc_hw *hw = &si->hw;
+	u32 val;
+
+	val = enetc_global_rd(hw, ENETC_G_EIPBRR0);
+	si->revision = val & EIPBRR0_REVISION;
+}
+
 static int enetc_set_si_hw_addr(struct enetc_pf *pf, int si, u8 *mac_addr)
 {
 	struct enetc_hw *hw = &pf->si->hw;
@@ -283,7 +292,7 @@ int enetc_pf_set_features(struct net_device *ndev, netdev_features_t features)
 	int err;
 
 	if (changed & NETIF_F_HW_TC) {
-		err = enetc_set_psfp(ndev, !!(features & NETIF_F_HW_TC));
+		err = enetc_set_tc_flower(ndev, !!(features & NETIF_F_HW_TC));
 		if (err)
 			return err;
 	}
@@ -363,20 +372,27 @@ void enetc_pf_netdev_setup(struct enetc_si *si, struct net_device *ndev,
 	 * of the ndo_set_rx_mode())
 	 */
 	ndev->priv_flags |= IFF_UNICAST_FLT;
+	ndev->xdp_features = NETDEV_XDP_ACT_BASIC | NETDEV_XDP_ACT_REDIRECT |
+			     NETDEV_XDP_ACT_NDO_XMIT | NETDEV_XDP_ACT_RX_SG |
+			     NETDEV_XDP_ACT_NDO_XMIT_SG;
+
 	if (is_enetc_rev1(si)) {
 		ndev->max_mtu = ENETC_MAX_MTU;
 		priv->max_frags_bd = ENETC_MAX_SKB_FRAGS;
-		ndev->xdp_features = NETDEV_XDP_ACT_BASIC | NETDEV_XDP_ACT_REDIRECT |
-				     NETDEV_XDP_ACT_NDO_XMIT | NETDEV_XDP_ACT_RX_SG |
-				     NETDEV_XDP_ACT_NDO_XMIT_SG;
 	} else {
 		ndev->max_mtu = ENETC4_MAX_MTU;
 		priv->max_frags_bd = ENETC4_MAX_SKB_FRAGS;
-		priv->active_offloads |= ENETC_F_CHECKSUM | ENETC_F_LSO;
+		priv->active_offloads |= ENETC_F_CHECKSUM;
+		priv->shared_tx_rings = true;
 	}
 
-	if (si->hw_features & ENETC_SI_F_PSFP && !enetc_psfp_enable(priv)) {
-		priv->active_offloads |= ENETC_F_QCI;
+	if (si->hw_features & ENETC_SI_F_RSC)
+		ndev->hw_features |= NETIF_F_LRO;
+
+	if (si->hw_features & ENETC_SI_F_LSO)
+		priv->active_offloads |= ENETC_F_LSO;
+
+	if (si->hw_features & ENETC_SI_F_PSFP && !enetc_set_tc_flower(ndev, true)) {
 		ndev->features |= NETIF_F_HW_TC;
 		ndev->hw_features |= NETIF_F_HW_TC;
 	}
@@ -534,6 +550,7 @@ static void enetc_imdio_remove(struct enetc_pf *pf)
 static bool enetc_port_has_pcs(struct enetc_pf *pf)
 {
 	return (pf->if_mode == PHY_INTERFACE_MODE_SGMII ||
+		pf->if_mode == PHY_INTERFACE_MODE_1000BASEX ||
 		pf->if_mode == PHY_INTERFACE_MODE_2500BASEX ||
 		pf->if_mode == PHY_INTERFACE_MODE_10GBASER ||
 		pf->if_mode == PHY_INTERFACE_MODE_USXGMII ||
@@ -597,6 +614,8 @@ int enetc_phylink_create(struct enetc_ndev_priv *priv,
 	__set_bit(PHY_INTERFACE_MODE_SGMII,
 		  pf->phylink_config.supported_interfaces);
 	__set_bit(PHY_INTERFACE_MODE_RMII,
+		  pf->phylink_config.supported_interfaces);
+	__set_bit(PHY_INTERFACE_MODE_1000BASEX,
 		  pf->phylink_config.supported_interfaces);
 	__set_bit(PHY_INTERFACE_MODE_2500BASEX,
 		  pf->phylink_config.supported_interfaces);
@@ -704,6 +723,7 @@ int enetc_pf_set_mac_exact_filter(struct enetc_pf *pf, int si_id,
 {
 	int mf_max_num = pf->caps.mac_filter_num;
 	struct enetc_mac_list_entry *entry;
+	struct maft_entry_data data = {0};
 	struct enetc_si *si = pf->si;
 	int i = 0, used_cnt = 0;
 	u16 si_bit = BIT(si_id);
@@ -748,13 +768,13 @@ int enetc_pf_set_mac_exact_filter(struct enetc_pf *pf, int si_id,
 
 	/* Clear MAC filter table */
 	for (i = 0; i < mf_num; i++)
-		ntmp_maft_delete_entry(&si->cbdr, i);
+		ntmp_maft_delete_entry(&si->ntmp.cbdrs, i);
 
 	i = 0;
 	hlist_for_each_entry(entry, &pf->mac_list, node) {
-		ntmp_maft_add_entry(&si->cbdr, i, entry->mfe.mac,
-				    entry->mfe.si_bitmap);
-		i++;
+		data.cfge.si_bitmap = cpu_to_le16(entry->mfe.si_bitmap);
+		ether_addr_copy(data.keye.mac_addr, entry->mfe.mac);
+		ntmp_maft_add_entry(&si->ntmp.cbdrs, i++, &data);
 	}
 
 	return 0;
@@ -797,15 +817,34 @@ no_resource_check:
 	return pf_msg.code;
 }
 
+static int enetc_msg_validate_delete_macs(struct enetc_pf *pf, u16 si_bit,
+					  struct enetc_mac_entry *mac,
+					  int mac_cnt)
+{
+	struct enetc_mac_list_entry *entry;
+	int i;
+
+	for (i = 0; i < mac_cnt; i++) {
+		entry = enetc_mac_list_lookup_entry(pf, mac[i].addr);
+		if (entry && (entry->mfe.si_bitmap & si_bit))
+			continue;
+
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 static u16 enetc_msg_pf_del_vf_mac_entries(struct enetc_pf *pf, int vf_id)
 {
 	struct enetc_msg_swbd *msg_swbd = &pf->rxmsg[vf_id];
 	struct enetc_msg_mac_exact_filter *msg;
 	struct enetc_mac_list_entry *entry;
+	struct maft_entry_data data = {0};
 	struct enetc_si *si = pf->si;
 	u16 si_bit = BIT(vf_id + 1);
 	union enetc_pf_msg pf_msg;
-	int i, mf_num;
+	int i, mf_num, err;
 
 	if (is_enetc_rev1(si)) {
 		pf_msg.class_id = ENETC_MSG_CLASS_ID_CMD_NOT_SUPPORT;
@@ -816,18 +855,27 @@ static u16 enetc_msg_pf_del_vf_mac_entries(struct enetc_pf *pf, int vf_id)
 
 	guard(mutex)(&pf->mac_list_lock);
 
+	err = enetc_msg_validate_delete_macs(pf, si_bit, msg->mac,
+					     msg->mac_cnt);
+	if (err) {
+		pf_msg.class_id = ENETC_MSG_CLASS_ID_MAC_FILTER;
+		pf_msg.class_code = ENETC_PF_RC_MAC_FILTER_MAC_NOT_FOUND;
+		return pf_msg.code;
+	}
+
 	mf_num = pf->num_mac_fe;
 	enetc_mac_list_del_matched_entries(pf, si_bit, msg->mac,
 					   msg->mac_cnt);
 
 	/* Clear MAC filter table */
 	for (i = 0; i < mf_num; i++)
-		ntmp_maft_delete_entry(&si->cbdr, i);
+		ntmp_maft_delete_entry(&si->ntmp.cbdrs, i);
 
+	i = 0;
 	hlist_for_each_entry(entry, &pf->mac_list, node) {
-		ntmp_maft_add_entry(&si->cbdr, i, entry->mfe.mac,
-				    entry->mfe.si_bitmap);
-		i++;
+		data.cfge.si_bitmap = cpu_to_le16(entry->mfe.si_bitmap);
+		ether_addr_copy(data.keye.mac_addr, entry->mfe.mac);
+		ntmp_maft_add_entry(&si->ntmp.cbdrs, i++, &data);
 	}
 
 	pf_msg.class_id = ENETC_MSG_CLASS_ID_CMD_SUCCESS;
@@ -896,6 +944,7 @@ void enetc_pf_flush_mac_exact_filter(struct enetc_pf *pf, int si_id,
 				     int mac_type)
 {
 	struct enetc_mac_list_entry *entry;
+	struct maft_entry_data data = {0};
 	struct enetc_si *si = pf->si;
 	u16 si_bit = BIT(si_id);
 	struct hlist_node *tmp;
@@ -919,13 +968,13 @@ void enetc_pf_flush_mac_exact_filter(struct enetc_pf *pf, int si_id,
 	}
 
 	for (i = 0; i < mf_num; i++)
-		ntmp_maft_delete_entry(&si->cbdr, i);
+		ntmp_maft_delete_entry(&si->ntmp.cbdrs, i);
 
 	i = 0;
 	hlist_for_each_entry(entry, &pf->mac_list, node) {
-		ntmp_maft_add_entry(&si->cbdr, i, entry->mfe.mac,
-				    entry->mfe.si_bitmap);
-		i++;
+		data.cfge.si_bitmap = cpu_to_le16(entry->mfe.si_bitmap);
+		ether_addr_copy(data.keye.mac_addr, entry->mfe.mac);
+		ntmp_maft_add_entry(&si->ntmp.cbdrs, i++, &data);
 	}
 }
 
@@ -1081,12 +1130,21 @@ static void enetc_vlan_list_del_matched_entries(struct enetc_pf *pf, u16 si_bit,
 	}
 }
 
+static void enetc_vfe_to_vaft_data(struct enetc_vfe *vfe,
+				   struct vaft_entry_data *vaft)
+{
+	vaft->keye.tpid = vfe->tpid;
+	vaft->keye.vlan_id = cpu_to_le16(vfe->vid);
+	vaft->cfge.si_bitmap = cpu_to_le16(vfe->si_bitmap);
+}
+
 static int enetc_pf_set_vlan_exact_filter(struct enetc_pf *pf, int si_id,
 					  struct enetc_vlan_entry *vlan,
 					  int vlan_cnt)
 {
 	int vf_max_num = pf->caps.vlan_filter_num;
 	struct enetc_vlan_list_entry *entry;
+	struct vaft_entry_data data = {0};
 	struct enetc_si *si = pf->si;
 	int i = 0, used_cnt = 0;
 	u16 si_bit = BIT(si_id);
@@ -1132,12 +1190,12 @@ static int enetc_pf_set_vlan_exact_filter(struct enetc_pf *pf, int si_id,
 
 	/* Clear VLAN filter table */
 	for (i = 0; i < vf_num; i++)
-		ntmp_vaft_delete_entry(&si->cbdr, i);
+		ntmp_vaft_delete_entry(&si->ntmp.cbdrs, i);
 
 	i = 0;
 	hlist_for_each_entry(entry, &pf->vlan_list, node) {
-		ntmp_vaft_add_entry(&si->cbdr, i, &entry->vfe);
-		i++;
+		enetc_vfe_to_vaft_data(&entry->vfe, &data);
+		ntmp_vaft_add_entry(&si->ntmp.cbdrs, i++, &data);
 	}
 
 	return 0;
@@ -1180,15 +1238,34 @@ no_resource_check:
 	return pf_msg.code;
 }
 
+static int enetc_msg_validate_delete_vlans(struct enetc_pf *pf, u16 si_bit,
+					   struct enetc_vlan_entry *vlan,
+					   int vlan_cnt)
+{
+	struct enetc_vlan_list_entry *entry;
+	int i;
+
+	for (i = 0; i < vlan_cnt; i++) {
+		entry = enetc_vlan_list_lookup_entry(pf, &vlan[i]);
+		if (entry && (entry->vfe.si_bitmap & si_bit))
+			continue;
+
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 static u16 enetc_msg_pf_del_vf_vlan_entries(struct enetc_pf *pf, int vf_id)
 {
 	struct enetc_msg_swbd *msg_swbd = &pf->rxmsg[vf_id];
 	struct enetc_msg_vlan_exact_filter *msg;
 	struct enetc_vlan_list_entry *entry;
+	struct vaft_entry_data data = {0};
 	struct enetc_si *si = pf->si;
 	u16 si_bit = BIT(vf_id + 1);
 	union enetc_pf_msg pf_msg;
-	int i, vf_num;
+	int i, vf_num, err;
 
 	if (is_enetc_rev1(si)) {
 		pf_msg.class_id = ENETC_MSG_CLASS_ID_CMD_NOT_SUPPORT;
@@ -1198,16 +1275,25 @@ static u16 enetc_msg_pf_del_vf_vlan_entries(struct enetc_pf *pf, int vf_id)
 	msg = (struct enetc_msg_vlan_exact_filter *)msg_swbd->vaddr;
 	guard(mutex)(&pf->vlan_list_lock);
 
+	err = enetc_msg_validate_delete_vlans(pf, si_bit, msg->vlan,
+					      msg->vlan_cnt);
+	if (err) {
+		pf_msg.class_id = ENETC_MSG_CLASS_ID_VLAN_FILTER;
+		pf_msg.class_code = ENETC_PF_RC_VLAN_FILTER_VLAN_NOT_FOUND;
+		return pf_msg.code;
+	}
+
 	vf_num = pf->num_vlan_fe;
 	enetc_vlan_list_del_matched_entries(pf, si_bit, msg->vlan,
 					    msg->vlan_cnt);
 
 	for (i = 0; i < vf_num; i++)
-		ntmp_vaft_delete_entry(&si->cbdr, i);
+		ntmp_vaft_delete_entry(&si->ntmp.cbdrs, i);
 
+	i = 0;
 	hlist_for_each_entry(entry, &pf->vlan_list, node) {
-		ntmp_vaft_add_entry(&si->cbdr, i, &entry->vfe);
-		i++;
+		enetc_vfe_to_vaft_data(&entry->vfe, &data);
+		ntmp_vaft_add_entry(&si->ntmp.cbdrs, i++, &data);
 	}
 
 	pf_msg.class_id = ENETC_MSG_CLASS_ID_CMD_SUCCESS;
@@ -1255,6 +1341,7 @@ static u16 enetc_msg_pf_set_vf_vlan_hash_filter(struct enetc_pf *pf, int vf_id)
 static void enetc_pf_flush_vlan_exact_filter(struct enetc_pf *pf, int si_id)
 {
 	struct enetc_vlan_list_entry *entry;
+	struct vaft_entry_data data = {0};
 	struct enetc_si *si = pf->si;
 	u16 si_bit = BIT(si_id);
 	struct hlist_node *tmp;
@@ -1277,12 +1364,12 @@ static void enetc_pf_flush_vlan_exact_filter(struct enetc_pf *pf, int si_id)
 	}
 
 	for (i = 0; i < vf_num; i++)
-		ntmp_vaft_delete_entry(&si->cbdr, i);
+		ntmp_vaft_delete_entry(&si->ntmp.cbdrs, i);
 
 	i = 0;
 	hlist_for_each_entry(entry, &pf->vlan_list, node) {
-		ntmp_vaft_add_entry(&si->cbdr, i, &entry->vfe);
-		i++;
+		enetc_vfe_to_vaft_data(&entry->vfe, &data);
+		ntmp_vaft_add_entry(&si->ntmp.cbdrs, i++, &data);
 	}
 }
 
@@ -1470,12 +1557,15 @@ static u16 enetc_msg_pf_reply_link_speed(struct enetc_pf *pf)
 	struct ethtool_link_ksettings link_info = {0};
 	union enetc_pf_msg pf_msg;
 
+	rtnl_lock();
 	if (!priv->phylink ||
 	    phylink_ethtool_ksettings_get(priv->phylink, &link_info)) {
 		pf_msg.class_id = ENETC_MSG_CLASS_ID_CMD_NOT_SUPPORT;
+		rtnl_unlock();
 
 		return pf_msg.code;
 	}
+	rtnl_unlock();
 
 	pf_msg.class_id = ENETC_MSG_CLASS_ID_LINK_SPEED;
 
@@ -1622,17 +1712,9 @@ int enetc_sriov_configure(struct pci_dev *pdev, int num_vfs)
 	if (!num_vfs) {
 		pci_disable_sriov(pdev);
 		enetc_msg_psi_free(pf);
-		kfree(pf->vf_state);
 		pf->num_vfs = 0;
 	} else {
 		pf->num_vfs = num_vfs;
-
-		pf->vf_state = kcalloc(num_vfs, sizeof(struct enetc_vf_state),
-				       GFP_KERNEL);
-		if (!pf->vf_state) {
-			pf->num_vfs = 0;
-			return -ENOMEM;
-		}
 
 		err = enetc_msg_psi_init(pf);
 		if (err) {
@@ -1652,7 +1734,6 @@ int enetc_sriov_configure(struct pci_dev *pdev, int num_vfs)
 err_en_sriov:
 	enetc_msg_psi_free(pf);
 err_msg_psi:
-	kfree(pf->vf_state);
 	pf->num_vfs = 0;
 
 	return err;

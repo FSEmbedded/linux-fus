@@ -41,7 +41,7 @@ static dma_addr_t qman_base_addr;
  * Initialize a devices private memory region
  */
 int qbman_init_private_mem(struct device *dev, int idx, const char *compat,
-			   dma_addr_t *addr, size_t *size)
+			   dma_addr_t *addr, size_t *size, int dev_id)
 {
 	struct property_entry properties[2];
 	struct device_node *mem_node = NULL;
@@ -54,14 +54,104 @@ int qbman_init_private_mem(struct device *dev, int idx, const char *compat,
 	u32 val[2];
 	int err;
 
-	mem_node = of_parse_phandle(dev->of_node, "memory-region", idx);
-	if (!mem_node) {
-		mem_node = of_find_compatible_node(NULL, NULL, compat);
+	if (is_of_node(dev->fwnode)) {
+		mem_node = of_parse_phandle(dev->of_node, "memory-region", idx);
 		if (!mem_node) {
-			dev_err(dev, "No memory-region found for index %d or compatible '%s'\n",
-				idx, compat);
+			mem_node = of_find_compatible_node(NULL, NULL, compat);
+			if (!mem_node) {
+				dev_err(dev, "No memory-region found for index %d or compatible '%s'\n",
+					idx, compat);
+				return -ENODEV;
+			}
+		}
+
+		rmem = of_reserved_mem_lookup(mem_node);
+		if (!rmem) {
+			dev_err(dev, "of_reserved_mem_lookup() returned NULL\n");
 			return -ENODEV;
 		}
+	} else {
+		/*
+		 * Fetching reserved memory size from scanning ACPI tables.
+		 * As part of DPAA architecture, QMAN & BMAN h/w nodes need
+		 * a large contiguous memory allocations to store private
+		 * data while the data path is running.
+		 * We will have to request CMA for each h/w node so that
+		 * drivers can fetch and set up h/w in order while probing.
+		 */
+		struct page *page = NULL;
+		size_t page_sz_count = 0;
+		unsigned long pool_size_order = 0;
+
+		switch (dev_id) {
+		case DPAA_BMAN_DEV:
+			val_cnt = 1;
+			break;
+		case DPAA_QMAN_DEV:
+			val_cnt = 2;
+			break;
+		default:
+			return -ENODEV;
+		}
+
+		err = fwnode_property_read_u32_array(dev->fwnode,
+						     "size", val,
+						     val_cnt);
+		if (err < 0)
+			return err;
+
+		fw_mem.size = val[idx];
+
+		if (dev_id == DPAA_BMAN_DEV) {
+			/* In case of Bman, calculate page count and order.
+			 * Try allocating this 16MB chunk in one go.
+			 */
+			page_sz_count = ((fw_mem.size >> PAGE_SHIFT) +
+					((fw_mem.size & 0xFFF) ? 1 : 0));
+			pool_size_order = get_order(fw_mem.size);
+		} else {
+			if (!idx) {
+				/* In case of Qman, allocate 48 MB -
+				 * (8MB + 8MB + 32MB), ideally we need
+				 * (8MB + 32MB). Here extra 8MB is just to set
+				 * the correct alignment order.
+				 */
+				fw_mem.size = ((2 * val[idx]) + val[idx + 1]);
+				page_sz_count = ((fw_mem.size >> PAGE_SHIFT) +
+					((fw_mem.size & 0xFFF) ? 1 : 0));
+				pool_size_order = get_order(fw_mem.size);
+				/* Once large chunk(48MB) is available then
+				 * reset the actual size 8MB for h/w node on
+				 * index 0
+				 */
+				fw_mem.size = val[idx];
+			} else {
+				/* From the large chunk of 48MB, slice it
+				 * at base_address + 16MB, to get the aligned
+				 * 32MB chunk.
+				 */
+				fw_mem.base =
+					(qman_base_addr + (2 * val[idx - 1]));
+				fw_mem.size = val[idx];
+			}
+		}
+		if (!qman_base_addr) {
+			page = dma_alloc_from_contiguous(dev, page_sz_count,
+							 pool_size_order,
+							 false);
+			if (!page) {
+				pr_info("dma_alloc_from_contiguous failed.\n");
+				return -ENOMEM;
+			}
+			fw_mem.base = page_to_phys(page);
+			if (dev_id == DPAA_QMAN_DEV)
+				qman_base_addr = fw_mem.base;
+		}
+		/* Set the resource buffer */
+		rmem = &fw_mem;
+
+		dev_info(dev, "QBman : dev [%d] index [%d] mem-base [%llx] size [%llx]\n",
+			 dev_id, idx, rmem->base, rmem->size);
 	}
 
 	*addr = rmem->base;

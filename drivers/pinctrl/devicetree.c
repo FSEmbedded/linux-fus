@@ -208,8 +208,8 @@ static int dt_gpio_assert_pinctrl(struct pinctrl *p)
 		if (IS_ERR(gpio)) {
 			if (PTR_ERR(gpio) == -EPROBE_DEFER)
 				return -EPROBE_DEFER;
- 			break; /* End of the phandle list */
- 		}
+			break; /* End of the phandle list */
+		}
 	}
 
 	return 0;

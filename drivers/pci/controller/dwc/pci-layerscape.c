@@ -126,23 +126,6 @@ static void ls_pcie_pf_lut_writel(struct ls_pcie *pcie, u32 off, u32 val)
 		iowrite32(val, pcie->pf_lut_base + off);
 }
 
-static u32 ls_pcie_lut_readl(struct ls_pcie *pcie, u32 off)
-{
-	if (pcie->big_endian)
-		return ioread32be(pcie->lut_base + off);
-
-	return ioread32(pcie->lut_base + off);
-}
-
-static void ls_pcie_lut_writel(struct ls_pcie *pcie, u32 off, u32 val)
-{
-	if (pcie->big_endian)
-		iowrite32be(val, pcie->lut_base + off);
-	else
-		iowrite32(val, pcie->lut_base + off);
-}
-
-
 static void ls_pcie_send_turnoff_msg(struct dw_pcie_rp *pp)
 {
 	struct dw_pcie *pci = to_dw_pcie_from_pp(pp);

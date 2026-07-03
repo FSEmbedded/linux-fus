@@ -136,6 +136,17 @@
 			"AIN2R", "Line In Jack";
 	};
 
+	sound-fm {
+		compatible = "fsl,imx-audio-si476x",
+			   "fsl,imx-tuner-si476x";
+		model = "imx-radio-si4763";
+
+		ssi-controller = <&ssi2>;
+		fm-controller = <&si476x_codec>;
+		mux-int-port = <2>;
+		mux-ext-port = <5>;
+	};
+
 	spdif_in: spdif-in {
 		compatible = "linux,spdif-dir";
 		#sound-dai-cells = <0>;

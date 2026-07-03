@@ -518,7 +518,8 @@ static inline void flush_tlb_kernel_range(unsigned long start, unsigned long end
 {
 	unsigned long addr;
 
-	if ((end - start) > (MAX_DVM_OPS * PAGE_SIZE)) {
+	if (((end - start) > (MAX_DVM_OPS * PAGE_SIZE))
+	    || (TKT340553_SW_WORKAROUND)) {
 		flush_tlb_all();
 		return;
 	}

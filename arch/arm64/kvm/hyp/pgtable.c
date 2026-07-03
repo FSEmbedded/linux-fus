@@ -124,7 +124,6 @@ static kvm_pte_t kvm_init_valid_leaf_pte(u64 pa, kvm_pte_t attr, s8 level)
 	pte |= attr & (KVM_PTE_LEAF_ATTR_LO | KVM_PTE_LEAF_ATTR_HI);
 	pte |= FIELD_PREP(KVM_PTE_TYPE, type);
 	pte |= KVM_PTE_VALID;
-	pte |= attr & KVM_PTE_LEAF_ATTR_S2_DEVICE;
 
 	return pte;
 }
@@ -711,8 +710,6 @@ static int stage2_set_prot_attr(struct kvm_pgtable *pgt, enum kvm_pgtable_prot p
 
 	attr |= KVM_PTE_LEAF_ATTR_LO_S2_AF;
 	attr |= prot & KVM_PTE_LEAF_ATTR_HI_SW;
-	if ((prot & KVM_PGTABLE_PROT_DEVICE_SH) || (prot & KVM_PGTABLE_PROT_DEVICE_NS))
-		attr |= KVM_PTE_LEAF_ATTR_S2_DEVICE;
 	*ptep = attr;
 
 	return 0;
@@ -1347,7 +1344,8 @@ static int stage2_flush_walker(const struct kvm_pgtable_visit_ctx *ctx,
 	struct kvm_pgtable *pgt = ctx->arg;
 	struct kvm_pgtable_mm_ops *mm_ops = pgt->mm_ops;
 
-	if (!stage2_pte_cacheable(pgt, ctx->old))
+	if (!stage2_pte_cacheable(pgt, ctx->old) ||
+	    (ctx->old & KVM_PTE_LEAF_ATTR_S2_DEVICE))
 		return 0;
 
 	if (mm_ops->dcache_clean_inval_poc)

@@ -479,7 +479,7 @@ static long dma_buf_ioctl(struct file *file,
 		device_initialize(&dev);
 		dev.coherent_dma_mask = DMA_BIT_MASK(64);
 		dev.dma_mask = &dev.coherent_dma_mask;
-		arch_setup_dma_ops(&dev, 0, 0, NULL, false);
+		arch_setup_dma_ops(&dev, false);
 		attachment = dma_buf_attach(dmabuf, &dev);
 		if (!attachment || IS_ERR(attachment)) {
 			return -EFAULT;

@@ -7,6 +7,9 @@
  */
 
 #include <linux/pci.h>
+#include <linux/of_irq.h>
+
+#include "../../../drivers/pci/pcie/portdrv.h"
 
 /*
  * Check device tree if the service interrupts are there

@@ -27,6 +27,7 @@ enum dw_xpcs_pcs_id {
 	DW_XPCS_ID_NATIVE = 0,
 	NXP_SJA1105_XPCS_ID = 0x00000010,
 	NXP_SJA1110_XPCS_ID = 0x00000020,
+	NXP_MX95_XPCS_ID = 0x1b3274cd,
 	DW_XPCS_ID = 0x7996ced0,
 	DW_XPCS_ID_MASK = 0xffffffff,
 };
@@ -58,6 +59,7 @@ struct dw_xpcs {
 	struct dw_xpcs_info info;
 	const struct dw_xpcs_desc *desc;
 	struct mdio_device *mdiodev;
+	struct mdio_device *phydev;
 	struct clk_bulk_data clks[DW_XPCS_NUM_CLKS];
 	struct phylink_pcs pcs;
 	phy_interface_t interface;
@@ -78,6 +80,7 @@ struct dw_xpcs *xpcs_create_mdiodev(struct mii_bus *bus, int addr,
 struct dw_xpcs *xpcs_create_fwnode(struct fwnode_handle *fwnode,
 				   phy_interface_t interface);
 void xpcs_destroy(struct dw_xpcs *xpcs);
+
 #if IS_ENABLED(CONFIG_PCS_XPCS)
 struct phylink_pcs *xpcs_create_mdiodev_with_phy(struct mii_bus *bus,
 						 int mdioaddr, int phyaddr,

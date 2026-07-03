@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note
 /*
  *
- * (C) COPYRIGHT 2022-2023 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2022-2024 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -297,10 +297,14 @@ static unsigned long kbase_csf_tiler_heap_reclaim_scan_free_pages(struct kbase_d
 	/* If Scheduler is busy in action, return 0 */
 	if (!mutex_trylock(&kbdev->csf.scheduler.lock)) {
 		struct kbase_csf_scheduler *const scheduler = &kbdev->csf.scheduler;
+		long remaining = (long)msecs_to_jiffies(2);
 
 		/* Wait for roughly 2-ms */
-		wait_event_timeout(kbdev->csf.event_wait, (scheduler->state != SCHED_BUSY),
-				   (long)msecs_to_jiffies(2));
+		remaining = kbase_csf_fw_io_wait_event_timeout(&kbdev->csf.fw_io,
+							       kbdev->csf.event_wait,
+							       (scheduler->state != SCHED_BUSY),
+							       remaining);
+
 		if (!mutex_trylock(&kbdev->csf.scheduler.lock)) {
 			dev_dbg(kbdev->dev, "Tiler heap reclaim scan see device busy (freed: 0)");
 			return 0;
@@ -331,8 +335,8 @@ static unsigned long kbase_csf_tiler_heap_reclaim_scan_free_pages(struct kbase_d
 static unsigned long kbase_csf_tiler_heap_reclaim_count_objects(struct shrinker *s,
 								struct shrink_control *sc)
 {
-	struct kbase_device *kbdev =
-		container_of(s, struct kbase_device, csf.scheduler.reclaim_mgr.heap_reclaim);
+	struct kbase_device *kbdev = KBASE_GET_KBASE_DATA_FROM_SHRINKER(
+		s, struct kbase_device, csf.scheduler.reclaim_mgr.heap_reclaim);
 
 	return kbase_csf_tiler_heap_reclaim_count_free_pages(kbdev, sc);
 }
@@ -340,8 +344,8 @@ static unsigned long kbase_csf_tiler_heap_reclaim_count_objects(struct shrinker 
 static unsigned long kbase_csf_tiler_heap_reclaim_scan_objects(struct shrinker *s,
 							       struct shrink_control *sc)
 {
-	struct kbase_device *kbdev =
-		container_of(s, struct kbase_device, csf.scheduler.reclaim_mgr.heap_reclaim);
+	struct kbase_device *kbdev = KBASE_GET_KBASE_DATA_FROM_SHRINKER(
+		s, struct kbase_device, csf.scheduler.reclaim_mgr.heap_reclaim);
 
 	return kbase_csf_tiler_heap_reclaim_scan_free_pages(kbdev, sc);
 }
@@ -352,11 +356,17 @@ void kbase_csf_tiler_heap_reclaim_ctx_init(struct kbase_context *kctx)
 	INIT_LIST_HEAD(&kctx->csf.sched.heap_info.mgr_link);
 }
 
-void kbase_csf_tiler_heap_reclaim_mgr_init(struct kbase_device *kbdev)
+int kbase_csf_tiler_heap_reclaim_mgr_init(struct kbase_device *kbdev)
 {
 	struct kbase_csf_scheduler *scheduler = &kbdev->csf.scheduler;
-	struct shrinker *reclaim = &scheduler->reclaim_mgr.heap_reclaim;
 	u8 prio;
+	struct shrinker *reclaim;
+
+	reclaim =
+		KBASE_INIT_RECLAIM(&(scheduler->reclaim_mgr), heap_reclaim, "mali-csf-tiler-heap");
+	if (!reclaim)
+		return -ENOMEM;
+	KBASE_SET_RECLAIM(&(scheduler->reclaim_mgr), heap_reclaim, reclaim);
 
 	for (prio = KBASE_QUEUE_GROUP_PRIORITY_REALTIME; prio < KBASE_QUEUE_GROUP_PRIORITY_COUNT;
 	     prio++)
@@ -367,13 +377,10 @@ void kbase_csf_tiler_heap_reclaim_mgr_init(struct kbase_device *kbdev)
 	reclaim->seeks = HEAP_SHRINKER_SEEKS;
 	reclaim->batch = HEAP_SHRINKER_BATCH;
 
-#if !defined(CONFIG_MALI_VECTOR_DUMP)
-#if KERNEL_VERSION(6, 0, 0) > LINUX_VERSION_CODE
-	register_shrinker(reclaim);
-#else
-	register_shrinker(reclaim, "mali-csf-tiler-heap");
-#endif
-#endif
+	if (!IS_ENABLED(CONFIG_MALI_VECTOR_DUMP))
+		KBASE_REGISTER_SHRINKER(reclaim, "mali-csf-tiler-heap", kbdev);
+
+	return 0;
 }
 
 void kbase_csf_tiler_heap_reclaim_mgr_term(struct kbase_device *kbdev)
@@ -381,9 +388,8 @@ void kbase_csf_tiler_heap_reclaim_mgr_term(struct kbase_device *kbdev)
 	struct kbase_csf_scheduler *scheduler = &kbdev->csf.scheduler;
 	u8 prio;
 
-#if !defined(CONFIG_MALI_VECTOR_DUMP)
-	unregister_shrinker(&scheduler->reclaim_mgr.heap_reclaim);
-#endif
+	if (!IS_ENABLED(CONFIG_MALI_VECTOR_DUMP))
+		KBASE_UNREGISTER_SHRINKER(scheduler->reclaim_mgr.heap_reclaim);
 
 	for (prio = KBASE_QUEUE_GROUP_PRIORITY_REALTIME; prio < KBASE_QUEUE_GROUP_PRIORITY_COUNT;
 	     prio++)

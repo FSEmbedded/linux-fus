@@ -2,7 +2,6 @@
 /*
  * Copyright 2013-2014 Freescale Semiconductor, Inc.
  * Copyright 2018 Angelo Dureghello <angelo@sysam.it>
- * Copyright 2020 NXP
  */
 #ifndef _FSL_EDMA_COMMON_H_
 #define _FSL_EDMA_COMMON_H_
@@ -30,16 +29,6 @@
 #define EDMA_TCD_ATTR_DMOD(x)		(((x) & GENMASK(4, 0)) << 3)
 #define EDMA_TCD_ATTR_SSIZE(x)		(((x) & GENMASK(2, 0)) << 8)
 #define EDMA_TCD_ATTR_SMOD(x)		(((x) & GENMASK(4, 0)) << 11)
-#define EDMA_TCD_ATTR_DSIZE_8BIT	0
-#define EDMA_TCD_ATTR_DSIZE_16BIT	BIT(0)
-#define EDMA_TCD_ATTR_DSIZE_32BIT	BIT(1)
-#define EDMA_TCD_ATTR_DSIZE_64BIT	(BIT(0) | BIT(1))
-#define EDMA_TCD_ATTR_DSIZE_32BYTE	(BIT(2) | BIT(0))
-#define EDMA_TCD_ATTR_SSIZE_8BIT	0
-#define EDMA_TCD_ATTR_SSIZE_16BIT	(EDMA_TCD_ATTR_DSIZE_16BIT << 8)
-#define EDMA_TCD_ATTR_SSIZE_32BIT	(EDMA_TCD_ATTR_DSIZE_32BIT << 8)
-#define EDMA_TCD_ATTR_SSIZE_64BIT	(EDMA_TCD_ATTR_DSIZE_64BIT << 8)
-#define EDMA_TCD_ATTR_SSIZE_32BYTE	(EDMA_TCD_ATTR_DSIZE_32BYTE << 8)
 
 #define EDMA_TCD_ITER_MASK		GENMASK(14, 0)
 #define EDMA_TCD_CITER_CITER(x)		((x) & EDMA_TCD_ITER_MASK)
@@ -54,18 +43,32 @@
 #define EDMA_TCD_CSR_ACTIVE		BIT(6)
 #define EDMA_TCD_CSR_DONE		BIT(7)
 
+#define EDMA_V3_TCD_NBYTES_MLOFF_NBYTES(x) ((x) & GENMASK(9, 0))
+#define EDMA_V3_TCD_NBYTES_MLOFF(x)        (x << 10)
+#define EDMA_V3_TCD_NBYTES_DMLOE           (1 << 30)
+#define EDMA_V3_TCD_NBYTES_SMLOE           (1 << 31)
+
 #define EDMAMUX_CHCFG_DIS		0x0
 #define EDMAMUX_CHCFG_ENBL		0x80
 #define EDMAMUX_CHCFG_SOURCE(n)		((n) & 0x3F)
 
 #define DMAMUX_NR	2
 
-#define EDMA_MINOR_LOOP_TIMEOUT		500 /* us */
+#define EDMA_TCD                0x1000
 
 #define FSL_EDMA_BUSWIDTHS	(BIT(DMA_SLAVE_BUSWIDTH_1_BYTE) | \
 				 BIT(DMA_SLAVE_BUSWIDTH_2_BYTES) | \
 				 BIT(DMA_SLAVE_BUSWIDTH_4_BYTES) | \
 				 BIT(DMA_SLAVE_BUSWIDTH_8_BYTES))
+
+#define EDMA_V3_CH_SBR_RD          BIT(22)
+#define EDMA_V3_CH_SBR_WR          BIT(21)
+#define EDMA_V3_CH_CSR_ERQ         BIT(0)
+#define EDMA_V3_CH_CSR_EARQ        BIT(1)
+#define EDMA_V3_CH_CSR_EEI         BIT(2)
+#define EDMA_V3_CH_CSR_DONE        BIT(30)
+#define EDMA_V3_CH_CSR_ACTIVE      BIT(31)
+
 enum fsl_edma_pm_state {
 	RUNNING = 0,
 	SUSPENDED,
@@ -136,7 +139,6 @@ struct edma_regs {
 	void __iomem *intl;
 	void __iomem *errh;
 	void __iomem *errl;
-	struct fsl_edma_hw_tcd __iomem *tcd;
 };
 
 struct fsl_edma_sw_tcd {
@@ -158,10 +160,10 @@ struct fsl_edma_chan {
 	u32				dma_dev_size;
 	enum dma_data_direction		dma_dir;
 	char				chan_name[32];
+	char				errirq_name[36];
 	void __iomem			*tcd;
 	void __iomem			*mux_addr;
 	u32				real_count;
-	struct work_struct		issue_worker;
 	struct platform_device		*pdev;
 	struct device			*pd_dev;
 	u32				srcid;
@@ -169,10 +171,13 @@ struct fsl_edma_chan {
 	int                             priority;
 	int				hw_chanid;
 	int				txirq;
+	int				errirq;
 	irqreturn_t			(*irq_handler)(int irq, void *dev_id);
+	irqreturn_t			(*errirq_handler)(int irq, void *dev_id);
 	bool				is_rxchan;
 	bool				is_remote;
 	bool				is_multi_fifo;
+	u32				chn_real_count;
 };
 
 struct fsl_edma_desc {
@@ -182,6 +187,11 @@ struct fsl_edma_desc {
 	enum dma_transfer_direction	dirn;
 	unsigned int			n_tcds;
 	struct fsl_edma_sw_tcd		tcd[];
+};
+
+struct fsl_edma3_reg_save {
+	u32 csr;
+	u32 sbr;
 };
 
 #define FSL_EDMA_DRV_HAS_DMACLK		BIT(0)
@@ -203,6 +213,20 @@ struct fsl_edma_desc {
 /* Need clean CHn_CSR DONE before enable TCD's MAJORELINK */
 #define FSL_EDMA_DRV_CLEAR_DONE_E_LINK	BIT(14)
 #define FSL_EDMA_DRV_TCD64		BIT(15)
+#define FSL_EDMA_DRV_HAS_MPCLK         BIT(16)
+#define FSL_EDMA_DRV_ERRIRQ_SHARE       BIT(17)
+
+#define EDMA_CH_ERR_DBE                 BIT(0)
+#define EDMA_CH_ERR_SBE                 BIT(1)
+#define EDMA_CH_ERR_SGE                 BIT(2)
+#define EDMA_CH_ERR_NCE                 BIT(3)
+#define EDMA_CH_ERR_DOE                 BIT(4)
+#define EDMA_CH_ERR_DAE                 BIT(5)
+#define EDMA_CH_ERR_SOE                 BIT(6)
+#define EDMA_CH_ERR_SAE                 BIT(7)
+#define EDMA_CH_ERR_ECX                 BIT(8)
+#define EDMA_CH_ERR_UCE                 BIT(9)
+#define EDMA_CH_ERR                     BIT(31)
 
 #define FSL_EDMA_DRV_EDMA3	(FSL_EDMA_DRV_SPLIT_REG |	\
 				 FSL_EDMA_DRV_BUS_8BYTE |	\
@@ -226,7 +250,6 @@ struct fsl_edma_drvdata {
 	u32			mux_skip;	/* how much skip for each channel */
 	int			(*setup_irq)(struct platform_device *pdev,
 					     struct fsl_edma_engine *fsl_edma);
-	u8			txirq_count;
 };
 
 struct fsl_edma_engine {
@@ -238,10 +261,13 @@ struct fsl_edma_engine {
 	struct mutex		fsl_edma_mutex;
 	const struct fsl_edma_drvdata *drvdata;
 	u32			n_chans;
-	int			*txirqs;
+	int			txirq;
 	int			errirq;
+	int                     txirq_count;
+	#define MAX_CHAN_NUM    64
 	bool			big_endian;
 	struct edma_regs	regs;
+	struct fsl_edma3_reg_save edma_save_regs[MAX_CHAN_NUM];
 	u64			chan_masked;
 	struct fsl_edma_chan	chans[] __counted_by(n_chans);
 };
@@ -378,7 +404,7 @@ static inline u32 edma_readl(struct fsl_edma_engine *edma, void __iomem *addr)
 	return val;
 }
 
-static inline u32 edma_readw(struct fsl_edma_engine *edma, void __iomem *addr)
+static inline u16 edma_readw(struct fsl_edma_engine *edma, void __iomem *addr)
 {
 	u16 val;
 
@@ -483,9 +509,11 @@ struct dma_async_tx_descriptor *fsl_edma_prep_memcpy(
 		size_t len, unsigned long flags);
 void fsl_edma_xfer_desc(struct fsl_edma_chan *fsl_chan);
 void fsl_edma_issue_pending(struct dma_chan *chan);
+void fsl_edma_issue_work(struct work_struct *work);
 int fsl_edma_alloc_chan_resources(struct dma_chan *chan);
 void fsl_edma_free_chan_resources(struct dma_chan *chan);
 void fsl_edma_cleanup_vchan(struct dma_device *dmadev);
 void fsl_edma_setup_regs(struct fsl_edma_engine *edma);
+void fsl_edma_set_tcd_regs(struct fsl_edma_chan *fsl_chan, void *tcd);
 
 #endif /* _FSL_EDMA_COMMON_H_ */

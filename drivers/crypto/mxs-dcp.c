@@ -3,7 +3,6 @@
  * Freescale i.MX23/i.MX28 Data Co-Processor driver
  *
  * Copyright (C) 2013 Marek Vasut <marex@denx.de>
- * Copyright 2022 NXP
  */
 
 #include <linux/dma-mapping.h>
@@ -17,6 +16,10 @@
 #include <linux/stmp_device.h>
 #include <linux/clk.h>
 #include <soc/fsl/dcp.h>
+
+#ifdef CONFIG_PM_SLEEP
+#include <linux/freezer.h>
+#endif
 
 #include <crypto/aes.h>
 #include <crypto/sha1.h>
@@ -171,8 +174,6 @@ static int dcp_vmi_irq_bak, dcp_irq_bak;
 
 #define MXS_DCP_CONTROL1_HASH_SELECT_SHA256	(2 << 16)
 #define MXS_DCP_CONTROL1_HASH_SELECT_SHA1	(0 << 16)
-#define MXS_DCP_CONTROL1_AES_OTP_CRYPTO_KEY	(0xff << 8)
-#define MXS_DCP_CONTROL1_AES_OTP_UNIQUE_KEY	(0xfe << 8)
 #define MXS_DCP_CONTROL1_CIPHER_MODE_CBC	(1 << 4)
 #define MXS_DCP_CONTROL1_CIPHER_MODE_ECB	(0 << 4)
 #define MXS_DCP_CONTROL1_CIPHER_SELECT_AES128	(0 << 0)
@@ -265,6 +266,7 @@ static int mxs_dcp_run_aes(struct dcp_async_ctx *actx,
 		ret = -EINVAL;
 		goto aes_done_run;
 	}
+
 	/* Fill in the DMA descriptor. */
 	desc->control0 = MXS_DCP_CONTROL0_DECR_SEMAPHORE |
 		    MXS_DCP_CONTROL0_INTERRUPT |
@@ -279,14 +281,15 @@ static int mxs_dcp_run_aes(struct dcp_async_ctx *actx,
 
 	if (rctx->enc)
 		desc->control0 |= MXS_DCP_CONTROL0_CIPHER_ENCRYPT;
+	if (init)
+		desc->control0 |= MXS_DCP_CONTROL0_CIPHER_INIT;
 
 	desc->control1 = MXS_DCP_CONTROL1_CIPHER_SELECT_AES128;
+
 	if (rctx->ecb)
 		desc->control1 |= MXS_DCP_CONTROL1_CIPHER_MODE_ECB;
 	else
 		desc->control1 |= MXS_DCP_CONTROL1_CIPHER_MODE_CBC;
-	if (init)
-		desc->control0 |= MXS_DCP_CONTROL0_CIPHER_INIT;
 
 	if (key_referenced)
 		desc->control1 |= sdcp->coh->aes_key[0] << MXS_DCP_CONTROL1_KEY_SELECT_SHIFT;
@@ -295,9 +298,11 @@ static int mxs_dcp_run_aes(struct dcp_async_ctx *actx,
 	desc->source = src_phys;
 	desc->destination = dst_phys;
 	desc->size = actx->fill;
+	desc->payload = key_phys;
 	desc->status = 0;
 
 	ret = mxs_dcp_start_dma(actx);
+
 aes_done_run:
 	dma_unmap_single(sdcp->dev, dst_phys, DCP_BUF_SZ, DMA_FROM_DEVICE);
 err_dst:
@@ -1304,36 +1309,6 @@ static void mxs_dcp_remove(struct platform_device *pdev)
 	global_sdcp = NULL;
 }
 
-/*
- * mxs_dcp_blob_to_key transfers content of hardware blob to key.
- * Returns -EINVAL, if user wants to add hardware key other than
- * otp_crypto_key & otp_unique_key.
- * Returns 0, in case of success.
- */
-int mxs_dcp_blob_to_key(struct dcp_key_payload *p)
-{
-	int len_crypto_hdl, len_unique_hdl;
-	const struct fdt_property *prop_crypto, *prop_unique;
-	int nodeoff = fdt_node_offset_by_compatible(initial_boot_params, -1, "fsl,imx28-dcp");
-
-	if (nodeoff < 0) {
-		pr_info("node to update the SoC serial number is not found.\n");
-		return nodeoff;
-	}
-
-	prop_crypto = fdt_get_property(initial_boot_params, nodeoff,
-					"otp_crypto_key", &len_crypto_hdl);
-	prop_unique = fdt_get_property(initial_boot_params, nodeoff,
-					"otp_unique_key", &len_unique_hdl);
-	memcpy(p->key, p->blob, p->blob_len);
-	p->key_len = p->blob_len;
-	if (memcmp(prop_crypto->data, p->blob, AES_KEYSIZE_128) &&
-		memcmp(prop_unique->data, p->blob, AES_KEYSIZE_128))
-		return -EINVAL;
-
-	return 0;
-}
-EXPORT_SYMBOL_GPL(mxs_dcp_blob_to_key);
 static const struct of_device_id mxs_dcp_dt_ids[] = {
 	{ .compatible = "fsl,imx23-dcp", .data = NULL, },
 	{ .compatible = "fsl,imx28-dcp", .data = NULL, },

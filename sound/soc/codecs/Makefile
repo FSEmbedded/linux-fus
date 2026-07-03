@@ -393,6 +393,10 @@ snd-soc-wsa881x-y := wsa881x.o
 snd-soc-wsa883x-y := wsa883x.o
 snd-soc-wsa884x-y := wsa884x.o
 snd-soc-zl38060-y := zl38060.o
+snd-soc-rpmsg-wm8960-y := rpmsg_wm8960.o
+snd-soc-rpmsg-wm8960-i2c-y := rpmsg_wm8960_i2c.o
+snd-soc-rpmsg-ak4497-y := rpmsg_ak4497.o
+
 # Amp
 snd-soc-max9877-y := max9877.o
 snd-soc-max98504-y := max98504.o

@@ -6,6 +6,7 @@
 // Copyright 2019 NXP
 
 #include <linux/clk.h>
+#include <linux/firmware/imx/sm.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/mfd/syscon.h>
@@ -16,7 +17,6 @@
 #include <sound/soc.h>
 #include <sound/pcm.h>
 #include <sound/initval.h>
-#include <linux/firmware/imx/sm.h>
 
 #define REG_MQS_CTRL		0x00
 
@@ -67,7 +67,7 @@ struct fsl_mqs {
 	struct regmap *regmap;
 	struct clk *mclk;
 	struct clk *ipg;
-	struct fsl_mqs_soc_data soc;
+	const struct fsl_mqs_soc_data *soc;
 
 	unsigned int reg_mqs_ctrl;
 };
@@ -77,14 +77,25 @@ struct fsl_mqs {
 
 static int fsl_mqs_sm_read(void *context, unsigned int reg, unsigned int *val)
 {
+	struct fsl_mqs *mqs_priv = context;
 	int num = 1;
 
-	return scmi_imx_misc_ctrl_get(SCMI_IMX_CTRL_MQS1_SETTINGS, &num, val);
+	if (IS_ENABLED(CONFIG_IMX_SCMI_MISC_DRV) &&
+	    mqs_priv->soc->ctrl_off == reg)
+		return scmi_imx_misc_ctrl_get(SCMI_IMX_CTRL_MQS1_SETTINGS, &num, val);
+
+	return -EINVAL;
 };
 
 static int fsl_mqs_sm_write(void *context, unsigned int reg, unsigned int val)
 {
-	return scmi_imx_misc_ctrl_set(SCMI_IMX_CTRL_MQS1_SETTINGS, val);
+	struct fsl_mqs *mqs_priv = context;
+
+	if (IS_ENABLED(CONFIG_IMX_SCMI_MISC_DRV) &&
+	    mqs_priv->soc->ctrl_off == reg)
+		return scmi_imx_misc_ctrl_set(SCMI_IMX_CTRL_MQS1_SETTINGS, val);
+
+	return -EINVAL;
 };
 
 static int fsl_mqs_hw_params(struct snd_pcm_substream *substream,
@@ -109,11 +120,11 @@ static int fsl_mqs_hw_params(struct snd_pcm_substream *substream,
 	res = mclk_rate % (32 * lrclk * 2 * 8);
 
 	if (res == 0 && div > 0 && div <= 256) {
-		regmap_update_bits(mqs_priv->regmap, mqs_priv->soc.ctrl_off,
-				   mqs_priv->soc.div_mask,
-				   (div - 1) << mqs_priv->soc.div_shift);
-		regmap_update_bits(mqs_priv->regmap, mqs_priv->soc.ctrl_off,
-				   mqs_priv->soc.osr_mask, 0);
+		regmap_update_bits(mqs_priv->regmap, mqs_priv->soc->ctrl_off,
+				   mqs_priv->soc->div_mask,
+				   (div - 1) << mqs_priv->soc->div_shift);
+		regmap_update_bits(mqs_priv->regmap, mqs_priv->soc->ctrl_off,
+				   mqs_priv->soc->osr_mask, 0);
 	} else {
 		dev_err(component->dev, "can't get proper divider\n");
 	}
@@ -154,9 +165,9 @@ static int fsl_mqs_startup(struct snd_pcm_substream *substream,
 	struct snd_soc_component *component = dai->component;
 	struct fsl_mqs *mqs_priv = snd_soc_component_get_drvdata(component);
 
-	regmap_update_bits(mqs_priv->regmap, mqs_priv->soc.ctrl_off,
-			   mqs_priv->soc.en_mask,
-			   1 << mqs_priv->soc.en_shift);
+	regmap_update_bits(mqs_priv->regmap, mqs_priv->soc->ctrl_off,
+			   mqs_priv->soc->en_mask,
+			   1 << mqs_priv->soc->en_shift);
 	return 0;
 }
 
@@ -166,8 +177,8 @@ static void fsl_mqs_shutdown(struct snd_pcm_substream *substream,
 	struct snd_soc_component *component = dai->component;
 	struct fsl_mqs *mqs_priv = snd_soc_component_get_drvdata(component);
 
-	regmap_update_bits(mqs_priv->regmap, mqs_priv->soc.ctrl_off,
-			   mqs_priv->soc.en_mask, 0);
+	regmap_update_bits(mqs_priv->regmap, mqs_priv->soc->ctrl_off,
+			   mqs_priv->soc->en_mask, 0);
 }
 
 static const struct snd_soc_component_driver soc_codec_fsl_mqs = {
@@ -201,7 +212,7 @@ static const struct regmap_config fsl_mqs_regmap_config = {
 	.cache_type = REGCACHE_NONE,
 };
 
-struct regmap_config fsl_mqs_sm_regmap = {
+static const struct regmap_config fsl_mqs_sm_regmap = {
 	.reg_bits = 32,
 	.val_bits = 32,
 	.reg_read = fsl_mqs_sm_read,
@@ -212,11 +223,8 @@ static int fsl_mqs_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
 	struct device_node *gpr_np = NULL;
-	char *propname = "fsl,mqs-ctrl";
 	struct fsl_mqs *mqs_priv;
 	void __iomem *regs;
-	const struct fsl_mqs_soc_data *soc_data;
-	int elems, index;
 	int ret;
 
 	mqs_priv = devm_kzalloc(&pdev->dev, sizeof(*mqs_priv), GFP_KERNEL);
@@ -227,8 +235,7 @@ static int fsl_mqs_probe(struct platform_device *pdev)
 	 * But in i.MX8QM/i.MX8QXP the control register is moved
 	 * to its own domain.
 	 */
-	soc_data = of_device_get_match_data(&pdev->dev);
-	mqs_priv->soc = *soc_data;
+	mqs_priv->soc = of_device_get_match_data(&pdev->dev);
 
 	if (mqs_priv->soc->type == TYPE_REG_GPR) {
 		gpr_np = of_parse_phandle(np, "gpr", 0);
@@ -243,8 +250,11 @@ static int fsl_mqs_probe(struct platform_device *pdev)
 			dev_err(&pdev->dev, "failed to get gpr regmap\n");
 			return PTR_ERR(mqs_priv->regmap);
 		}
-	} else if (mqs_priv->soc.mode == MODE_REG_SM) {
-		mqs_priv->regmap = devm_regmap_init(&pdev->dev, NULL, NULL, &fsl_mqs_sm_regmap);
+	} else if (mqs_priv->soc->type == TYPE_REG_SM) {
+		mqs_priv->regmap = devm_regmap_init(&pdev->dev,
+						    NULL,
+						    mqs_priv,
+						    &fsl_mqs_sm_regmap);
 		if (IS_ERR(mqs_priv->regmap)) {
 			dev_err(&pdev->dev, "failed to init regmap: %ld\n",
 				PTR_ERR(mqs_priv->regmap));
@@ -314,7 +324,7 @@ static int fsl_mqs_runtime_resume(struct device *dev)
 		return ret;
 	}
 
-	regmap_write(mqs_priv->regmap, mqs_priv->soc.ctrl_off, mqs_priv->reg_mqs_ctrl);
+	regmap_write(mqs_priv->regmap, mqs_priv->soc->ctrl_off, mqs_priv->reg_mqs_ctrl);
 	return 0;
 }
 
@@ -322,7 +332,7 @@ static int fsl_mqs_runtime_suspend(struct device *dev)
 {
 	struct fsl_mqs *mqs_priv = dev_get_drvdata(dev);
 
-	regmap_read(mqs_priv->regmap, mqs_priv->soc.ctrl_off, &mqs_priv->reg_mqs_ctrl);
+	regmap_read(mqs_priv->regmap, mqs_priv->soc->ctrl_off, &mqs_priv->reg_mqs_ctrl);
 
 	clk_disable_unprepare(mqs_priv->mclk);
 	clk_disable_unprepare(mqs_priv->ipg);

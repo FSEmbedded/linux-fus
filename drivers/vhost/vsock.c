@@ -181,6 +181,7 @@ vhost_transport_do_send_pkt(struct vhost_vsock *vsock,
 		iov_iter_kvec(&iov_iter, ITER_DEST, (struct kvec *)&vq->iov[out], in, iov_len);
 #else
 		iov_iter_init(&iov_iter, ITER_DEST, &vq->iov[out], in, iov_len);
+#endif
 		offset = VIRTIO_VSOCK_SKB_CB(skb)->offset;
 		payload_len = skb->len - offset;
 		hdr = virtio_vsock_hdr(skb);

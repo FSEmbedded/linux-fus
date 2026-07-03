@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
 /*
  *
- * (C) COPYRIGHT 2010-2023 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2024 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -35,14 +35,17 @@
 #include <mali_kbase_hw.h>
 #include "mali_kbase_pm.h"
 #include "mali_kbase_defs.h"
+#include "mali_kbase_mem_flags.h"
 /* Required for kbase_mem_evictable_unmake */
 #include "mali_kbase_mem_linux.h"
 #include "mali_kbase_reg_track.h"
 #include "mali_kbase_mem_migrate.h"
 
 #include <linux/version_compat_defs.h>
+#include <linux/vmalloc.h>
 #include <linux/sched/mm.h>
 #include <linux/kref.h>
+#include <linux/vmalloc.h>
 
 static inline void kbase_process_page_usage_inc(struct kbase_context *kctx, int pages);
 
@@ -189,15 +192,6 @@ static inline void kbase_process_page_usage_inc(struct kbase_context *kctx, int 
 
 #define KBASE_REG_PROTECTED (1ul << 19)
 
-/* Region belongs to a shrinker.
- *
- * This can either mean that it is part of the JIT/Ephemeral or tiler heap
- * shrinker paths. Should be removed only after making sure that there are
- * no references remaining to it in these paths, as it may cause the physical
- * backing of the region to disappear during use.
- */
-#define KBASE_REG_DONT_NEED (1ul << 20)
-
 /* Imported buffer is padded? */
 #define KBASE_REG_IMPORT_PAD (1ul << 21)
 
@@ -247,9 +241,6 @@ static inline void kbase_process_page_usage_inc(struct kbase_context *kctx, int 
  * otherwise it points to a u64 holding the lowest address of unused memory.
  */
 #define KBASE_REG_HEAP_INFO_IS_SIZE (1ul << 27)
-
-/* Allocation is actively used for JIT memory */
-#define KBASE_REG_ACTIVE_JIT_ALLOC (1ul << 28)
 
 #if MALI_USE_CSF
 /* This flag only applies to allocations in the EXEC_FIXED_VA and FIXED_VA
@@ -347,7 +338,7 @@ enum kbase_user_buf_state {
  */
 struct kbase_mem_phy_alloc {
 	struct kref kref;
-	atomic_t gpu_mappings;
+	atomic64_t gpu_mappings;
 	atomic_t kernel_mappings;
 	size_t nents;
 	struct tagged_addr *pages;
@@ -446,15 +437,15 @@ enum kbase_page_status {
 /**
  * struct kbase_page_metadata - Metadata for each page in kbase
  *
- * @kbdev:         Pointer to kbase device.
- * @dma_addr:      DMA address mapped to page.
- * @migrate_lock:  A spinlock to protect the private metadata.
- * @data:          Member in union valid based on @status.
- * @status:        Status to keep track if page can be migrated at any
- *                 given moment. MSB will indicate if page is isolated.
- *                 Protected by @migrate_lock.
- * @vmap_count:    Counter of kernel mappings.
- * @group_id:      Memory group ID obtained at the time of page allocation.
+ * @data.mem_pool.kbdev:    Pointer to kbase device.
+ * @dma_addr:               DMA address mapped to page.
+ * @migrate_lock:           A spinlock to protect the private metadata.
+ * @data:                   Member in union valid based on @status.
+ * @status:                 Status to keep track if page can be migrated at any
+ *                          given moment. MSB will indicate if page is isolated.
+ *                          Protected by @migrate_lock.
+ * @vmap_count:             Counter of kernel mappings.
+ * @group_id:               Memory group ID obtained at the time of page allocation.
  *
  * Each small page will have a reference to this struct in the private field.
  * This will be used to keep track of information required for Linux page
@@ -481,7 +472,28 @@ struct kbase_page_metadata {
 		struct {
 			struct kbase_mmu_table *mmut;
 			/* GPU virtual page frame number info is in GPU_PAGE_SIZE units */
-			u64 pgd_vpfn_level;
+			u64 pgd_vpfn_level[GPU_PAGES_PER_CPU_PAGE];
+#if GPU_PAGES_PER_CPU_PAGE > 1
+			/**
+			 * @data.pt_mapped.pgd_link: Link to the &kbase_mmu_table.pgd_pages_list
+			 */
+			struct list_head pgd_link;
+			/**
+			 * @data.pt_mapped.pgd_page: Back pointer to the PGD page that
+			 *                           the metadata is associated with
+			 */
+			struct page *pgd_page;
+			/**
+			 * @allocated_sub_pages: Bitmap representing the allocation status
+			 *                       of sub pages in the @pgd_page
+			 */
+			DECLARE_BITMAP(allocated_sub_pages, GPU_PAGES_PER_CPU_PAGE);
+			/**
+			 * @data.pt_mapped.num_allocated_sub_pages: The number of allocated
+			 *                                          sub pages in @pgd_page
+			 */
+			s8 num_allocated_sub_pages;
+#endif
 		} pt_mapped;
 		struct {
 			struct kbase_device *kbdev;
@@ -510,6 +522,7 @@ enum kbase_jit_report_flags { KBASE_JIT_REPORT_ON_ALLOC_OR_FREE = (1u << 0) };
 /**
  * kbase_set_phy_alloc_page_status - Set the page migration status of the underlying
  *                                   physical allocation.
+ * @kctx:   Pointer to Kbase context.
  * @alloc:  the physical allocation containing the pages whose metadata is going
  *          to be modified
  * @status: the status the pages should end up in
@@ -518,7 +531,7 @@ enum kbase_jit_report_flags { KBASE_JIT_REPORT_ON_ALLOC_OR_FREE = (1u << 0) };
  * proper states are set. Instead, it is only used when we change the allocation
  * to NOT_MOVABLE or from NOT_MOVABLE to ALLOCATED_MAPPED
  */
-void kbase_set_phy_alloc_page_status(struct kbase_mem_phy_alloc *alloc,
+void kbase_set_phy_alloc_page_status(struct kbase_context *kctx, struct kbase_mem_phy_alloc *alloc,
 				     enum kbase_page_status status);
 
 static inline void kbase_mem_phy_alloc_gpu_mapped(struct kbase_mem_phy_alloc *alloc)
@@ -526,7 +539,7 @@ static inline void kbase_mem_phy_alloc_gpu_mapped(struct kbase_mem_phy_alloc *al
 	KBASE_DEBUG_ASSERT(alloc);
 	/* we only track mappings of NATIVE buffers */
 	if (alloc->type == KBASE_MEM_TYPE_NATIVE)
-		atomic_inc(&alloc->gpu_mappings);
+		atomic64_inc(&alloc->gpu_mappings);
 }
 
 static inline void kbase_mem_phy_alloc_gpu_unmapped(struct kbase_mem_phy_alloc *alloc)
@@ -534,7 +547,7 @@ static inline void kbase_mem_phy_alloc_gpu_unmapped(struct kbase_mem_phy_alloc *
 	KBASE_DEBUG_ASSERT(alloc);
 	/* we only track mappings of NATIVE buffers */
 	if (alloc->type == KBASE_MEM_TYPE_NATIVE)
-		if (atomic_dec_return(&alloc->gpu_mappings) < 0) {
+		if (atomic64_dec_return(&alloc->gpu_mappings) < 0) {
 			pr_err("Mismatched %s:\n", __func__);
 			dump_stack();
 		}
@@ -589,11 +602,6 @@ int kbase_mem_init(struct kbase_device *kbdev);
 void kbase_mem_halt(struct kbase_device *kbdev);
 void kbase_mem_term(struct kbase_device *kbdev);
 
-static inline unsigned int kbase_mem_phy_alloc_ref_read(struct kbase_mem_phy_alloc *alloc)
-{
-	return kref_read(&alloc->kref);
-}
-
 static inline struct kbase_mem_phy_alloc *kbase_mem_phy_alloc_get(struct kbase_mem_phy_alloc *alloc)
 {
 	kref_get(&alloc->kref);
@@ -620,9 +628,6 @@ static inline struct kbase_mem_phy_alloc *kbase_mem_phy_alloc_put(struct kbase_m
  * @nr_pages:        The size of the region in pages.
  * @initial_commit:  Initial commit, for aligning the start address and
  *                   correctly growing KBASE_REG_TILER_ALIGN_TOP regions.
- * @threshold_pages: If non-zero and the amount of memory committed to a region
- *                   that can grow on page fault exceeds this number of pages
- *                   then the driver switches to incremental rendering.
  * @flags:           Flags
  * @extension:    Number of pages allocated on page fault.
  * @cpu_alloc: The physical memory we mmap to the CPU when mapping this region.
@@ -659,8 +664,7 @@ struct kbase_va_region {
 	void *user_data;
 	size_t nr_pages;
 	size_t initial_commit;
-	size_t threshold_pages;
-	unsigned long flags;
+	base_mem_alloc_flags flags;
 	size_t extension;
 	struct kbase_mem_phy_alloc *cpu_alloc;
 	struct kbase_mem_phy_alloc *gpu_alloc;
@@ -736,7 +740,7 @@ static inline bool kbase_is_region_invalid_or_free(struct kbase_va_region *reg)
  */
 static inline bool kbase_is_region_shrinkable(struct kbase_va_region *reg)
 {
-	return (reg->flags & KBASE_REG_DONT_NEED) || (reg->flags & KBASE_REG_ACTIVE_JIT_ALLOC);
+	return (reg->flags & BASEP_MEM_DONT_NEED) || (reg->flags & BASEP_MEM_ACTIVE_JIT_ALLOC);
 }
 
 void kbase_remove_va_region(struct kbase_device *kbdev, struct kbase_va_region *reg);
@@ -911,13 +915,15 @@ static inline struct kbase_mem_phy_alloc *kbase_alloc_create(struct kbase_contex
 		alloc->properties |= KBASE_MEM_PHY_ALLOC_LARGE;
 
 	kref_init(&alloc->kref);
-	atomic_set(&alloc->gpu_mappings, 0);
+	atomic64_set(&alloc->gpu_mappings, 0);
 	atomic_set(&alloc->kernel_mappings, 0);
 	alloc->nents = 0;
-	alloc->pages = (void *)(alloc + 1);
-	/* fill pages with invalid address value */
-	for (i = 0; i < nr_pages; i++)
-		alloc->pages[i] = as_tagged(KBASE_INVALID_PHYSICAL_ADDRESS);
+	if (type != KBASE_MEM_TYPE_ALIAS) {
+		alloc->pages = (void *)(alloc + 1);
+		/* fill pages with invalid address value */
+		for (i = 0; i < nr_pages; i++)
+			alloc->pages[i] = as_tagged(KBASE_INVALID_PHYSICAL_ADDRESS);
+	}
 	INIT_LIST_HEAD(&alloc->mappings);
 	alloc->type = type;
 	alloc->group_id = group_id;
@@ -1288,14 +1294,13 @@ void kbase_mem_pool_mark_dying(struct kbase_mem_pool *pool);
 /**
  * kbase_mem_alloc_page - Allocate a new page for a device
  * @pool:  Memory pool to allocate a page from
- * @alloc_from_kthread:  Flag indicating that the current thread is a kernel thread.
  *
  * Most uses should use kbase_mem_pool_alloc to allocate a page. However that
  * function can fail in the event the pool is empty.
  *
  * Return: A new page or NULL if no memory
  */
-struct page *kbase_mem_alloc_page(struct kbase_mem_pool *pool, const bool alloc_from_kthread);
+struct page *kbase_mem_alloc_page(struct kbase_mem_pool *pool);
 
 /**
  * kbase_mem_pool_free_page - Free a page from a memory pool.
@@ -1307,7 +1312,7 @@ struct page *kbase_mem_alloc_page(struct kbase_mem_pool *pool, const bool alloc_
  */
 void kbase_mem_pool_free_page(struct kbase_mem_pool *pool, struct page *p);
 
-bool kbase_check_alloc_flags(unsigned long flags);
+bool kbase_check_alloc_flags(struct kbase_context *kctx, unsigned long flags);
 bool kbase_check_import_flags(unsigned long flags);
 
 static inline bool kbase_import_size_is_valid(struct kbase_device *kbdev, u64 va_pages)
@@ -1366,7 +1371,7 @@ int kbase_check_alloc_sizes(struct kbase_context *kctx, unsigned long flags, u64
  * Return: 0 if successful, -EINVAL if the flags are not supported
  */
 int kbase_update_region_flags(struct kbase_context *kctx, struct kbase_va_region *reg,
-			      unsigned long flags);
+			      base_mem_alloc_flags flags);
 
 /**
  * kbase_gpu_vm_lock() - Acquire the per-context region list lock
@@ -1414,10 +1419,28 @@ int kbase_update_region_flags(struct kbase_context *kctx, struct kbase_va_region
 void kbase_gpu_vm_lock(struct kbase_context *kctx);
 
 /**
+ * kbase_gpu_vm_lock_with_pmode_sync() - Wrapper of kbase_gpu_vm_lock.
+ * @kctx:  KBase context
+ *
+ * Same as kbase_gpu_vm_lock for JM GPU.
+ * Additionally acquire P.mode read-write semaphore for CSF GPU.
+ */
+void kbase_gpu_vm_lock_with_pmode_sync(struct kbase_context *kctx);
+
+/**
  * kbase_gpu_vm_unlock() - Release the per-context region list lock
  * @kctx:  KBase context
  */
 void kbase_gpu_vm_unlock(struct kbase_context *kctx);
+
+/**
+ * kbase_gpu_vm_unlock_with_pmode_sync() - Wrapper of kbase_gpu_vm_unlock.
+ * @kctx:  KBase context
+ *
+ * Same as kbase_gpu_vm_unlock for JM GPU.
+ * Additionally release P.mode read-write semaphore for CSF GPU.
+ */
+void kbase_gpu_vm_unlock_with_pmode_sync(struct kbase_context *kctx);
 
 int kbase_alloc_phy_pages(struct kbase_va_region *reg, size_t vsize, size_t size);
 
@@ -1656,7 +1679,7 @@ int kbase_alloc_phy_pages_helper(struct kbase_mem_phy_alloc *alloc, size_t nr_pa
  *
  * @prealloc_sa:        Information about the partial allocation if the amount of memory requested
  *                      is not a multiple of 2MB. One instance of struct kbase_sub_alloc must be
- *                      allocated by the caller if kbdev->pagesize_2mb is enabled.
+ *                      allocated by the caller if large pages are enabled.
  *
  * Allocates @nr_pages_requested and updates the alloc object. This function does not allocate new
  * pages from the kernel, and therefore will never trigger the OoM killer. Therefore, it can be
@@ -1684,9 +1707,9 @@ int kbase_alloc_phy_pages_helper(struct kbase_mem_phy_alloc *alloc, size_t nr_pa
  * This ensures that the pool can be grown to the required size and that the allocation can
  * complete without another thread using the newly grown pages.
  *
- * If kbdev->pagesize_2mb is enabled and the allocation is >= 2MB, then @pool must be one of the
- * pools from alloc->imported.native.kctx->mem_pools.large[]. Otherwise it must be one of the
- * mempools from alloc->imported.native.kctx->mem_pools.small[].
+ * If large (2MiB) pages are enabled and the allocation is >= 2MiB, then @pool
+ * must be one of the pools from alloc->imported.native.kctx->mem_pools.large[]. Otherwise it
+ * must be one of the mempools from alloc->imported.native.kctx->mem_pools.small[].
  *
  * @prealloc_sa is used to manage the non-2MB sub-allocation. It has to be pre-allocated because we
  * must not sleep (due to the usage of kmalloc()) whilst holding pool->pool_lock.  @prealloc_sa
@@ -2075,7 +2098,8 @@ bool kbase_has_exec_va_zone(struct kbase_context *kctx);
  * kbase_map_external_resource - Map an external resource to the GPU.
  * @kctx:              kbase context.
  * @reg:               External resource to map.
- * @locked_mm:         The mm_struct which has been locked for this operation.
+ * @locked_mm:         The mm_struct which has been locked for this operation,
+ *                     or NULL if none is available.
  *
  * On successful mapping, the VA region and the gpu_alloc refcounts will be
  * increased, making it safe to use and store both values directly.
@@ -2224,17 +2248,6 @@ int kbase_user_buf_from_empty_to_gpu_mapped(struct kbase_context *kctx,
 					    struct kbase_va_region *reg);
 
 /**
- * kbase_user_buf_from_pinned_to_empty - Transition user buffer from "pinned" to "empty".
- * @kctx: kbase context.
- * @reg:  The region associated with the imported user buffer.
- *
- * This function transitions a user buffer from the "pinned" state, in which physical pages
- * have been acquired and pinned but no mappings are present, to the "empty" state, in which
- * physical pages have been unpinned.
- */
-void kbase_user_buf_from_pinned_to_empty(struct kbase_context *kctx, struct kbase_va_region *reg);
-
-/**
  * kbase_user_buf_from_pinned_to_gpu_mapped - Transition user buffer from "pinned" to "GPU mapped".
  * @kctx: kbase context.
  * @reg:  The region associated with the imported user buffer.
@@ -2264,18 +2277,6 @@ int kbase_user_buf_from_pinned_to_gpu_mapped(struct kbase_context *kctx,
  */
 void kbase_user_buf_from_dma_mapped_to_pinned(struct kbase_context *kctx,
 					      struct kbase_va_region *reg);
-
-/**
- * kbase_user_buf_from_dma_mapped_to_empty - Transition user buffer from "DMA mapped" to "empty".
- * @kctx: kbase context.
- * @reg:  The region associated with the imported user buffer.
- *
- * This function transitions a user buffer from the "DMA mapped" state, in which physical pages
- * have been acquired and pinned and DMA mappings have been obtained, to the "empty" state,
- * in which DMA mappings have been released and physical pages have been unpinned.
- */
-void kbase_user_buf_from_dma_mapped_to_empty(struct kbase_context *kctx,
-					     struct kbase_va_region *reg);
 
 /**
  * kbase_user_buf_from_dma_mapped_to_gpu_mapped - Transition user buffer from "DMA mapped" to "GPU mapped".
@@ -2313,22 +2314,6 @@ void kbase_user_buf_from_gpu_mapped_to_pinned(struct kbase_context *kctx,
 					      struct kbase_va_region *reg);
 
 /**
- * kbase_user_buf_from_gpu_mapped_to_empty - Transition user buffer from "GPU mapped" to "empty".
- * @kctx: kbase context.
- * @reg:  The region associated with the imported user buffer.
- *
- * This function transitions a user buffer from the "GPU mapped" state, in which physical pages
- * have been acquired and pinned, DMA mappings have been obtained, and GPU mappings have been
- * created, to the "empty" state, in which all mappings have been torn down and physical pages
- * have been unpinned.
- *
- * However, the function does not update the counter of GPU mappings in usage, because different
- * policies may be applied in different points of the driver.
- */
-void kbase_user_buf_from_gpu_mapped_to_empty(struct kbase_context *kctx,
-					     struct kbase_va_region *reg);
-
-/**
  * kbase_sticky_resource_init - Initialize sticky resource management.
  * @kctx: kbase context
  *
@@ -2340,12 +2325,15 @@ int kbase_sticky_resource_init(struct kbase_context *kctx);
  * kbase_sticky_resource_acquire - Acquire a reference on a sticky resource.
  * @kctx:     kbase context.
  * @gpu_addr: The GPU address of the external resource.
+ * @locked_mm:         The mm_struct which has been locked for this operation,
+ *                     or NULL if none is available.
  *
  * Return: The metadata object which represents the binding between the
  * external resource and the kbase context on success or NULL on failure.
  */
 struct kbase_ctx_ext_res_meta *kbase_sticky_resource_acquire(struct kbase_context *kctx,
-							     u64 gpu_addr);
+							     u64 gpu_addr,
+							     struct mm_struct *locked_mm);
 
 /**
  * kbase_sticky_resource_release - Release a reference on a sticky resource.
@@ -2499,19 +2487,19 @@ void kbase_mem_umm_unmap(struct kbase_context *kctx, struct kbase_va_region *reg
 			 struct kbase_mem_phy_alloc *alloc);
 
 /**
- * kbase_mem_do_sync_imported - Sync caches for imported memory
+ * kbase_sync_imported_umm - Sync caches for imported UMM memory
  * @kctx: Pointer to the kbase context
  * @reg: Pointer to the region with imported memory to sync
  * @sync_fn: The type of sync operation to perform
  *
- * Sync CPU caches for supported (currently only dma-buf (UMM)) memory.
+ * Sync CPU caches for supported dma-buf (UMM) memory.
  * Attempting to sync unsupported imported memory types will result in an error
  * code, -EINVAL.
  *
  * Return: 0 on success, or a negative error code.
  */
-int kbase_mem_do_sync_imported(struct kbase_context *kctx, struct kbase_va_region *reg,
-			       enum kbase_sync_type sync_fn);
+int kbase_sync_imported_umm(struct kbase_context *kctx, struct kbase_va_region *reg,
+			    enum kbase_sync_type sync_fn);
 
 /**
  * kbase_mem_copy_to_pinned_user_pages - Memcpy from source input page to
@@ -2600,4 +2588,7 @@ static inline base_mem_alloc_flags kbase_mem_group_id_set(int id)
 {
 	return BASE_MEM_GROUP_ID_SET(id);
 }
+
+bool kbase_is_large_pages_enabled(void);
+
 #endif /* _KBASE_MEM_H_ */

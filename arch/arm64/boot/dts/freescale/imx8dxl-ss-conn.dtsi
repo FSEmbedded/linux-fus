@@ -18,14 +18,6 @@
 	};
 };
 
-	clk_dummy: clock-dummy {
-		compatible = "fixed-clock";
-		#clock-cells = <0>;
-		clock-frequency = <0>;
-		clock-output-names = "clk_dummy";
-	};
-};
-
 &conn_subsys {
 	eqos: ethernet@5b050000 {
 		compatible = "nxp,imx8dxl-dwmac-eqos", "snps,dwmac-5.10a";
@@ -33,17 +25,17 @@
 		interrupt-parent = <&gic>;
 		interrupts = <GIC_SPI 163 IRQ_TYPE_LEVEL_HIGH>,
 			     <GIC_SPI 162 IRQ_TYPE_LEVEL_HIGH>;
-		interrupt-names = "macirq", "eth_wake_irq";
-		clocks = <&eqos_lpcg IMX_LPCG_CLK_4>,
-			 <&eqos_lpcg IMX_LPCG_CLK_6>,
-			 <&eqos_lpcg IMX_LPCG_CLK_0>,
-			 <&eqos_lpcg IMX_LPCG_CLK_5>,
-			 <&eqos_lpcg IMX_LPCG_CLK_2>;
+		interrupt-names = "eth_wake_irq", "macirq";
+		clocks = <&eqos_lpcg 2>,
+			 <&eqos_lpcg 4>,
+			 <&eqos_lpcg 0>,
+			 <&eqos_lpcg 3>,
+			 <&eqos_lpcg 1>;
 		clock-names = "stmmaceth", "pclk", "ptp_ref", "tx", "mem";
 		assigned-clocks = <&clk IMX_SC_R_ENET_1 IMX_SC_PM_CLK_PER>;
 		assigned-clock-rates = <125000000>;
 		power-domains = <&pd IMX_SC_R_ENET_1>;
-		clk_csr = <0>;
+		snps,clk-csr = <0>;
 		status = "disabled";
 	};
 
@@ -65,6 +57,13 @@
 		rx-burst-size-dword = <0x10>;
 		power-domains = <&pd IMX_SC_R_USB_1>;
 		status = "disabled";
+
+		clk_dummy: clock-dummy {
+			compatible = "fixed-clock";
+			#clock-cells = <0>;
+			clock-frequency = <0>;
+			clock-output-names = "clk_dummy";
+		};
 	};
 
 	usbmisc2: usbmisc@5b0e0200 {
@@ -112,6 +111,7 @@
 };
 
 &dma_apbh {
+	compatible = "fsl,imx8dxl-dma-apbh", "fsl,imx28-dma-apbh";
 	interrupts = <GIC_SPI 176 IRQ_TYPE_LEVEL_HIGH>,
 		     <GIC_SPI 176 IRQ_TYPE_LEVEL_HIGH>,
 		     <GIC_SPI 176 IRQ_TYPE_LEVEL_HIGH>,
@@ -138,6 +138,7 @@
 };
 
 &gpmi {
+	compatible = "fsl,imx8dxl-gpmi-nand", "fsl,imx8qxp-gpmi-nand";
 	interrupts = <GIC_SPI 174 IRQ_TYPE_LEVEL_HIGH>;
 };
 

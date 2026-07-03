@@ -133,6 +133,9 @@ static int compare_of(struct device *dev, void *data)
 {
 	struct device_node *np = data;
 
+	if (!dev->driver)
+		return false;
+
 	/* Special case for DI, dev->of_node may not be set yet */
 	if (strcmp(dev->driver->name, "imx-ipuv3-crtc") == 0) {
 		struct ipu_client_platformdata *pdata = dev->platform_data;
@@ -258,8 +261,9 @@ static void add_dpu_bliteng_components(struct device *dev,
 			found = false;
 		} else {
 			if (num_dpu >= ARRAY_SIZE(dpu)) {
-				dev_err(dev, "The number of found dpu is greater than max [%ld].\n",
-					ARRAY_SIZE(dpu));
+				dev_err(dev, "The number of found dpu is greater than max [%u].\n",
+					(u32)ARRAY_SIZE(dpu));
+
 				of_node_put(parent);
 				of_node_put(port);
 				break;

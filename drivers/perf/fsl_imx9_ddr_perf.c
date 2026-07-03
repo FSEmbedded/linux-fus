@@ -106,11 +106,6 @@ static const struct of_device_id imx_ddr_pmu_dt_ids[] = {
 };
 MODULE_DEVICE_TABLE(of, imx_ddr_pmu_dt_ids);
 
-static inline bool is_imx93(struct ddr_pmu *pmu)
-{
-	return pmu->devtype_data == &imx93_devtype_data;
-}
-
 static ssize_t ddr_perf_identifier_show(struct device *dev,
 					struct device_attribute *attr,
 					char *page)
@@ -515,56 +510,6 @@ static void imx95_ddr_perf_monitor_config(struct ddr_pmu *pmu, int event,
 	}
 }
 
-static void imx95_ddr_perf_monitor_config(struct ddr_pmu *pmu, int cfg, int cfg1, int cfg2)
-{
-	u32 pmcfg1, pmcfg, offset = 0;
-	int event, counter;
-
-	event = cfg & 0x000000FF;
-	counter = (cfg & 0x0000FF00) >> 8;
-
-	pmcfg1 = readl_relaxed(pmu->base + PMCFG1);
-
-	if (counter == 2 && event == 73) {
-		pmcfg1 |= MX95_PMCFG1_WR_BEAT_FILT_EN;
-		offset = PMCFG3;
-	} else if (counter == 2 && event != 73) {
-		pmcfg1 &= ~MX95_PMCFG1_WR_BEAT_FILT_EN;
-	}
-
-	if (counter == 3 && event == 73) {
-		pmcfg1 |= MX95_PMCFG1_RD_BEAT_FILT_EN;
-		offset = PMCFG4;
-	} else if (counter == 3 && event != 73) {
-		pmcfg1 &= ~MX95_PMCFG1_RD_BEAT_FILT_EN;
-	}
-
-	if (counter == 4 && event == 73) {
-		pmcfg1 |= MX95_PMCFG1_RD_BEAT_FILT_EN;
-		offset = PMCFG5;
-	} else if (counter == 4 && event != 73) {
-		pmcfg1 &= ~MX95_PMCFG1_RD_BEAT_FILT_EN;
-	}
-
-	if (counter == 5 && event == 73) {
-		pmcfg1 |= MX95_PMCFG1_RD_BEAT_FILT_EN;
-		offset = PMCFG6;
-	} else if (counter == 5 && event != 73) {
-		pmcfg1 &= ~MX95_PMCFG1_RD_BEAT_FILT_EN;
-	}
-
-	writel(pmcfg1, pmu->base + PMCFG1);
-
-	if (offset) {
-		pmcfg = readl_relaxed(pmu->base + offset);
-		pmcfg &= ~FIELD_PREP(MX95_PMCFG_ID_MASK, 0x3FF);
-		pmcfg |= FIELD_PREP(MX95_PMCFG_ID_MASK, cfg2);
-		pmcfg &= ~FIELD_PREP(MX95_PMCFG_ID, 0x3FF);
-		pmcfg |= FIELD_PREP(MX95_PMCFG_ID, cfg1);
-		writel(pmcfg, pmu->base + offset);
-	}
-}
-
 static void ddr_perf_event_update(struct perf_event *event)
 {
 	struct ddr_pmu *pmu = to_ddr_pmu(event->pmu);
@@ -584,7 +529,6 @@ static int ddr_perf_event_init(struct perf_event *event)
 	struct ddr_pmu *pmu = to_ddr_pmu(event->pmu);
 	struct hw_perf_event *hwc = &event->hw;
 	struct perf_event *sibling;
-	int event_id, counter;
 
 	if (event->attr.type != event->pmu->type)
 		return -ENOENT;
@@ -595,18 +539,6 @@ static int ddr_perf_event_init(struct perf_event *event)
 	if (event->cpu < 0) {
 		dev_warn(pmu->dev, "Can't provide per-task data!\n");
 		return -EOPNOTSUPP;
-	}
-
-	counter = (event->attr.config & 0xFF00) >> 8;
-	if (counter > NUM_COUNTERS) {
-		dev_warn(pmu->dev, "Only counter 0-10 is supported!\n");
-		return -EINVAL;
-	}
-
-	event_id = event->attr.config & 0x00FF;
-	if (ddr_perf_is_specific_event(event_id) && counter == 0) {
-		dev_err(pmu->dev, "Need specify counter for counter specific events!\n");
-		return -EINVAL;
 	}
 
 	/*
@@ -814,49 +746,6 @@ static int ddr_perf_offline_cpu(unsigned int cpu, struct hlist_node *node)
 	return 0;
 }
 
-static int ddr_perf_add_events(struct ddr_pmu *pmu)
-{
-	int i, ret, events;
-	struct attribute **attrs;
-	struct device *pmu_dev = pmu->pmu.dev;
-
-	if (is_imx93(pmu)) {
-		events = sizeof(imx93_ddr_perf_events_attrs)/sizeof(struct attribute *);
-		attrs = imx93_ddr_perf_events_attrs;
-	} else {
-		events = sizeof(imx95_ddr_perf_events_attrs)/sizeof(struct attribute *);
-		attrs = imx95_ddr_perf_events_attrs;
-	}
-
-	for (i = 0; i < events; i++) {
-		ret = sysfs_add_file_to_group(&pmu_dev->kobj, attrs[i], "events");
-		if (ret) {
-			dev_warn(pmu->dev, "i.MX9 DDR Perf add events failed (%d)\n", ret);
-			return ret;
-		}
-	}
-
-	return 0;
-}
-
-static void ddr_perf_remove_events(struct ddr_pmu *pmu)
-{
-	int i, events;
-	struct attribute **attrs;
-	struct device *pmu_dev = pmu->pmu.dev;
-
-	if (is_imx93(pmu)) {
-		events = sizeof(imx93_ddr_perf_events_attrs)/sizeof(struct attribute *);
-		attrs = imx93_ddr_perf_events_attrs;
-	} else {
-		events = sizeof(imx95_ddr_perf_events_attrs)/sizeof(struct attribute *);
-		attrs = imx95_ddr_perf_events_attrs;
-	}
-
-	for (i = 0; i < events; i++)
-		sysfs_remove_file_from_group(&pmu_dev->kobj, attrs[i], "events");
-}
-
 static int ddr_perf_probe(struct platform_device *pdev)
 {
 	struct ddr_pmu *pmu;
@@ -934,10 +823,6 @@ static int ddr_perf_probe(struct platform_device *pdev)
 	if (ret)
 		goto ddr_perf_err;
 
-	ret = ddr_perf_add_events(pmu);
-	if (ret)
-		dev_warn(&pdev->dev, "i.MX9 DDR Perf filter events are missing\n");
-
 	return 0;
 
 ddr_perf_err:
@@ -954,8 +839,6 @@ format_string_err:
 static void ddr_perf_remove(struct platform_device *pdev)
 {
 	struct ddr_pmu *pmu = platform_get_drvdata(pdev);
-
-	ddr_perf_remove_events(pmu);
 
 	cpuhp_state_remove_instance_nocalls(pmu->cpuhp_state, &pmu->node);
 	cpuhp_remove_multi_state(pmu->cpuhp_state);

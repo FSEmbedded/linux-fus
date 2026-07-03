@@ -30,7 +30,6 @@
 #include <linux/ulpi/interface.h>
 
 #include <linux/phy/phy.h>
-#include "../host/xhci-plat.h"
 
 #include <linux/power_supply.h>
 
@@ -1012,7 +1011,6 @@ struct dwc3_scratchpad_array {
 };
 
 struct dwc3_platform_data {
-	struct xhci_plat_priv *xhci_priv;
 	void	(*set_role_post)(struct dwc3 *dwc, u32 role);
 };
 
@@ -1223,7 +1221,6 @@ struct dwc3 {
 	struct clk		*utmi_clk;
 	struct clk		*pipe_clk;
 
-	bool			core_inited;
 	struct reset_control	*reset;
 
 	struct usb_phy		*usb2_phy;
@@ -1404,7 +1401,6 @@ struct dwc3 {
 	unsigned		tx_de_emphasis:2;
 
 	unsigned		dis_metastability_quirk:1;
-	unsigned		host_vbus_glitches:1;
 
 	unsigned		dis_split_quirk:1;
 	unsigned		async_callbacks:1;

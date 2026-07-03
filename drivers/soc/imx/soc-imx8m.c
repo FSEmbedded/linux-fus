@@ -15,6 +15,7 @@
 #include <linux/of.h>
 #include <linux/clk.h>
 
+#include <soc/imx/soc.h>
 #include <soc/imx/src.h>
 
 #define REV_B1				0x21

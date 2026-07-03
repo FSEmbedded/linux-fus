@@ -23,7 +23,6 @@
 #include <drm/drm_simple_kms_helper.h>
 
 #include "cdn-dp-core.h"
-#include "cdn-dp-reg.h"
 
 static inline struct cdn_dp_device *connector_to_dp(struct drm_connector *connector)
 {
@@ -365,7 +364,8 @@ static int cdn_dp_firmware_init(struct cdn_dp_device *dp)
 
 static int cdn_dp_get_sink_capability(struct cdn_dp_device *dp)
 {
-	const struct drm_display_info *info = &dp->connector.display_info;
+	const struct drm_display_info *info = &dp->mhdp.connector.base.display_info;
+	struct cdns_mhdp_device *mhdp = &dp->mhdp;
 	int ret;
 
 	if (!cdn_dp_check_sink_connection(dp))
@@ -379,14 +379,14 @@ static int cdn_dp_get_sink_capability(struct cdn_dp_device *dp)
 	}
 
 	drm_edid_free(dp->drm_edid);
-	dp->drm_edid = drm_edid_read_custom(&dp->connector,
-					    cdn_dp_get_edid_block, dp);
-	drm_edid_connector_update(&dp->connector, dp->drm_edid);
+	dp->drm_edid = drm_edid_read_custom(&mhdp->connector.base,
+					    cdns_mhdp_get_edid_block, mhdp);
+	drm_edid_connector_update(&mhdp->connector.base, dp->drm_edid);
 
 	dp->sink_has_audio = info->has_audio;
 
 	if (dp->drm_edid)
-		DRM_DEV_DEBUG_KMS(dp->dev, "got edid: width[%d] x height[%d]\n",
+		DRM_DEV_DEBUG_KMS(mhdp->dev, "got edid: width[%d] x height[%d]\n",
 				  info->width_mm / 10, info->height_mm / 10);
 
 	return 0;
@@ -983,21 +983,21 @@ static void cdn_dp_pd_event_work(struct work_struct *work)
 
 	/* Not connected, notify userspace to disable the block */
 	if (!cdn_dp_connected_port(dp)) {
-		DRM_DEV_INFO(dp->dev, "Not connected; disabling cdn\n");
+		DRM_DEV_INFO(dev, "Not connected; disabling cdn\n");
 		dp->connected = false;
 
 	/* Connected but not enabled, enable the block */
 	} else if (!dp->active) {
-		DRM_DEV_INFO(dp->dev, "Connected, not enabled; enabling cdn\n");
+		DRM_DEV_INFO(dev, "Connected, not enabled; enabling cdn\n");
 		ret = cdn_dp_enable(dp);
 		if (ret) {
-			DRM_DEV_ERROR(dp->dev, "Enabling dp failed: %d\n", ret);
+			DRM_DEV_ERROR(dev, "Enabling dp failed: %d\n", ret);
 			dp->connected = false;
 		}
 
 	/* Enabled and connected to a dongle without a sink, notify userspace */
 	} else if (!cdn_dp_check_sink_connection(dp)) {
-		DRM_DEV_INFO(dp->dev, "Connected without sink; assert hpd\n");
+		DRM_DEV_INFO(dev, "Connected without sink; assert hpd\n");
 		dp->connected = false;
 
 	/* Enabled and connected with a sink, re-train if requested */
@@ -1006,11 +1006,11 @@ static void cdn_dp_pd_event_work(struct work_struct *work)
 		unsigned int lanes = dp->mhdp.dp.num_lanes;
 		struct drm_display_mode *mode = &dp->mhdp.mode;
 
-		DRM_DEV_INFO(dp->dev, "Connected with sink; re-train link\n");
-		ret = cdn_dp_train_link(dp);
+		DRM_DEV_INFO(dev, "Connected with sink; re-train link\n");
+		ret = cdns_mhdp_train_link(&dp->mhdp);
 		if (ret) {
 			dp->connected = false;
-			DRM_DEV_ERROR(dp->dev, "Training link failed: %d\n", ret);
+			DRM_DEV_ERROR(dev, "Training link failed: %d\n", ret);
 			goto out;
 		}
 
@@ -1021,7 +1021,7 @@ static void cdn_dp_pd_event_work(struct work_struct *work)
 			ret = cdns_mhdp_config_video(&dp->mhdp);
 			if (ret) {
 				dp->connected = false;
-				DRM_DEV_ERROR(dp->dev, "Failed to configure video: %d\n", ret);
+				DRM_DEV_ERROR(dev, "Failed to configure video: %d\n", ret);
 			}
 		}
 	}

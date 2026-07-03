@@ -39,6 +39,9 @@ MODULE_PARM_DESC(disable_msipolling,
 
 static struct iommu_ops arm_smmu_ops;
 static struct iommu_dirty_ops arm_smmu_dirty_ops;
+static bool disable_pm;
+module_param(disable_pm, bool, 0444);
+MODULE_PARM_DESC(disable_pm, "Disable smmu suspend/resume.");
 
 enum arm_smmu_msi_index {
 	EVTQ_MSI_INDEX,
@@ -3805,31 +3808,11 @@ static void arm_smmu_setup_msis(struct arm_smmu_device *smmu)
 static void arm_smmu_resume_unique_irqs(struct arm_smmu_device *smmu)
 {
 	struct device *dev = smmu->dev;
-	struct msi_desc *desc;
-	struct msi_msg msg;
 
 	if (!dev->msi.domain)
 		return;
 
-	desc = irq_get_msi_desc(smmu->evtq.q.irq);
-	if (desc) {
-		get_cached_msi_msg(smmu->evtq.q.irq, &msg);
-		arm_smmu_write_msi_msg(desc, &msg);
-	}
-
-	desc = irq_get_msi_desc(smmu->gerr_irq);
-	if (desc) {
-		get_cached_msi_msg(smmu->gerr_irq, &msg);
-		arm_smmu_write_msi_msg(desc, &msg);
-	}
-
-	if (smmu->features & ARM_SMMU_FEAT_PRI) {
-		desc = irq_get_msi_desc(smmu->priq.q.irq);
-		if (desc) {
-			get_cached_msi_msg(smmu->priq.q.irq, &msg);
-			arm_smmu_write_msi_msg(desc, &msg);
-		}
-	}
+	dev_warn(smmu->dev, "SMMU MSI suspend/resume is not supported as of now\n");
 }
 
 static void arm_smmu_setup_unique_irqs(struct arm_smmu_device *smmu)
@@ -3958,7 +3941,7 @@ static void arm_smmu_write_strtab(struct arm_smmu_device *smmu)
 	writel_relaxed(reg, smmu->base + ARM_SMMU_STRTAB_BASE_CFG);
 }
 
-static int arm_smmu_device_reset(struct arm_smmu_device *smmu)
+static int arm_smmu_device_reset(struct arm_smmu_device *smmu, bool resume)
 {
 	int ret;
 	u32 reg, enables;
@@ -4652,7 +4635,7 @@ static int arm_smmu_device_probe(struct platform_device *pdev)
 	arm_smmu_rmr_install_bypass_ste(smmu);
 
 	/* Reset the device */
-	ret = arm_smmu_device_reset(smmu);
+	ret = arm_smmu_device_reset(smmu, false);
 	if (ret)
 		return ret;
 
@@ -4694,6 +4677,9 @@ static int __maybe_unused arm_smmu_suspend(struct device *dev)
 {
 	struct arm_smmu_device *smmu = dev_get_drvdata(dev);
 
+	if (disable_pm)
+		return 0;
+
 	arm_smmu_device_disable(smmu);
 
 	return 0;
@@ -4703,20 +4689,23 @@ static int __maybe_unused arm_smmu_resume(struct device *dev)
 {
 	struct arm_smmu_device *smmu = dev_get_drvdata(dev);
 
+	if (disable_pm)
+		return 0;
+
 	arm_smmu_device_reset(smmu, true);
 
 	return 0;
 }
+
+static const struct dev_pm_ops arm_smmu_pm_ops = {
+	SET_NOIRQ_SYSTEM_SLEEP_PM_OPS(arm_smmu_suspend, arm_smmu_resume)
+};
 
 static const struct of_device_id arm_smmu_of_match[] = {
 	{ .compatible = "arm,smmu-v3", },
 	{ },
 };
 MODULE_DEVICE_TABLE(of, arm_smmu_of_match);
-
-static const struct dev_pm_ops arm_smmu_pm_ops = {
-	SET_NOIRQ_SYSTEM_SLEEP_PM_OPS(arm_smmu_suspend, arm_smmu_resume)
-};
 
 static void arm_smmu_driver_unregister(struct platform_driver *drv)
 {

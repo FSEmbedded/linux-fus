@@ -131,8 +131,14 @@ static int scmi_clk_determine_rate(struct clk_hw *hw, struct clk_rate_request *r
 static int scmi_clk_enable(struct clk_hw *hw)
 {
 	struct scmi_clk *clk = to_scmi_clk(hw);
+	int ret;
 
-	return scmi_proto_clk_ops->enable(clk->ph, clk->id, NOT_ATOMIC);
+	ret = scmi_proto_clk_ops->enable(clk->ph, clk->id, NOT_ATOMIC);
+
+	if (ret == -EACCES && clk->info->state_ctrl_forbidden)
+		return 0;
+
+	return ret;
 }
 
 static void scmi_clk_disable(struct clk_hw *hw)
@@ -461,19 +467,6 @@ static int scmi_clocks_probe(struct scmi_device *sdev)
 					       ARRAY_SIZE(scmi_clk_ops_db));
 		if (!scmi_ops)
 			return -ENOMEM;
-
-		/* Initialize clock parent data. */
-		if (sclk->info->num_parents > 0) {
-			sclk->parent_data = devm_kcalloc(dev, sclk->info->num_parents,
-							 sizeof(*sclk->parent_data), GFP_KERNEL);
-			if (!sclk->parent_data)
-				return -ENOMEM;
-
-			for (int i = 0; i < sclk->info->num_parents; i++) {
-				sclk->parent_data[i].index = sclk->info->parents[i];
-				sclk->parent_data[i].hw = hws[sclk->info->parents[i]];
-			}
-		}
 
 		/* Initialize clock parent data. */
 		if (sclk->info->num_parents > 0) {

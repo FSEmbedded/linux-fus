@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL- .0+
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Freescale GPMI NAND Flash Driver
  *
@@ -733,7 +733,7 @@ static int common_nfc_set_geometry(struct gpmi_nand_data *this)
 	return err;
 }
 
-int bch_create_debugfs(struct gpmi_nand_data *this)
+static int bch_create_debugfs(struct gpmi_nand_data *this)
 {
 	struct bch_geometry *bch_geo = &this->bch_geometry;
 	struct dentry *dbg_root;
@@ -1201,6 +1201,7 @@ static const struct gpmi_devdata gpmi_devdata_imx6qp = {
 	.type = IS_MX6QP,
 	.bch_max_ecc_strength = 40,
 	.max_chain_delay = 12000,
+	.support_edo_timing = true,
 	.clks = gpmi_clks_for_mx6,
 	.clks_count = ARRAY_SIZE(gpmi_clks_for_mx6),
 };
@@ -1226,20 +1227,9 @@ static const struct gpmi_devdata gpmi_devdata_imx7d = {
 	.clks = gpmi_clks_for_mx7d,
 	.clks_count = ARRAY_SIZE(gpmi_clks_for_mx7d),
 };
+
 static const char * gpmi_clks_for_mx8qxp[GPMI_CLK_MAX] = {
 	"gpmi_clk", "gpmi_apb_clk", "bch_clk", "bch_apb_clk",
-};
-
-static const struct gpmi_devdata gpmi_devdata_imx8qxp = {
-	.type = IS_MX8QXP,
-	.bch_max_ecc_strength = 62,
-	.max_chain_delay = 12000,
-	.clks = gpmi_clks_for_mx8qxp,
-	.clks_count = ARRAY_SIZE(gpmi_clks_for_mx8qxp),
-};
-
-static const char *gpmi_clks_for_mx8qxp[GPMI_CLK_MAX] = {
-	"gpmi_io", "gpmi_apb", "gpmi_bch", "gpmi_bch_apb",
 };
 
 static const struct gpmi_devdata gpmi_devdata_imx8qxp = {
@@ -2801,7 +2791,7 @@ static const struct of_device_id gpmi_nand_id_table[] = {
 	{ .compatible = "fsl,imx6q-gpmi-nand", .data = &gpmi_devdata_imx6q, },
 	{ .compatible = "fsl,imx6qp-gpmi-nand", .data = &gpmi_devdata_imx6qp, },
 	{ .compatible = "fsl,imx6sx-gpmi-nand", .data = &gpmi_devdata_imx6sx, },
-	{ .compatible = "fsl,imx7d-gpmi-nand", .data = &gpmi_devdata_imx7d,},
+	{ .compatible = "fsl,imx7d-gpmi-nand", .data = &gpmi_devdata_imx7d, },
 	{ .compatible = "fsl,imx8qxp-gpmi-nand", .data = &gpmi_devdata_imx8qxp, },
 	{}
 };

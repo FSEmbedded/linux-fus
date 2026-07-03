@@ -1066,15 +1066,12 @@ static int memac_get_default_pcs(struct mac_device *mac_dev,
 int memac_initialization(struct mac_device *mac_dev,
 			 struct fman_mac_params *params)
 {
+	struct fwnode_handle	*mac_fwnode = dev_fwnode(mac_dev->dev);
 	int			 err;
-	struct phylink_pcs	*pcs;
 	struct fman_mac		*memac;
 	unsigned long		 capabilities;
 	unsigned long		*supported;
 	struct phy		*serdes = NULL;
-	struct device		*dev = mac_dev->dev;
-	struct fwnode_handle	*mac_fwnode = dev->fwnode;
-	struct fwnode_handle	*fixed;
 
 	/* The internal connection to the serdes is XGMII, but this isn't
 	 * really correct for the phy mode (which is the external connection).
@@ -1137,7 +1134,7 @@ int memac_initialization(struct mac_device *mac_dev,
 	/* For compatibility, if pcs-handle-names is missing, we assume this
 	 * phy is the first one in pcsphy-handle
 	 */
-	if (mac_dev->phy_if == PHY_INTERFACE_MODE_XGMII && !memac->xfi_pcs) {
+	if (mac_dev->phy_if == PHY_INTERFACE_MODE_10GBASER && !memac->xfi_pcs) {
 		err = memac_get_default_pcs(mac_dev, mac_fwnode,
 					    &memac->xfi_pcs, serdes);
 		if (err)
@@ -1148,14 +1145,6 @@ int memac_initialization(struct mac_device *mac_dev,
 		if (err)
 			goto _return_fm_mac_free;
 	}
-
-	/* The internal connection to the serdes is XGMII, but this isn't
-	 * really correct for the phy mode (which is the external connection).
-	 * However, this is how all older device trees say that they want
-	 * 10GBASE-R (aka XFI), so just convert it for them.
-	 */
-	if (mac_dev->phy_if == PHY_INTERFACE_MODE_XGMII)
-		mac_dev->phy_if = PHY_INTERFACE_MODE_10GBASER;
 
 	supported = mac_dev->phylink_config.supported_interfaces;
 
@@ -1221,7 +1210,7 @@ int memac_initialization(struct mac_device *mac_dev,
 	 * be careful and not enable this if we are using MII or RGMII, since
 	 * those configurations modes don't use in-band autonegotiation.
 	 */
-	if (!of_property_read_bool(mac_node, "managed") &&
+	if (!fwnode_property_read_bool(mac_fwnode, "managed") &&
 	    mac_dev->phy_if != PHY_INTERFACE_MODE_MII &&
 	    !phy_interface_mode_is_rgmii(mac_dev->phy_if))
 		mac_dev->phylink_config.default_an_inband = true;

@@ -317,13 +317,13 @@
 		clocks = <&cgc2 IMX8ULP_CLK_DSI_PHY_REF>;
 		clock-names = "xclk";
 		powerdown-gpios = <&pca6416_1 8 GPIO_ACTIVE_HIGH>;
-		reset-gpios = <&pca6416_1 7 GPIO_ACTIVE_LOW>;
 		status = "okay";
+
 		port {
-			ov5640_mipi_ep: endpoint {
-				remote-endpoint = <&mipi_csi0_ep>;
+			ov5640_mipi_out: endpoint {
+				remote-endpoint = <&mipi_csi_in>;
 				data-lanes = <1 2>;
-				clocks-lanes = <0>;
+				clock-lanes = <0>;
 			};
 		};
 	};
@@ -430,6 +430,30 @@
 	};
 };
 
+&sai5 {
+	#sound-dai-cells = <0>;
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&pinctrl_sai5>;
+	pinctrl-1 = <&pinctrl_sai5>;
+	assigned-clocks = <&cgc1 IMX8ULP_CLK_SAI5_SEL>;
+	assigned-clock-parents = <&cgc1 IMX8ULP_CLK_SPLL3_PFD1_DIV1>;
+	fsl,dataline = <1 0x08 0x01>;
+	status = "okay";
+};
+
+&spdif {
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&pinctrl_spdif>;
+	pinctrl-1 = <&pinctrl_spdif>;
+	assigned-clocks = <&cgc2 IMX8ULP_CLK_SPDIF_SEL>;
+	assigned-clock-parents = <&cgc1 IMX8ULP_CLK_SPLL3_PFD1_DIV1>;
+	status = "okay";
+};
+
+&tpm_rpchip_0 {
+	status = "okay";
+};
+
 &usbotg1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usb1>;
@@ -470,72 +494,6 @@
 	status = "okay";
 };
 
-&sai5 {
-	#sound-dai-cells = <0>;
-	pinctrl-names = "default", "sleep";
-	pinctrl-0 = <&pinctrl_sai5>;
-	pinctrl-1 = <&pinctrl_sai5>;
-	assigned-clocks = <&cgc1 IMX8ULP_CLK_SAI5_SEL>;
-	assigned-clock-parents = <&cgc1 IMX8ULP_CLK_SPLL3_PFD1_DIV1>;
-	fsl,dataline = <1 0x08 0x01>;
-	status = "okay";
-};
-
-&spdif {
-	pinctrl-names = "default", "sleep";
-	pinctrl-0 = <&pinctrl_spdif>;
-	pinctrl-1 = <&pinctrl_spdif>;
-	assigned-clocks = <&cgc2 IMX8ULP_CLK_SPDIF_SEL>;
-	assigned-clock-parents = <&cgc1 IMX8ULP_CLK_SPLL3_PFD1_DIV1>;
-	status = "okay";
-};
-
-&tpm_rpchip_0 {
-	status = "okay";
-};
-
-&usbotg1 {
-	pinctrl-names = "default", "sleep";
-	pinctrl-0 = <&pinctrl_otgid1>;
-	pinctrl-1 = <&pinctrl_otgid1>;
-	dr_mode = "otg";
-	hnp-disable;
-	srp-disable;
-	adp-disable;
-	over-current-active-low;
-	status = "okay";
-};
-
-&usbphy1 {
-	status = "okay";
-	fsl,tx-d-cal = <110>;
-};
-
-&usbmisc1 {
-	status = "okay";
-};
-
-&usbotg2 {
-	pinctrl-names = "default", "sleep";
-	pinctrl-0 = <&pinctrl_otgid2>;
-	pinctrl-1 = <&pinctrl_otgid2>;
-	dr_mode = "otg";
-	hnp-disable;
-	srp-disable;
-	adp-disable;
-	over-current-active-low;
-	status = "okay";
-};
-
-&usbphy2 {
-	status = "okay";
-	fsl,tx-d-cal = <110>;
-};
-
-&usbmisc2 {
-	status = "okay";
-};
-
 &usdhc0 {
 	pinctrl-names = "default", "state_100mhz", "state_200mhz", "sleep";
 	pinctrl-0 = <&pinctrl_usdhc0>;
@@ -544,6 +502,7 @@
 	pinctrl-3 = <&pinctrl_usdhc0>;
 	non-removable;
 	bus-width = <8>;
+	fsl,tuning-step = <1>;
 	status = "okay";
 };
 
@@ -719,6 +678,21 @@
 		>;
 	};
 
+	pinctrl_sai5: sai5grp {
+		fsl,pins = <
+			MX8ULP_PAD_PTF26__I2S5_TX_BCLK  0x43
+			MX8ULP_PAD_PTF27__I2S5_TX_FS    0x43
+			MX8ULP_PAD_PTF28__I2S5_TXD0     0x43
+			MX8ULP_PAD_PTF24__I2S5_RXD3 	0x43
+		>;
+	};
+
+	pinctrl_spdif: spdifgrp {
+		fsl,pins = <
+			MX8ULP_PAD_PTF25__SPDIF_OUT1    0x43
+		>;
+	};
+
 	pinctrl_usdhc0: usdhc0grp {
 		fsl,pins = <
 			MX8ULP_PAD_PTD1__SDHC0_CMD	0x3
@@ -749,25 +723,46 @@
 
 };
 
-&cameradev {
-	status = "okay";
-};
-
-&isi_0 {
+&isi {
 	status = "okay";
 
-	cap_device {
-		status = "okay";
+	ports {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		port@0 {
+			reg = <0>;
+
+			isi_in: endpoint {
+				remote-endpoint = <&mipi_csi_out>;
+			};
+		};
 	};
 };
 
-&mipi_csi0 {
+&mipi_csi {
 	status = "okay";
-	port {
-		mipi_csi0_ep: endpoint {
-			remote-endpoint = <&ov5640_mipi_ep>;
-			data-lanes = <1 2>;
-			bus-type = <4>;
+
+	ports {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		port@0 {
+			reg = <0>;
+
+			mipi_csi_in: endpoint {
+				remote-endpoint = <&ov5640_mipi_out>;
+				data-lanes = <1 2>;
+				clock-lanes = <0>;
+			};
+		};
+
+		port@1 {
+			reg = <1>;
+
+			mipi_csi_out: endpoint {
+				remote-endpoint = <&isi_in>;
+			};
 		};
 	};
 };

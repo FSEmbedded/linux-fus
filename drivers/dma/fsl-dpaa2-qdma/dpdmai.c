@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0
-// Copyright 2019-2021 NXP
+// Copyright 2019 NXP
 
 #include <linux/bitfield.h>
 #include <linux/module.h>
@@ -127,12 +127,7 @@ EXPORT_SYMBOL_GPL(dpdmai_close);
  * @dpdmai_id:	The object id; it must be a valid id within the container that created this object;
  * @token:      Token of DPDMAI object
  *
- * The function accepts the authentication token of the parent container that
- * created the object (not the one that currently owns the object). The object
- * is searched within parent using the provided 'object_id'.
- * All tokens to the object must be closed before calling destroy.
- *
- * Return:	'0' on Success; error code otherwise.
+ * Return:      '0' on Success; error code otherwise.
  */
 int dpdmai_destroy(struct fsl_mc_io *mc_io, u32 cmd_flags, u32 dpdmai_id, u16 token)
 {
@@ -142,8 +137,6 @@ int dpdmai_destroy(struct fsl_mc_io *mc_io, u32 cmd_flags, u32 dpdmai_id, u16 to
 	/* prepare command */
 	cmd.header = mc_encode_cmd_header(DPDMAI_CMDID_DESTROY,
 					  cmd_flags, token);
-	cmd_params = (struct dpdmai_cmd_destroy *)cmd.params;
-	cmd_params->dpdmai_id = cpu_to_le32(dpdmai_id);
 
 	cmd_params = (struct dpdmai_cmd_destroy *)&cmd.params;
 	cmd_params->dpdmai_id = cpu_to_le32(dpdmai_id);
@@ -196,40 +189,6 @@ int dpdmai_disable(struct fsl_mc_io *mc_io, u32 cmd_flags, u16 token)
 EXPORT_SYMBOL_GPL(dpdmai_disable);
 
 /**
- * dpdmai_is_enabled() - Check if the DPDMAI is enabled.
- * @mc_io:	Pointer to MC portal's I/O object
- * @cmd_flags:	Command flags; one or more of 'MC_CMD_FLAG_'
- * @token:	Token of DPDMAI object
- * @en:		Returns '1' if object is enabled; '0' otherwise
- *
- * Return:	'0' on Success; Error code otherwise.
- */
-int dpdmai_is_enabled(struct fsl_mc_io *mc_io, u32 cmd_flags,
-		      u16 token, int *en)
-{
-	struct dpdmai_rsp_is_enabled *rsp_params;
-	struct fsl_mc_command cmd = { 0 };
-	int err;
-
-	/* prepare command */
-	cmd.header = mc_encode_cmd_header(DPDMAI_CMDID_IS_ENABLED,
-					  cmd_flags,
-					  token);
-
-	/* send command to mc*/
-	err = mc_send_command(mc_io, &cmd);
-	if (err)
-		return err;
-
-	/* retrieve response parameters */
-	rsp_params = (struct dpdmai_rsp_is_enabled *)cmd.params;
-	*en = dpdmai_get_field(rsp_params->en, ENABLE);
-
-	return 0;
-}
-EXPORT_SYMBOL_GPL(dpdmai_is_enabled);
-
-/**
  * dpdmai_reset() - Reset the DPDMAI, returns the object to initial state.
  * @mc_io:	Pointer to MC portal's I/O object
  * @cmd_flags:	Command flags; one or more of 'MC_CMD_FLAG_'
@@ -278,6 +237,8 @@ int dpdmai_get_attributes(struct fsl_mc_io *mc_io, u32 cmd_flags,
 	/* retrieve response parameters */
 	rsp_params = (struct dpdmai_rsp_get_attributes *)cmd.params;
 	attr->id = le32_to_cpu(rsp_params->id);
+	attr->version.major = le16_to_cpu(rsp_params->major);
+	attr->version.minor = le16_to_cpu(rsp_params->minor);
 	attr->num_of_priorities = rsp_params->num_of_priorities;
 	attr->num_of_queues = rsp_params->num_of_queues;
 
@@ -300,14 +261,14 @@ EXPORT_SYMBOL_GPL(dpdmai_get_attributes);
 int dpdmai_set_rx_queue(struct fsl_mc_io *mc_io, u32 cmd_flags, u16 token, u8 queue_idx,
 			u8 priority, const struct dpdmai_rx_queue_cfg *cfg)
 {
-	struct dpdmai_cmd_set_rx_queue *cmd_params;
+	struct dpdmai_cmd_queue *cmd_params;
 	struct fsl_mc_command cmd = { 0 };
 
 	/* prepare command */
 	cmd.header = mc_encode_cmd_header(DPDMAI_CMDID_SET_RX_QUEUE,
 					  cmd_flags, token);
 
-	cmd_params = (struct dpdmai_cmd_set_rx_queue *)cmd.params;
+	cmd_params = (struct dpdmai_cmd_queue *)cmd.params;
 	cmd_params->dest_id = cpu_to_le32(cfg->dest_cfg.dest_id);
 	cmd_params->dest_priority = cfg->dest_cfg.priority;
 	cmd_params->pri = priority;
@@ -336,8 +297,7 @@ EXPORT_SYMBOL_GPL(dpdmai_set_rx_queue);
 int dpdmai_get_rx_queue(struct fsl_mc_io *mc_io, u32 cmd_flags, u16 token, u8 queue_idx,
 			u8 priority, struct dpdmai_rx_queue_attr *attr)
 {
-	struct dpdmai_cmd_get_queue *cmd_params;
-	struct dpdmai_rsp_get_rx_queue *rsp_params;
+	struct dpdmai_cmd_queue *cmd_params;
 	struct fsl_mc_command cmd = { 0 };
 	int err;
 
@@ -380,8 +340,8 @@ EXPORT_SYMBOL_GPL(dpdmai_get_rx_queue);
 int dpdmai_get_tx_queue(struct fsl_mc_io *mc_io, u32 cmd_flags,
 			u16 token, u8 queue_idx, u8 priority, struct dpdmai_tx_queue_attr *attr)
 {
-	struct dpdmai_cmd_get_queue *cmd_params;
 	struct dpdmai_rsp_get_tx_queue *rsp_params;
+	struct dpdmai_cmd_queue *cmd_params;
 	struct fsl_mc_command cmd = { 0 };
 	int err;
 

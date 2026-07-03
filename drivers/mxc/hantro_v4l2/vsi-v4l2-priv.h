@@ -22,6 +22,8 @@
 
 #include <linux/version.h>
 #include <linux/v4l2-controls.h>
+#include <linux/vmalloc.h>
+#include <linux/debugfs.h>
 #include <linux/imx_vpu.h>
 #include "vsi-v4l2.h"
 
@@ -249,11 +251,13 @@ struct vsi_v4l2_device {
 	struct video_device *vdec;
 	struct mutex lock;
 	struct mutex irqlock;
+	struct dentry *debugfs;
 };
 
 struct vsi_vpu_buf {
 	struct vb2_v4l2_buffer vb;
 	struct list_head list;
+	u32 average_qp;
 };
 
 struct vsi_queued_buf {
@@ -297,6 +301,17 @@ enum {
 	BUF_FLAG_DONE,			/*buf returned from daemon*/
 	BUF_FLAG_CROPCHANGE,		/*crop area update not sent to app but buffed */
 	BUF_FLAG_TIMESTAMP_INVALID,
+};
+
+struct vsi_vpu_performance_info {
+	ktime_t ts_start;
+	ktime_t ts_last;
+	ktime_t ts_disp_first;
+	ktime_t ts_disp_last;
+	u64 total_time;
+	u64 input_buf_num;
+	u64 processed_buf_num;
+	u64 display_frame_num;
 };
 
 struct vsi_v4l2_ctx {
@@ -349,6 +364,17 @@ struct vsi_v4l2_ctx {
 
 	u32 out_sequence;
 	u32 cap_sequence;
+
+	pid_t tgid;
+	pid_t pid;
+
+	struct vsi_vpu_performance_info performance;
+	struct dentry *debugfs;
+};
+
+struct vsi_v4l2_ctrl_applicable {
+	u32 id;
+	u32 applicable_pixelformat[4];
 };
 
 int vsi_v4l2_release(struct file *filp);
@@ -372,6 +398,8 @@ struct video_device *vsi_v4l2_probe_enc(
 void vsi_v4l2_release_enc(struct video_device *venc);
 struct video_device *vsi_v4l2_probe_dec(struct platform_device *pdev, struct vsi_v4l2_device *vpu);
 void vsi_v4l2_release_dec(struct video_device *vdec);
+int vsi_v4l2_create_dbgfs_file(struct vsi_v4l2_ctx *ctx);
+void vsi_v4l2_remove_dbgfs_file(struct vsi_v4l2_ctx *ctx);
 
 u64 vsi_v4l2_getbandwidth(void);
 int vsiv4l2_initdaemon(void);
@@ -421,6 +449,8 @@ void vsi_convertROI(struct vsi_v4l2_ctx *ctx);
 void vsi_convertIPCM(struct vsi_v4l2_ctx *ctx);
 int vsiv4l2_verifycrop(struct v4l2_selection *s);
 void vsi_v4l2_update_ctrlcfg(struct v4l2_ctrl_config *cfg);
+void vsi_v4l2_reset_performance(struct vsi_v4l2_ctx *ctx);
+bool vsi_v4l2_ctrl_is_applicable(struct vsi_v4l2_ctx *ctx, u32 ctrl_id);
 
 static inline int isencoder(struct vsi_v4l2_ctx *ctx)
 {
@@ -541,7 +571,7 @@ static inline void printbufinfo(struct vb2_queue *vq)
 	struct vsi_v4l2_ctx *ctx = fh_to_ctx(vq->drv_priv);
 
 	v4l2_klog(LOGLVL_VERBOSE, "#################################################");
-	v4l2_klog(LOGLVL_VERBOSE, "que has %d vb2 buffers, que count = %d", vq->num_buffers, vq->queued_count);
+	v4l2_klog(LOGLVL_VERBOSE, "que has %d vb2 buffers, que count = %d", vb2_get_num_buffers(vq), vq->queued_count);
 	v4l2_klog(LOGLVL_VERBOSE, "input_list:");
 	if (!list_empty(&ctx->input_list)) {
 		list_for_each_entry_safe(buf, node, &ctx->input_list, list) {
@@ -581,7 +611,7 @@ static inline void return_all_buffers(struct vb2_queue *vq, int status, int bRel
 	else
 		plist = &ctx->output_list;
 
-	for (i = 0; i < vq->num_buffers; ++i) {
+	for (i = 0; i < vb2_get_num_buffers(vq); ++i) {
 		if (vq->bufs[i]->state == VB2_BUF_STATE_ACTIVE) {
 			v4l2_klog(LOGLVL_FLOW, "return buffer %d", i);
 			vb2_buffer_done(vq->bufs[i], status);
@@ -601,8 +631,8 @@ static inline void print_queinfo(struct vb2_queue *q)
 {
 	int i, k;
 
-	v4l2_klog(LOGLVL_VERBOSE, "got %d buffer", q->num_buffers);
-	for (i = 0; i < q->num_buffers; i++) {
+	v4l2_klog(LOGLVL_VERBOSE, "got %d buffer", vb2_get_num_buffers(q));
+	for (i = 0; i < vb2_get_num_buffers(q); i++) {
 		struct vb2_buffer	*buf = q->bufs[i];
 
 		v4l2_klog(LOGLVL_VERBOSE, "buf %d%p has %d planes", i, buf, buf->num_planes);

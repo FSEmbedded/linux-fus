@@ -124,6 +124,7 @@ void gic_dist_config(void __iomem *base, int gic_irqs, u8 priority)
 		writel_relaxed(GICD_INT_EN_CLR_X32,
 			       base + GIC_DIST_ENABLE_CLEAR + i / 8);
 	}
+#endif
 }
 
 void gic_cpu_config(void __iomem *base, int nr, u8 priority)

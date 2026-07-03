@@ -339,6 +339,7 @@ static const struct pwm_ops imx_tpm_pwm_ops = {
 
 static int pwm_imx_tpm_probe(struct platform_device *pdev)
 {
+	struct device_node *np = pdev->dev.of_node;
 	struct pwm_chip *chip;
 	struct imx_tpm_pwm_chip *tpm;
 	struct clk *clk;

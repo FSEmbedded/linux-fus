@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
 /*
  *
- * (C) COPYRIGHT 2010-2023 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2024 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -28,6 +28,7 @@
 
 #include <linux/types.h>
 #include "mali_gpu_props.h"
+#include "mali_base_common_kernel.h"
 #include "mali_base_mem_priv.h"
 #include "gpu/mali_kbase_gpu_id.h"
 #include "gpu/mali_kbase_gpu_coherency.h"
@@ -44,11 +45,7 @@
 
 #else
 
-#if defined(MALI_PAGE_SIZE_AGNOSTIC)
 #define LOCAL_PAGE_SHIFT (__builtin_ctz((unsigned int)sysconf(_SC_PAGESIZE)))
-#else
-#define LOCAL_PAGE_SHIFT 12
-#endif
 
 #define LOCAL_PAGE_LSB ((1ul << LOCAL_PAGE_SHIFT) - 1)
 
@@ -74,7 +71,7 @@
  * More flags can be added to this list, as long as they don't clash
  * (see BASE_MEM_FLAGS_NR_BITS for the number of the first free bit).
  */
-typedef __u32 base_mem_alloc_flags;
+typedef __u64 base_mem_alloc_flags;
 
 #define BASE_MEM_FLAGS_MODIFIABLE_NATIVE (BASE_MEM_DONT_NEED)
 
@@ -89,10 +86,10 @@ typedef __u32 base_mem_alloc_flags;
 /* A mask of all the flags that can be returned via the base_mem_get_flags()
  * interface.
  */
-#define BASE_MEM_FLAGS_QUERYABLE                                                           \
-	(BASE_MEM_FLAGS_INPUT_MASK &                                                       \
-	 ~(BASE_MEM_SAME_VA | BASE_MEM_COHERENT_SYSTEM_REQUIRED | BASE_MEM_IMPORT_SHARED | \
-	   BASE_MEM_FLAGS_RESERVED | BASEP_MEM_FLAGS_KERNEL_ONLY))
+#define BASE_MEM_FLAGS_QUERYABLE                                                               \
+	(BASE_MEM_FLAGS_INPUT_MASK &                                                           \
+	 ~(BASE_MEM_FLAGS_RESERVED | BASE_MEM_FLAGS_UNUSED | BASE_MEM_FLAGS_ACTION_MODIFIERS | \
+	   BASE_MEM_FLAGS_KERNEL_ONLY))
 
 /**
  * enum base_mem_import_type - Memory types supported by @a base_mem_import
@@ -420,7 +417,8 @@ struct mali_base_gpu_tiler_props {
  * @max_thread_group_split: Max. allowed value [1..15] of the Thread Group Split
  *                          field.
  * @impl_tech:              0 = Not specified, 1 = Silicon, 2 = FPGA,
- *                          3 = SW Model/Emulation
+ *                          3 = SW Model/Emulation,
+ *                          U8_MAX (255) = NO_MALI, not in spec
  * @padding:                padding to align to 8-byte
  * @tls_alloc:              Number of threads per core that TLS must be
  *                          allocated for
@@ -520,6 +518,8 @@ struct mali_base_gpu_coherent_group_info {
  *                  available modes as exposed in the coherency_features register
  * @thread_tls_alloc: Number of threads per core that TLS must be allocated for
  * @gpu_features: GPU features
+ * @neural_present: Neural engine present bitmap
+ * @base_present: Shader core base present bitmap
  *
  * The information is presented inefficiently for access. For frequent access,
  * the values should be better expressed in an unpacked form in the
@@ -542,16 +542,12 @@ struct gpu_raw_gpu_props {
 	__u32 core_features;
 	__u32 mem_features;
 	__u32 mmu_features;
-
 	__u32 as_present;
-
 	__u32 js_present;
 	__u32 js_features[GPU_MAX_JOB_SLOTS];
 	__u32 tiler_features;
 	__u32 texture_features[BASE_GPU_NUM_TEXTURE_FEATURES_REGISTERS];
-
 	__u32 gpu_id;
-
 	__u32 thread_max_threads;
 	__u32 thread_max_workgroup_size;
 	__u32 thread_max_barrier_size;
@@ -565,6 +561,8 @@ struct gpu_raw_gpu_props {
 
 	__u32 thread_tls_alloc;
 	__u64 gpu_features;
+	__u64 neural_present;
+	__u64 base_present;
 };
 
 /**
@@ -619,15 +617,15 @@ struct base_gpu_props {
 #define BASE_TIMEINFO_TIMESTAMP_FLAG (1U << 1)
 /* For GPU cycle counter */
 #define BASE_TIMEINFO_CYCLE_COUNTER_FLAG (1U << 2)
-/* Specify kernel GPU register timestamp */
-#define BASE_TIMEINFO_KERNEL_SOURCE_FLAG (1U << 30)
-/* Specify userspace cntvct_el0 timestamp source */
-#define BASE_TIMEINFO_USER_SOURCE_FLAG (1U << 31)
 
-#define BASE_TIMEREQUEST_ALLOWED_FLAGS                                         \
-	(BASE_TIMEINFO_MONOTONIC_FLAG | BASE_TIMEINFO_TIMESTAMP_FLAG |         \
-	 BASE_TIMEINFO_CYCLE_COUNTER_FLAG | BASE_TIMEINFO_KERNEL_SOURCE_FLAG | \
-	 BASE_TIMEINFO_USER_SOURCE_FLAG)
+/* Specify TimeReques flags allowed if time source is cpu/gpu register */
+#define BASE_TIMEREQUEST_CPU_GPU_SRC_ALLOWED_FLAGS                     \
+	(BASE_TIMEINFO_MONOTONIC_FLAG | BASE_TIMEINFO_TIMESTAMP_FLAG | \
+	 BASE_TIMEINFO_CYCLE_COUNTER_FLAG)
+
+/* Specify TimeReques flags allowed if time source is system(user) space */
+#define BASE_TIMEREQUEST_SYSTEM_SRC_ALLOWED_FLAGS \
+	(BASE_TIMEINFO_MONOTONIC_FLAG | BASE_TIMEINFO_TIMESTAMP_FLAG)
 
 /* Maximum number of source allocations allowed to create an alias allocation.
  * This needs to be 4096 * 6 to allow cube map arrays with up to 4096 array

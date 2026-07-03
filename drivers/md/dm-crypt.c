@@ -231,6 +231,8 @@ struct crypt_config {
 	struct mutex bio_alloc_lock;
 
 	u8 *authenc_key; /* space for keys in authenc() format (if used) */
+	unsigned int is_hbk;
+	struct hw_bound_key_info hbk_info;
 	u8 key[] __counted_by(key_size);
 };
 

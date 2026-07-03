@@ -110,7 +110,6 @@
 		wlf,mute-gpios = <&pcal6524 2 GPIO_ACTIVE_LOW>;
 		clocks = <&clk IMX91_CLK_SAI1>;
 		clock-names = "mclk";
-		pinctrl-assert-gpios = <&pcal6524 18 GPIO_ACTIVE_LOW>;
 	};
 
 	sound-wm8524 {
@@ -157,14 +156,12 @@
 		ethphy1: ethernet-phy@1 {
 			compatible = "ethernet-phy-ieee802.3-c22";
 			reg = <1>;
-			eee-broken-1000t;
+			realtek,clkout-disable;
 		};
 	};
 };
 
 &lpi2c1 {
-	#address-cells = <1>;
-	#size-cells = <0>;
 	clock-frequency = <400000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_lpi2c1>;
@@ -204,11 +201,14 @@
 			self-powered;
 		};
 	};
+
+	p3t1085: temp-sensor@48 {
+		compatible = "nxp,p3t1085";
+		reg = <0x48>;
+	};
 };
 
 &lpi2c2 {
-	#address-cells = <1>;
-	#size-cells = <0>;
 	clock-frequency = <400000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_lpi2c2>;
@@ -225,6 +225,39 @@
 		#interrupt-cells = <2>;
 		interrupt-parent = <&gpio3>;
 		interrupts = <26 IRQ_TYPE_LEVEL_LOW>;
+
+		sai1-en-hog {
+			gpio-hog;
+			gpios = <9 GPIO_ACTIVE_HIGH>;
+			output-low;
+		};
+
+		/*
+		 * MIC/CAN_SEL selects pins between MIC and CAN.
+		 * Default DT selects the MIC pins.
+		 */
+		mic-can-sel-hog {
+			gpio-hog;
+			gpios = <17 GPIO_ACTIVE_HIGH>;
+			output-low;
+		};
+
+		/*
+		 * M2/SAI1_SEL selects SAI1 pins between audio DAC and M.2.
+		 * Default DT selects the audio DAC.
+		 */
+		m2-sai1-sel-hog  {
+			gpio-hog;
+			gpios = <18 GPIO_ACTIVE_HIGH>;
+			output-low;
+		};
+
+		/* SW select the qspi pins. Or set SW4[1] to 1 on board */
+		sd3-qspi-sel-hog {
+			gpio-hog;
+			gpios = <16 GPIO_ACTIVE_HIGH>;
+			output-low;
+		};
 	};
 
 	pmic@32 {
@@ -285,8 +318,8 @@
 
 			ldo_snvs: LDO_SNVS {
 				regulator-name = "LDO_SNVS";
-				regulator-min-microvolt = <800000>;
-				regulator-max-microvolt = <3000000>;
+				regulator-min-microvolt = <1200000>;
+				regulator-max-microvolt = <3400000>;
 				regulator-boot-on;
 				regulator-always-on;
 			};
@@ -320,7 +353,6 @@
 	#sound-dai-cells = <0>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pdm>;
-	pinctrl-assert-gpios = <&pcal6524 17 GPIO_ACTIVE_LOW>;
 	assigned-clocks = <&clk IMX91_CLK_PDM>;
 	assigned-clock-parents = <&clk IMX91_CLK_AUDIO_PLL>;
 	assigned-clock-rates = <49152000>;
@@ -339,7 +371,6 @@
 	#sound-dai-cells = <0>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_sai1>;
-	pinctrl-assert-gpios = <&pcal6524 9 GPIO_ACTIVE_LOW>;
 	assigned-clocks = <&clk IMX91_CLK_SAI1>;
 	assigned-clock-parents = <&clk IMX91_CLK_AUDIO_PLL>;
 	assigned-clock-rates = <24576000>;
@@ -371,6 +402,7 @@
 	pinctrl-1 = <&pinctrl_usdhc1_100mhz>;
 	pinctrl-2 = <&pinctrl_usdhc1_200mhz>;
 	bus-width = <8>;
+	fsl,tuning-step = <1>;
 	non-removable;
 	status = "okay";
 };
@@ -384,6 +416,7 @@
 	fsl,cd-gpio-wakeup-disable;
 	vmmc-supply = <&reg_usdhc2_vmmc>;
 	bus-width = <4>;
+	fsl,tuning-step = <1>;
 	no-sdio;
 	no-mmc;
 	status = "okay";
@@ -415,6 +448,10 @@
 	status = "okay";
 };
 
+&tempsense0 {
+	status = "okay";
+};
+
 &iomuxc {
 	pinctrl_eqos: eqosgrp {
 		fsl,pins = <
@@ -432,33 +469,6 @@
 			MX91_PAD_ENET1_TD3__ENET_QOS_RGMII_TD3			0x57e
 			MX91_PAD_ENET1_TXC__CCM_ENET_QOS_CLOCK_GENERATE_TX_CLK	0x5fe
 			MX91_PAD_ENET1_TX_CTL__ENET_QOS_RGMII_TX_CTL		0x57e
-		>;
-	};
-
-	pinctrl_lcdif: lcdifgrp {
-		fsl,pins = <
-			MX91_PAD_GPIO_IO00__MEDIAMIX_DISP_CLK		0x31e
-			MX91_PAD_GPIO_IO01__MEDIAMIX_DISP_DE		0x31e
-			MX91_PAD_GPIO_IO02__MEDIAMIX_DISP_VSYNC		0x31e
-			MX91_PAD_GPIO_IO03__MEDIAMIX_DISP_HSYNC		0x31e
-			MX91_PAD_GPIO_IO04__MEDIAMIX_DISP_DATA0		0x31e
-			MX91_PAD_GPIO_IO05__MEDIAMIX_DISP_DATA1		0x31e
-			MX91_PAD_GPIO_IO06__MEDIAMIX_DISP_DATA2		0x31e
-			MX91_PAD_GPIO_IO07__MEDIAMIX_DISP_DATA3		0x31e
-			MX91_PAD_GPIO_IO08__MEDIAMIX_DISP_DATA4		0x31e
-			MX91_PAD_GPIO_IO09__MEDIAMIX_DISP_DATA5		0x31e
-			MX91_PAD_GPIO_IO10__MEDIAMIX_DISP_DATA6		0x31e
-			MX91_PAD_GPIO_IO11__MEDIAMIX_DISP_DATA7		0x31e
-			MX91_PAD_GPIO_IO12__MEDIAMIX_DISP_DATA8		0x31e
-			MX91_PAD_GPIO_IO13__MEDIAMIX_DISP_DATA9		0x31e
-			MX91_PAD_GPIO_IO14__MEDIAMIX_DISP_DATA10	0x31e
-			MX91_PAD_GPIO_IO15__MEDIAMIX_DISP_DATA11	0x31e
-			MX91_PAD_GPIO_IO16__MEDIAMIX_DISP_DATA12	0x31e
-			MX91_PAD_GPIO_IO17__MEDIAMIX_DISP_DATA13	0x31e
-			MX91_PAD_GPIO_IO18__MEDIAMIX_DISP_DATA14	0x31e
-			MX91_PAD_GPIO_IO19__MEDIAMIX_DISP_DATA15	0x31e
-			MX91_PAD_GPIO_IO20__MEDIAMIX_DISP_DATA16	0x31e
-			MX91_PAD_GPIO_IO21__MEDIAMIX_DISP_DATA17	0x31e
 		>;
 	};
 

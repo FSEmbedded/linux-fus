@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
 /*
  *
- * (C) COPYRIGHT 2022-2023 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2022-2024 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -49,15 +49,6 @@ struct page;
 #define PAGE_MOVABLE_SET(status) (status | PAGE_MOVABLE_MASK)
 
 #define IS_PAGE_MOVABLE(status) ((bool)(status & PAGE_MOVABLE_MASK))
-
-/* Global integer used to determine if module parameter value has been
- * provided and if page migration feature is enabled.
- */
-#if !IS_ENABLED(CONFIG_PAGE_MIGRATION_SUPPORT)
-extern const int kbase_page_migration_enabled;
-#else
-extern int kbase_page_migration_enabled;
-#endif
 
 /**
  * kbase_alloc_page_metadata - Allocate and initialize page metadata

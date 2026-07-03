@@ -2334,7 +2334,7 @@ static int __maybe_unused flexcan_noirq_suspend(struct device *device)
 	if (netif_running(dev)) {
 		int err;
 
-		if (device_may_wakeup(device)) {
+		if (device_may_wakeup(device))
 			flexcan_enable_wakeup_irq(priv, true);
 
 		/* For FLEXCAN_QUIRK_SETUP_STOP_MODE_SCMI, it need ATF to send

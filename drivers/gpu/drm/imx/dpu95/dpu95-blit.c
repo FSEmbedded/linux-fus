@@ -424,8 +424,10 @@ static int dpu95_bliteng_init(struct dpu_bliteng *dpu_bliteng)
 		dpu_bliteng->irq_comctrl_sw[i] = virq;
 
 		irq_set_status_flags(virq, IRQ_DISABLE_UNLAZY);
+		sprintf(dpu_bliteng->irq_comctrl_sw_name[i], "blit_ctrl%d-%s", i,
+				dev_name(dpu->dev));
 		ret = devm_request_irq(dpu->dev, virq, dpu95_bliteng_comctrl_sw_irq_handler, 0,
-				dev_name(dpu->dev), dpu_bliteng);
+				dpu_bliteng->irq_comctrl_sw_name[i], dpu_bliteng);
 		if (ret < 0) {
 			dev_err(dpu->dev, "irq_comctrl_sw%d irq request failed with %d.\n", i, ret);
 			return ret;
@@ -478,12 +480,12 @@ static int imx_drm_dpu95_set_cmdlist_ioctl(struct drm_device *drm_dev, void *dat
 		return -EFAULT;
 	}
 
-	dpu95_be_get(dpu_blit_eng);
 	ret = pm_runtime_resume_and_get(dpu_blit_eng->dev);
 	if (ret < 0) {
 		drm_err(drm_dev, "failed to get device RPM: %d\n", ret);
 		return ret;
 	}
+	dpu95_be_get(dpu_blit_eng);
 
 	cmd_nr = req->cmd_nr;
 	cmd = (u32 *)(unsigned long)req->cmd;
@@ -522,12 +524,12 @@ static int imx_drm_dpu95_wait_ioctl(struct drm_device *drm_dev, void *data,
 	if (id != 0)
 		return -EINVAL;
 
-	dpu95_be_get(dpu_blit_eng);
 	ret = pm_runtime_resume_and_get(dpu_blit_eng->dev);
 	if (ret < 0) {
 		drm_err(drm_dev, "failed to get device RPM: %d\n", ret);
 		return ret;
 	}
+	dpu95_be_get(dpu_blit_eng);
 
 	dpu95_be_wait(dpu_blit_eng);
 

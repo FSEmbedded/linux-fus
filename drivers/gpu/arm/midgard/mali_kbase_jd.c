@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note
 /*
  *
- * (C) COPYRIGHT 2010-2023 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2024 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -39,9 +39,6 @@
 #include <mali_kbase_hwaccess_jm.h>
 #include <tl/mali_kbase_tracepoints.h>
 #include <mali_linux_trace.h>
-
-#include <mali_kbase_cs_experimental.h>
-
 #include <mali_kbase_caps.h>
 
 /* Return whether katom will run on the GPU or not. Currently only soft jobs and
@@ -190,6 +187,7 @@ static int kbase_jd_pre_external_resources(struct kbase_jd_atom *katom,
 	int err = -EINVAL;
 	u32 res_no;
 	struct base_external_resource *input_extres;
+	size_t copy_size;
 
 	KBASE_DEBUG_ASSERT(katom);
 	KBASE_DEBUG_ASSERT(katom->core_req & BASE_JD_REQ_EXTERNAL_RESOURCES);
@@ -208,8 +206,13 @@ static int kbase_jd_pre_external_resources(struct kbase_jd_atom *katom,
 		goto failed_input_alloc;
 	}
 
+	if (check_mul_overflow(sizeof(*input_extres), (size_t)katom->nr_extres, &copy_size)) {
+		err = -EINVAL;
+		goto failed_input_copy;
+	}
+
 	if (copy_from_user(input_extres, get_compat_pointer(katom->kctx, user_atom->extres_list),
-			   sizeof(*input_extres) * katom->nr_extres) != 0) {
+			   copy_size) != 0) {
 		err = -EINVAL;
 		goto failed_input_copy;
 	}
@@ -623,63 +626,7 @@ bool kbase_jd_done_nolock(struct kbase_jd_atom *katom, bool post_immediately)
 	KBASE_TLSTREAM_TL_JD_DONE_NO_LOCK_END(kctx->kbdev, katom);
 	return need_to_try_schedule_context;
 }
-
 KBASE_EXPORT_TEST_API(kbase_jd_done_nolock);
-
-#if IS_ENABLED(CONFIG_GPU_TRACEPOINTS)
-enum {
-	CORE_REQ_DEP_ONLY,
-	CORE_REQ_SOFT,
-	CORE_REQ_COMPUTE,
-	CORE_REQ_FRAGMENT,
-	CORE_REQ_VERTEX,
-	CORE_REQ_TILER,
-	CORE_REQ_FRAGMENT_VERTEX,
-	CORE_REQ_FRAGMENT_VERTEX_TILER,
-	CORE_REQ_FRAGMENT_TILER,
-	CORE_REQ_VERTEX_TILER,
-	CORE_REQ_UNKNOWN
-};
-static const char *const core_req_strings[] = {
-	"Dependency Only Job",
-	"Soft Job",
-	"Compute Shader Job",
-	"Fragment Shader Job",
-	"Vertex/Geometry Shader Job",
-	"Tiler Job",
-	"Fragment Shader + Vertex/Geometry Shader Job",
-	"Fragment Shader + Vertex/Geometry Shader Job + Tiler Job",
-	"Fragment Shader + Tiler Job",
-	"Vertex/Geometry Shader Job + Tiler Job",
-	"Unknown Job"
-};
-static const char *kbasep_map_core_reqs_to_string(base_jd_core_req core_req)
-{
-	if (core_req & BASE_JD_REQ_SOFT_JOB)
-		return core_req_strings[CORE_REQ_SOFT];
-	if (core_req & BASE_JD_REQ_ONLY_COMPUTE)
-		return core_req_strings[CORE_REQ_COMPUTE];
-	switch (core_req & (BASE_JD_REQ_FS | BASE_JD_REQ_CS | BASE_JD_REQ_T)) {
-	case BASE_JD_REQ_DEP:
-		return core_req_strings[CORE_REQ_DEP_ONLY];
-	case BASE_JD_REQ_FS:
-		return core_req_strings[CORE_REQ_FRAGMENT];
-	case BASE_JD_REQ_CS:
-		return core_req_strings[CORE_REQ_VERTEX];
-	case BASE_JD_REQ_T:
-		return core_req_strings[CORE_REQ_TILER];
-	case (BASE_JD_REQ_FS | BASE_JD_REQ_CS):
-		return core_req_strings[CORE_REQ_FRAGMENT_VERTEX];
-	case (BASE_JD_REQ_FS | BASE_JD_REQ_T):
-		return core_req_strings[CORE_REQ_FRAGMENT_TILER];
-	case (BASE_JD_REQ_CS | BASE_JD_REQ_T):
-		return core_req_strings[CORE_REQ_VERTEX_TILER];
-	case (BASE_JD_REQ_FS | BASE_JD_REQ_CS | BASE_JD_REQ_T):
-		return core_req_strings[CORE_REQ_FRAGMENT_VERTEX_TILER];
-	}
-	return core_req_strings[CORE_REQ_UNKNOWN];
-}
-#endif
 
 /* Trace an atom submission. */
 static void jd_trace_atom_submit(struct kbase_context *const kctx,
@@ -697,7 +644,6 @@ static void jd_trace_atom_submit(struct kbase_context *const kctx,
 
 static bool jd_submit_atom(struct kbase_context *const kctx,
 			   const struct base_jd_atom *const user_atom,
-			   const struct base_jd_fragment *const user_jc_incr,
 			   struct kbase_jd_atom *const katom)
 {
 	struct kbase_device *kbdev = kctx->kbdev;
@@ -754,8 +700,6 @@ static bool jd_submit_atom(struct kbase_context *const kctx,
 		katom->jit_ids[1] = user_atom->jit_id[1];
 	}
 #endif /* MALI_JIT_PRESSURE_LIMIT_BASE */
-
-	katom->renderpass_id = user_atom->renderpass_id;
 
 	/* Implicitly sets katom->protected_state.enter as well. */
 	katom->protected_state.exit = KBASE_ATOM_EXIT_PROTECTED_CHECK;
@@ -875,20 +819,7 @@ static bool jd_submit_atom(struct kbase_context *const kctx,
 	/* Create a new atom. */
 	jd_trace_atom_submit(kctx, katom, &katom->sched_priority);
 
-#if !MALI_INCREMENTAL_RENDERING_JM
-	/* Reject atoms for incremental rendering if not supported */
-	if (katom->core_req & (BASE_JD_REQ_START_RENDERPASS | BASE_JD_REQ_END_RENDERPASS)) {
-		dev_err(kctx->kbdev->dev, "Rejecting atom with unsupported core_req 0x%x\n",
-			katom->core_req);
-		katom->event_code = BASE_JD_EVENT_JOB_INVALID;
-		return kbase_jd_done_nolock(katom, true);
-	}
-#endif /* !MALI_INCREMENTAL_RENDERING_JM */
-
-	if (katom->core_req & BASE_JD_REQ_END_RENDERPASS) {
-		WARN_ON(katom->jc != 0);
-		katom->jc_fragment = *user_jc_incr;
-	} else if (!katom->jc && (katom->core_req & BASE_JD_REQ_ATOM_TYPE) != BASE_JD_REQ_DEP) {
+	if (!katom->jc && (katom->core_req & BASE_JD_REQ_ATOM_TYPE) != BASE_JD_REQ_DEP) {
 		/* Reject atoms with job chain = NULL, as these cause issues
 		 * with soft-stop
 		 */
@@ -965,12 +896,6 @@ static bool jd_submit_atom(struct kbase_context *const kctx,
 		}
 	}
 
-#if IS_ENABLED(CONFIG_GPU_TRACEPOINTS)
-	katom->work_id = atomic_inc_return(&jctx->work_id);
-	trace_gpu_job_enqueue(kctx->id, katom->work_id,
-			      kbasep_map_core_reqs_to_string(katom->core_req));
-#endif
-
 	if (queued && !IS_GPU_ATOM(katom))
 		return false;
 
@@ -1018,8 +943,7 @@ int kbase_jd_submit(struct kbase_context *kctx, void __user *user_addr, u32 nr_a
 	struct kbase_device *kbdev;
 	u32 latest_flush;
 
-	bool jd_atom_is_v2 = (stride == sizeof(struct base_jd_atom_v2) ||
-			      stride == offsetof(struct base_jd_atom_v2, renderpass_id));
+	bool jd_atom_is_v2 = (stride == sizeof(struct base_jd_atom_v2));
 
 	CSTD_UNUSED(uk6_atom);
 
@@ -1035,10 +959,7 @@ int kbase_jd_submit(struct kbase_context *kctx, void __user *user_addr, u32 nr_a
 		return -EINVAL;
 	}
 
-	if (stride != offsetof(struct base_jd_atom_v2, renderpass_id) &&
-	    stride != sizeof(struct base_jd_atom_v2) &&
-	    stride != offsetof(struct base_jd_atom, renderpass_id) &&
-	    stride != sizeof(struct base_jd_atom)) {
+	if (stride != sizeof(struct base_jd_atom_v2) && stride != sizeof(struct base_jd_atom)) {
 		dev_err(kbdev->dev,
 			"Stride %u passed to job_submit isn't supported by the kernel\n", stride);
 		return -EINVAL;
@@ -1057,7 +978,6 @@ int kbase_jd_submit(struct kbase_context *kctx, void __user *user_addr, u32 nr_a
 		struct base_jd_atom user_atom = {
 			.seq_nr = 0,
 		};
-		struct base_jd_fragment user_jc_incr;
 		struct kbase_jd_atom *katom;
 
 		if (unlikely(jd_atom_is_v2)) {
@@ -1080,44 +1000,6 @@ int kbase_jd_submit(struct kbase_context *kctx, void __user *user_addr, u32 nr_a
 				err = -EFAULT;
 				break;
 			}
-		}
-
-		if (stride == offsetof(struct base_jd_atom_v2, renderpass_id)) {
-			dev_dbg(kbdev->dev, "No renderpass ID: use 0\n");
-			user_atom.renderpass_id = 0;
-		} else {
-			/* Ensure all padding bytes are 0 for potential future
-			 * extension
-			 */
-			size_t j;
-
-			dev_dbg(kbdev->dev, "Renderpass ID is %d\n", user_atom.renderpass_id);
-			for (j = 0; j < sizeof(user_atom.padding); j++) {
-				if (user_atom.padding[j]) {
-					dev_err(kbdev->dev, "Bad padding byte %zu: %d\n", j,
-						user_atom.padding[j]);
-					err = -EINVAL;
-					break;
-				}
-			}
-			if (err)
-				break;
-		}
-
-		/* In this case 'jc' is the CPU address of a struct
-		 * instead of a GPU address of a job chain.
-		 */
-		if (user_atom.core_req & BASE_JD_REQ_END_RENDERPASS) {
-			if (copy_from_user(&user_jc_incr, u64_to_user_ptr(user_atom.jc),
-					   sizeof(user_jc_incr))) {
-				dev_err(kbdev->dev,
-					"Invalid jc address 0x%llx passed to job_submit\n",
-					user_atom.jc);
-				err = -EFAULT;
-				break;
-			}
-			dev_dbg(kbdev->dev, "Copied IR jobchain addresses\n");
-			user_atom.jc = 0;
 		}
 
 		user_addr = (void __user *)((uintptr_t)user_addr + stride);
@@ -1172,8 +1054,7 @@ int kbase_jd_submit(struct kbase_context *kctx, void __user *user_addr, u32 nr_a
 			mutex_lock(&jctx->lock);
 		}
 		KBASE_TLSTREAM_TL_JD_SUBMIT_ATOM_START(kbdev, katom);
-		need_to_try_schedule_context |=
-			jd_submit_atom(kctx, &user_atom, &user_jc_incr, katom);
+		need_to_try_schedule_context |= jd_submit_atom(kctx, &user_atom, katom);
 		KBASE_TLSTREAM_TL_JD_SUBMIT_ATOM_END(kbdev, katom);
 		/* Register a completed job as a disjoint event when the GPU is in a disjoint state
 		 * (ie. being reset).
@@ -1577,9 +1458,6 @@ int kbase_jd_init(struct kbase_context *kctx)
 		kctx->jctx.atoms[i].dma_fence.context = dma_fence_context_alloc(1);
 #endif
 	}
-
-	for (i = 0; i < BASE_JD_RP_COUNT; i++)
-		kctx->jctx.renderpasses[i].state = KBASE_JD_RP_COMPLETE;
 
 	mutex_init(&kctx->jctx.lock);
 

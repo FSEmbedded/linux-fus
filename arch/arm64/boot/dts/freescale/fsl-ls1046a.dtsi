@@ -790,7 +790,6 @@
 				snps,dis_rxdet_inp3_quirk;
 				snps,incr-burst-type-adjustment = <1>, <4>, <8>, <16>;
 				usb3-lpm-capable;
-				snps,host-vbus-glitches;
 				dma-coherent;
 			};
 
@@ -803,7 +802,6 @@
 				snps,dis_rxdet_inp3_quirk;
 				snps,incr-burst-type-adjustment = <1>, <4>, <8>, <16>;
 				usb3-lpm-capable;
-				snps,host-vbus-glitches;
 				dma-coherent;
 			};
 
@@ -816,7 +814,6 @@
 				snps,dis_rxdet_inp3_quirk;
 				snps,incr-burst-type-adjustment = <1>, <4>, <8>, <16>;
 				usb3-lpm-capable;
-				snps,host-vbus-glitches;
 				dma-coherent;
 			};
 

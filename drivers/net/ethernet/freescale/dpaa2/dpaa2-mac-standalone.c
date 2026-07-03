@@ -216,8 +216,8 @@ static netdev_tx_t dpaa2_mac_drop_frame(struct sk_buff *skb,
 static void dpaa2_mac_get_drvinfo(struct net_device *net_dev,
 				  struct ethtool_drvinfo *drvinfo)
 {
-	strlcpy(drvinfo->driver, KBUILD_MODNAME, sizeof(drvinfo->driver));
-	strlcpy(drvinfo->bus_info, dev_name(net_dev->dev.parent->parent),
+	strscpy(drvinfo->driver, KBUILD_MODNAME, sizeof(drvinfo->driver));
+	strscpy(drvinfo->bus_info, dev_name(net_dev->dev.parent->parent),
 		sizeof(drvinfo->bus_info));
 }
 
@@ -283,7 +283,7 @@ static const struct net_device_ops dpaa2_mac_ndo_ops = {
 	.ndo_open		= &dpaa2_mac_netdev_open,
 	.ndo_stop		= &dpaa2_mac_netdev_stop,
 	.ndo_start_xmit		= &dpaa2_mac_drop_frame,
-	.ndo_do_ioctl		= &dpaa2_mac_ioctl,
+	.ndo_eth_ioctl		= &dpaa2_mac_ioctl,
 };
 
 static const struct ethtool_ops dpaa2_mac_ethtool_ops = {
@@ -366,7 +366,7 @@ static int dpaa2_mac_probe(struct fsl_mc_device *mc_dev)
 	if (dpaa2_mac_is_type_phy(priv)) {
 		err = dpaa2_mac_connect(priv);
 		if (err) {
-			dev_err(dev, "Error connecting to the MAC endpoint\n");
+			dev_err_probe(dev, err, "Error connecting to the MAC endpoint\n");
 			goto teardown_irqs;
 		}
 	}

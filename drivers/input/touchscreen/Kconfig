@@ -1401,10 +1401,11 @@ config TOUCHSCREEN_HIMAX_HX83112B
 	  module will be called himax_hx83112b.
 
 config TOUCHSCREEN_FTS
-	tristate "Focaltech Touchscreen"
+	tristate "Focaltech Touchscreen FT3518U"
 	depends on I2C
 	help
-	  Say Y here to enable support for Focaltech touch panel.
+	  Say Y here to enable support for Focaltech touch FT3518U
+	  panel.
 
 	  If unsure, say N.
 

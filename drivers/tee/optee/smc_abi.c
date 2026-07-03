@@ -930,6 +930,16 @@ static int optee_smc_do_call_with_arg(struct tee_context *ctx,
 	}
 	/* Initialize waiter */
 	optee_cq_wait_init(&optee->call_queue, &w, system_thread);
+
+#if defined(CONFIG_HAVE_IMX_BUSFREQ)
+	/*
+	 * Request Busfreq to HIGH to prevent DDR self-refresh while
+	 * executing Secure stuff.
+	 */
+	if (optee->smc.sec_caps & OPTEE_SMC_SEC_CAP_IMX_BUSFREQ)
+		request_bus_freq(BUS_FREQ_HIGH);
+#endif
+
 	while (true) {
 		struct arm_smccc_res res;
 
@@ -1284,8 +1294,9 @@ static void optee_msg_get_os_revision(optee_invoke_fn *invoke_fn)
 		  &res.smccc);
 
 	if (res.result.build_id)
-		pr_info("revision %lu.%lu (%08lx)", res.result.major,
-			res.result.minor, res.result.build_id);
+		pr_info("revision %lu.%lu (%0*lx)", res.result.major,
+			res.result.minor, (int)sizeof(res.result.build_id) * 2,
+			res.result.build_id);
 	else
 		pr_info("revision %lu.%lu", res.result.major, res.result.minor);
 }

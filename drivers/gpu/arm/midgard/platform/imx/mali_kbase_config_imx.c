@@ -20,12 +20,19 @@
  *
  */
 
+#include <linux/version.h>
 #include <linux/of_address.h>
 #include <mali_kbase.h>
 #include <mali_kbase_config.h>
 #include <backend/gpu/mali_kbase_pm_internal.h>
 
 #include "mali_kbase_config_platform.h"
+
+#ifndef IMX_GPU_BLK_CTRL
+#if KERNEL_VERSION(6, 12, 0) >= LINUX_VERSION_CODE
+#define IMX_GPU_BLK_CTRL 1
+#endif
+#endif
 
 static struct kbase_platform_config dummy_platform_config;
 
@@ -53,13 +60,21 @@ static int platform_init_func(struct kbase_device *kbdev)
 	pdev = to_platform_device(kbdev->dev);
 
 	ictx = devm_kzalloc(kbdev->dev, sizeof(struct imx_platform_ctx), GFP_KERNEL);
-	ictx->reg_blk_ctrl = devm_platform_ioremap_resource(pdev, 1);
-	if (!IS_ERR_OR_NULL(ictx->reg_blk_ctrl))
-		dev_info(kbdev->dev, "blk ctrl reg = %pK\n", ictx->reg_blk_ctrl);
+	if (pdev->num_resources > 1) {
+#ifdef IMX_GPU_BLK_CTRL
+		ictx->reg_blk_ctrl = devm_platform_ioremap_resource_byname(pdev, "gpumix_blk_ctrl");
+		if (IS_ERR_OR_NULL(ictx->reg_blk_ctrl))
+			ictx->reg_blk_ctrl = devm_platform_ioremap_resource(pdev, 1);
 
-	ictx->reg_tcm = devm_platform_ioremap_resource(pdev, 2);
-	if (!IS_ERR_OR_NULL(ictx->reg_tcm))
-		dev_info(kbdev->dev, "wave dump reg = %pK\n", ictx->reg_tcm);
+		dev_dbg(kbdev->dev, "blk ctrl reg = %pK\n", ictx->reg_blk_ctrl);
+	}
+
+	if (pdev->num_resources > 2) {
+#endif
+		ictx->reg_tcm = devm_platform_ioremap_resource_byname(pdev, "tcm");
+		if (!IS_ERR_OR_NULL(ictx->reg_tcm))
+			dev_dbg(kbdev->dev, "wave dump reg = %pK\n", ictx->reg_tcm);
+	}
 
 	ictx->kbdev = kbdev;
 	kbdev->platform_context = ictx;

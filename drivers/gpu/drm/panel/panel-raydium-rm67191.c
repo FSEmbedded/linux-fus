@@ -11,7 +11,7 @@
 #include <linux/media-bus-format.h>
 #include <linux/module.h>
 #include <linux/of.h>
-#include <linux/of_platform.h>
+#include <linux/of_device.h>
 #include <linux/regulator/consumer.h>
 
 #include <video/mipi_display.h>
@@ -134,6 +134,12 @@ struct rad_panel {
 	unsigned int num_supplies;
 
 	bool prepared;
+
+	const struct rad_platform_data *pdata;
+};
+
+struct rad_platform_data {
+	int (*enable)(struct rad_panel *panel);
 };
 
 static const struct drm_display_mode default_mode = {
@@ -333,9 +339,6 @@ static int rm67199_enable(struct rad_panel *panel)
 	int color_format = color_format_from_dsi_format(dsi->format);
 	int ret;
 
-	if (panel->enabled)
-		return 0;
-
 	dsi->mode_flags |= MIPI_DSI_MODE_LPM;
 
 	ret = rad_panel_push_cmd_list(dsi,
@@ -405,8 +408,6 @@ static int rm67199_enable(struct rad_panel *panel)
 	msleep(100);
 
 	backlight_enable(panel->backlight);
-
-	panel->enabled = true;
 
 	return 0;
 
@@ -659,12 +660,6 @@ static void rad_panel_remove(struct mipi_dsi_device *dsi)
 
 	drm_panel_remove(&rad->panel);
 }
-
-static const struct of_device_id rad_of_match[] = {
-	{ .compatible = "raydium,rm67191", },
-	{ /* sentinel */ }
-};
-MODULE_DEVICE_TABLE(of, rad_of_match);
 
 static struct mipi_dsi_driver rad_panel_driver = {
 	.driver = {

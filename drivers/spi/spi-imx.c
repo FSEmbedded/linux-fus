@@ -2,6 +2,7 @@
 // Copyright 2004-2007 Freescale Semiconductor, Inc. All Rights Reserved.
 // Copyright (C) 2008 Juergen Beisert
 
+#include <linux/bits.h>
 #include <linux/clk.h>
 #include <linux/completion.h>
 #include <linux/delay.h>
@@ -241,10 +242,8 @@ static bool spi_imx_can_dma(struct spi_controller *controller, struct spi_device
 	if (!controller->dma_rx)
 		return false;
 
-	if (transfer->len < spi_imx->devtype_data->fifo_size) {
-		spi_imx->dynamic_burst = 0;
+	if (transfer->len < spi_imx->devtype_data->fifo_size)
 		return false;
-	}
 
 	if (spi_imx->target_mode && transfer->len % 4)
 		return false;
@@ -1340,7 +1339,7 @@ static int spi_imx_setupxfer(struct spi_device *spi,
 				dev_err(&spi->dev, "no speed_hz provided!\n");
 				return -EINVAL;
 			}
-			dev_dbg(&spi->dev, "using spi->max_speed_hz!\n");
+            dev_dbg(&spi->dev, "using spi->max_speed_hz!\n");
 			spi_imx->spi_bus_clk = spi->max_speed_hz;
 		} else
 			spi_imx->spi_bus_clk = t->speed_hz;
@@ -1355,6 +1354,7 @@ static int spi_imx_setupxfer(struct spi_device *spi,
 		spi_imx->bits_per_word = 32;
 	else
 		spi_imx->bits_per_word = t->bits_per_word;
+	spi_imx->count = t->len;
 
 	/*
 	 * Initialize the functions for transfer. To transfer non byte-aligned
@@ -1368,7 +1368,6 @@ static int spi_imx_setupxfer(struct spi_device *spi,
 	    spi_imx->bits_per_word == 32)) {
 		spi_imx->rx = spi_imx_buf_rx_swap;
 		spi_imx->tx = spi_imx_buf_tx_swap;
-
 	} else {
 		if (spi_imx->bits_per_word <= 8) {
 			spi_imx->rx = spi_imx_buf_rx_u8;
@@ -1386,6 +1385,7 @@ static int spi_imx_setupxfer(struct spi_device *spi,
 			|| (t->tx_buf == spi->controller->dummy_tx));
 
 	if (spi_imx->target_mode) {
+		spi_imx->dynamic_burst = 0;
 		spi_imx->rx = mx53_ecspi_rx_target;
 		spi_imx->tx = mx53_ecspi_tx_target;
 		spi_imx->target_burst = t->len;
@@ -1555,23 +1555,57 @@ static int spi_imx_dma_transfer(struct spi_imx_data *spi_imx,
 	if (!spi_imx->target_mode) {
 		spi_imx->devtype_data->trigger(spi_imx);
 
-	/* Wait SDMA to finish the data transfer.*/
-	time_left = wait_for_completion_timeout(&spi_imx->dma_tx_completion,
-						transfer_timeout);
-	if (!time_left) {
-		dev_err(spi_imx->dev, "I/O Error in DMA TX\n");
-		dmaengine_terminate_all(controller->dma_tx);
-		dmaengine_terminate_all(controller->dma_rx);
-		return -ETIMEDOUT;
-	}
+		transfer_timeout = spi_imx_calculate_timeout(spi_imx, transfer->len);
 
-	time_left = wait_for_completion_timeout(&spi_imx->dma_rx_completion,
-						transfer_timeout);
-	if (!time_left) {
-		dev_err(&controller->dev, "I/O Error in DMA RX\n");
-		spi_imx->devtype_data->reset(spi_imx);
-		dmaengine_terminate_all(controller->dma_rx);
-		return -ETIMEDOUT;
+		/* Wait SDMA to finish the data transfer.*/
+		time_left = wait_for_completion_timeout(&spi_imx->dma_tx_completion,
+							transfer_timeout);
+		if (!time_left) {
+			dev_err(spi_imx->dev, "I/O Error in DMA TX\n");
+			dmaengine_terminate_all(controller->dma_tx);
+			dmaengine_terminate_all(controller->dma_rx);
+			return -ETIMEDOUT;
+		}
+
+		time_left = wait_for_completion_timeout(&spi_imx->dma_rx_completion,
+							transfer_timeout);
+		if (!time_left) {
+			dev_err(&controller->dev, "I/O Error in DMA RX\n");
+			spi_imx->devtype_data->reset(spi_imx);
+			dmaengine_terminate_all(controller->dma_rx);
+			return -ETIMEDOUT;
+		}
+	} else {
+		spi_imx->target_aborted = false;
+
+		spi_imx->devtype_data->trigger(spi_imx);
+
+		if (wait_for_completion_interruptible(&spi_imx->dma_tx_completion) ||
+			spi_imx->target_aborted) {
+			dev_dbg(spi_imx->dev,
+				"I/O Error in DMA TX interrupted\n");
+			dmaengine_terminate_all(controller->dma_tx);
+			dmaengine_terminate_all(controller->dma_rx);
+			return -EINTR;
+		}
+
+		if (wait_for_completion_interruptible(&spi_imx->dma_rx_completion) ||
+			spi_imx->target_aborted) {
+			dev_dbg(spi_imx->dev,
+				"I/O Error in DMA RX interrupted\n");
+			dmaengine_terminate_all(controller->dma_tx);
+			dmaengine_terminate_all(controller->dma_rx);
+			return -EINTR;
+		}
+
+		/* ecspi has a HW issue when works in target mode,
+		 * after 64 words writtern to TXFIFO, even TXFIFO becomes empty,
+		 * ECSPI_TXDATA keeps shift out the last word data,
+		 * so we have to disable ECSPI when in target mode after the
+		 * transfer completes
+		 */
+		if (spi_imx->devtype_data->disable)
+			spi_imx->devtype_data->disable(spi_imx);
 	}
 
 	return 0;

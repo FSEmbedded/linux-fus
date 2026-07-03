@@ -10,9 +10,9 @@ obj-$(CONFIG_SND_SOC_P1022_RDK) += snd-soc-p1022-rdk.o
 # Freescale SSI/DMA/SAI/SPDIF Support
 snd-soc-fsl-audmix-y := fsl_audmix.o
 snd-soc-fsl-asoc-card-y := fsl-asoc-card.o
-snd-soc-fsl-asrc-y := fsl_asrc.o fsl_asrc_dma.o
+snd-soc-fsl-asrc-y := fsl_asrc.o fsl_asrc_dma.o fsl_asrc_m2m.o
 snd-soc-fsl-lpc3xxx-y := lpc3xxx-pcm.o lpc3xxx-i2s.o
-snd-soc-fsl-sai-y := fsl_sai.o
+snd-soc-fsl-sai-y := fsl_sai.o fsl_sai_sysfs.o
 snd-soc-fsl-ssi-y := fsl_ssi.o
 snd-soc-fsl-ssi-$(CONFIG_DEBUG_FS) += fsl_ssi_dbg.o
 snd-soc-fsl-spdif-y := fsl_spdif.o
@@ -29,7 +29,7 @@ snd-soc-fsl-qmc-audio-y := fsl_qmc_audio.o
 
 obj-$(CONFIG_SND_SOC_FSL_AUDMIX) += snd-soc-fsl-audmix.o
 obj-$(CONFIG_SND_SOC_FSL_ASOC_CARD) += snd-soc-fsl-asoc-card.o
-snd-soc-fsl-hdmi-objs := fsl_hdmi.o
+snd-soc-fsl-hdmi-y := fsl_hdmi.o
 obj-$(CONFIG_SND_SOC_FSL_ASRC) += snd-soc-fsl-asrc.o
 obj-$(CONFIG_SND_SOC_FSL_LPC3XXX) += snd-soc-fsl-lpc3xxx.o
 obj-$(CONFIG_SND_SOC_FSL_SAI) += snd-soc-fsl-sai.o
@@ -74,6 +74,8 @@ snd-soc-imx-audmix-y := imx-audmix.o
 snd-soc-imx-hdmi-y := imx-hdmi.o
 snd-soc-imx-rpmsg-y := imx-rpmsg.o
 snd-soc-imx-card-y := imx-card.o
+snd-soc-imx-pcm512x-y:= imx-pcm512x.o
+snd-soc-imx6qdl-hdmi-y := imx6qdl-hdmi.o
 
 obj-$(CONFIG_SND_SOC_EUKREA_TLV320) += snd-soc-eukrea-tlv320.o
 obj-$(CONFIG_SND_SOC_IMX_ES8328) += snd-soc-imx-es8328.o

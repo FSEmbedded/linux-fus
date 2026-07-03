@@ -229,25 +229,45 @@ static void tca_blk_orientation_set(struct tca_blk *tca,
 
 	mutex_lock(&tca->mutex);
 
+	if (orientation == TYPEC_ORIENTATION_NONE) {
+		/*
+		 * use Controller Synced Mode for TCA low power enable and
+		 * put PHY to USB safe state.
+		 */
+		val = readl(tca->base + TCA_GCFG);
+		val = FIELD_PREP(TCA_GCFG_OP_MODE, TCA_GCFG_OP_MODE_SYNCMODE);
+		writel(val, tca->base + TCA_GCFG);
+
+		val = readl(tca->base + TCA_TCPC);
+		val = TCA_TCPC_VALID | TCA_TCPC_LOW_POWER_EN;
+		writel(val, tca->base + TCA_TCPC);
+
+		goto out;
+	}
+
+	/* use System Configuration Mode for TCA mux control. */
+	val = readl(tca->base + TCA_GCFG);
+	val = FIELD_PREP(TCA_GCFG_OP_MODE, TCA_GCFG_OP_MODE_SYSMODE);
+	writel(val, tca->base + TCA_GCFG);
+
 	/* Disable TCA module */
 	val = readl(tca->base + TCA_SYSMODE_CFG);
 	val |= TCA_SYSMODE_TCPC_DISABLE;
 	writel(val, tca->base + TCA_SYSMODE_CFG);
 
-	tca->orientation = orientation;
-
 	if (orientation == TYPEC_ORIENTATION_REVERSE)
 		val |= TCA_SYSMODE_TCPC_FLIP;
 	else if (orientation == TYPEC_ORIENTATION_NORMAL)
 		val &= ~TCA_SYSMODE_TCPC_FLIP;
-	else	/* TYPEC_ORIENTATION_NONE */
-		;
+
+	writel(val, tca->base + TCA_SYSMODE_CFG);
 
 	/* Enable TCA module */
-	writel(val, tca->base + TCA_SYSMODE_CFG);
 	val &= ~TCA_SYSMODE_TCPC_DISABLE;
 	writel(val, tca->base + TCA_SYSMODE_CFG);
 
+out:
+	tca->orientation = orientation;
 	mutex_unlock(&tca->mutex);
 }
 
@@ -265,11 +285,6 @@ static void tca_blk_init(struct tca_blk *tca)
 	/* clear reset */
 	val |= TCA_CLK_RST_SW;
 	writel(val, tca->base + TCA_CLK_RST);
-
-	/* use System Configuration Mode for TypeC_MUX direct control. */
-	val = readl(tca->base + TCA_GCFG);
-	val = FIELD_PREP(TCA_GCFG_OP_MODE, TCA_GCFG_OP_MODE_SYSMODE);
-	writel(val, tca->base + TCA_GCFG);
 
 	tca_blk_orientation_set(tca, tca->orientation);
 }
@@ -1124,7 +1139,7 @@ static int imx8mq_usb_phy_probe(struct platform_device *pdev)
 	return PTR_ERR_OR_ZERO(phy_provider);
 }
 
-static int imx8mq_usb_phy_remove(struct platform_device *pdev)
+static void imx8mq_usb_phy_remove(struct platform_device *pdev)
 {
 	struct imx8mq_usb_phy *imx_phy = platform_get_drvdata(pdev);
 
@@ -1134,8 +1149,6 @@ static int imx8mq_usb_phy_remove(struct platform_device *pdev)
 		power_supply_unreg_notifier(&imx_phy->chg_det_nb);
 
 	debug_remove_files(imx_phy);
-
-	return 0;
 }
 
 static struct platform_driver imx8mq_usb_phy_driver = {

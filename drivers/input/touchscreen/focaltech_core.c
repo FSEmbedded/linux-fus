@@ -280,7 +280,7 @@ static int fts_input_report_b(struct fts_ts_data *ts_data, struct ts_event *even
 			input_mt_slot(input_dev, events[i].id);
 			input_mt_report_slot_state(input_dev, MT_TOOL_FINGER, true);
 			input_report_abs(input_dev, ABS_MT_TOUCH_MAJOR, events[i].area);
-			input_report_abs(input_dev, ABS_MT_TOUCH_MINOR, events[i].minor);
+			input_report_abs(input_dev, ABS_MT_WIDTH_MAJOR, events[i].minor);
 
 			input_report_abs(input_dev, ABS_MT_POSITION_X, events[i].x);
 			input_report_abs(input_dev, ABS_MT_POSITION_Y, events[i].y);
@@ -312,6 +312,14 @@ static int fts_input_report_b(struct fts_ts_data *ts_data, struct ts_event *even
 				input_mt_report_slot_state(input_dev, MT_TOOL_FINGER, false);
 			}
 		}
+	}
+
+	if (touch_down_point_cur)
+		input_report_key(input_dev, BTN_TOUCH, 1);
+	else if (touch_event_coordinate || ts_data->touch_points) {
+		if (ts_data->touch_points && (ts_data->log_level >= 1))
+			dev_dbg(&ts_data->client->dev, "[B]Points All Up!");
+		input_report_key(input_dev, BTN_TOUCH, 0);
 	}
 
 	ts_data->touch_points = touch_down_point_cur;
@@ -631,6 +639,7 @@ static int fts_input_init(struct fts_ts_data *ts_data)
 
 	__set_bit(EV_SYN, input_dev->evbit);
 	__set_bit(EV_ABS, input_dev->evbit);
+	__set_bit(EV_KEY, input_dev->evbit);
 	__set_bit(BTN_TOUCH, input_dev->keybit);
 	__set_bit(INPUT_PROP_DIRECT, input_dev->propbit);
 
@@ -640,9 +649,14 @@ static int fts_input_init(struct fts_ts_data *ts_data)
 #endif
 
 	input_mt_init_slots(input_dev, pdata->max_touch_number, INPUT_MT_DIRECT);
+
+	input_set_capability(input_dev, EV_ABS, ABS_MT_POSITION_X);
+	input_set_capability(input_dev, EV_ABS, ABS_MT_POSITION_Y);
+
 	input_set_abs_params(input_dev, ABS_MT_POSITION_X, 0, touch_x_max - 1, 0, 0);
 	input_set_abs_params(input_dev, ABS_MT_POSITION_Y, 0, touch_y_max - 1, 0, 0);
 	input_set_abs_params(input_dev, ABS_MT_TOUCH_MAJOR, 0, 0xFF, 0, 0);
+	input_set_abs_params(input_dev, ABS_MT_WIDTH_MAJOR, 0, 0xFF, 0, 0);
 
 	ret = input_register_device(input_dev);
 	if (ret) {
@@ -758,6 +772,17 @@ static int fts_parse_dt(struct device *dev, struct fts_ts_platform_data *pdata)
 		return -EINVAL;
 	}
 
+	pdata->reset_gpio = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_LOW);
+	if (!pdata->reset_gpio) {
+		dev_info(dev, "reset-gpio not set\n");
+	} else {
+		ret = PTR_ERR_OR_ZERO(pdata->reset_gpio);
+		if (ret) {
+			dev_err(dev, "Failed to get reset gpio (%d)\n", ret);
+			return ret;
+		}
+	}
+
 	dev_info(dev, "max touch number:%d, irq gpio:%d",
 			pdata->max_touch_number, pdata->irq_gpio);
 
@@ -785,12 +810,23 @@ int fts_ts_suspend(struct fts_ts_data *ts_data)
 	return 0;
 }
 
+static void fts_reset_proc(struct fts_ts_data *ts_data, int hdelayms)
+{
+	if (ts_data->pdata->reset_gpio) {
+		gpiod_set_value_cansleep(ts_data->pdata->reset_gpio, 1);
+		usleep_range(1000, 2000);
+		gpiod_set_value_cansleep(ts_data->pdata->reset_gpio, 0);
+		msleep(hdelayms);
+	}
+}
+
 int fts_ts_resume(struct fts_ts_data *ts_data)
 {
 	if (!ts_data->suspended) {
 		dev_dbg(&ts_data->client->dev, "Already in awake state");
 		return 0;
 	}
+	fts_reset_proc(ts_data, FTS_RESET_MS);
 
 	ts_data->suspended = false;
 	fts_release_all_finger(ts_data);
@@ -864,8 +900,10 @@ int fts_ts_probe_entry(struct fts_ts_data *ts_data)
 	}
 
 	ret = fts_parse_dt(ts_data->dev, ts_data->pdata);
-	if (ret)
+	if (ret) {
 		dev_err(&ts_data->client->dev, "device-tree parse fail");
+		goto err_parse_dt;
+	}
 
 	ts_data->ts_workqueue = create_singlethread_workqueue("fts_wq");
 	if (!ts_data->ts_workqueue)
@@ -899,6 +937,8 @@ int fts_ts_probe_entry(struct fts_ts_data *ts_data)
 		dev_err(&ts_data->client->dev, "configure the gpios fail");
 		goto err_gpio_config;
 	}
+
+	fts_reset_proc(ts_data, FTS_RESET_MS);
 
 	ret = fts_get_ic_information(ts_data);
 	if (ret) {
@@ -939,6 +979,7 @@ err_bus_init:
 		destroy_workqueue(ts_data->ts_workqueue);
 	kfree_safe(ts_data->bus_tx_buf);
 	kfree_safe(ts_data->bus_rx_buf);
+err_parse_dt:
 	kfree_safe(ts_data->pdata);
 
 	return ret;

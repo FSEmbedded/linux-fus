@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note
 /*
  *
- * (C) COPYRIGHT 2011-2023 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2011-2024 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -176,6 +176,8 @@ static void kbase_gpuprops_parse_gpu_features(struct kbase_gpu_features_props *p
 {
 	props->ray_intersection = KBASE_UBFX64(gpu_features, 2U, 1);
 	props->cross_stream_sync = KBASE_UBFX64(gpu_features, 3U, 1);
+	props->neural_engine = KBASE_UBFX64(gpu_features, 4U, 1);
+	props->ray_traversal = KBASE_UBFX64(gpu_features, 5U, 1);
 }
 
 static void kbase_gpuprops_parse_js_features(struct kbase_js_features_props *props, u32 js_features)
@@ -201,7 +203,6 @@ static int kbase_gpuprops_get_props(struct kbase_device *kbdev)
 {
 	struct kbase_gpu_props *gpu_props;
 	struct kbasep_gpuprops_regdump *regdump;
-
 	int i, err;
 
 	if (WARN_ON(kbdev == NULL) || WARN_ON(kbdev->gpu_props.priv_data == NULL))
@@ -219,6 +220,8 @@ static int kbase_gpuprops_get_props(struct kbase_device *kbdev)
 	gpu_props->tiler_present = regdump->tiler_present;
 	gpu_props->stack_present = regdump->stack_present;
 	gpu_props->l2_present = regdump->l2_present;
+	gpu_props->base_present = regdump->base_present;
+	gpu_props->neural_present = regdump->neural_present;
 
 	gpu_props->num_cores = hweight64(regdump->shader_present);
 	gpu_props->num_core_groups = hweight64(regdump->l2_present);
@@ -241,6 +244,12 @@ static int kbase_gpuprops_get_props(struct kbase_device *kbdev)
 #else /* MALI_USE_CSF */
 	gpu_props->impl_tech = KBASE_UBFX32(regdump->thread_features, 30U, 2);
 #endif /* MALI_USE_CSF */
+
+	if (IS_ENABLED(CONFIG_MALI_NO_MALI))
+		gpu_props->impl_tech = THREAD_FEATURES_IMPLEMENTATION_TECHNOLOGY_NO_MALI;
+
+	if (of_machine_is_compatible("arm,juno"))
+		gpu_props->impl_tech = THREAD_FEATURES_IMPLEMENTATION_TECHNOLOGY_FPGA;
 
 	/* Features */
 	kbase_gpuprops_parse_gpu_features(&gpu_props->gpu_features, regdump->gpu_features);
@@ -357,6 +366,7 @@ enum l2_config_override_result {
 /**
  * kbase_read_l2_config_from_dt - Read L2 configuration
  * @kbdev: The kbase device for which to get the L2 configuration.
+ * @regdump: Pointer to struct kbase_gpuprops_regdump structure.
  *
  * Check for L2 configuration overrides in module parameters and device tree.
  * Override values in module parameters take priority over override values in
@@ -366,9 +376,16 @@ enum l2_config_override_result {
  *         overridden, L2_CONFIG_OVERRIDE_NONE if no overrides are provided.
  *         L2_CONFIG_OVERRIDE_FAIL otherwise.
  */
-static enum l2_config_override_result kbase_read_l2_config_from_dt(struct kbase_device *const kbdev)
+static enum l2_config_override_result
+kbase_read_l2_config_from_dt(struct kbase_device *const kbdev,
+			     struct kbasep_gpuprops_regdump *regdump)
 {
 	struct device_node *np = kbdev->dev->of_node;
+	/*
+	 * CACHE_SIZE bit fields in L2_FEATURES register, default value after the reset/powerup
+	 * holds the maximum size of the cache that can be programmed in L2_CONFIG register.
+	 */
+	const u8 l2_size_max = L2_FEATURES_CACHE_SIZE_GET(regdump->l2_features);
 
 	if (!np)
 		return L2_CONFIG_OVERRIDE_NONE;
@@ -378,8 +395,12 @@ static enum l2_config_override_result kbase_read_l2_config_from_dt(struct kbase_
 	else if (of_property_read_u8(np, "l2-size", &kbdev->l2_size_override))
 		kbdev->l2_size_override = 0;
 
-	if (kbdev->l2_size_override != 0 && kbdev->l2_size_override < OVERRIDE_L2_SIZE_MIN_LOG2)
+	if (kbdev->l2_size_override != 0 && (kbdev->l2_size_override < OVERRIDE_L2_SIZE_MIN_LOG2 ||
+					     kbdev->l2_size_override > l2_size_max)) {
+		dev_err(kbdev->dev, "Invalid Cache Size in %s",
+			override_l2_size ? "Module parameters" : "Device tree node");
 		return L2_CONFIG_OVERRIDE_FAIL;
+	}
 
 	/* Check overriding value is supported, if not will result in
 	 * undefined behavior.
@@ -425,11 +446,11 @@ int kbase_gpuprops_update_l2_features(struct kbase_device *kbdev)
 {
 	int err = 0;
 
-	if (kbase_hw_has_feature(kbdev, BASE_HW_FEATURE_L2_CONFIG)) {
+	if (kbase_hw_has_feature(kbdev, KBASE_HW_FEATURE_L2_CONFIG)) {
 		struct kbasep_gpuprops_regdump *regdump = &PRIV_DATA_REGDUMP(kbdev);
 
 		/* Check for L2 cache size & hash overrides */
-		switch (kbase_read_l2_config_from_dt(kbdev)) {
+		switch (kbase_read_l2_config_from_dt(kbdev, regdump)) {
 		case L2_CONFIG_OVERRIDE_FAIL:
 			err = -EIO;
 			goto exit;
@@ -470,11 +491,20 @@ int kbase_gpuprops_update_l2_features(struct kbase_device *kbdev)
 
 #if !IS_ENABLED(CONFIG_MALI_NO_MALI)
 			if (!enable && kbdev->l2_hash_values_override) {
+				if (kbdev->gpu_props.gpu_id.arch_id >= GPU_ID_ARCH_MAKE(14, 8, 4))
+					dev_err(kbdev->dev,
+						"Failed to use requested L2C_SLICE_HASH, fallback to default");
+				else
 					dev_err(kbdev->dev,
 						"Failed to use requested ASN_HASH, fallback to default");
 			}
 #endif
 			for (idx = 0; idx < GPU_L2_SLICE_HASH_COUNT; idx++)
+				if (kbdev->gpu_props.gpu_id.arch_id >= GPU_ID_ARCH_MAKE(14, 8, 4))
+					dev_info(kbdev->dev, "%s L2C_SLICE_HASH[%d] is [0x%08x]\n",
+						 enable ? "Overridden" : "Default", idx,
+						 regdump->l2_slice_hash[idx]);
+				else
 					dev_info(kbdev->dev, "%s ASN_HASH[%d] is [0x%08x]\n",
 						 enable ? "Overridden" : "Default", idx,
 						 regdump->l2_slice_hash[idx]);
@@ -528,6 +558,8 @@ static struct {
 	PROP(RAW_TILER_PRESENT, raw_props.tiler_present),
 	PROP(RAW_L2_PRESENT, raw_props.l2_present),
 	PROP(RAW_STACK_PRESENT, raw_props.stack_present),
+	PROP(RAW_BASE_PRESENT, raw_props.base_present),
+	PROP(RAW_NEURAL_PRESENT, raw_props.neural_present),
 	PROP(RAW_L2_FEATURES, raw_props.l2_features),
 	PROP(RAW_CORE_FEATURES, raw_props.core_features),
 	PROP(RAW_MEM_FEATURES, raw_props.mem_features),
@@ -653,13 +685,17 @@ static void kbase_populate_user_data(struct kbase_device *kbdev, struct gpu_prop
 	data->l2_props.log2_cache_size = KBASE_UBFX64(regdump->l2_features, 16U, 8);
 	data->coherency_info.coherency = regdump->mem_features;
 
-	data->tiler_props.bin_size_bytes = 1U << KBASE_UBFX64(regdump->tiler_features, 0U, 6);
-	data->tiler_props.max_active_levels = KBASE_UBFX32(regdump->tiler_features, 8U, 4);
+	{
+		data->tiler_props.bin_size_bytes = 1U
+						   << KBASE_UBFX64(regdump->tiler_features, 0U, 6);
+		data->tiler_props.max_active_levels = KBASE_UBFX32(regdump->tiler_features, 8U, 4);
+	}
 
 	if (regdump->thread_max_workgroup_size == 0)
 		data->thread_props.max_workgroup_size = THREAD_MWS_DEFAULT;
 	else
 		data->thread_props.max_workgroup_size = regdump->thread_max_workgroup_size;
+
 
 	if (regdump->thread_max_barrier_size == 0)
 		data->thread_props.max_barrier_size = THREAD_MBS_DEFAULT;
@@ -687,7 +723,7 @@ static void kbase_populate_user_data(struct kbase_device *kbdev, struct gpu_prop
 		data->thread_props.max_thread_group_split = THREAD_MTGS_DEFAULT;
 	}
 
-	if (!kbase_hw_has_feature(kbdev, BASE_HW_FEATURE_THREAD_GROUP_SPLIT))
+	if (!kbase_hw_has_feature(kbdev, KBASE_HW_FEATURE_THREAD_GROUP_SPLIT))
 		data->thread_props.max_thread_group_split = 0;
 
 	/* Raw Register Values */
@@ -702,7 +738,6 @@ static void kbase_populate_user_data(struct kbase_device *kbdev, struct gpu_prop
 		data->raw_props.js_features[i] = regdump->js_features[i];
 
 	data->raw_props.tiler_features = regdump->tiler_features;
-
 	data->raw_props.thread_max_threads = regdump->thread_max_threads;
 	data->raw_props.thread_max_workgroup_size = regdump->thread_max_workgroup_size;
 	data->raw_props.thread_max_barrier_size = regdump->thread_max_barrier_size;
@@ -710,6 +745,8 @@ static void kbase_populate_user_data(struct kbase_device *kbdev, struct gpu_prop
 	data->raw_props.thread_tls_alloc = regdump->thread_tls_alloc;
 	data->raw_props.gpu_features = regdump->gpu_features;
 
+	data->raw_props.base_present = regdump->base_present;
+	data->raw_props.neural_present = regdump->neural_present;
 }
 
 int kbase_gpuprops_populate_user_buffer(struct kbase_device *kbdev)

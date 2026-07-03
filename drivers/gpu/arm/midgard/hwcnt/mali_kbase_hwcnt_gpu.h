@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
 /*
  *
- * (C) COPYRIGHT 2018-2023 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2018-2024 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -80,6 +80,9 @@ struct kbase_hwcnt_dump_buffer;
  * @KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_CSG2:   Secondary CSG block.
  * @KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_CSG3:   Tertiary CSG block.
  * @KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_CSG_UNDEFINED: Undefined CSG block.
+ * @KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_NEURAL:  Neural Endpoint block.
+ * @KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_NEURAL2: Neural Endpoint (2) block.
+ * @KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_NEURAL_UNDEFINED: Undefined Neural block.
  */
 enum kbase_hwcnt_gpu_v5_block_type {
 	KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_FE,
@@ -103,6 +106,9 @@ enum kbase_hwcnt_gpu_v5_block_type {
 	KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_CSG2,
 	KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_CSG3,
 	KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_CSG_UNDEFINED,
+	KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_NEURAL,
+	KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_NEURAL2,
+	KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_NEURAL_UNDEFINED,
 };
 
 /**
@@ -128,6 +134,7 @@ enum kbase_hwcnt_set {
  * @mmu_l2_bm: MMU_L2 counters selection bitmask.
  * @fw_bm: CSF firmware counters selection bitmask.
  * @csg_bm: CSF CSG counters selection bitmask.
+ * @neural_bm: Neural counters selection bitmask.
  */
 struct kbase_hwcnt_physical_enable_map {
 	u32 fe_bm;
@@ -136,6 +143,7 @@ struct kbase_hwcnt_physical_enable_map {
 	u32 mmu_l2_bm;
 	u32 fw_bm;
 	u32 csg_bm;
+	u32 neural_bm;
 };
 
 /**
@@ -146,6 +154,7 @@ struct kbase_hwcnt_physical_enable_map {
  * @mmu_l2_bm: MMU_L2 counters selection bitmask.
  * @fw_bm: CSF firmware counters selection bitmask.
  * @csg_bm: CSF CSG counters selection bitmask.
+ * @neural_bm: Neural counters selection bitmask.
  */
 struct kbase_hwcnt_enable_cm {
 	u64 fe_bm[2];
@@ -154,6 +163,7 @@ struct kbase_hwcnt_enable_cm {
 	u64 mmu_l2_bm[2];
 	u64 fw_bm[2];
 	u64 csg_bm[2];
+	u64 neural_bm[2];
 };
 
 /*
@@ -169,20 +179,24 @@ enum kbase_hwcnt_physical_set {
 /**
  * struct kbase_hwcnt_gpu_info - Information about hwcnt blocks on the GPUs.
  * @l2_count:                L2 cache count.
- * @core_mask:               Shader core mask. May be sparse.
+ * @sc_core_mask:            Shader core mask. May be sparse.
  * @clk_cnt:                 Number of clock domains available.
  * @csg_cnt:                 Number of CSGs available.
  * @prfcnt_values_per_block: Total entries (header + counters) of performance
  *                           counter per block.
  * @has_fw_counters:         Whether the GPU has FW counters available.
+ * @has_ne:                  Indicates whether NE is present.
+ * @ne_core_mask:            Neural Engine core mask.
  */
 struct kbase_hwcnt_gpu_info {
 	size_t l2_count;
-	u64 core_mask;
+	u64 sc_core_mask;
 	u8 clk_cnt;
 	u8 csg_cnt;
 	size_t prfcnt_values_per_block;
 	bool has_fw_counters;
+	bool has_ne;
+	u64 ne_core_mask;
 };
 
 /**
@@ -241,6 +255,7 @@ static inline bool kbase_hwcnt_is_block_type_undefined(const uint64_t blk_type)
 	return (blk_type == KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_FE_UNDEFINED ||
 		blk_type == KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_TILER_UNDEFINED ||
 		blk_type == KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_SC_UNDEFINED ||
+		blk_type == KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_NEURAL_UNDEFINED ||
 		blk_type == KBASE_HWCNT_GPU_V5_BLOCK_TYPE_PERF_MEMSYS_UNDEFINED);
 }
 
@@ -262,13 +277,6 @@ int kbase_hwcnt_jm_metadata_create(const struct kbase_hwcnt_gpu_info *info,
 				   size_t *out_dump_bytes);
 
 /**
- * kbase_hwcnt_jm_metadata_destroy() - Destroy JM GPU hardware counter metadata.
- *
- * @metadata: Pointer to metadata to destroy.
- */
-void kbase_hwcnt_jm_metadata_destroy(const struct kbase_hwcnt_metadata *metadata);
-
-/**
  * kbase_hwcnt_csf_metadata_create() - Create hardware counter metadata for the
  *                                     CSF GPUs.
  * @info:           Non-NULL pointer to info struct.
@@ -283,13 +291,6 @@ int kbase_hwcnt_csf_metadata_create(const struct kbase_hwcnt_gpu_info *info,
 				    const struct kbase_hwcnt_metadata **out_metadata);
 
 /**
- * kbase_hwcnt_csf_metadata_destroy() - Destroy CSF GPU hardware counter
- *                                      metadata.
- * @metadata: Pointer to metadata to destroy.
- */
-void kbase_hwcnt_csf_metadata_destroy(const struct kbase_hwcnt_metadata *metadata);
-
-/**
  * kbase_hwcnt_jm_dump_get() - Copy or accumulate enabled counters from the raw
  *                             dump buffer in src into the dump buffer
  *                             abstraction in dst.
@@ -300,9 +301,6 @@ void kbase_hwcnt_csf_metadata_destroy(const struct kbase_hwcnt_metadata *metadat
  * @dst_enable_map:  Non-NULL pointer to enable map specifying enabled values.
  * @pm_core_mask:    PM state synchronized shaders core mask with the dump.
  * @debug_core_mask: User-set mask of cores to be used by the GPU.
- * @max_core_mask:   Core mask of all cores allocated to the GPU (non
- *                   virtualized platforms) or resource group (virtualized
- *                   platforms).
  * @max_l2_slices:   Maximum number of L2 slices allocated to the GPU (non
  *                   virtualised platforms) or resource group (virtualized
  *                   platforms).
@@ -319,23 +317,23 @@ void kbase_hwcnt_csf_metadata_destroy(const struct kbase_hwcnt_metadata *metadat
  */
 int kbase_hwcnt_jm_dump_get(struct kbase_hwcnt_dump_buffer *dst, u64 *src,
 			    const struct kbase_hwcnt_enable_map *dst_enable_map,
-			    const u64 pm_core_mask, u64 debug_core_mask, u64 max_core_mask,
-			    size_t max_l2_slices, const struct kbase_hwcnt_curr_config *curr_config,
-			    bool accumulate);
+			    const u64 pm_core_mask, u64 debug_core_mask, size_t max_l2_slices,
+			    const struct kbase_hwcnt_curr_config *curr_config, bool accumulate);
 
 /**
  * kbase_hwcnt_csf_dump_get() - Copy or accumulate enabled counters from the raw
  *                              dump buffer in src into the dump buffer
  *                              abstraction in dst.
- * @dst:                   Non-NULL pointer to destination dump buffer.
- * @src:                   Non-NULL pointer to source raw dump buffer, of same length
- *                         as dump_buf_bytes in the metadata of dst dump buffer.
- * @src_block_stt:         Non-NULL pointer to source block state buffer.
- * @dst_enable_map:        Non-NULL pointer to enable map specifying enabled values.
- * @num_l2_slices:         Current number of L2 slices allocated to the GPU.
- * @shader_present_bitmap: Current shader-present bitmap that is allocated to the GPU.
- * @accumulate:            True if counters in src should be accumulated into
- *                         destination, rather than copied.
+ * @dst:                      Non-NULL pointer to destination dump buffer.
+ * @src:                      Non-NULL pointer to source raw dump buffer, of same length
+ *                            as dump_buf_bytes in the metadata of dst dump buffer.
+ * @src_block_stt:            Non-NULL pointer to source block state buffer.
+ * @dst_enable_map:           Non-NULL pointer to enable map specifying enabled values.
+ * @num_l2_slices:            Current number of L2 slices allocated to the GPU.
+ * @powered_shader_core_mask: The common mask between the debug_core_mask
+ *                            and the shader_present_bitmap.
+ * @accumulate:               True if counters in src should be accumulated into
+ *                            destination, rather than copied.
  *
  * The dst and dst_enable_map MUST have been created from the same metadata as
  * returned from the call to kbase_hwcnt_csf_metadata_create as was used to get
@@ -346,7 +344,7 @@ int kbase_hwcnt_jm_dump_get(struct kbase_hwcnt_dump_buffer *dst, u64 *src,
 int kbase_hwcnt_csf_dump_get(struct kbase_hwcnt_dump_buffer *dst, u64 *src,
 			     blk_stt_t *src_block_stt,
 			     const struct kbase_hwcnt_enable_map *dst_enable_map,
-			     size_t num_l2_slices, u64 shader_present_bitmap, bool accumulate);
+			     size_t num_l2_slices, u64 powered_shader_core_mask, bool accumulate);
 
 /**
  * kbase_hwcnt_backend_gpu_block_map_to_physical() - Convert from a block
@@ -453,6 +451,9 @@ bool kbase_hwcnt_is_block_type_memsys(const enum kbase_hwcnt_gpu_v5_block_type b
 bool kbase_hwcnt_is_block_type_tiler(const enum kbase_hwcnt_gpu_v5_block_type blk_type);
 
 bool kbase_hwcnt_is_block_type_fe(const enum kbase_hwcnt_gpu_v5_block_type blk_type);
+
+bool kbase_hwcnt_is_block_type_neural(const enum kbase_hwcnt_gpu_v5_block_type blk_type);
+
 /**
  * kbase_hwcnt_gpu_enable_map_from_cm() - Builds enable map abstraction from
  *                                        counter selection bitmasks.

@@ -1302,6 +1302,7 @@ __dw_mipi_dsi_probe(struct platform_device *pdev,
 	dsi->bridge.driver_private = dsi;
 	dsi->bridge.funcs = &dw_mipi_dsi_bridge_funcs;
 	dsi->bridge.of_node = pdev->dev.of_node;
+	drm_bridge_add(&dsi->bridge);
 
 	return dsi;
 }

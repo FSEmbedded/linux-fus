@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note
 /*
  *
- * (C) COPYRIGHT 2010-2023 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2024 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -20,6 +20,7 @@
  */
 
 #include <mali_kbase.h>
+#include <mali_kbase_io.h>
 #include <mali_kbase_config_defaults.h>
 #include <hw_access/mali_kbase_hw_access_regmap.h>
 #include <mali_kbase_gator.h>
@@ -38,7 +39,6 @@
 #include "mali_kbase_mem_pool_debugfs.h"
 #include "mali_kbase_mem_pool_group.h"
 #include "mali_kbase_debugfs_helper.h"
-#include "mali_kbase_regs_history_debugfs.h"
 #include <mali_kbase_hwaccess_backend.h>
 #include <mali_kbase_hwaccess_time.h>
 #if !MALI_USE_CSF
@@ -61,21 +61,18 @@
 #include "csf/mali_kbase_csf_csg_debugfs.h"
 #include "csf/mali_kbase_csf_cpu_queue.h"
 #include "csf/mali_kbase_csf_event.h"
+#include "csf/mali_kbase_csf_ne_debugfs.h"
 #endif
-#ifdef CONFIG_MALI_ARBITER_SUPPORT
 #include "arbiter/mali_kbase_arbiter_pm.h"
-#endif
 
 #include "mali_kbase_cs_experimental.h"
 
-#ifdef CONFIG_MALI_CINSTR_GWT
-#include "mali_kbase_gwt.h"
-#endif
 #include "backend/gpu/mali_kbase_pm_internal.h"
 #include "mali_kbase_dvfs_debugfs.h"
 #if IS_ENABLED(CONFIG_DEBUG_FS)
 #include "mali_kbase_pbha_debugfs.h"
 #endif
+#include "mali_kbase_ioctl_helpers.h"
 
 #include <linux/module.h>
 #include <linux/init.h>
@@ -106,6 +103,7 @@
 #include <linux/clk-provider.h>
 #include <linux/delay.h>
 #include <linux/log2.h>
+#include <linux/mali_hw_access.h>
 
 #include <mali_kbase_config.h>
 
@@ -144,6 +142,9 @@ struct mali_kbase_capability_def {
 /*
  * This must be kept in-sync with mali_kbase_cap
  *
+ * The table must specify all available capabilities defined in mali_kbase_cap.
+ * The major and minor version of unsupported capabilities must be set to U16_MAX.
+ *
  * TODO: The alternative approach would be to embed the cap enum values
  * in the table. Less efficient but potentially safer.
  */
@@ -151,13 +152,41 @@ static const struct mali_kbase_capability_def kbase_caps_table[MALI_KBASE_NUM_CA
 #if MALI_USE_CSF
 	{ 1, 0 }, /* SYSTEM_MONITOR */
 	{ 1, 0 }, /* JIT_PRESSURE_LIMIT */
-	{ 1, 0 }, /* MEM_GROW_ON_GPF */
-	{ 1, 0 } /* MEM_PROTECTED */
+	{ 1, 22 }, /* QUERY_MEM_DONT_NEED */
+	{ 1, 0 }, /* QUERY_MEM_GROW_ON_GPF */
+	{ 1, 0 }, /* QUERY_MEM_PROTECTED */
+	{ 1, 26 }, /* QUERY_MEM_IMPORT_SYNC_ON_MAP_UNMAP */
+	{ 1, 26 }, /* QUERY_MEM_KERNEL_SYNC */
+	{ 1, 28 }, /* QUERY_MEM_SAME_VA */
+	{ 1, 31 }, /* REJECT_ALLOC_MEM_DONT_NEED */
+	{ 1, 31 }, /* REJECT_ALLOC_MEM_PROTECTED_IN_UNPROTECTED_ALLOCS */
+	{ U16_MAX, U16_MAX }, /* REJECT_ALLOC_MEM_UNUSED_BIT_8 */
+	{ U16_MAX, U16_MAX }, /* REJECT_ALLOC_MEM_UNUSED_BIT_19 */
+	{ 1, 31 }, /* REJECT_ALLOC_MEM_UNUSED_BIT_20 */
+	{ 1, 31 }, /* REJECT_ALLOC_MEM_UNUSED_BIT_27 */
+	{ 1, 32 }, /* REJECT_ALLOC_MEM_UNUSED_BIT_5 */
+	{ 1, 32 }, /* REJECT_ALLOC_MEM_UNUSED_BIT_7 */
+	{ U16_MAX, U16_MAX }, /* REJECT_ALLOC_MEM_UNUSED_BIT_29 */
+	{ 1, 35 } /* CSG_CS_USER_PAGE_ALLOCATION */
 #else
 	{ 11, 15 }, /* SYSTEM_MONITOR */
 	{ 11, 25 }, /* JIT_PRESSURE_LIMIT */
-	{ 11, 2 }, /* MEM_GROW_ON_GPF */
-	{ 11, 2 } /* MEM_PROTECTED */
+	{ 11, 40 }, /* QUERY_MEM_DONT_NEED */
+	{ 11, 2 }, /* QUERY_MEM_GROW_ON_GPF */
+	{ 11, 2 }, /* QUERY_MEM_PROTECTED */
+	{ 11, 43 }, /* QUERY_MEM_IMPORT_SYNC_ON_MAP_UNMAP */
+	{ 11, 43 }, /* QUERY_MEM_KERNEL_SYNC */
+	{ 11, 44 }, /* QUERY_MEM_SAME_VA */
+	{ 11, 46 }, /* REJECT_ALLOC_MEM_DONT_NEED */
+	{ 11, 46 }, /* REJECT_ALLOC_MEM_PROTECTED_IN_UNPROTECTED_ALLOCS */
+	{ 11, 46 }, /* REJECT_ALLOC_MEM_UNUSED_BIT_8 */
+	{ 11, 46 }, /* REJECT_ALLOC_MEM_UNUSED_BIT_19 */
+	{ U16_MAX, U16_MAX }, /* REJECT_ALLOC_MEM_UNUSED_BIT_20 */
+	{ 11, 48 }, /* REJECT_ALLOC_MEM_UNUSED_BIT_27 */
+	{ 11, 48 }, /* REJECT_ALLOC_MEM_UNUSED_BIT_5 */
+	{ 11, 48 }, /* REJECT_ALLOC_MEM_UNUSED_BIT_7 */
+	{ 11, 48 }, /* REJECT_ALLOC_MEM_UNUSED_BIT_29 */
+	{ U16_MAX, U16_MAX } /* CSG_CS_USER_PAGE_ALLOCATION */
 #endif
 };
 
@@ -166,13 +195,11 @@ static const struct mali_kbase_capability_def kbase_caps_table[MALI_KBASE_NUM_CA
 static struct mutex kbase_probe_mutex;
 #endif
 
-static void kbase_file_destroy_kctx_worker(struct work_struct *work);
-
 /**
  * mali_kbase_supports_cap - Query whether a kbase capability is supported
  *
  * @api_version: API version to convert
- * @cap:         Capability to query for - see mali_kbase_caps.h
+ * @cap:         Capability to query for - see mali_kbase_caps.h. Shouldn't be negative.
  *
  * Return: true if the capability is supported
  */
@@ -183,13 +210,10 @@ bool mali_kbase_supports_cap(unsigned long api_version, enum mali_kbase_cap cap)
 
 	struct mali_kbase_capability_def const *cap_def;
 
-	if (WARN_ON(cap < 0))
-		return false;
-
 	if (WARN_ON(cap >= MALI_KBASE_NUM_CAPS))
 		return false;
 
-	cap_def = &kbase_caps_table[(int)cap];
+	cap_def = &kbase_caps_table[cap];
 	required_ver = KBASE_API_VERSION(cap_def->required_major, cap_def->required_minor);
 	supported = (api_version >= required_ver);
 
@@ -211,7 +235,7 @@ bool mali_kbase_supports_cap(unsigned long api_version, enum mali_kbase_cap cap)
  * Return: Address of an object representing a simulated device file, or NULL
  *         on failure.
  *
- * Note: This function always gets called in Userspace context.
+ * Note: This function shall always be called in Userspace context.
  */
 static struct kbase_file *kbase_file_new(struct kbase_device *const kbdev, struct file *const filp)
 {
@@ -223,17 +247,6 @@ static struct kbase_file *kbase_file_new(struct kbase_device *const kbdev, struc
 		kfile->kctx = NULL;
 		kfile->api_version = 0;
 		atomic_set(&kfile->setup_state, KBASE_FILE_NEED_VSN);
-		/* Store the pointer to the file table structure of current process. */
-		kfile->owner = current->files;
-		INIT_WORK(&kfile->destroy_kctx_work, kbase_file_destroy_kctx_worker);
-		spin_lock_init(&kfile->lock);
-		kfile->fops_count = 0;
-		kfile->map_count = 0;
-		typecheck(typeof(kfile->map_count), typeof(current->mm->map_count));
-#if IS_ENABLED(CONFIG_DEBUG_FS)
-		init_waitqueue_head(&kfile->zero_fops_count_wait);
-#endif
-		init_waitqueue_head(&kfile->event_queue);
 	}
 	return kfile;
 }
@@ -313,33 +326,6 @@ static unsigned long kbase_file_get_api_version(struct kbase_file *const kfile)
 static int kbase_file_create_kctx(struct kbase_file *kfile, base_context_create_flags flags);
 
 /**
- * kbase_file_inc_fops_count_if_allowed - Increment the kfile::fops_count value if the file
- *                                        operation is allowed for the current process.
- *
- * @kfile: Pointer to the object representing the /dev/malixx device file instance.
- *
- * The function shall be called at the beginning of certain file operation methods
- * implemented for @kbase_fops, like ioctl, poll, read and mmap.
- *
- * kbase_file_dec_fops_count() shall be called if the increment was done.
- *
- * Return: true if the increment was done otherwise false.
- *
- * Note: This function shall always be called in Userspace context.
- */
-static bool kbase_file_inc_fops_count_if_allowed(struct kbase_file *const kfile)
-{
-	/* Disallow file operations from the other process that shares the instance
-	 * of /dev/malixx file i.e. 'kfile' or disallow file operations if parent
-	 * process has closed the file instance.
-	 */
-	if (unlikely(kfile->owner != current->files))
-		return false;
-
-	return kbase_file_inc_fops_count_unless_closed(kfile);
-}
-
-/**
  * kbase_file_get_kctx_if_setup_complete - Get a kernel base context
  *                                         pointer from a device file
  *
@@ -351,8 +337,6 @@ static bool kbase_file_inc_fops_count_if_allowed(struct kbase_file *const kfile)
  *
  * Return: Address of the kernel base context associated with the @kfile, or
  *         NULL if no context exists.
- *
- * Note: This function shall always be called in Userspace context.
  */
 static struct kbase_context *kbase_file_get_kctx_if_setup_complete(struct kbase_file *const kfile)
 {
@@ -364,102 +348,37 @@ static struct kbase_context *kbase_file_get_kctx_if_setup_complete(struct kbase_
 }
 
 /**
- * kbase_file_destroy_kctx - Destroy the Kbase context created for @kfile.
- *
- * @kfile: A device file created by kbase_file_new()
- */
-static void kbase_file_destroy_kctx(struct kbase_file *const kfile)
-{
-	if (atomic_cmpxchg(&kfile->setup_state, KBASE_FILE_COMPLETE, KBASE_FILE_DESTROY_CTX) !=
-	    KBASE_FILE_COMPLETE)
-		return;
-
-#if IS_ENABLED(CONFIG_DEBUG_FS)
-	kbasep_mem_profile_debugfs_remove(kfile->kctx);
-	kbase_context_debugfs_term(kfile->kctx);
-#endif
-
-	kbase_destroy_context(kfile->kctx);
-	dev_dbg(kfile->kbdev->dev, "Deleted kbase context");
-}
-
-/**
- * kbase_file_destroy_kctx_worker - Work item to destroy the Kbase context.
- *
- * @work: Pointer to the kfile::destroy_kctx_work.
- *
- * The work item shall only be enqueued if the context termination could not
- * be done from @kbase_flush().
- */
-static void kbase_file_destroy_kctx_worker(struct work_struct *work)
-{
-	struct kbase_file *kfile = container_of(work, struct kbase_file, destroy_kctx_work);
-
-	WARN_ON_ONCE(kfile->owner);
-	WARN_ON_ONCE(kfile->map_count);
-	WARN_ON_ONCE(kfile->fops_count);
-
-	kbase_file_destroy_kctx(kfile);
-}
-
-/**
- * kbase_file_destroy_kctx_on_flush - Try destroy the Kbase context from the flush()
- *                                    method of @kbase_fops.
- *
- * @kfile: A device file created by kbase_file_new()
- */
-static void kbase_file_destroy_kctx_on_flush(struct kbase_file *const kfile)
-{
-	bool can_destroy_context = false;
-
-	spin_lock(&kfile->lock);
-	kfile->owner = NULL;
-	/* To destroy the context from flush() method, unlike the release()
-	 * method, need to synchronize manually against the other threads in
-	 * the current process that could be operating on the /dev/malixx file.
-	 *
-	 * Only destroy the context if all the memory mappings on the
-	 * /dev/malixx file instance have been closed. If there are mappings
-	 * present then the context would be destroyed later when the last
-	 * mapping is closed.
-	 * Also, only destroy the context if no file operations are in progress.
-	 */
-	can_destroy_context = !kfile->map_count && !kfile->fops_count;
-	spin_unlock(&kfile->lock);
-
-	if (likely(can_destroy_context)) {
-		WARN_ON_ONCE(work_pending(&kfile->destroy_kctx_work));
-		kbase_file_destroy_kctx(kfile);
-	}
-}
-
-/**
  * kbase_file_delete - Destroy an object representing a device file
  *
  * @kfile: A device file created by kbase_file_new()
  *
- * If any context was created for the @kfile and is still alive, then it is destroyed.
+ * If any context was created for the @kfile then it is destroyed.
  */
 static void kbase_file_delete(struct kbase_file *const kfile)
 {
+	struct kbase_device *kbdev = NULL;
+
 	if (WARN_ON(!kfile))
 		return;
 
-	/* All the CPU mappings on the device file should have been closed */
-	WARN_ON_ONCE(kfile->map_count);
-#if IS_ENABLED(CONFIG_DEBUG_FS)
-	/* There could still be file operations due to the debugfs file (mem_view) */
-	wait_event(kfile->zero_fops_count_wait, !kbase_file_fops_count(kfile));
-#else
-	/* There shall not be any file operations in progress on the device file */
-	WARN_ON_ONCE(kfile->fops_count);
-#endif
-
 	kfile->filp->private_data = NULL;
-	cancel_work_sync(&kfile->destroy_kctx_work);
-	/* Destroy the context if it wasn't done earlier from the flush() method. */
-	kbase_file_destroy_kctx(kfile);
-	kbase_release_device(kfile->kbdev);
+	kbdev = kfile->kbdev;
+
+	if (atomic_read(&kfile->setup_state) == KBASE_FILE_COMPLETE) {
+		struct kbase_context *kctx = kfile->kctx;
+
+#if IS_ENABLED(CONFIG_DEBUG_FS)
+		kbasep_mem_profile_debugfs_remove(kctx);
+#endif
+		kbase_context_debugfs_term(kctx);
+
+		kbase_destroy_context(kctx);
+
+		dev_dbg(kbdev->dev, "deleted base context\n");
+	}
+
+	kbase_release_device(kbdev);
+
 	kfree(kfile);
 }
 
@@ -541,12 +460,14 @@ static struct kbase_device *to_kbase_device(struct device *dev)
 static int get_irqs(struct kbase_device *kbdev, struct platform_device *pdev)
 {
 	int i;
-	static const char *const irq_names_caps[] = { "JOB", "MMU", "GPU" };
+	static const char *const irq_names_caps[] = { "job", "mmu", "gpu" };
 
 	for (i = 0; i < ARRAY_SIZE(irq_names_caps); i++) {
 		struct irq_data *irqdata;
 		int irq;
 
+		snprintf(kbdev->irqs[i].name, 32, "%s-%s",
+				irq_names_caps[i], dev_name(kbdev->dev));
 		/* We recommend using Upper case for the irq names in dts, but if
 		 * there are devices in the world using Lower case then we should
 		 * avoid breaking support for them. So try using names in Upper case
@@ -555,9 +476,11 @@ static int get_irqs(struct kbase_device *kbdev, struct platform_device *pdev)
 		 */
 		irq = platform_get_irq_byname(pdev, irq_names_caps[i]);
 		if (irq < 0) {
-			static const char *const irq_names[] = { "job", "mmu", "gpu" };
+			static const char *const irq_names[] = { "JOB", "MMU", "GPU" };
 
 			irq = platform_get_irq_byname(pdev, irq_names[i]);
+			snprintf(kbdev->irqs[i].name, 32, "%s-%s",
+					irq_names[i], dev_name(kbdev->dev));
 		}
 
 		if (irq < 0)
@@ -576,6 +499,42 @@ static int get_irqs(struct kbase_device *kbdev, struct platform_device *pdev)
 	return 0;
 }
 
+#if MALI_USE_CSF
+/**
+ * get_irq_irqaw - Get interrupt information from the device tree.
+ *
+ * @kbdev: Kbase device.
+ * @pdev:  Platform device of the kbase device
+ *
+ * Read interrupt number and flag for IRQAW interrupt from the device tree
+ * and fill them into the struct of the kbase device.
+ *
+ * Return: 0 on success.
+ */
+static int get_irq_irqaw(struct kbase_device *kbdev, struct platform_device *pdev)
+{
+	int irq;
+	struct irq_data *irqdata;
+
+	irq = platform_get_irq_byname(pdev, "IRQAW");
+	if (irq < 0)
+		irq = platform_get_irq_byname(pdev, "irqaw");
+
+	if (irq < 0)
+		return irq;
+
+	kbdev->irqs[0].irq = (u32)irq;
+	irqdata = irq_get_irq_data((unsigned int)irq);
+	if (likely(irqdata)) {
+		kbdev->irqs[0].flags = irqd_get_trigger_type(irqdata);
+		kbdev->nr_irqs = 1;
+	} else {
+		return -EINVAL;
+	}
+
+	return 0;
+}
+#endif /* MALI_USE_CSF */
 
 int kbase_get_irqs(struct kbase_device *kbdev)
 {
@@ -584,6 +543,20 @@ int kbase_get_irqs(struct kbase_device *kbdev)
 
 	kbdev->nr_irqs = 0;
 	result = get_irqs(kbdev, pdev);
+	if (!result)
+		return result;
+
+#if MALI_USE_CSF
+	/* return error if any one of the GPU, JOB, MMU
+	 * interrupts missing. Don't lookup for IRQAW.
+	 */
+	if (result && kbdev->nr_irqs) {
+		dev_err(kbdev->dev, "Invalid number of interrupt resources");
+		return result;
+	}
+
+	result = get_irq_irqaw(kbdev, pdev);
+#endif /* MALI_USE_CSF */
 	if (result)
 		dev_err(kbdev->dev, "Invalid or No interrupt resources");
 
@@ -735,7 +708,8 @@ static int kbase_file_create_kctx(struct kbase_file *const kfile,
 
 	kbdev = kfile->kbdev;
 
-	kctx = kbase_create_context(kbdev, in_compat_syscall(), flags, kfile->api_version, kfile);
+	kctx = kbase_create_context(kbdev, in_compat_syscall(), flags, kfile->api_version,
+				    kfile->filp);
 
 	/* if bad flags, will stay stuck in setup mode */
 	if (!kctx)
@@ -803,7 +777,9 @@ static int kbase_open(struct inode *inode, struct file *filp)
 	}
 
 	filp->private_data = kfile;
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 	filp->f_mode |= FMODE_UNSIGNED_OFFSET;
+#endif
 
 	return 0;
 
@@ -819,36 +795,6 @@ static int kbase_release(struct inode *inode, struct file *filp)
 	CSTD_UNUSED(inode);
 
 	kbase_file_delete(kfile);
-	return 0;
-}
-
-/**
- * kbase_flush - Function implementing the flush() method of @kbase_fops.
- *
- * @filp: Pointer to the /dev/malixx device file instance.
- * @id:   Pointer to the file table structure of current process.
- *        If @filp is being shared by multiple processes then @id can differ
- *        from kfile::owner.
- *
- * This function is called everytime the copy of @filp is closed. So if 3 processes
- * are sharing the @filp then this function would be called 3 times and only after
- * that kbase_release() would get called.
- *
- * Return: 0 if successful, otherwise a negative error code.
- *
- * Note: This function always gets called in Userspace context when the
- *       file is closed.
- */
-static int kbase_flush(struct file *filp, fl_owner_t id)
-{
-	struct kbase_file *const kfile = filp->private_data;
-
-	/* Try to destroy the context if the flush() method has been called for the
-	 * process that created the instance of /dev/malixx file i.e. 'kfile'.
-	 */
-	if (kfile->owner == id)
-		kbase_file_destroy_kctx_on_flush(kfile);
-
 	return 0;
 }
 
@@ -945,7 +891,7 @@ static int kbase_api_mem_alloc_ex(struct kbase_context *kctx,
 				  union kbase_ioctl_mem_alloc_ex *alloc_ex)
 {
 	struct kbase_va_region *reg;
-	u64 flags = alloc_ex->in.flags;
+	base_mem_alloc_flags flags = alloc_ex->in.flags;
 	u64 gpu_va;
 
 	/* Calls to this function are inherently asynchronous, with respect to
@@ -977,7 +923,7 @@ static int kbase_api_mem_alloc_ex(struct kbase_context *kctx,
 	if ((flags & BASE_MEM_FIXABLE) && (atomic64_read(&kctx->num_fixed_allocs) > 0))
 		return -EINVAL;
 
-	if (flags & BASEP_MEM_FLAGS_KERNEL_ONLY)
+	if (flags & BASE_MEM_FLAGS_KERNEL_ONLY)
 		return -ENOMEM;
 
 	/* The fixed_address parameter must be either a non-zero, page-aligned
@@ -1055,7 +1001,7 @@ static int kbase_api_mem_alloc(struct kbase_context *kctx, union kbase_ioctl_mem
 static int kbase_api_mem_alloc(struct kbase_context *kctx, union kbase_ioctl_mem_alloc *alloc)
 {
 	struct kbase_va_region *reg;
-	u64 flags = alloc->in.flags;
+	base_mem_alloc_flags flags = alloc->in.flags;
 	u64 gpu_va;
 
 	/* Calls to this function are inherently asynchronous, with respect to
@@ -1066,7 +1012,7 @@ static int kbase_api_mem_alloc(struct kbase_context *kctx, union kbase_ioctl_mem
 	if (!kbase_mem_allow_alloc(kctx))
 		return -EINVAL;
 
-	if (flags & BASEP_MEM_FLAGS_KERNEL_ONLY)
+	if (flags & BASE_MEM_FLAGS_KERNEL_ONLY)
 		return -ENOMEM;
 
 	/* Force SAME_VA if a 64-bit client.
@@ -1181,16 +1127,6 @@ static int kbase_api_get_ddk_version(struct kbase_context *kctx,
 static int kbase_api_mem_jit_init(struct kbase_context *kctx,
 				  struct kbase_ioctl_mem_jit_init *jit_init)
 {
-	size_t i;
-
-	for (i = 0; i < sizeof(jit_init->padding); i++) {
-		/* Ensure all padding bytes are 0 for potential future
-		 * extension
-		 */
-		if (jit_init->padding[i])
-			return -EINVAL;
-	}
-
 	return kbase_region_tracker_init_jit(kctx, jit_init->va_pages, jit_init->max_allocations,
 					     jit_init->trim_level, jit_init->group_id,
 					     jit_init->phys_pages);
@@ -1256,48 +1192,56 @@ static int kbase_api_mem_commit(struct kbase_context *kctx, struct kbase_ioctl_m
 static int kbase_api_mem_alias(struct kbase_context *kctx, union kbase_ioctl_mem_alias *alias)
 {
 	struct base_mem_aliasing_info *ai;
-	u64 flags;
+	base_mem_alloc_flags flags;
 	int err;
+	size_t copy_size;
 
-	if (alias->in.nents == 0 || alias->in.nents > BASE_MEM_ALIAS_MAX_ENTS)
-		return -EINVAL;
+	if (alias->in.nents == 0 || alias->in.nents > BASE_MEM_ALIAS_MAX_ENTS) {
+		err = -EINVAL;
+		goto exit;
+	}
 
 	ai = vmalloc(sizeof(*ai) * alias->in.nents);
-	if (!ai)
-		return -ENOMEM;
+	if (!ai) {
+		err = -ENOMEM;
+		goto exit;
+	}
 
-	err = copy_from_user(ai, u64_to_user_ptr(alias->in.aliasing_info),
-			     sizeof(*ai) * alias->in.nents);
+	if (check_mul_overflow(sizeof(*ai), (size_t)alias->in.nents, &copy_size)) {
+		err = -EINVAL;
+		goto free_alloc;
+	}
+
+	err = copy_from_user(ai, u64_to_user_ptr(alias->in.aliasing_info), copy_size);
 	if (err) {
-		vfree(ai);
-		return -EFAULT;
+		err = -EFAULT;
+		goto free_alloc;
 	}
 
 	flags = alias->in.flags;
-	if (flags & BASEP_MEM_FLAGS_KERNEL_ONLY) {
-		vfree(ai);
-		return -EINVAL;
+	if (flags & BASE_MEM_FLAGS_KERNEL_ONLY) {
+		err = -EINVAL;
+		goto free_alloc;
 	}
 
 	alias->out.gpu_va = kbase_mem_alias(kctx, &flags, alias->in.stride, alias->in.nents, ai,
 					    &alias->out.va_pages);
 
 	alias->out.flags = flags;
-
-	vfree(ai);
-
 	if (alias->out.gpu_va == 0)
-		return -ENOMEM;
-
-	return 0;
+		err = -ENOMEM;
+free_alloc:
+	vfree(ai);
+exit:
+	return err;
 }
 
 static int kbase_api_mem_import(struct kbase_context *kctx, union kbase_ioctl_mem_import *import)
 {
 	int ret;
-	u64 flags = import->in.flags;
+	base_mem_alloc_flags flags = import->in.flags;
 
-	if (flags & BASEP_MEM_FLAGS_KERNEL_ONLY)
+	if (flags & BASE_MEM_FLAGS_KERNEL_ONLY)
 		return -ENOMEM;
 
 	ret = kbase_mem_import(kctx, import->in.type, u64_to_user_ptr(import->in.phandle),
@@ -1312,7 +1256,7 @@ static int kbase_api_mem_import(struct kbase_context *kctx, union kbase_ioctl_me
 static int kbase_api_mem_flags_change(struct kbase_context *kctx,
 				      struct kbase_ioctl_mem_flags_change *change)
 {
-	if (change->flags & BASEP_MEM_FLAGS_KERNEL_ONLY)
+	if (change->flags & BASE_MEM_FLAGS_KERNEL_ONLY)
 		return -ENOMEM;
 
 	return kbase_mem_flags_change(kctx, change->gpu_va, change->flags, change->mask);
@@ -1403,19 +1347,24 @@ static int kbase_api_sticky_resource_map(struct kbase_context *kctx,
 	int ret;
 	u64 i;
 	u64 gpu_addr[BASE_EXT_RES_COUNT_MAX];
+	size_t copy_size;
 
 	if (!map->count || map->count > BASE_EXT_RES_COUNT_MAX)
 		return -EOVERFLOW;
 
-	ret = copy_from_user(gpu_addr, u64_to_user_ptr(map->address), sizeof(u64) * map->count);
+	if (check_mul_overflow(sizeof(u64), (size_t)map->count, &copy_size))
+		return -EINVAL;
+
+	ret = copy_from_user(gpu_addr, u64_to_user_ptr(map->address), copy_size);
 
 	if (ret != 0)
 		return -EFAULT;
 
-	kbase_gpu_vm_lock(kctx);
+	down_read(kbase_mem_get_process_mmap_lock());
+	kbase_gpu_vm_lock_with_pmode_sync(kctx);
 
 	for (i = 0; i < map->count; i++) {
-		if (!kbase_sticky_resource_acquire(kctx, gpu_addr[i])) {
+		if (!kbase_sticky_resource_acquire(kctx, gpu_addr[i], current->mm)) {
 			/* Invalid resource */
 			ret = -EINVAL;
 			break;
@@ -1429,7 +1378,8 @@ static int kbase_api_sticky_resource_map(struct kbase_context *kctx,
 		}
 	}
 
-	kbase_gpu_vm_unlock(kctx);
+	kbase_gpu_vm_unlock_with_pmode_sync(kctx);
+	up_read(kbase_mem_get_process_mmap_lock());
 
 	return ret;
 }
@@ -1440,16 +1390,20 @@ static int kbase_api_sticky_resource_unmap(struct kbase_context *kctx,
 	int ret;
 	u64 i;
 	u64 gpu_addr[BASE_EXT_RES_COUNT_MAX];
+	size_t copy_size;
 
 	if (!unmap->count || unmap->count > BASE_EXT_RES_COUNT_MAX)
 		return -EOVERFLOW;
 
-	ret = copy_from_user(gpu_addr, u64_to_user_ptr(unmap->address), sizeof(u64) * unmap->count);
+	if (check_mul_overflow(sizeof(u64), (size_t)unmap->count, &copy_size))
+		return -EINVAL;
+
+	ret = copy_from_user(gpu_addr, u64_to_user_ptr(unmap->address), copy_size);
 
 	if (ret != 0)
 		return -EFAULT;
 
-	kbase_gpu_vm_lock(kctx);
+	kbase_gpu_vm_lock_with_pmode_sync(kctx);
 
 	for (i = 0; i < unmap->count; i++) {
 		if (!kbase_sticky_resource_release_force(kctx, NULL, gpu_addr[i])) {
@@ -1458,7 +1412,7 @@ static int kbase_api_sticky_resource_unmap(struct kbase_context *kctx,
 		}
 	}
 
-	kbase_gpu_vm_unlock(kctx);
+	kbase_gpu_vm_unlock_with_pmode_sync(kctx);
 
 	return ret;
 }
@@ -1516,11 +1470,16 @@ static int kbasep_cs_queue_kick(struct kbase_context *kctx, struct kbase_ioctl_c
 	return kbase_csf_queue_kick(kctx, kick);
 }
 
+static int kbasep_queue_group_clear_faults(struct kbase_context *kctx,
+					   struct kbase_ioctl_queue_group_clear_faults *faults)
+{
+	return kbase_csf_queue_group_clear_faults(kctx, faults);
+}
+
 static int kbasep_cs_queue_group_create_1_6(struct kbase_context *kctx,
 					    union kbase_ioctl_cs_queue_group_create_1_6 *create)
 {
 	int ret;
-	size_t i;
 	union kbase_ioctl_cs_queue_group_create
 		new_create = { .in = {
 				       .tiler_mask = create->in.tiler_mask,
@@ -1533,15 +1492,7 @@ static int kbasep_cs_queue_group_create_1_6(struct kbase_context *kctx,
 				       .compute_max = create->in.compute_max,
 			       } };
 
-	for (i = 0; i < ARRAY_SIZE(create->in.padding); i++) {
-		if (create->in.padding[i] != 0) {
-			dev_warn(kctx->kbdev->dev, "Invalid padding not 0 in queue group create\n");
-			return -EINVAL;
-		}
-	}
-
 	ret = kbase_csf_queue_group_create(kctx, &new_create);
-
 	create->out.group_handle = new_create.out.group_handle;
 	create->out.group_uid = new_create.out.group_uid;
 
@@ -1552,7 +1503,6 @@ static int kbasep_cs_queue_group_create_1_18(struct kbase_context *kctx,
 					     union kbase_ioctl_cs_queue_group_create_1_18 *create)
 {
 	int ret;
-	size_t i;
 	union kbase_ioctl_cs_queue_group_create
 		new_create = { .in = {
 				       .tiler_mask = create->in.tiler_mask,
@@ -1567,15 +1517,35 @@ static int kbasep_cs_queue_group_create_1_18(struct kbase_context *kctx,
 				       .dvs_buf = create->in.dvs_buf,
 			       } };
 
-	for (i = 0; i < ARRAY_SIZE(create->in.padding); i++) {
-		if (create->in.padding[i] != 0) {
-			dev_warn(kctx->kbdev->dev, "Invalid padding not 0 in queue group create\n");
-			return -EINVAL;
-		}
-	}
+	ret = kbase_csf_queue_group_create(kctx, &new_create);
+	create->out.group_handle = new_create.out.group_handle;
+	create->out.group_uid = new_create.out.group_uid;
+
+	return ret;
+}
+
+static int kbasep_cs_queue_group_create_1_35(struct kbase_context *kctx,
+					     union kbase_ioctl_cs_queue_group_create_1_35 *create)
+{
+	int ret;
+	union kbase_ioctl_cs_queue_group_create
+		new_create = { .in = {
+				       .tiler_mask = create->in.tiler_mask,
+				       .fragment_mask = create->in.fragment_mask,
+				       .compute_mask = create->in.compute_mask,
+				       .cs_min = create->in.cs_min,
+				       .priority = create->in.priority,
+				       .tiler_max = create->in.tiler_max,
+				       .fragment_max = create->in.fragment_max,
+				       .compute_max = create->in.compute_max,
+				       .csi_handlers = create->in.csi_handlers,
+				       .dvs_buf = create->in.dvs_buf,
+				       .neural_mask = create->in.neural_mask,
+				       .comp_pri_threshold = create->in.comp_pri_threshold,
+				       .comp_pri_ratio = create->in.comp_pri_ratio,
+			       } };
 
 	ret = kbase_csf_queue_group_create(kctx, &new_create);
-
 	create->out.group_handle = new_create.out.group_handle;
 	create->out.group_uid = new_create.out.group_uid;
 
@@ -1585,10 +1555,6 @@ static int kbasep_cs_queue_group_create_1_18(struct kbase_context *kctx,
 static int kbasep_cs_queue_group_create(struct kbase_context *kctx,
 					union kbase_ioctl_cs_queue_group_create *create)
 {
-	if (create->in.reserved != 0) {
-		dev_warn(kctx->kbdev->dev, "Invalid reserved field not 0 in queue group create\n");
-		return -EINVAL;
-	}
 	return kbase_csf_queue_group_create(kctx, create);
 }
 
@@ -1653,6 +1619,13 @@ static int kbasep_cs_tiler_heap_term(struct kbase_context *kctx,
 	return kbase_csf_tiler_heap_term(kctx, heap_term->gpu_heap_va);
 }
 
+static int kbasep_cs_tiler_heap_size(struct kbase_context *kctx,
+				     union kbase_ioctl_cs_tiler_heap_size *heap_size)
+{
+	return kbase_csf_tiler_heap_size(kctx, heap_size->in.heap_ptr, &heap_size->out.size,
+					 &heap_size->out.peak_size);
+}
+
 static int kbase_ioctl_cs_get_glb_iface(struct kbase_context *kctx,
 					union kbase_ioctl_cs_get_glb_iface *param)
 {
@@ -1662,11 +1635,12 @@ static int kbase_ioctl_cs_get_glb_iface(struct kbase_context *kctx,
 	int err = 0;
 	u32 const max_group_num = param->in.max_group_num;
 	u32 const max_total_stream_num = param->in.max_total_stream_num;
+	size_t copy_size;
 
-	if (max_group_num > MAX_SUPPORTED_CSGS)
+	if (max_group_num > BASEP_QUEUE_GROUP_MAX)
 		return -EINVAL;
 
-	if (max_total_stream_num > MAX_SUPPORTED_CSGS * MAX_SUPPORTED_STREAMS_PER_GROUP)
+	if (max_total_stream_num > BASEP_QUEUE_GROUP_MAX * BASEP_GPU_QUEUE_PER_QUEUE_GROUP_MAX)
 		return -EINVAL;
 
 	user_groups = u64_to_user_ptr(param->in.groups_ptr);
@@ -1698,20 +1672,31 @@ static int kbase_ioctl_cs_get_glb_iface(struct kbase_context *kctx,
 			kctx->kbdev, group_data, max_group_num, stream_data, max_total_stream_num,
 			&param->out.glb_version, &param->out.features, &param->out.group_num,
 			&param->out.prfcnt_size, &param->out.instr_features);
+	}
 
-		if (copy_to_user(user_groups, group_data,
-				 MIN(max_group_num, param->out.group_num) * sizeof(*group_data)))
+	if (!err && group_data) {
+		if (check_mul_overflow((size_t)(MIN(max_group_num, param->out.group_num)),
+				       sizeof(*group_data), &copy_size))
+			err = -EINVAL;
+
+		if (copy_to_user(user_groups, group_data, copy_size))
 			err = -EFAULT;
 	}
 
-	if (!err)
-		if (copy_to_user(user_streams, stream_data,
-				 MIN(max_total_stream_num, param->out.total_stream_num) *
-					 sizeof(*stream_data)))
-			err = -EFAULT;
-
 	kfree(group_data);
+
+	if (!err && stream_data) {
+		if (check_mul_overflow(
+			    (size_t)(MIN(max_total_stream_num, param->out.total_stream_num)),
+			    sizeof(*stream_data), &copy_size))
+			err = -EINVAL;
+
+		if (copy_to_user(user_streams, stream_data, copy_size))
+			err = -EFAULT;
+	}
+
 	kfree(stream_data);
+
 	return err;
 }
 
@@ -1731,12 +1716,8 @@ static int kbase_ioctl_read_user_page(struct kbase_context *kctx,
 	if (unlikely(user_page->in.offset != LATEST_FLUSH))
 		return -EINVAL;
 
-	/* Validating padding that must be zero */
-	if (unlikely(user_page->in.padding != 0))
-		return -EINVAL;
-
 	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
-	if (!kbdev->pm.backend.gpu_powered)
+	if (!kbase_io_is_gpu_powered(kbdev) || kbase_io_is_aw_removed(kbdev))
 		user_page->out.val_lo = POWER_DOWN_LATEST_FLUSH_VALUE;
 	else
 		user_page->out.val_lo = kbase_reg_read32(kbdev, USER_ENUM(LATEST_FLUSH));
@@ -1761,83 +1742,33 @@ kbasep_ioctl_context_priority_check(struct kbase_context *kctx,
 	return 0;
 }
 
-#define KBASE_HANDLE_IOCTL(cmd, function, arg)                                         \
-	do {                                                                           \
-		int ret;                                                               \
-		BUILD_BUG_ON(_IOC_DIR(cmd) != _IOC_NONE);                              \
-		dev_dbg(arg->kbdev->dev, "Enter ioctl %s\n", #function);               \
-		ret = function(arg);                                                   \
-		dev_dbg(arg->kbdev->dev, "Return %d from ioctl %s\n", ret, #function); \
-		return ret;                                                            \
-	} while (0)
-
-#define KBASE_HANDLE_IOCTL_IN(cmd, function, type, arg)                                \
-	do {                                                                           \
-		type param;                                                            \
-		int ret, err;                                                          \
-		dev_dbg(arg->kbdev->dev, "Enter ioctl %s\n", #function);               \
-		BUILD_BUG_ON(_IOC_DIR(cmd) != _IOC_WRITE);                             \
-		BUILD_BUG_ON(sizeof(param) != _IOC_SIZE(cmd));                         \
-		err = copy_from_user(&param, uarg, sizeof(param));                     \
-		if (err)                                                               \
-			return -EFAULT;                                                \
-		ret = function(arg, &param);                                           \
-		dev_dbg(arg->kbdev->dev, "Return %d from ioctl %s\n", ret, #function); \
-		return ret;                                                            \
-	} while (0)
-
-#define KBASE_HANDLE_IOCTL_OUT(cmd, function, type, arg)                               \
-	do {                                                                           \
-		type param;                                                            \
-		int ret, err;                                                          \
-		dev_dbg(arg->kbdev->dev, "Enter ioctl %s\n", #function);               \
-		BUILD_BUG_ON(_IOC_DIR(cmd) != _IOC_READ);                              \
-		BUILD_BUG_ON(sizeof(param) != _IOC_SIZE(cmd));                         \
-		memset(&param, 0, sizeof(param));                                      \
-		ret = function(arg, &param);                                           \
-		err = copy_to_user(uarg, &param, sizeof(param));                       \
-		if (err)                                                               \
-			return -EFAULT;                                                \
-		dev_dbg(arg->kbdev->dev, "Return %d from ioctl %s\n", ret, #function); \
-		return ret;                                                            \
-	} while (0)
-
-#define KBASE_HANDLE_IOCTL_INOUT(cmd, function, type, arg)                             \
-	do {                                                                           \
-		type param;                                                            \
-		int ret, err;                                                          \
-		dev_dbg(arg->kbdev->dev, "Enter ioctl %s\n", #function);               \
-		BUILD_BUG_ON(_IOC_DIR(cmd) != (_IOC_WRITE | _IOC_READ));               \
-		BUILD_BUG_ON(sizeof(param) != _IOC_SIZE(cmd));                         \
-		err = copy_from_user(&param, uarg, sizeof(param));                     \
-		if (err)                                                               \
-			return -EFAULT;                                                \
-		ret = function(arg, &param);                                           \
-		err = copy_to_user(uarg, &param, sizeof(param));                       \
-		if (err)                                                               \
-			return -EFAULT;                                                \
-		dev_dbg(arg->kbdev->dev, "Return %d from ioctl %s\n", ret, #function); \
-		return ret;                                                            \
-	} while (0)
-
 static int kbasep_ioctl_set_limited_core_count(
 	struct kbase_context *kctx,
 	struct kbase_ioctl_set_limited_core_count *set_limited_core_count)
 {
 	const u64 shader_core_mask = kbase_pm_get_present_cores(kctx->kbdev, KBASE_PM_CORE_SHADER);
-	const u64 limited_core_mask = ((u64)1 << (set_limited_core_count->max_core_count)) - 1;
+	const u8 max_core_count = set_limited_core_count->max_core_count;
+	u64 limited_core_mask = 0;
 
-	if ((shader_core_mask & limited_core_mask) == 0) {
-		/* At least one shader core must be available after applying the mask */
+	/* Sanity check to avoid shift-out-of-bounds */
+	if (max_core_count > 64)
 		return -EINVAL;
-	}
+	else if (max_core_count == 64)
+		limited_core_mask = UINT64_MAX;
+	else
+		limited_core_mask = ((u64)1 << max_core_count) - 1;
+
+	/* At least one shader core must be available after applying the mask */
+	if ((shader_core_mask & limited_core_mask) == 0)
+		return -EINVAL;
 
 	kctx->limited_core_mask = limited_core_mask;
 	return 0;
 }
 
-static long kbase_kfile_ioctl(struct kbase_file *kfile, unsigned int cmd, unsigned long arg)
+static long kbase_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
+	struct kbase_file *const kfile = filp->private_data;
 	struct kbase_context *kctx = NULL;
 	struct kbase_device *kbdev = kfile->kbdev;
 	void __user *uarg = (void __user *)arg;
@@ -2018,18 +1949,6 @@ static long kbase_kfile_ioctl(struct kbase_file *kfile, unsigned int cmd, unsign
 				      struct kbase_ioctl_hwcnt_values, kctx);
 		break;
 #endif /* CONFIG_MALI_NO_MALI */
-#ifdef CONFIG_MALI_CINSTR_GWT
-	case KBASE_IOCTL_CINSTR_GWT_START:
-		KBASE_HANDLE_IOCTL(KBASE_IOCTL_CINSTR_GWT_START, kbase_gpu_gwt_start, kctx);
-		break;
-	case KBASE_IOCTL_CINSTR_GWT_STOP:
-		KBASE_HANDLE_IOCTL(KBASE_IOCTL_CINSTR_GWT_STOP, kbase_gpu_gwt_stop, kctx);
-		break;
-	case KBASE_IOCTL_CINSTR_GWT_DUMP:
-		KBASE_HANDLE_IOCTL_INOUT(KBASE_IOCTL_CINSTR_GWT_DUMP, kbase_gpu_gwt_dump,
-					 union kbase_ioctl_cinstr_gwt_dump, kctx);
-		break;
-#endif
 #if MALI_USE_CSF
 	case KBASE_IOCTL_CS_EVENT_SIGNAL:
 		KBASE_HANDLE_IOCTL(KBASE_IOCTL_CS_EVENT_SIGNAL, kbasep_cs_event_signal, kctx);
@@ -2064,6 +1983,11 @@ static long kbase_kfile_ioctl(struct kbase_file *kfile, unsigned int cmd, unsign
 					 kbasep_cs_queue_group_create_1_18,
 					 union kbase_ioctl_cs_queue_group_create_1_18, kctx);
 		break;
+	case KBASE_IOCTL_CS_QUEUE_GROUP_CREATE_1_35:
+		KBASE_HANDLE_IOCTL_INOUT(KBASE_IOCTL_CS_QUEUE_GROUP_CREATE_1_35,
+					 kbasep_cs_queue_group_create_1_35,
+					 union kbase_ioctl_cs_queue_group_create_1_35, kctx);
+		break;
 	case KBASE_IOCTL_CS_QUEUE_GROUP_CREATE:
 		KBASE_HANDLE_IOCTL_INOUT(KBASE_IOCTL_CS_QUEUE_GROUP_CREATE,
 					 kbasep_cs_queue_group_create,
@@ -2086,6 +2010,11 @@ static long kbase_kfile_ioctl(struct kbase_file *kfile, unsigned int cmd, unsign
 		KBASE_HANDLE_IOCTL_IN(KBASE_IOCTL_KCPU_QUEUE_ENQUEUE, kbasep_kcpu_queue_enqueue,
 				      struct kbase_ioctl_kcpu_queue_enqueue, kctx);
 		break;
+	case KBASE_IOCTL_QUEUE_GROUP_CLEAR_FAULTS:
+		KBASE_HANDLE_IOCTL_IN(KBASE_IOCTL_QUEUE_GROUP_CLEAR_FAULTS,
+				      kbasep_queue_group_clear_faults,
+				      struct kbase_ioctl_queue_group_clear_faults, kctx);
+		break;
 	case KBASE_IOCTL_CS_TILER_HEAP_INIT:
 		KBASE_HANDLE_IOCTL_INOUT(KBASE_IOCTL_CS_TILER_HEAP_INIT, kbasep_cs_tiler_heap_init,
 					 union kbase_ioctl_cs_tiler_heap_init, kctx);
@@ -2094,6 +2023,10 @@ static long kbase_kfile_ioctl(struct kbase_file *kfile, unsigned int cmd, unsign
 		KBASE_HANDLE_IOCTL_INOUT(KBASE_IOCTL_CS_TILER_HEAP_INIT_1_13,
 					 kbasep_cs_tiler_heap_init_1_13,
 					 union kbase_ioctl_cs_tiler_heap_init_1_13, kctx);
+		break;
+	case KBASE_IOCTL_CS_TILER_HEAP_SIZE:
+		KBASE_HANDLE_IOCTL_INOUT(KBASE_IOCTL_CS_TILER_HEAP_SIZE, kbasep_cs_tiler_heap_size,
+					 union kbase_ioctl_cs_tiler_heap_size, kctx);
 		break;
 	case KBASE_IOCTL_CS_TILER_HEAP_TERM:
 		KBASE_HANDLE_IOCTL_IN(KBASE_IOCTL_CS_TILER_HEAP_TERM, kbasep_cs_tiler_heap_term,
@@ -2136,45 +2069,22 @@ static long kbase_kfile_ioctl(struct kbase_file *kfile, unsigned int cmd, unsign
 	return -ENOIOCTLCMD;
 }
 
-static long kbase_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
-{
-	struct kbase_file *const kfile = filp->private_data;
-	long ioctl_ret;
-
-	if (unlikely(!kbase_file_inc_fops_count_if_allowed(kfile)))
-		return -EPERM;
-
-	ioctl_ret = kbase_kfile_ioctl(kfile, cmd, arg);
-	kbase_file_dec_fops_count(kfile);
-
-	return ioctl_ret;
-}
-
 #if MALI_USE_CSF
 static ssize_t kbase_read(struct file *filp, char __user *buf, size_t count, loff_t *f_pos)
 {
 	struct kbase_file *const kfile = filp->private_data;
-	struct kbase_context *kctx;
+	struct kbase_context *const kctx = kbase_file_get_kctx_if_setup_complete(kfile);
 	struct base_csf_notification event_data = { .type = BASE_CSF_NOTIFICATION_EVENT };
 	const size_t data_size = sizeof(event_data);
 	bool read_event = false, read_error = false;
-	ssize_t err = 0;
 
 	CSTD_UNUSED(f_pos);
 
-	if (unlikely(!kbase_file_inc_fops_count_if_allowed(kfile)))
+	if (unlikely(!kctx))
 		return -EPERM;
 
-	kctx = kbase_file_get_kctx_if_setup_complete(kfile);
-	if (unlikely(!kctx)) {
-		err = -EPERM;
-		goto out;
-	}
-
-	if (count < data_size) {
-		err = -ENOBUFS;
-		goto out;
-	}
+	if (count < data_size)
+		return -ENOBUFS;
 
 	if (atomic_read(&kctx->event_count))
 		read_event = true;
@@ -2195,41 +2105,29 @@ static ssize_t kbase_read(struct file *filp, char __user *buf, size_t count, lof
 
 	if (copy_to_user(buf, &event_data, data_size) != 0) {
 		dev_warn(kctx->kbdev->dev, "Failed to copy data\n");
-		err = -EFAULT;
-		goto out;
+		return -EFAULT;
 	}
 
 	if (read_event)
 		atomic_set(&kctx->event_count, 0);
 
-out:
-	kbase_file_dec_fops_count(kfile);
-	return err ? err : (ssize_t)data_size;
+	return data_size;
 }
 #else /* MALI_USE_CSF */
 static ssize_t kbase_read(struct file *filp, char __user *buf, size_t count, loff_t *f_pos)
 {
 	struct kbase_file *const kfile = filp->private_data;
-	struct kbase_context *kctx;
+	struct kbase_context *const kctx = kbase_file_get_kctx_if_setup_complete(kfile);
 	struct base_jd_event_v2 uevent;
-	size_t out_count = 0;
-	ssize_t err = 0;
+	int out_count = 0;
 
 	CSTD_UNUSED(f_pos);
 
-	if (unlikely(!kbase_file_inc_fops_count_if_allowed(kfile)))
+	if (unlikely(!kctx))
 		return -EPERM;
 
-	kctx = kbase_file_get_kctx_if_setup_complete(kfile);
-	if (unlikely(!kctx)) {
-		err = -EPERM;
-		goto out;
-	}
-
-	if (count < sizeof(uevent)) {
-		err = -ENOBUFS;
-		goto out;
-	}
+	if (count < sizeof(uevent))
+		return -ENOBUFS;
 
 	memset(&uevent, 0, sizeof(uevent));
 
@@ -2238,29 +2136,21 @@ static ssize_t kbase_read(struct file *filp, char __user *buf, size_t count, lof
 			if (out_count > 0)
 				goto out;
 
-			if (filp->f_flags & O_NONBLOCK) {
-				err = -EAGAIN;
-				goto out;
-			}
+			if (filp->f_flags & O_NONBLOCK)
+				return -EAGAIN;
 
-			if (wait_event_interruptible(kfile->event_queue,
-						     kbase_event_pending(kctx)) != 0) {
-				err = -ERESTARTSYS;
-				goto out;
-			}
+			if (wait_event_interruptible(kctx->event_queue,
+						     kbase_event_pending(kctx)) != 0)
+				return -ERESTARTSYS;
 		}
 		if (uevent.event_code == BASE_JD_EVENT_DRV_TERMINATED) {
-			if (out_count == 0) {
-				err = -EPIPE;
-				goto out;
-			}
+			if (out_count == 0)
+				return -EPIPE;
 			goto out;
 		}
 
-		if (copy_to_user(buf, &uevent, sizeof(uevent)) != 0) {
-			err = -EFAULT;
-			goto out;
-		}
+		if (copy_to_user(buf, &uevent, sizeof(uevent)) != 0)
+			return -EFAULT;
 
 		buf += sizeof(uevent);
 		out_count++;
@@ -2268,59 +2158,40 @@ static ssize_t kbase_read(struct file *filp, char __user *buf, size_t count, lof
 	} while (count >= sizeof(uevent));
 
 out:
-	kbase_file_dec_fops_count(kfile);
-	return err ? err : (ssize_t)(out_count * sizeof(uevent));
+	return out_count * sizeof(uevent);
 }
 #endif /* MALI_USE_CSF */
 
 static __poll_t kbase_poll(struct file *filp, poll_table *wait)
 {
 	struct kbase_file *const kfile = filp->private_data;
-	struct kbase_context *kctx;
-	__poll_t ret = 0;
+	struct kbase_context *const kctx = kbase_file_get_kctx_if_setup_complete(kfile);
 
-	if (unlikely(!kbase_file_inc_fops_count_if_allowed(kfile))) {
-#if (KERNEL_VERSION(4, 19, 0) > LINUX_VERSION_CODE)
-		ret = POLLNVAL;
-#else
-		ret = EPOLLNVAL;
-#endif
-		return ret;
-	}
-
-	kctx = kbase_file_get_kctx_if_setup_complete(kfile);
 	if (unlikely(!kctx)) {
 #if (KERNEL_VERSION(4, 19, 0) > LINUX_VERSION_CODE)
-		ret = POLLERR;
+		return POLLERR;
 #else
-		ret = EPOLLERR;
+		return EPOLLERR;
 #endif
-		goto out;
 	}
 
-	poll_wait(filp, &kfile->event_queue, wait);
+	poll_wait(filp, &kctx->event_queue, wait);
 	if (kbase_event_pending(kctx)) {
 #if (KERNEL_VERSION(4, 19, 0) > LINUX_VERSION_CODE)
-		ret = POLLIN | POLLRDNORM;
+		return POLLIN | POLLRDNORM;
 #else
-		ret = EPOLLIN | EPOLLRDNORM;
+		return EPOLLIN | EPOLLRDNORM;
 #endif
 	}
 
-out:
-	kbase_file_dec_fops_count(kfile);
-	return ret;
+	return 0;
 }
 
 void kbase_event_wakeup(struct kbase_context *kctx)
 {
 	KBASE_DEBUG_ASSERT(kctx);
 	dev_dbg(kctx->kbdev->dev, "Waking event queue for context %pK\n", (void *)kctx);
-#ifdef CONFIG_MALI_DEBUG
-	if (WARN_ON_ONCE(!kctx->kfile))
-		return;
-#endif
-	wake_up_interruptible(&kctx->kfile->event_queue);
+	wake_up_interruptible(&kctx->event_queue);
 }
 
 KBASE_EXPORT_TEST_API(kbase_event_wakeup);
@@ -2353,20 +2224,12 @@ KBASE_EXPORT_TEST_API(kbase_event_pending);
 static int kbase_mmap(struct file *const filp, struct vm_area_struct *const vma)
 {
 	struct kbase_file *const kfile = filp->private_data;
-	struct kbase_context *kctx;
-	int ret;
+	struct kbase_context *const kctx = kbase_file_get_kctx_if_setup_complete(kfile);
 
-	if (unlikely(!kbase_file_inc_fops_count_if_allowed(kfile)))
+	if (unlikely(!kctx))
 		return -EPERM;
 
-	kctx = kbase_file_get_kctx_if_setup_complete(kfile);
-	if (likely(kctx))
-		ret = kbase_context_mmap(kctx, vma);
-	else
-		ret = -EPERM;
-
-	kbase_file_dec_fops_count(kfile);
-	return ret;
+	return kbase_context_mmap(kctx, vma);
 }
 
 static int kbase_check_flags(int flags)
@@ -2385,26 +2248,17 @@ static unsigned long kbase_get_unmapped_area(struct file *const filp, const unsi
 					     const unsigned long flags)
 {
 	struct kbase_file *const kfile = filp->private_data;
-	struct kbase_context *kctx;
-	unsigned long address;
+	struct kbase_context *const kctx = kbase_file_get_kctx_if_setup_complete(kfile);
 
-	if (unlikely(!kbase_file_inc_fops_count_if_allowed(kfile)))
+	if (unlikely(!kctx))
 		return -EPERM;
 
-	kctx = kbase_file_get_kctx_if_setup_complete(kfile);
-	if (likely(kctx))
-		address = kbase_context_get_unmapped_area(kctx, addr, len, pgoff, flags);
-	else
-		address = -EPERM;
-
-	kbase_file_dec_fops_count(kfile);
-	return address;
+	return kbase_context_get_unmapped_area(kctx, addr, len, pgoff, flags);
 }
 
 static const struct file_operations kbase_fops = {
 	.owner = THIS_MODULE,
 	.open = kbase_open,
-	.flush = kbase_flush,
 	.release = kbase_release,
 	.read = kbase_read,
 	.poll = kbase_poll,
@@ -2413,6 +2267,9 @@ static const struct file_operations kbase_fops = {
 	.mmap = kbase_mmap,
 	.check_flags = kbase_check_flags,
 	.get_unmapped_area = kbase_get_unmapped_area,
+#if (KERNEL_VERSION(6, 12, 0) <= LINUX_VERSION_CODE)
+	.fop_flags = FOP_UNSIGNED_OFFSET,
+#endif
 };
 
 /**
@@ -2543,6 +2400,9 @@ static ssize_t core_mask_show(struct device *dev, struct device_attribute *attr,
 	struct kbase_device *kbdev;
 	unsigned long flags;
 	ssize_t ret = 0;
+#if !MALI_USE_CSF
+	size_t i;
+#endif
 
 	CSTD_UNUSED(attr);
 
@@ -2561,21 +2421,191 @@ static ssize_t core_mask_show(struct device *dev, struct device_attribute *attr,
 	ret += scnprintf(buf + ret, (size_t)(PAGE_SIZE - ret),
 			 "Current in use core mask : 0x%llX\n", kbdev->pm.backend.shaders_avail);
 #else
-	ret += scnprintf(buf + ret, (size_t)(PAGE_SIZE - ret), "Current core mask (JS0) : 0x%llX\n",
-			 kbdev->pm.debug_core_mask[0]);
-	ret += scnprintf(buf + ret, (size_t)(PAGE_SIZE - ret), "Current core mask (JS1) : 0x%llX\n",
-			 kbdev->pm.debug_core_mask[1]);
-	ret += scnprintf(buf + ret, (size_t)(PAGE_SIZE - ret), "Current core mask (JS2) : 0x%llX\n",
-			 kbdev->pm.debug_core_mask[2]);
+	for (i = 0; i < BASE_JM_MAX_NR_SLOTS; i++) {
+		if (PAGE_SIZE < ret)
+			goto out_unlock;
+
+		ret += scnprintf(buf + ret, (size_t)(PAGE_SIZE - ret),
+				 "Current core mask (JS%zu) : 0x%llX\n", i,
+				 kbdev->pm.debug_core_mask[i]);
+	}
 #endif /* MALI_USE_CSF */
 
 	ret += scnprintf(buf + ret, (size_t)(PAGE_SIZE - ret), "Available core mask : 0x%llX\n",
 			 kbdev->gpu_props.shader_present);
-
+#if !MALI_USE_CSF
+out_unlock:
+#endif
 	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
 
 	return ret;
 }
+
+#if MALI_USE_CSF
+struct kbase_core_mask {
+	u64 new_core_mask;
+};
+
+static int core_mask_parse(struct kbase_device *const kbdev, const char *const buf,
+			   struct kbase_core_mask *const mask)
+{
+	int err = kstrtou64(buf, 0, &mask->new_core_mask);
+
+	if (err)
+		dev_err(kbdev->dev, "Couldn't process core mask write operation.\n");
+
+	return err;
+}
+
+static int core_mask_set(struct kbase_device *kbdev, struct kbase_core_mask *const new_mask)
+{
+	u64 new_core_mask = new_mask->new_core_mask;
+	u64 shader_present;
+	unsigned long flags;
+	int ret = 0;
+
+	kbase_csf_scheduler_lock(kbdev);
+	kbase_pm_lock(kbdev);
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+
+	shader_present = kbdev->gpu_props.shader_present;
+
+	if ((new_core_mask & shader_present) != new_core_mask) {
+		dev_err(kbdev->dev,
+			"Invalid requested core mask 0x%llX: Includes non-existent cores (present = 0x%llX)",
+			new_core_mask, shader_present);
+		ret = -EINVAL;
+		goto exit;
+	} else if (!(new_core_mask & shader_present & kbdev->pm.backend.ca_cores_enabled)) {
+		dev_err(kbdev->dev,
+			"Invalid requested core mask 0x%llX: No intersection with currently available cores (present = 0x%llX, CA enabled = 0x%llX)",
+			new_core_mask, kbdev->gpu_props.shader_present,
+			kbdev->pm.backend.ca_cores_enabled);
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	if (kbase_csf_dev_has_ne(kbdev)) {
+		u64 neural_present = kbdev->gpu_props.neural_present;
+		u64 sc_with_ne = shader_present & neural_present;
+
+		if (!sc_with_ne) {
+			dev_err(kbdev->dev,
+				"No shader cores with NE cores present in configuration with NE!");
+			ret = -EINVAL;
+			goto exit;
+		}
+
+		if (!(new_core_mask & sc_with_ne)) {
+			dev_err(kbdev->dev,
+				"Invalid requested core mask 0x%llX: need to keep 1 core enabled for NE workloads!",
+				new_core_mask);
+			ret = -EINVAL;
+			goto exit;
+		}
+	}
+
+	if (kbdev->pm.debug_core_mask != new_core_mask)
+		kbase_pm_set_debug_core_mask(kbdev, new_core_mask);
+
+exit:
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+	kbase_pm_unlock(kbdev);
+	kbase_csf_scheduler_unlock(kbdev);
+
+	return ret;
+}
+#else
+struct kbase_core_mask {
+	u64 new_core_mask[BASE_JM_MAX_NR_SLOTS];
+};
+
+static int core_mask_parse(struct kbase_device *const kbdev, const char *const buf,
+			   struct kbase_core_mask *const mask)
+{
+	int items;
+
+	items = sscanf(buf, "%llx %llx %llx", &mask->new_core_mask[0], &mask->new_core_mask[1],
+		       &mask->new_core_mask[2]);
+
+	if (items != 1 && items != BASE_JM_MAX_NR_SLOTS) {
+		dev_err(kbdev->dev, "Couldn't process core mask write operation.\n"
+				    "Use format <core_mask>\n"
+				    "or <core_mask_js0> <core_mask_js1> <core_mask_js2>\n");
+		return -EINVAL;
+	}
+
+	/* If only one value was provided, set all other core masks equal to the value. */
+	if (items == 1) {
+		size_t i;
+
+		for (i = 1; i < BASE_JM_MAX_NR_SLOTS; i++)
+			mask->new_core_mask[i] = mask->new_core_mask[0];
+	}
+
+	return 0;
+}
+
+static int core_mask_set(struct kbase_device *kbdev, struct kbase_core_mask *const new_mask)
+{
+	u64 shader_present = kbdev->gpu_props.shader_present;
+	u64 group_core_mask = kbdev->gpu_props.coherency_info.group.core_mask;
+	u64 *new_core_mask;
+	unsigned long flags;
+	int ret = 0;
+	size_t i;
+
+	kbase_pm_lock(kbdev);
+	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
+
+	new_core_mask = &new_mask->new_core_mask[0];
+
+	for (i = 0; i < BASE_JM_MAX_NR_SLOTS; ++i) {
+		if ((new_core_mask[i] & shader_present) != new_core_mask[i]) {
+			dev_err(kbdev->dev,
+				"Invalid core mask 0x%llX for JS %zu: Includes non-existent cores (present = 0x%llX)",
+				new_core_mask[i], i, shader_present);
+			ret = -EINVAL;
+			goto exit;
+
+		} else if (!(new_core_mask[i] & shader_present &
+			     kbdev->pm.backend.ca_cores_enabled)) {
+			dev_err(kbdev->dev,
+				"Invalid core mask 0x%llX for JS %zu: No intersection with currently available cores (present = 0x%llX, CA enabled = 0x%llX)",
+				new_core_mask[i], i, kbdev->gpu_props.shader_present,
+				kbdev->pm.backend.ca_cores_enabled);
+			ret = -EINVAL;
+			goto exit;
+		} else if (!(new_core_mask[i] & group_core_mask)) {
+			dev_err(kbdev->dev,
+				"Invalid core mask 0x%llX for JS %zu: No intersection with group 0 core mask 0x%llX",
+				new_core_mask[i], i, group_core_mask);
+			ret = -EINVAL;
+			goto exit;
+		} else if (!(new_core_mask[i] & kbdev->gpu_props.curr_config.shader_present)) {
+			dev_err(kbdev->dev,
+				"Invalid core mask 0x%llX for JS %zu: No intersection with current core mask 0x%llX",
+				new_core_mask[i], i, kbdev->gpu_props.curr_config.shader_present);
+			ret = -EINVAL;
+			goto exit;
+		}
+	}
+
+	for (i = 0; i < BASE_JM_MAX_NR_SLOTS; i++) {
+		if (kbdev->pm.debug_core_mask[i] != new_core_mask[i]) {
+			kbase_pm_set_debug_core_mask(kbdev, new_core_mask, BASE_JM_MAX_NR_SLOTS);
+			break;
+		}
+	}
+
+exit:
+	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
+	kbase_pm_unlock(kbdev);
+
+	return ret;
+}
+
+#endif
 
 /**
  * core_mask_store - Store callback for the core_mask sysfs file.
@@ -2593,18 +2623,9 @@ static ssize_t core_mask_store(struct device *dev, struct device_attribute *attr
 			       size_t count)
 {
 	struct kbase_device *kbdev;
-#if MALI_USE_CSF
-	u64 new_core_mask;
-#else
-	u64 new_core_mask[3];
-	u64 group_core_mask;
-	int i;
-#endif /* MALI_USE_CSF */
+	struct kbase_core_mask core_mask = {};
 
-	int items;
-	ssize_t err = (ssize_t)count;
-	unsigned long flags;
-	u64 shader_present;
+	int err;
 
 	CSTD_UNUSED(attr);
 
@@ -2613,102 +2634,16 @@ static ssize_t core_mask_store(struct device *dev, struct device_attribute *attr
 	if (!kbdev)
 		return -ENODEV;
 
-#if MALI_USE_CSF
-	items = sscanf(buf, "%llx", &new_core_mask);
+	err = core_mask_parse(kbdev, buf, &core_mask);
+	if (err)
+		return err;
 
-	if (items != 1) {
-		dev_err(kbdev->dev, "Couldn't process core mask write operation.\n"
-				    "Use format <core_mask>\n");
-		err = -EINVAL;
-		goto end;
-	}
-#else
-	items = sscanf(buf, "%llx %llx %llx", &new_core_mask[0], &new_core_mask[1],
-		       &new_core_mask[2]);
+	err = core_mask_set(kbdev, &core_mask);
 
-	if (items != 1 && items != 3) {
-		dev_err(kbdev->dev, "Couldn't process core mask write operation.\n"
-				    "Use format <core_mask>\n"
-				    "or <core_mask_js0> <core_mask_js1> <core_mask_js2>\n");
-		err = -EINVAL;
-		goto end;
-	}
+	if (err)
+		return err;
 
-	if (items == 1)
-		new_core_mask[1] = new_core_mask[2] = new_core_mask[0];
-#endif
-
-	mutex_lock(&kbdev->pm.lock);
-	spin_lock_irqsave(&kbdev->hwaccess_lock, flags);
-
-	shader_present = kbdev->gpu_props.shader_present;
-
-#if MALI_USE_CSF
-	if ((new_core_mask & shader_present) != new_core_mask) {
-		dev_err(dev,
-			"Invalid core mask 0x%llX: Includes non-existent cores (present = 0x%llX)",
-			new_core_mask, shader_present);
-		err = -EINVAL;
-		goto unlock;
-
-	} else if (!(new_core_mask & shader_present & kbdev->pm.backend.ca_cores_enabled)) {
-		dev_err(dev,
-			"Invalid core mask 0x%llX: No intersection with currently available cores (present = 0x%llX, CA enabled = 0x%llX\n",
-			new_core_mask, kbdev->gpu_props.shader_present,
-			kbdev->pm.backend.ca_cores_enabled);
-		err = -EINVAL;
-		goto unlock;
-	}
-
-	if (kbdev->pm.debug_core_mask != new_core_mask)
-		kbase_pm_set_debug_core_mask(kbdev, new_core_mask);
-#else
-	group_core_mask = kbdev->gpu_props.coherency_info.group.core_mask;
-
-	for (i = 0; i < 3; ++i) {
-		if ((new_core_mask[i] & shader_present) != new_core_mask[i]) {
-			dev_err(dev,
-				"Invalid core mask 0x%llX for JS %d: Includes non-existent cores (present = 0x%llX)",
-				new_core_mask[i], i, shader_present);
-			err = -EINVAL;
-			goto unlock;
-
-		} else if (!(new_core_mask[i] & shader_present &
-			     kbdev->pm.backend.ca_cores_enabled)) {
-			dev_err(dev,
-				"Invalid core mask 0x%llX for JS %d: No intersection with currently available cores (present = 0x%llX, CA enabled = 0x%llX\n",
-				new_core_mask[i], i, kbdev->gpu_props.shader_present,
-				kbdev->pm.backend.ca_cores_enabled);
-			err = -EINVAL;
-			goto unlock;
-		} else if (!(new_core_mask[i] & group_core_mask)) {
-			dev_err(dev,
-				"Invalid core mask 0x%llX for JS %d: No intersection with group 0 core mask 0x%llX\n",
-				new_core_mask[i], i, group_core_mask);
-			err = -EINVAL;
-			goto unlock;
-		} else if (!(new_core_mask[i] & kbdev->gpu_props.curr_config.shader_present)) {
-			dev_err(dev,
-				"Invalid core mask 0x%llX for JS %d: No intersection with current core mask 0x%llX\n",
-				new_core_mask[i], i, kbdev->gpu_props.curr_config.shader_present);
-			err = -EINVAL;
-			goto unlock;
-		}
-	}
-
-	if (kbdev->pm.debug_core_mask[0] != new_core_mask[0] ||
-	    kbdev->pm.debug_core_mask[1] != new_core_mask[1] ||
-	    kbdev->pm.debug_core_mask[2] != new_core_mask[2]) {
-		kbase_pm_set_debug_core_mask(kbdev, new_core_mask[0], new_core_mask[1],
-					     new_core_mask[2]);
-	}
-#endif /* MALI_USE_CSF */
-
-unlock:
-	spin_unlock_irqrestore(&kbdev->hwaccess_lock, flags);
-	mutex_unlock(&kbdev->pm.lock);
-end:
-	return err;
+	return count;
 }
 
 /*
@@ -3312,8 +3247,11 @@ static ssize_t gpuinfo_show(struct device *dev, struct device_attribute *attr, c
 		{ .id = GPU_ID_PRODUCT_TVAX, .name = "Mali-G310" },
 		{ .id = GPU_ID_PRODUCT_LTUX, .name = "Mali-G615" },
 		{ .id = GPU_ID_PRODUCT_LTIX, .name = "Mali-G620" },
-		{ .id = GPU_ID_PRODUCT_TKRX, .name = "Mali-TKRX" },
-		{ .id = GPU_ID_PRODUCT_LKRX, .name = "Mali-LKRX" },
+		{ .id = GPU_ID_PRODUCT_TKRX, .name = "Mali-G725" },
+		{ .id = GPU_ID_PRODUCT_LKRX, .name = "Mali-G625" },
+		{ .id = GPU_ID_PRODUCT_IDRX, .name = "Mali-TDRX-Immortalis" },
+		{ .id = GPU_ID_PRODUCT_TDRX, .name = "Mali-TDRX" },
+		{ .id = GPU_ID_PRODUCT_LDRX, .name = "Mali-LDRX" },
 	};
 	const char *product_name = "(Unknown Mali GPU)";
 	struct kbase_device *kbdev;
@@ -3377,6 +3315,49 @@ static ssize_t gpuinfo_show(struct device *dev, struct device_attribute *attr, c
 			product_id, nr_cores);
 	}
 
+	if (product_model == GPU_ID_PRODUCT_TKRX) {
+		const bool rt_supported = gpu_props->gpu_features.ray_intersection;
+		const u8 nr_cores = gpu_props->num_cores;
+
+		if ((nr_cores >= 10) && rt_supported)
+			product_name = "Mali-G925-Immortalis";
+		else
+			product_name = (nr_cores >= 6) ? "Mali-G725" : "Mali-G625";
+
+		dev_dbg(kbdev->dev, "GPU ID_Name: %s (ID: 0x%x), nr_cores(%u)\n", product_name,
+			product_id, nr_cores);
+	}
+
+	if (product_model == GPU_ID_PRODUCT_IDRX) {
+		const bool has_rt = gpu_props->gpu_features.ray_traversal;
+		const bool has_ne = gpu_props->gpu_features.neural_engine;
+		const u8 nr_cores = gpu_props->num_cores;
+		bool conformant = (nr_cores >= 10) && has_rt && has_ne;
+
+		WARN_ONCE(
+			!conformant,
+			"Nonconforming TDRX-Immortalis: (ID: 0x%x), nr_cores(%u), has_rt(%d), has_ne(%d)\n",
+			product_id, nr_cores, has_rt, has_ne);
+		dev_dbg(kbdev->dev, "GPU ID_Name: %s (ID: 0x%x), nr_cores(%u)\n", product_name,
+			product_id, nr_cores);
+
+	} else if (product_model == GPU_ID_PRODUCT_TDRX) {
+		const u8 nr_cores = gpu_props->num_cores;
+		bool conformant = (nr_cores <= 9) && (nr_cores >= 6);
+
+		WARN_ONCE(!conformant, "Nonconforming TDRX: (ID: 0x%x), nr_cores(%u)\n", product_id,
+			  nr_cores);
+		dev_dbg(kbdev->dev, "GPU ID_Name: %s (ID: 0x%x), nr_cores(%u)\n", product_name,
+			product_id, nr_cores);
+	} else if (product_model == GPU_ID_PRODUCT_LDRX) {
+		const u8 nr_cores = gpu_props->num_cores;
+		bool conformant = nr_cores && (nr_cores <= 6);
+
+		WARN_ONCE(!conformant, "Nonconforming LDRX: (ID: 0x%x), nr_cores(%u)\n", product_id,
+			  nr_cores);
+		dev_dbg(kbdev->dev, "GPU ID_Name: %s (ID: 0x%x), nr_cores(%u)\n", product_name,
+			product_id, nr_cores);
+	}
 #endif /* MALI_USE_CSF */
 
 	return scnprintf(buf, PAGE_SIZE, "%s %d cores r%dp%d 0x%08X\n", product_name,
@@ -3477,12 +3458,8 @@ int kbase_pm_gpu_freq_init(struct kbase_device *kbdev)
 		/* convert found frequency to KHz */
 		found_freq /= 1000;
 
-		/* If lowest frequency in OPP table is still higher
-		 * than the reference, then keep the reference frequency
-		 * as the one to use for scaling .
-		 */
-		if (found_freq < lowest_freq_khz)
-			lowest_freq_khz = found_freq;
+		/* always use the lowest freqency from opp table */
+		lowest_freq_khz = found_freq;
 	}
 #else
 	dev_err(kbdev->dev, "No operating-points-v2 node or operating-points property in DT");
@@ -3629,11 +3606,7 @@ static ssize_t reset_timeout_store(struct device *dev, struct device_attribute *
 		return -EINVAL;
 	}
 
-#if MALI_USE_CSF
 	default_reset_timeout = kbase_get_timeout_ms(kbdev, CSF_GPU_RESET_TIMEOUT);
-#else /* MALI_USE_CSF */
-	default_reset_timeout = JM_DEFAULT_RESET_TIMEOUT_MS;
-#endif /* !MALI_USE_CSF */
 
 	if (reset_timeout < default_reset_timeout)
 		dev_warn(kbdev->dev, "requested reset_timeout(%u) is smaller than default(%u)",
@@ -4465,7 +4438,7 @@ static int kbase_common_reg_map(struct kbase_device *kbdev)
 		goto out_region;
 	}
 
-	kbdev->reg = ioremap(kbdev->reg_start, kbdev->reg_size);
+	kbdev->reg = mali_ioremap(kbdev->reg_start, kbdev->reg_size);
 	if (!kbdev->reg) {
 		dev_err(kbdev->dev, "Can't remap register window\n");
 		err = -EINVAL;
@@ -4483,7 +4456,7 @@ out_region:
 static void kbase_common_reg_unmap(struct kbase_device *const kbdev)
 {
 	if (kbdev->reg) {
-		iounmap(kbdev->reg);
+		mali_iounmap(kbdev->reg);
 		release_mem_region(kbdev->reg_start, kbdev->reg_size);
 		kbdev->reg = NULL;
 		kbdev->reg_start = 0;
@@ -4510,16 +4483,6 @@ int registers_map(struct kbase_device *const kbdev)
 	kbdev->reg_start = reg_res->start;
 	kbdev->reg_size = resource_size(reg_res);
 
-#if MALI_USE_CSF
-	if (kbdev->reg_size <
-	    (CSF_HW_DOORBELL_PAGE_OFFSET + CSF_NUM_DOORBELL * CSF_HW_DOORBELL_PAGE_SIZE)) {
-		dev_err(kbdev->dev,
-			"Insufficient register space, will override to the required size\n");
-		kbdev->reg_size =
-			CSF_HW_DOORBELL_PAGE_OFFSET + CSF_NUM_DOORBELL * CSF_HW_DOORBELL_PAGE_SIZE;
-	}
-#endif
-
 	err = kbase_common_reg_map(kbdev);
 	if (err) {
 		dev_err(kbdev->dev, "Failed to map registers\n");
@@ -4534,7 +4497,7 @@ void registers_unmap(struct kbase_device *kbdev)
 	kbase_common_reg_unmap(kbdev);
 }
 
-#if defined(CONFIG_MALI_ARBITER_SUPPORT) && defined(CONFIG_OF)
+#if defined(CONFIG_OF)
 
 static bool kbase_is_pm_enabled(const struct device_node *gpu_node)
 {
@@ -4561,17 +4524,6 @@ static bool kbase_is_pm_enabled(const struct device_node *gpu_node)
 	return is_pm_enable;
 }
 
-static bool kbase_is_pv_enabled(const struct device_node *gpu_node)
-{
-	const void *arbiter_if_node;
-
-	arbiter_if_node = of_get_property(gpu_node, "arbiter-if", NULL);
-	if (!arbiter_if_node)
-		arbiter_if_node = of_get_property(gpu_node, "arbiter_if", NULL);
-
-	return arbiter_if_node ? true : false;
-}
-
 static bool kbase_is_full_coherency_enabled(const struct device_node *gpu_node)
 {
 	const void *coherency_dts;
@@ -4585,72 +4537,61 @@ static bool kbase_is_full_coherency_enabled(const struct device_node *gpu_node)
 	}
 	return false;
 }
+#endif /* defined(CONFIG_OF) */
 
-#endif /* CONFIG_MALI_ARBITER_SUPPORT && CONFIG_OF */
-
-int kbase_device_pm_init(struct kbase_device *kbdev)
+int kbase_device_backend_init(struct kbase_device *kbdev)
 {
 	int err = 0;
 
-#if defined(CONFIG_MALI_ARBITER_SUPPORT) && defined(CONFIG_OF)
-	u32 product_model;
+#if defined(CONFIG_OF)
+	/*
+	 * Attempt to initialize arbitration.
+	 * If the platform is not suitable for arbitration, return -EPERM.
+	 * The device initialization should not fail but kbase will
+	 * not support arbitration.
+	 */
+	if (kbase_is_pm_enabled(kbdev->dev->of_node)) {
+		/* Arbitration AND power management invalid */
+		dev_dbg(kbdev->dev, "Arbitration not supported with power management");
+		return -EPERM;
+	}
 
-	if (kbase_is_pv_enabled(kbdev->dev->of_node)) {
-		dev_info(kbdev->dev, "Arbitration interface enabled\n");
-		if (kbase_is_pm_enabled(kbdev->dev->of_node)) {
-			/* Arbitration AND power management invalid */
-			dev_err(kbdev->dev,
-				"Invalid combination of arbitration AND power management\n");
-			return -EPERM;
-		}
-		if (kbase_is_full_coherency_enabled(kbdev->dev->of_node)) {
-			/* Arbitration AND full coherency invalid */
-			dev_err(kbdev->dev,
-				"Invalid combination of arbitration AND full coherency\n");
-			return -EPERM;
-		}
-		err = kbase_arbiter_pm_early_init(kbdev);
-		if (err == 0) {
-			/* Check if Arbitration is running on
-			 * supported GPU platform
-			 */
-			kbase_pm_register_access_enable(kbdev);
+	if (kbase_is_full_coherency_enabled(kbdev->dev->of_node)) {
+		/* Arbitration AND full coherency invalid */
+		dev_dbg(kbdev->dev, "Arbitration not supported with full coherency");
+		return -EPERM;
+	}
+
+	err = kbase_arbiter_pm_early_init(kbdev);
+	if (err == 0) {
+#if !MALI_USE_CSF
+		u32 product_model;
+
+		/*
+		 * Attempt to obtain and parse gpu_id in the event an external AW module
+		 * is used for messaging. We should have access to GPU at this point.
+		 */
+		if (kbdev->gpu_props.gpu_id.arch_major == 0)
 			kbase_gpuprops_parse_gpu_id(&kbdev->gpu_props.gpu_id,
 						    kbase_reg_get_gpu_id(kbdev));
-			kbase_pm_register_access_disable(kbdev);
-			product_model = kbdev->gpu_props.gpu_id.product_model;
 
-			if (product_model != GPU_ID_PRODUCT_TGOX &&
-			    product_model != GPU_ID_PRODUCT_TNOX &&
-			    product_model != GPU_ID_PRODUCT_TBAX) {
-				kbase_arbiter_pm_early_term(kbdev);
-				dev_err(kbdev->dev, "GPU platform not suitable for arbitration\n");
-				return -EPERM;
-			}
+		product_model = kbdev->gpu_props.gpu_id.product_model;
+		if (product_model != GPU_ID_PRODUCT_TGOX && product_model != GPU_ID_PRODUCT_TNOX &&
+		    product_model != GPU_ID_PRODUCT_TBAX) {
+			kbase_arbiter_pm_early_term(kbdev);
+			dev_dbg(kbdev->dev, "GPU platform not suitable for arbitration");
+			return -EPERM;
 		}
-	} else {
-		kbdev->arb.arb_if = NULL;
-		kbdev->arb.arb_dev = NULL;
-		err = power_control_init(kbdev);
+#endif /* !MALI_USE_CSF */
+		dev_info(kbdev->dev, "Arbitration interface enabled");
 	}
-#else
-	err = power_control_init(kbdev);
-#endif /* CONFIG_MALI_ARBITER_SUPPORT && CONFIG_OF */
+#endif /* defined(CONFIG_OF) */
 	return err;
 }
 
-void kbase_device_pm_term(struct kbase_device *kbdev)
+void kbase_device_backend_term(struct kbase_device *kbdev)
 {
-#ifdef CONFIG_MALI_ARBITER_SUPPORT
-#if IS_ENABLED(CONFIG_OF)
-	if (kbase_is_pv_enabled(kbdev->dev->of_node))
-		kbase_arbiter_pm_early_term(kbdev);
-	else
-		power_control_term(kbdev);
-#endif /* CONFIG_OF */
-#else
-	power_control_term(kbdev);
-#endif
+	kbase_arbiter_pm_early_term(kbdev);
 }
 
 int power_control_init(struct kbase_device *kbdev)
@@ -4667,10 +4608,19 @@ int power_control_init(struct kbase_device *kbdev)
 #else
 	struct platform_device *pdev;
 	int err = 0;
-	unsigned int i;
+	unsigned int i, k;
 #if defined(CONFIG_REGULATOR)
-	static const char *const regulator_names[] = { "mali", "shadercores" };
-	BUILD_BUG_ON(ARRAY_SIZE(regulator_names) < BASE_MAX_NR_CLOCKS_REGULATORS);
+	/* Regulator array must be terminated with a NULL pointer, because of how the
+	 * Linux kernel iterates through them.
+	 */
+	static const char *const regulator_names[] = { "mali", "coregroup", "shadercores",
+						       "neuralengines", NULL };
+	static const char *avail_regulator_names[BASE_MAX_NR_CLOCKS_REGULATORS + 1];
+	/* Usually, clocks and regulators go in pairs.
+	 * It is possible for a clock domain to exist without a regulator, but not vice versa.
+	 * The reduction of 1 is to account for the NULL pointer that ends the list.
+	 */
+	BUILD_BUG_ON(ARRAY_SIZE(regulator_names) - 1 > BASE_MAX_NR_CLOCKS_REGULATORS);
 #endif /* CONFIG_REGULATOR */
 
 	if (!kbdev)
@@ -4686,21 +4636,28 @@ int power_control_init(struct kbase_device *kbdev)
 	 * Any other error is ignored and the driver will continue
 	 * operating with a partial initialization of regulators.
 	 */
+	k = 0;
 	for (i = 0; i < BASE_MAX_NR_CLOCKS_REGULATORS; i++) {
-		kbdev->regulators[i] = regulator_get_optional(kbdev->dev, regulator_names[i]);
-		if (IS_ERR(kbdev->regulators[i])) {
-			err = PTR_ERR(kbdev->regulators[i]);
-			kbdev->regulators[i] = NULL;
-			break;
+		const char *id = (i < ARRAY_SIZE(regulator_names)) ? regulator_names[i] : NULL;
+
+		kbdev->regulators[k] = regulator_get_optional(kbdev->dev, id);
+		if (IS_ERR(kbdev->regulators[k])) {
+			if (err != -EPROBE_DEFER)
+				err = PTR_ERR(kbdev->regulators[k]);
+			kbdev->regulators[k] = NULL;
+		} else {
+			avail_regulator_names[k] = regulator_names[i];
+			/* Inc k, and init the next pointer to NULL */
+			avail_regulator_names[++k] = NULL;
 		}
 	}
 	if (err == -EPROBE_DEFER) {
-		while (i > 0)
-			regulator_put(kbdev->regulators[--i]);
+		while (k > 0)
+			regulator_put(kbdev->regulators[--k]);
 		return err;
 	}
 
-	kbdev->nr_regulators = i;
+	kbdev->nr_regulators = k;
 	dev_dbg(&pdev->dev, "Regulators probed: %u\n", kbdev->nr_regulators);
 #endif
 
@@ -4729,6 +4686,7 @@ int power_control_init(struct kbase_device *kbdev)
 			break;
 		}
 	}
+
 	if (err == -EPROBE_DEFER) {
 		while (i > 0) {
 			clk_disable_unprepare(kbdev->clocks[--i]);
@@ -4749,7 +4707,7 @@ int power_control_init(struct kbase_device *kbdev)
 #if defined(CONFIG_REGULATOR)
 #if (KERNEL_VERSION(6, 0, 0) <= LINUX_VERSION_CODE)
 	if (kbdev->nr_regulators > 0) {
-		kbdev->token = dev_pm_opp_set_regulators(kbdev->dev, regulator_names);
+		kbdev->token = dev_pm_opp_set_regulators(kbdev->dev, avail_regulator_names);
 
 		if (kbdev->token < 0) {
 			err = kbdev->token;
@@ -4758,7 +4716,7 @@ int power_control_init(struct kbase_device *kbdev)
 	}
 #elif (KERNEL_VERSION(4, 10, 0) <= LINUX_VERSION_CODE)
 	if (kbdev->nr_regulators > 0) {
-		kbdev->opp_table = dev_pm_opp_set_regulators(kbdev->dev, regulator_names,
+		kbdev->opp_table = dev_pm_opp_set_regulators(kbdev->dev, avail_regulator_names,
 							     BASE_MAX_NR_CLOCKS_REGULATORS);
 
 		if (IS_ERR(kbdev->opp_table)) {
@@ -4867,6 +4825,9 @@ MAKE_QUIRK_ACCESSORS(sc);
 MAKE_QUIRK_ACCESSORS(tiler);
 MAKE_QUIRK_ACCESSORS(mmu);
 MAKE_QUIRK_ACCESSORS(gpu);
+#if MALI_USE_CSF
+MAKE_QUIRK_ACCESSORS(ne);
+#endif
 
 /**
  * kbase_device_debugfs_reset_write() - Reset the GPU
@@ -5086,11 +5047,25 @@ static struct dentry *init_debugfs(struct kbase_device *kbdev)
 		return dentry;
 	}
 
+#if MALI_USE_CSF
+	if (kbase_csf_dev_has_ne(kbdev)) {
+		dentry = debugfs_create_file("quirks_ne", 0644, kbdev->mali_debugfs_directory,
+					     kbdev, &fops_ne_quirks);
+		if (IS_ERR_OR_NULL(dentry)) {
+			dev_err(kbdev->dev, "Unable to create quirks_ne debugfs entry\n");
+			return dentry;
+		}
+
+		if (kbase_csf_ne_control_debugfs_init(kbdev))
+			return NULL;
+	}
+#endif
+
 	dentry = debugfs_ctx_defaults_init(kbdev);
 	if (IS_ERR_OR_NULL(dentry))
 		return dentry;
 
-	if (kbase_hw_has_feature(kbdev, BASE_HW_FEATURE_PROTECTED_DEBUG_MODE)) {
+	if (kbase_hw_has_feature(kbdev, KBASE_HW_FEATURE_PROTECTED_DEBUG_MODE)) {
 		dentry = debugfs_create_file("protected_debug_mode", 0444,
 					     kbdev->mali_debugfs_directory, kbdev,
 					     &fops_protected_debug_mode);
@@ -5893,18 +5868,23 @@ void kbase_sysfs_term(struct kbase_device *kbdev)
 	put_device(kbdev->dev);
 }
 
+#if (KERNEL_VERSION(6, 11, 0) > LINUX_VERSION_CODE)
 static int kbase_platform_device_remove(struct platform_device *pdev)
+#else
+static void kbase_platform_device_remove(struct platform_device *pdev)
+#endif
 {
 	struct kbase_device *kbdev = to_kbase_device(&pdev->dev);
 
-	if (!kbdev)
-		return -ENODEV;
+	if (likely(kbdev)) {
+		kbase_device_term(kbdev);
+		dev_set_drvdata(kbdev->dev, NULL);
+		kbase_device_free(kbdev);
+	}
 
-	kbase_device_term(kbdev);
-	dev_set_drvdata(kbdev->dev, NULL);
-	kbase_device_free(kbdev);
-
+#if (KERNEL_VERSION(6, 11, 0) > LINUX_VERSION_CODE)
 	return 0;
+#endif
 }
 
 void kbase_backend_devfreq_term(struct kbase_device *kbdev)
@@ -5942,9 +5922,11 @@ static int kbase_platform_device_probe(struct platform_device *pdev)
 
 	kbdev->dev = &pdev->dev;
 
+#if IS_ENABLED(CONFIG_REGULATOR)
 #if (KERNEL_VERSION(6, 0, 0) <= LINUX_VERSION_CODE)
 	kbdev->token = -EPERM;
 #endif /* (KERNEL_VERSION(6, 0, 0) <= LINUX_VERSION_CODE) */
+#endif /* IS_ENABLED(CONFIG_REGULATOR) */
 
 	dev_set_drvdata(kbdev->dev, kbdev);
 #if (KERNEL_VERSION(5, 3, 0) <= LINUX_VERSION_CODE)
@@ -5981,11 +5963,11 @@ static int kbase_platform_device_probe(struct platform_device *pdev)
 #if (KERNEL_VERSION(5, 3, 0) <= LINUX_VERSION_CODE)
 		mutex_unlock(&kbase_probe_mutex);
 #endif
-#ifdef CONFIG_MALI_ARBITER_SUPPORT
-		mutex_lock(&kbdev->pm.lock);
-		kbase_arbiter_pm_vm_event(kbdev, KBASE_VM_GPU_INITIALIZED_EVT);
-		mutex_unlock(&kbdev->pm.lock);
-#endif
+		if (kbase_has_arbiter(kbdev)) {
+			mutex_lock(&kbdev->pm.lock);
+			kbase_arbiter_pm_vm_event(kbdev, KBASE_VM_GPU_INITIALIZED_EVT);
+			mutex_unlock(&kbdev->pm.lock);
+		}
 	}
 
 	return err;

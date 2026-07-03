@@ -71,6 +71,7 @@ struct imx_ahci_priv {
 	bool no_device;
 	bool first_time;
 	u32 phy_params;
+	u32 imped_ratio;
 };
 
 void *sg_io_buffer_hack;
@@ -903,7 +904,7 @@ static int imx_ahci_probe(struct platform_device *pdev)
 				   IMX6Q_GPR13_SATA_SPD_MODE_3P0G |
 				   reg_value;
 	} else if (imxpriv->type == AHCI_IMX8QM) {
-		ret = imx8_sata_probe(dev, imxpriv);
+		ret =  imx8_sata_probe(dev, imxpriv);
 		if (ret)
 			return ret;
 	}
@@ -971,18 +972,35 @@ static int imx_ahci_probe(struct platform_device *pdev)
 		writel(reg_val, hpriv->mmio + IMX_TIMER1MS);
 	}
 
+	/*
+	 * Due to IP bug on the Synopsis 3.00 SATA version,
+	 * which is present on mx6q, and not on mx53,
+	 * we should use sg_tablesize = 1 for reliable operation
+	 */
+	if (imxpriv->type == AHCI_IMX6Q || imxpriv->type == AHCI_IMX6QP) {
+		dma_addr_t dma;
+
+		ahci_platform_sht.sg_tablesize = 1;
+
+		sg_io_buffer_hack = dma_alloc_coherent(dev, 0x10000,
+				&dma, GFP_KERNEL);
+		if (!sg_io_buffer_hack) {
+			ret = -ENOMEM;
+			goto disable_sata;
+		}
+	}
+
 	ret = ahci_platform_init_host(pdev, hpriv, &ahci_imx_port_info,
 				      &ahci_platform_sht);
 	if (ret)
 		goto disable_sata;
 
-	return ret;
+	return 0;
 
 disable_sata:
 	imx_sata_disable(hpriv);
 disable_clk:
 	clk_disable_unprepare(imxpriv->sata_clk);
-
 	return ret;
 }
 

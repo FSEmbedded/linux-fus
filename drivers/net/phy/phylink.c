@@ -176,80 +176,6 @@ static const char *phylink_an_mode_str(unsigned int mode)
 	return mode < ARRAY_SIZE(modestr) ? modestr[mode] : "unknown";
 }
 
-/**
- * phylink_pcs_neg_mode() - helper to determine PCS negotiation mode
- * @mode: one of %MLO_AN_FIXED, %MLO_AN_PHY, %MLO_AN_INBAND, %MLO_AN_C73.
- * @interface: interface mode to be used
- * @advertising: adertisement ethtool link mode mask
- *
- * Determines the negotiation mode to be used by the PCS, and returns
- * one of:
- *
- * - %PHYLINK_PCS_NEG_NONE: interface mode does not support inband
- * - %PHYLINK_PCS_NEG_OUTBAND: an out of band mode (e.g. reading the PHY)
- *   will be used.
- * - %PHYLINK_PCS_NEG_INBAND_DISABLED: inband mode selected but autoneg
- *   disabled
- * - %PHYLINK_PCS_NEG_INBAND_ENABLED: inband mode selected and autoneg enabled
- * - %PHYLINK_PCS_NEG_C73_DISABLED: clause 73 mode selected, but autoneg
- *   disabled
- * - %PHYLINK_PCS_NEG_C73_ENABLED: clause 73 mode selected and autoneg enabled
- */
-static unsigned int phylink_pcs_neg_mode(unsigned int mode, phy_interface_t interface,
-					 const unsigned long *advertising)
-{
-	unsigned int neg_mode;
-
-	if (phylink_autoneg_c73(mode)) {
-		if (linkmode_test_bit(ETHTOOL_LINK_MODE_Autoneg_BIT,
-					   advertising))
-			return PHYLINK_PCS_NEG_C73_ENABLED;
-
-		return PHYLINK_PCS_NEG_C73_DISABLED;
-	}
-
-	switch (interface) {
-	case PHY_INTERFACE_MODE_SGMII:
-	case PHY_INTERFACE_MODE_QSGMII:
-	case PHY_INTERFACE_MODE_QUSGMII:
-	case PHY_INTERFACE_MODE_USXGMII:
-	case PHY_INTERFACE_MODE_10G_QXGMII:
-		/* These protocols are designed for use with a PHY which
-		 * communicates its negotiation result back to the MAC via
-		 * inband communication. Note: there exist PHYs that run
-		 * with SGMII but do not send the inband data.
-		 */
-		if (!phylink_autoneg_inband(mode))
-			neg_mode = PHYLINK_PCS_NEG_OUTBAND;
-		else
-			neg_mode = PHYLINK_PCS_NEG_INBAND_ENABLED;
-		break;
-
-	case PHY_INTERFACE_MODE_1000BASEX:
-	case PHY_INTERFACE_MODE_2500BASEX:
-		/* 1000base-X is designed for use media-side for Fibre
-		 * connections, and thus the Autoneg bit needs to be
-		 * taken into account. We also do this for 2500base-X
-		 * as well, but drivers may not support this, so may
-		 * need to override this.
-		 */
-		if (!phylink_autoneg_inband(mode))
-			neg_mode = PHYLINK_PCS_NEG_OUTBAND;
-		else if (linkmode_test_bit(ETHTOOL_LINK_MODE_Autoneg_BIT,
-					   advertising))
-			neg_mode = PHYLINK_PCS_NEG_INBAND_ENABLED;
-		else
-			neg_mode = PHYLINK_PCS_NEG_INBAND_DISABLED;
-		break;
-
-	default:
-		neg_mode = PHYLINK_PCS_NEG_NONE;
-		break;
-	}
-
-	return neg_mode;
-}
-
 static unsigned int phylink_interface_signal_rate(phy_interface_t interface)
 {
 	switch (interface) {
@@ -277,7 +203,7 @@ static unsigned int phylink_interface_signal_rate(phy_interface_t interface)
  *
  * Return: The maximum speed of @interface
  */
-static int phylink_interface_max_speed(phy_interface_t interface)
+int phylink_interface_max_speed(phy_interface_t interface)
 {
 	switch (interface) {
 	case PHY_INTERFACE_MODE_100BASEX:
@@ -305,6 +231,7 @@ static int phylink_interface_max_speed(phy_interface_t interface)
 	case PHY_INTERFACE_MODE_GMII:
 		return SPEED_1000;
 
+	case PHY_INTERFACE_MODE_2500SGMII:
 	case PHY_INTERFACE_MODE_2500BASEX:
 	case PHY_INTERFACE_MODE_10G_QXGMII:
 		return SPEED_2500;
@@ -321,9 +248,11 @@ static int phylink_interface_max_speed(phy_interface_t interface)
 		return SPEED_10000;
 
 	case PHY_INTERFACE_MODE_25GBASER:
+	case PHY_INTERFACE_MODE_25GKR:
 		return SPEED_25000;
 
 	case PHY_INTERFACE_MODE_XLGMII:
+	case PHY_INTERFACE_MODE_40GKR4:
 		return SPEED_40000;
 
 	case PHY_INTERFACE_MODE_INTERNAL:
@@ -337,6 +266,7 @@ static int phylink_interface_max_speed(phy_interface_t interface)
 	WARN_ON_ONCE(1);
 	return SPEED_UNKNOWN;
 }
+EXPORT_SYMBOL_GPL(phylink_interface_max_speed);
 
 /**
  * phylink_caps_to_linkmodes() - Convert capabilities to ethtool link modes
@@ -802,13 +732,17 @@ static int phylink_validate_mac_and_pcs(struct phylink *pl,
 	}
 
 	/* Then validate the link parameters with the MAC */
-	if (pl->mac_ops->mac_get_caps)
-		capabilities = pl->mac_ops->mac_get_caps(pl->config,
-							 state->interface);
-	else
-		capabilities = pl->config->mac_capabilities;
+	if (phylink_autoneg_c73(pl->cfg_link_an_mode)) {
+		phylink_validate_c73(supported, state, pl->config->mac_capabilities);
+	} else {
+		if (pl->mac_ops->mac_get_caps)
+			capabilities = pl->mac_ops->mac_get_caps(pl->config,
+								 state->interface);
+		else
+			capabilities = pl->config->mac_capabilities;
 
-	phylink_validate_mask_caps(supported, state, capabilities);
+		phylink_validate_mask_caps(supported, state, capabilities);
+	}
 
 	return phylink_is_empty_linkmode(supported) ? -EINVAL : 0;
 }
@@ -1053,8 +987,10 @@ static int phylink_parse_mode(struct phylink *pl,
 	}
 	fwnode_handle_put(dn);
 
-	if ((fwnode_property_read_string(fwnode, "managed", &managed) == 0 &&
-	     strcmp(managed, "in-band-status") == 0)) {
+	if (fwnode_property_read_string(fwnode, "managed", &managed) != 0)
+		return 0;
+
+	if (strcmp(managed, "in-band-status") == 0) {
 		if (pl->cfg_link_an_mode == MLO_AN_FIXED) {
 			phylink_err(pl,
 				    "can't use both fixed-link and in-band-status\n");
@@ -1062,7 +998,17 @@ static int phylink_parse_mode(struct phylink *pl,
 		}
 
 		pl->cfg_link_an_mode = MLO_AN_INBAND;
+	} else if (strcmp(managed, "c73") == 0) {
+		if (pl->cfg_link_an_mode == MLO_AN_FIXED) {
+			phylink_err(pl,
+				    "can't use both fixed-link and c73\n");
+			return -EINVAL;
+		}
+
+		pl->cfg_link_an_mode = MLO_AN_C73;
 	}
+
+	pl->config->cfg_link_an_mode = pl->cfg_link_an_mode;
 
 	if (pl->cfg_link_an_mode == MLO_AN_INBAND) {
 		linkmode_zero(pl->supported);
@@ -1115,8 +1061,6 @@ static int phylink_parse_mode(struct phylink *pl,
 		phylink_set(pl->supported, Asym_Pause);
 		phylink_set(pl->supported, Pause);
 		linkmode_support_c73(pl->supported);
-		pl->cfg_link_an_mode = MLO_AN_C73;
-		pl->config->cfg_link_an_mode = pl->cfg_link_an_mode;
 	} else {
 		return 0;
 	}
@@ -1287,8 +1231,8 @@ static void phylink_pcs_an_restart(struct phylink *pl)
 }
 
 /**
- * phylink_pcs_neg_mode() - helper to determine PCS inband mode
- * @mode: one of %MLO_AN_FIXED, %MLO_AN_PHY, %MLO_AN_INBAND.
+ * phylink_pcs_neg_mode() - helper to determine PCS negotiation mode
+ * @mode: one of %MLO_AN_FIXED, %MLO_AN_PHY, %MLO_AN_INBAND, %MLO_AN_C73.
  * @interface: interface mode to be used
  * @advertising: adertisement ethtool link mode mask
  *
@@ -1301,9 +1245,9 @@ static void phylink_pcs_an_restart(struct phylink *pl)
  * - %PHYLINK_PCS_NEG_INBAND_DISABLED: inband mode selected but autoneg
  *   disabled
  * - %PHYLINK_PCS_NEG_INBAND_ENABLED: inband mode selected and autoneg enabled
- *
- * Note: this is for cases where the PCS itself is involved in negotiation
- * (e.g. Clause 37, SGMII and similar) not Clause 73.
+ * - %PHYLINK_PCS_NEG_C73_DISABLED: clause 73 mode selected, but autoneg
+ *   disabled
+ * - %PHYLINK_PCS_NEG_C73_ENABLED: clause 73 mode selected and autoneg enabled
  */
 static unsigned int phylink_pcs_neg_mode(unsigned int mode,
 					 phy_interface_t interface,
@@ -1414,8 +1358,15 @@ static void phylink_major_config(struct phylink *pl, bool restart,
 	if (pl->pcs)
 		phylink_pcs_post_config(pl->pcs, state->interface);
 
-	if (pl->pcs_state == PCS_STATE_STARTING || pcs_changed)
-		phylink_pcs_enable(pl->pcs);
+	if (pl->pcs_state == PCS_STATE_STARTING || pcs_changed) {
+		err = phylink_pcs_enable(pl->pcs);
+		if (err < 0) {
+			phylink_err(pl, "pcs_enable() failed: %pe\n",
+				    ERR_PTR(err));
+			pl->pcs = NULL;
+			return;
+		}
+	}
 
 	neg_mode = pl->cur_link_an_mode;
 	if (pl->pcs && pl->pcs->neg_mode)
@@ -1936,10 +1887,6 @@ struct phylink *phylink_create(struct phylink_config *config,
 	__set_bit(PHYLINK_DISABLE_STOPPED, &pl->phylink_disable_state);
 	timer_setup(&pl->link_poll, phylink_fixed_poll, 0);
 
-	linkmode_fill(pl->supported);
-	linkmode_copy(pl->link_config.advertising, pl->supported);
-	phylink_validate(pl, pl->supported, &pl->link_config);
-
 	ret = phylink_parse_mode(pl, fwnode);
 	if (ret < 0) {
 		kfree(pl);
@@ -1960,7 +1907,7 @@ struct phylink *phylink_create(struct phylink_config *config,
 		 * Just report all link modes supportable by the current
 		 * phy_interface_t and the MAC capabilities.
 		 */
-		bitmap_fill(pl->supported, __ETHTOOL_LINK_MODE_MASK_NBITS);
+		linkmode_fill(pl->supported);
 		linkmode_copy(pl->link_config.advertising, pl->supported);
 		phylink_validate(pl, pl->supported, &pl->link_config);
 	}
@@ -2115,7 +2062,8 @@ static int phylink_validate_phy(struct phylink *pl, struct phy_device *phy,
 	if (phy->is_c45 && state->rate_matching == RATE_MATCH_NONE &&
 	    state->interface != PHY_INTERFACE_MODE_RXAUI &&
 	    state->interface != PHY_INTERFACE_MODE_XAUI &&
-	    state->interface != PHY_INTERFACE_MODE_USXGMII)
+	    state->interface != PHY_INTERFACE_MODE_USXGMII &&
+	    state->interface != PHY_INTERFACE_MODE_10G_QXGMII)
 		state->interface = PHY_INTERFACE_MODE_NA;
 
 	return phylink_validate(pl, supported, state);
@@ -2362,6 +2310,9 @@ int phylink_fwnode_phy_connect(struct phylink *pl,
 	if (pl->config->mac_requires_rxc)
 		flags |= PHY_F_RXC_ALWAYS_ON;
 
+	pl->cur_link_an_mode = phylink_fixup_inband_aneg(pl, phy_dev,
+							 pl->cfg_link_an_mode);
+
 	ret = phy_attach_direct(pl->netdev, phy_dev, flags,
 				pl->link_interface);
 	phy_device_free(phy_dev);
@@ -2551,6 +2502,7 @@ void phylink_stop(struct phylink *pl)
 	pl->pcs_state = PCS_STATE_DOWN;
 
 	phylink_pcs_disable(pl->pcs);
+	pl->pcs = NULL;
 }
 EXPORT_SYMBOL_GPL(phylink_stop);
 

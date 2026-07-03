@@ -59,7 +59,6 @@
 #define DRIVER_NAME "imx-i2c"
 
 #define I2C_IMX_CHECK_DELAY 30000 /* Time to check for bus idle, in NS */
-#define IMX_I2C_MAX_E_BIT_RATE	384000	/* 384kHz from e7805 errata*/
 
 /*
  * Enable DMA if transfer byte size is bigger than this threshold.
@@ -225,7 +224,6 @@ enum imx_i2c_type {
 	IMX1_I2C,
 	IMX21_I2C,
 	VF610_I2C,
-	IMX7D_I2C,
 };
 
 struct imx_i2c_hwdata {
@@ -338,16 +336,6 @@ static const struct platform_device_id imx_i2c_devtype[] = {
 };
 MODULE_DEVICE_TABLE(platform, imx_i2c_devtype);
 
-static const struct imx_i2c_hwdata imx7d_i2c_hwdata = {
-	.devtype		= IMX7D_I2C,
-	.regshift		= IMX_I2C_REGSHIFT,
-	.clk_div		= imx_i2c_clk_div,
-	.ndivs			= ARRAY_SIZE(imx_i2c_clk_div),
-	.i2sr_clr_opcode	= I2SR_CLR_OPCODE_W0C,
-	.i2cr_ien_opcode	= I2CR_IEN_OPCODE_1,
-
-};
-
 static const struct of_device_id i2c_imx_dt_ids[] = {
 	{ .compatible = "fsl,imx1-i2c", .data = &imx1_i2c_hwdata, },
 	{ .compatible = "fsl,imx21-i2c", .data = &imx21_i2c_hwdata, },
@@ -362,7 +350,6 @@ static const struct of_device_id i2c_imx_dt_ids[] = {
 	{ .compatible = "fsl,imx8mp-i2c", .data = &imx6_i2c_hwdata, },
 	{ .compatible = "fsl,imx8mq-i2c", .data = &imx6_i2c_hwdata, },
 	{ .compatible = "fsl,vf610-i2c", .data = &vf610_i2c_hwdata, },
-	{ .compatible = "fsl,imx7d-i2c", .data = &imx7d_i2c_hwdata, },
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, i2c_imx_dt_ids);
@@ -381,11 +368,6 @@ static inline int is_imx1_i2c(struct imx_i2c_struct *i2c_imx)
 static inline int is_vf610_i2c(struct imx_i2c_struct *i2c_imx)
 {
 	return i2c_imx->hwdata->devtype == VF610_I2C;
-}
-
-static inline int is_imx7d_i2c(struct imx_i2c_struct *i2c_imx)
-{
-	return i2c_imx->hwdata->devtype == IMX7D_I2C;
 }
 
 static inline void imx_i2c_write_reg(unsigned int val,
@@ -1717,14 +1699,6 @@ static int i2c_imx_probe(struct platform_device *pdev)
 		goto clk_notifier_unregister;
 	}
 
-	/*
-	 * This limit caused by an i.MX7D hardware issue(e7805 in Errata).
-	 * If there is no limit, when the bitrate set up to 400KHz, it will
-	 * cause the SCK low level period less than 1.3us.
-	 */
-	if (is_imx7d_i2c(i2c_imx) && i2c_imx->bitrate > IMX_I2C_MAX_E_BIT_RATE)
-		i2c_imx->bitrate = IMX_I2C_MAX_E_BIT_RATE;
-
 	i2c_imx_reset_regs(i2c_imx);
 
 	/* Init optional bus recovery */
@@ -1840,6 +1814,7 @@ static int i2c_imx_resume(struct device *dev)
 }
 
 static const struct dev_pm_ops i2c_imx_pm_ops = {
+	NOIRQ_SYSTEM_SLEEP_PM_OPS(i2c_imx_suspend, i2c_imx_resume)
 	RUNTIME_PM_OPS(i2c_imx_runtime_suspend, i2c_imx_runtime_resume, NULL)
 };
 

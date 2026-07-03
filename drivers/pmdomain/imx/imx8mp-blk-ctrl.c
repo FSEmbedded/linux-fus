@@ -73,7 +73,6 @@ struct imx8mp_blk_ctrl_domain_data {
 };
 
 #define DOMAIN_MAX_CLKS 3
-#define DOMAIN_MAX_PATHS 3
 
 struct imx8mp_blk_ctrl_domain {
 	struct generic_pm_domain genpd;

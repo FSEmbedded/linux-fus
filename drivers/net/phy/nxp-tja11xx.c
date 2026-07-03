@@ -194,8 +194,6 @@ static int tja11xx_soft_reset(struct phy_device *phydev)
 	if (ret)
 		return ret;
 
-	genphy_resume(phydev);
-
 	return genphy_soft_reset(phydev);
 }
 

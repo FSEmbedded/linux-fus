@@ -274,6 +274,25 @@ static const struct mxc_isi_set_thd mxc_imx8_isi_thd_v1 = {
 	.panic_set_thd_v = { .mask = 0xf0000, .offset = 16, .threshold = 0x7 },
 };
 
+static const struct clk_bulk_data mxc_imx8qm_clks[] = {
+	{ .id = "per0" },
+	{ .id = "per1" },
+	{ .id = "per2" },
+	{ .id = "per3" },
+	{ .id = "per4" },
+	{ .id = "per5" },
+	{ .id = "per6" },
+	{ .id = "per7" },
+};
+
+static const struct clk_bulk_data mxc_imx8qxp_clks[] = {
+	{ .id = "per0" },
+	{ .id = "per4" },
+	{ .id = "per5" },
+	{ .id = "per6" },
+	{ .id = "per7" },
+};
+
 static const struct clk_bulk_data mxc_imx8mn_clks[] = {
 	{ .id = "axi" },
 	{ .id = "apb" },
@@ -296,6 +315,7 @@ static const struct mxc_isi_plat_data mxc_imx8mn_data = {
 	.gasket_ops		= &mxc_imx8_gasket_ops,
 	.has_36bit_dma		= false,
 	.raw32_chan_cfg		= false,
+	.buf_max_size		= false,
 };
 
 static const struct mxc_isi_plat_data mxc_imx8mp_data = {
@@ -310,6 +330,35 @@ static const struct mxc_isi_plat_data mxc_imx8mp_data = {
 	.buf_active_reverse	= true,
 	.gasket_ops		= &mxc_imx8_gasket_ops,
 	.has_36bit_dma		= true,
+	.raw32_chan_cfg		= false,
+	.buf_max_size		= false,
+};
+
+static const struct mxc_isi_plat_data mxc_imx8ulp_data = {
+	.model			= MXC_ISI_IMX8ULP,
+	.num_ports		= 1,
+	.num_channels		= 1,
+	.reg_offset		= 0x0,
+	.ier_reg		= &mxc_imx8_isi_ier_v2,
+	.set_thd		= &mxc_imx8_isi_thd_v1,
+	.clks			= mxc_imx8mn_clks,
+	.num_clks		= ARRAY_SIZE(mxc_imx8mn_clks),
+	.buf_active_reverse	= true,
+	.has_36bit_dma		= false,
+	.raw32_chan_cfg		= false,
+};
+
+static const struct mxc_isi_plat_data mxc_imx91_data = {
+	.model			= MXC_ISI_IMX91,
+	.num_ports		= 1,
+	.num_channels		= 1,
+	.reg_offset		= 0x0,
+	.ier_reg		= &mxc_imx8_isi_ier_v2,
+	.set_thd		= &mxc_imx8_isi_thd_v1,
+	.clks			= mxc_imx8mn_clks,
+	.num_clks		= ARRAY_SIZE(mxc_imx8mn_clks),
+	.buf_active_reverse	= true,
+	.has_36bit_dma		= false,
 	.raw32_chan_cfg		= false,
 };
 
@@ -326,6 +375,7 @@ static const struct mxc_isi_plat_data mxc_imx93_data = {
 	.gasket_ops		= &mxc_imx93_gasket_ops,
 	.has_36bit_dma		= false,
 	.raw32_chan_cfg		= false,
+	.buf_max_size		= false,
 };
 
 static const struct mxc_isi_plat_data mxc_imx95_data = {
@@ -338,10 +388,37 @@ static const struct mxc_isi_plat_data mxc_imx95_data = {
 	.clks			= mxc_imx95_clks,
 	.num_clks		= ARRAY_SIZE(mxc_imx95_clks),
 	.buf_active_reverse	= true,
-	.gasket_ops             = &mxc_imx95_gasket_ops,
 	.has_36bit_dma		= true,
 	.raw32_chan_cfg		= true,
+	.buf_max_size		= true,
 };
+
+static const struct mxc_isi_plat_data mxc_imx8qm_data = {
+	.model			= MXC_ISI_IMX8QM,
+	.num_ports		= 5,
+	.num_channels		= 8,
+	.reg_offset		= 0x10000,
+	.ier_reg		= &mxc_imx8_isi_ier_v1,
+	.set_thd		= &mxc_imx8_isi_thd_v1,
+	.clks			= mxc_imx8qm_clks,
+	.num_clks		= ARRAY_SIZE(mxc_imx8qm_clks),
+	.buf_active_reverse	= false,
+	.has_36bit_dma		= false,
+};
+
+static const struct mxc_isi_plat_data mxc_imx8qxp_data = {
+	.model			= MXC_ISI_IMX8QXP,
+	.num_ports		= 5,
+	.num_channels		= 5,
+	.reg_offset		= 0x10000,
+	.ier_reg		= &mxc_imx8_isi_ier_v1,
+	.set_thd		= &mxc_imx8_isi_thd_v1,
+	.clks			= mxc_imx8qxp_clks,
+	.num_clks		= ARRAY_SIZE(mxc_imx8qxp_clks),
+	.buf_active_reverse	= true,
+	.has_36bit_dma		= false,
+};
+
 
 /* -----------------------------------------------------------------------------
  * Power management
@@ -356,6 +433,7 @@ static int mxc_isi_pm_suspend(struct device *dev)
 		struct mxc_isi_pipe *pipe = &isi->pipes[i];
 
 		mxc_isi_video_suspend(pipe);
+		mxc_isi_m2m_suspend(pipe);
 	}
 
 	return pm_runtime_force_suspend(dev);
@@ -383,6 +461,13 @@ static int mxc_isi_pm_resume(struct device *dev)
 			 * Record the last error as it's as meaningful as any,
 			 * and continue resuming the other pipelines.
 			 */
+			err = ret;
+		}
+
+		ret = mxc_isi_m2m_resume(pipe);
+		if (ret) {
+			dev_err(dev, "Failed to resume ISI%u (%d) for m2m\n", i,
+				ret);
 			err = ret;
 		}
 	}
@@ -557,10 +642,14 @@ static void mxc_isi_remove(struct platform_device *pdev)
 }
 
 static const struct of_device_id mxc_isi_of_match[] = {
-	{ .compatible = "nxp,imx8mn-isi", .data = &mxc_imx8mn_data },
-	{ .compatible = "nxp,imx8mp-isi", .data = &mxc_imx8mp_data },
-	{ .compatible = "nxp,imx93-isi", .data = &mxc_imx93_data },
-	{ .compatible = "nxp,imx95-isi", .data = &mxc_imx95_data },
+	{ .compatible = "fsl,imx8mn-isi", .data = &mxc_imx8mn_data },
+	{ .compatible = "fsl,imx8mp-isi", .data = &mxc_imx8mp_data },
+	{ .compatible = "fsl,imx8ulp-isi", .data = &mxc_imx8ulp_data },
+	{ .compatible = "fsl,imx91-isi", .data = &mxc_imx91_data },
+	{ .compatible = "fsl,imx93-isi", .data = &mxc_imx93_data },
+	{ .compatible = "fsl,imx95-isi", .data = &mxc_imx95_data },
+	{ .compatible = "fsl,imx8qm-isi", .data = &mxc_imx8qm_data },
+	{ .compatible = "fsl,imx8qxp-isi", .data = &mxc_imx8qxp_data },
 	{ /* sentinel */ },
 };
 MODULE_DEVICE_TABLE(of, mxc_isi_of_match);

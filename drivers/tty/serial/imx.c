@@ -24,7 +24,6 @@
 #include <linux/ktime.h>
 #include <linux/pinctrl/consumer.h>
 #include <linux/rational.h>
-#include <linux/reset.h>
 #include <linux/slab.h>
 #include <linux/of.h>
 #include <linux/io.h>
@@ -1472,13 +1471,6 @@ static int imx_uart_startup(struct uart_port *port)
 	unsigned long flags;
 	int dma_is_inited = 0;
 	u32 ucr1, ucr2, ucr3, ucr4;
-
-	/* some modem may need reset */
-	if (!tty_port_suspended(tty_port)) {
-		retval = device_reset(sport->port.dev);
-		if (retval && retval != -ENOENT)
-			return retval;
-	}
 
 	retval = clk_prepare_enable(sport->clk_per);
 	if (retval)

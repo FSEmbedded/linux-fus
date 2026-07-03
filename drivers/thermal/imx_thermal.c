@@ -85,8 +85,6 @@ enum imx_thermal_trip {
 #define TEMPMON_IMX6SX			2
 #define TEMPMON_IMX7D			3
 
-#define IMX_TEMP_PASSIVE_COOL_DELTA	10000
-
 struct thermal_soc_data {
 	u32 version;
 
@@ -119,7 +117,8 @@ struct thermal_soc_data {
 static struct thermal_trip trips[] = {
 	[IMX_TRIP_PASSIVE]  = { .type = THERMAL_TRIP_PASSIVE,
 				.flags = THERMAL_TRIP_FLAG_RW_TEMP },
-	[IMX_TRIP_CRITICAL] = { .type = THERMAL_TRIP_CRITICAL },
+	[IMX_TRIP_CRITICAL] = { .type = THERMAL_TRIP_CRITICAL,
+				.flags = THERMAL_TRIP_FLAG_RW_TEMP },
 };
 
 static struct thermal_soc_data thermal_imx6q_data = {
@@ -343,12 +342,21 @@ static int imx_set_trip_temp(struct thermal_zone_device *tz,
 	if (ret < 0)
 		return ret;
 
-	/* do not allow passive to be set higher than critical */
-	if (temp < 0 || temp > trips[IMX_TRIP_CRITICAL].temperature)
-		return -EINVAL;
+	if (trip->type == THERMAL_TRIP_CRITICAL) {
+		if (temp > (data->temp_max - (1000 * 5)))
+			return -EINVAL;
+		trips[IMX_TRIP_CRITICAL].temperature = temp;
+		if (data->socdata->version == TEMPMON_IMX6SX)
+			imx_set_panic_temp(data, temp);
+	}
 
-	imx_set_alarm_temp(data, temp);
-	trips[IMX_TRIP_PASSIVE].temperature = temp;
+
+	if (trip->type == THERMAL_TRIP_PASSIVE) {
+		if (temp < 0 || temp > trips[IMX_TRIP_CRITICAL].temperature)
+			return -EINVAL;
+		trips[IMX_TRIP_PASSIVE].temperature = temp;
+		imx_set_alarm_temp(data, temp);
+	}
 
 	pm_runtime_put(data->dev);
 
@@ -368,7 +376,6 @@ static struct thermal_zone_device_ops imx_tz_ops = {
 	.get_temp = imx_get_temp,
 	.change_mode = imx_change_mode,
 	.set_trip_temp = imx_set_trip_temp,
-	.get_trend = imx_get_trend,
 };
 
 static int imx_init_calib(struct platform_device *pdev, u32 ocotp_ana1)
@@ -563,10 +570,8 @@ static int imx_thermal_register_legacy_cooling(struct imx_thermal_data *data)
 	}
 
 	of_node_put(np);
-	if (ret)
-		return ret;
 
-	return 0;
+	return ret;
 }
 
 static void imx_thermal_unregister_legacy_cooling(struct imx_thermal_data *data)

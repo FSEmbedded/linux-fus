@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
 /*
  *
- * (C) COPYRIGHT 2015-2023 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2015-2024 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -126,7 +126,10 @@
 #define GPU_ID2_PRODUCT_LTIX GPU_ID2_MODEL_MAKE(12, 1)
 #define GPU_ID2_PRODUCT_TKRX GPU_ID2_MODEL_MAKE(13, 0)
 #define GPU_ID2_PRODUCT_LKRX GPU_ID2_MODEL_MAKE(13, 1)
-
+/* Do not increase the size of this macros any more.
+ * ID2 macros are deprecated but keeping them for backward compatibility.
+ * New GPU_ID_PRODUCT_XXXX macros in current file replace these macros.
+ */
 
 
 #define GPU_ID_U8_COMP(val3, val2, val1, val0) \
@@ -173,5 +176,8 @@
 #define GPU_ID_PRODUCT_LTIX GPU_ID_MODEL_MAKE(12, 1)
 #define GPU_ID_PRODUCT_TKRX GPU_ID_MODEL_MAKE(13, 0)
 #define GPU_ID_PRODUCT_LKRX GPU_ID_MODEL_MAKE(13, 1)
+#define GPU_ID_PRODUCT_IDRX GPU_ID_MODEL_MAKE(14, 0)
+#define GPU_ID_PRODUCT_TDRX GPU_ID_MODEL_MAKE(14, 1)
+#define GPU_ID_PRODUCT_LDRX GPU_ID_MODEL_MAKE(14, 3)
 
 #endif /* _UAPI_KBASE_GPU_ID_H_ */

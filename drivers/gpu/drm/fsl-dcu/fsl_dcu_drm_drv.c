@@ -126,6 +126,14 @@ static int fsl_dcu_load(struct drm_device *dev, unsigned long flags)
 		return ret;
 	}
 
+	if (of_device_is_compatible(fsl_dev->np, "fsl,ls1021a-dcu")) {
+		ret = fsl_dcu_scfg_config_ls1021a();
+		if (ret < 0) {
+			dev_err(dev->dev, "failed to enable pixclk\n");
+			goto done_vblank;
+		}
+	}
+
 	scfg = syscon_regmap_lookup_by_compatible("fsl,ls1021a-scfg");
 	if (PTR_ERR(scfg) != -ENODEV) {
 		/*

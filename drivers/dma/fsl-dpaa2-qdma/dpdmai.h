@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-2.0 */
-/* Copyright 2019-2021 NXP */
+/* Copyright 2019 NXP */
 
 #ifndef __FSL_DPDMAI_H
 #define __FSL_DPDMAI_H
@@ -20,17 +20,16 @@
 #define DPDMAI_CMDID_FORMAT(x)		DPDMAI_CMDID_FORMAT_V(x, DPDMAI_CMD_BASE_VERSION)
 
 /* Command IDs */
-#define DPDMAI_CMDID_CLOSE		DPDMAI_CMD(0x800)
-#define DPDMAI_CMDID_OPEN               DPDMAI_CMD(0x80E)
-#define DPDMAI_CMDID_CREATE             DPDMAI_CMD_V2(0x90E)
-#define DPDMAI_CMDID_DESTROY            DPDMAI_CMD(0x98E)
-#define DPDMAI_CMDID_GET_API_VERSION	DPDMAI_CMD(0xa0E)
+#define DPDMAI_CMDID_CLOSE		DPDMAI_CMDID_FORMAT(0x800)
+#define DPDMAI_CMDID_OPEN               DPDMAI_CMDID_FORMAT(0x80E)
+#define DPDMAI_CMDID_CREATE             DPDMAI_CMDID_FORMAT(0x90E)
+#define DPDMAI_CMDID_DESTROY            DPDMAI_CMDID_FORMAT(0x900)
 
-#define DPDMAI_CMDID_ENABLE             DPDMAI_CMD(0x002)
-#define DPDMAI_CMDID_DISABLE            DPDMAI_CMD(0x003)
-#define DPDMAI_CMDID_GET_ATTR           DPDMAI_CMD_V2(0x004)
-#define DPDMAI_CMDID_RESET              DPDMAI_CMD(0x005)
-#define DPDMAI_CMDID_IS_ENABLED		DPDMAI_CMD(0x006)
+#define DPDMAI_CMDID_ENABLE             DPDMAI_CMDID_FORMAT(0x002)
+#define DPDMAI_CMDID_DISABLE            DPDMAI_CMDID_FORMAT(0x003)
+#define DPDMAI_CMDID_GET_ATTR           DPDMAI_CMDID_FORMAT(0x004)
+#define DPDMAI_CMDID_RESET              DPDMAI_CMDID_FORMAT(0x005)
+#define DPDMAI_CMDID_IS_ENABLED         DPDMAI_CMDID_FORMAT(0x006)
 
 #define DPDMAI_CMDID_SET_RX_QUEUE	DPDMAI_CMDID_FORMAT_V(0x1A0, 2)
 #define DPDMAI_CMDID_GET_RX_QUEUE       DPDMAI_CMDID_FORMAT_V(0x1A1, 2)
@@ -51,11 +50,6 @@
  */
 #define DPDMAI_PRIO_NUM		2
 
-/**
- * All queues considered; see dpdmai_set_rx_queue()
- */
-#define DPDMAI_ALL_QUEUES	((uint8_t)(-1))
-
 /* DPDMAI queue modification options */
 
 /*
@@ -67,69 +61,6 @@
  * Select to modify the queue's destination
  */
 #define DPDMAI_QUEUE_OPT_DEST		0x2
-
-struct dpdmai_cmd_open {
-	u32	dpdmai_id;
-};
-
-struct dpdmai_cmd_create {
-	u8	num_queues;
-	u8	priorities[2];
-};
-
-struct dpdmai_cmd_destroy {
-	u32	dpdmai_id;
-};
-
-#define DPDMAI_ENABLE_SHIFT	0
-#define DPDMAI_ENABLE_SIZE	1
-
-struct dpdmai_rsp_is_enabled {
-	/* only the LSB bit */
-	u8 en;
-};
-
-struct dpdmai_rsp_get_attributes {
-	u32 id;
-	u8 num_of_priorities;
-	u8 num_of_queues;
-};
-
-#define DPDMAI_DEST_TYPE_SHIFT	0
-#define DPDMAI_DEST_TYPE_SIZE	4
-
-struct dpdmai_cmd_set_rx_queue {
-	u32 dest_id;
-	u8 dest_priority;
-	u8 priority;
-	/* from LSB: dest_type:4 */
-	u8 dest_type;
-	u8 queue_idx;
-	u64 user_ctx;
-	u32 options;
-};
-
-struct dpdmai_cmd_get_queue {
-	u8 pad[5];
-	u8 priority;
-	u8 queue_idx;
-};
-
-struct dpdmai_rsp_get_rx_queue {
-	u32 dest_id;
-	u8 dest_priority;
-	u8 pad1;
-	/* from LSB: dest_type:4 */
-	u8 dest_type;
-	u8 pad2;
-	u64 user_ctx;
-	u32 fqid;
-};
-
-struct dpdmai_rsp_get_tx_queue {
-	u64 pad;
-	u32 fqid;
-};
 
 /**
  * struct dpdmai_cfg - Structure representing DPDMAI configuration
@@ -234,8 +165,6 @@ int dpdmai_close(struct fsl_mc_io *mc_io, u32 cmd_flags, u16 token);
 int dpdmai_destroy(struct fsl_mc_io *mc_io, u32 cmd_flags, u32 dpdmai_id, u16 token);
 int dpdmai_enable(struct fsl_mc_io *mc_io, u32 cmd_flags, u16 token);
 int dpdmai_disable(struct fsl_mc_io *mc_io, u32 cmd_flags, u16 token);
-int dpdmai_is_enabled(struct fsl_mc_io *mc_io, u32 cmd_flags,
-		      u16 token, int *en);
 int dpdmai_reset(struct fsl_mc_io *mc_io, u32 cmd_flags, u16 token);
 int dpdmai_get_attributes(struct fsl_mc_io *mc_io, u32 cmd_flags,
 			  u16 token, struct dpdmai_attr	*attr);

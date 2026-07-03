@@ -48,33 +48,6 @@ struct dev_pm_domain_list {
 };
 
 /*
- * Flags to control the behaviour when attaching a device to its PM domains.
- *
- * PD_FLAG_NO_DEV_LINK:		As the default behaviour creates a device-link
- *				for every PM domain that gets attached, this
- *				flag can be used to skip that.
- *
- * PD_FLAG_DEV_LINK_ON:		Add the DL_FLAG_RPM_ACTIVE to power-on the
- *				supplier and its PM domain when creating the
- *				device-links.
- *
- */
-#define PD_FLAG_NO_DEV_LINK		BIT(0)
-#define PD_FLAG_DEV_LINK_ON		BIT(1)
-
-struct dev_pm_domain_attach_data {
-	const char * const *pd_names;
-	const u32 num_pd_names;
-	const u32 pd_flags;
-};
-
-struct dev_pm_domain_list {
-	struct device **pd_devs;
-	struct device_link **pd_links;
-	u32 num_pds;
-};
-
-/*
  * Flags to control the behaviour of a genpd.
  *
  * These flags may be set in the struct generic_pm_domain's flags field by a
@@ -124,6 +97,8 @@ struct dev_pm_domain_list {
  * GENPD_FLAG_DEV_NAME_FW:	Instructs genpd to generate an unique device name
  *				using ida. It is used by genpd providers which
  *				get their genpd-names directly from FW.
+ * GENPD_FLAG_PM_PD_CLK:	Instructs genpd to enable/disable PD clocks when
+ *				powering on/off domain.
  */
 #define GENPD_FLAG_PM_CLK	 (1U << 0)
 #define GENPD_FLAG_IRQ_SAFE	 (1U << 1)
@@ -134,6 +109,7 @@ struct dev_pm_domain_list {
 #define GENPD_FLAG_MIN_RESIDENCY (1U << 6)
 #define GENPD_FLAG_OPP_TABLE_FW	 (1U << 7)
 #define GENPD_FLAG_DEV_NAME_FW	 (1U << 8)
+#define GENPD_FLAG_PM_PD_CLK	 (1U << 9)
 
 enum gpd_status {
 	GENPD_STATE_ON = 0,	/* PM domain is on */
@@ -237,6 +213,10 @@ struct generic_pm_domain {
 			unsigned long raw_lock_flags;
 		};
 	};
+
+	unsigned int state_idx_saved; /* saved power state for recovery after system suspend/resume */
+	struct clk_bulk_data *clks;
+	int num_clks;
 };
 
 static inline struct generic_pm_domain *pd_to_genpd(struct dev_pm_domain *pd)

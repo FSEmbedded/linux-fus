@@ -21,14 +21,13 @@
 &pcal6524 {
 	/* SW select the qspi pins. Or set SW4[1] to 1 on board */
 	sd3-qspi-sel-hog {
-		gpio-hog;
-		gpios = <16 GPIO_ACTIVE_HIGH>;
+		/delete-property/ output-low;
 		output-high;
 	};
 };
 
 &flexspi1 {
-	pinctrl-names = "default", "sleep";
+	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexspi1>;
 	status = "okay";
 

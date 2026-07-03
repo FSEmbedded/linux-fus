@@ -120,6 +120,19 @@ struct imx_rproc {
 	u32				entry;		/* cpu start address */
 	u32				core_index;
 	struct dev_pm_domain_list	*pd_list;
+	u32				startup_delay;
+};
+
+static const struct imx_rproc_att imx_rproc_att_imx95_m7[] = {
+	/* dev addr , sys addr  , size	    , flags */
+	/* TCM CODE NON-SECURE */
+	{ 0x00000000, 0x203C0000, 0x00040000, ATT_OWN | ATT_IOMEM },
+
+	/* TCM SYS NON-SECURE*/
+	{ 0x20000000, 0x20400000, 0x00040000, ATT_OWN | ATT_IOMEM },
+
+	/* DDR */
+	{ 0x80000000, 0x80000000, 0x50000000, 0 },
 };
 
 static const struct imx_rproc_att imx_rproc_att_imx93[] = {
@@ -692,6 +705,44 @@ imx_rproc_elf_find_loaded_rsc_table(struct rproc *rproc, const struct firmware *
 	return rproc_elf_find_loaded_rsc_table(rproc, fw);
 }
 
+static u64 imx_rproc_get_boot_addr(struct rproc *rproc, const struct firmware *fw)
+{
+	struct imx_rproc *priv = rproc->priv;
+	struct device *dev = priv->dev;
+	const void *shdr, *name_shdr;
+	int i;
+	const char *name_interrupts;
+	const u8 *elf_data = (void *)fw->data;
+	u8 class = fw_elf_get_class(fw);
+	const void *ehdr = elf_data;
+	u16 shnum = elf_hdr_get_e_shnum(class, ehdr);
+	u32 elf_shdr_get_size = elf_size_of_shdr(class);
+	u16 shstrndx = elf_hdr_get_e_shstrndx(class, ehdr);
+	u64 sh_addr;
+
+	if (!of_device_is_compatible(dev->of_node, "fsl,imx93-cm33")
+	    && !of_device_is_compatible(dev->of_node, "fsl,imx95-cm7"))
+		return rproc_elf_get_boot_addr(rproc, fw);
+
+	/* First, get the section header according to the elf class */
+	shdr = elf_data + elf_hdr_get_e_shoff(class, ehdr);
+	/* Compute section header entry in shdr array */
+	name_shdr = shdr + (shstrndx * elf_shdr_get_size);
+	/* Finally, compute section address in elf */
+	name_interrupts = elf_data + elf_shdr_get_sh_offset(class, name_shdr);
+
+	for (i = 0; i < shnum; i++, shdr += elf_shdr_get_size) {
+		u32 name = elf_shdr_get_sh_name(class, shdr);
+
+		if (!strcmp(name_interrupts + name, ".interrupts")) {
+			sh_addr = elf_shdr_get_sh_addr(class, shdr);
+			return sh_addr;
+		}
+	}
+
+	return 0;
+}
+
 static const struct rproc_ops imx_rproc_ops = {
 	.prepare	= imx_rproc_prepare,
 	.attach		= imx_rproc_attach,
@@ -1174,6 +1225,10 @@ static int imx_rproc_probe(struct platform_device *pdev)
 			goto err_put_clk;
 		}
 	}
+
+	ret = of_property_read_u32(dev->of_node, "fsl,startup-delay-ms", &priv->startup_delay);
+	if (ret)
+		priv->startup_delay = 0;
 
 	ret = rproc_add(rproc);
 	if (ret) {

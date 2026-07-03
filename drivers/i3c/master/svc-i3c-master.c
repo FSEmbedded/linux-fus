@@ -631,20 +631,13 @@ static int svc_i3c_master_bus_init(struct i3c_master_controller *m)
 
 	switch (bus->mode) {
 	case I3C_BUS_MODE_PURE:
-		/* Using I3C Push-Pull mode and I2C OP 50% duty-cycle. */
-		pplow = 0;
-		ppbaud = DIV_ROUND_UP(fclk_rate / 2, i3c_scl_rate) - 1;
-		high_period_ns = (ppbaud + 1) * fclk_period_ns;
-		odbaud = DIV_ROUND_UP(fclk_rate, SVC_I3C_QUICK_I2C_CLK * (1 + ppbaud)) - 2;
-		od_low_period_ns = (odbaud + 1) * high_period_ns;
 		i2cbaud = 0;
 		odstop = 0;
 		break;
 	case I3C_BUS_MODE_MIXED_FAST:
 		/*
-		 * I3C in <= 12.5M PP + I3C OP + I2C OP in clk rate
-		 * keep I3C OD clk high period <= 40ns and use odbaud and pplow
-		 * to adjust the i2c/i3c duty cycle.
+		 * Using I2C Fm+ mode, target is 1MHz/1000ns, the difference
+		 * between the high and low period does not really matter.
 		 */
 		i2cbaud = DIV_ROUND_UP(i2c_period_ns, od_low_period_ns) - 2;
 		odstop = 1;

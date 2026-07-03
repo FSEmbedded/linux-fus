@@ -290,9 +290,6 @@ static int snd_soc_is_matching_dai(const struct snd_soc_dai_link_component *dlc,
 	if (strcmp(dlc->dai_name, dai->name) == 0)
 		return 1;
 
-	if (strcmp(dlc->dai_name, dai->name) == 0)
-		return 1;
-
 	if (dai->component->name &&
 	    strcmp(dlc->dai_name, dai->component->name) == 0)
 		return 1;
@@ -1988,7 +1985,7 @@ match:
 			 * assumption that all cpu_dais are exposed by the same
 			 * component
 			 */
-			dlc = asoc_link_to_cpu(dai_link, 0);
+			dlc = snd_soc_link_to_cpu(dai_link, 0);
 			dai = snd_soc_find_dai(dlc);
 
 			if (!dai || dai->component != component)

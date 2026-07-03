@@ -102,6 +102,11 @@ gctBOOL memTraceFlag = 1;
 #endif
 #endif
 
+#if gcdENABLE_GPU_WORK_PERIOD_TRACE
+#   include "gc_hal_kernel_trace_gpu_work.h"
+#   define ANDROID_FIRST_APPLICATION_UID    10000
+#endif
+
 #define _GC_OBJ_ZONE        gcvZONE_OS
 #define USING_PFN_FOLLOW    0
 
@@ -415,6 +420,12 @@ _QueryProcessPageTable(IN gctPOINTER Logical, OUT gctPHYS_ADDR_T *Address)
         struct vm_area_struct *vma;
         unsigned long          pfn = 0;
         int                    ret = 0;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 12, 0)
+        struct follow_pfnmap_args args = { };
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(6, 10, 0)
+        pte_t *ptep;
+        spinlock_t *ptl;
+#endif
 
         down_read(&current_mm_mmap_sem);
         vma = find_vma(current->mm, logical);
@@ -422,11 +433,26 @@ _QueryProcessPageTable(IN gctPOINTER Logical, OUT gctPHYS_ADDR_T *Address)
             up_read(&current_mm_mmap_sem);
             return gcvSTATUS_NOT_FOUND;
         }
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 12, 0)
+        args.address = logical;
+        args.vma = vma;
+        ret = follow_pfnmap_start(&args);
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(6, 10, 0)
+        ret = follow_pte(vma, logical, &ptep, &ptl);
+#else
         ret = follow_pfn(vma, logical, &pfn);
+#endif
         up_read(&current_mm_mmap_sem);
         if (ret < 0) {
             return gcvSTATUS_NOT_FOUND;
         } else {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 12, 0)
+            pfn = args.pfn;
+            follow_pfnmap_end(&args);
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(6, 10, 0)
+            pfn = pte_pfn(ptep_get(ptep));
+            pte_unmap_unlock(ptep, ptl);
+#endif
             *Address = (pfn << PAGE_SHIFT) | offset;
             return gcvSTATUS_OK;
         }
@@ -7414,3 +7440,18 @@ gckOS_TraceGpuMemory(IN gckOS Os, IN gctINT32 ProcessID, IN gctINT64 Delta)
 #endif
     return gcvSTATUS_OK;
 }
+
+#if gcdENABLE_GPU_WORK_PERIOD_TRACE
+gceSTATUS
+gckOS_GetApplicationUserID(gctUINT32 CoreID)
+{
+    gctUINT32 UserID;
+
+    UserID = _GetUserID();
+
+    if (UserID >= ANDROID_FIRST_APPLICATION_UID)
+        trace_gpu_work_period(CoreID, UserID, 100000000, 300000000, 150000000);
+
+    return gcvSTATUS_OK;
+}
+#endif

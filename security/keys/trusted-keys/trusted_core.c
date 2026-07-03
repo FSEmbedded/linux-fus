@@ -12,7 +12,6 @@
 #include <keys/trusted_caam.h>
 #include <keys/trusted_dcp.h>
 #include <keys/trusted_tpm.h>
-#include <keys/trusted_dcp.h>
 #include <linux/capability.h>
 #include <linux/err.h>
 #include <linux/init.h>
