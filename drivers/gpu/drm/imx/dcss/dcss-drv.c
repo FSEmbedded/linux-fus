@@ -47,17 +47,13 @@ static int dcss_drv_init(struct device *dev, bool componentized)
 	struct dcss_drv *mdrv;
 	int err = 0;
 
-	mdrv = kzalloc(sizeof(*mdrv), GFP_KERNEL);
+	mdrv = devm_kzalloc(dev, sizeof(*mdrv), GFP_KERNEL);
 	if (!mdrv)
 		return -ENOMEM;
 
-	mdrv->is_componentized = componentized;
-
-	mdrv->dcss = dcss_dev_create(dev, componentized);
-	if (IS_ERR(mdrv->dcss)) {
-		err = PTR_ERR(mdrv->dcss);
-		goto err;
-	}
+	mdrv->dcss = dcss_dev_create(dev, hdmi_output);
+	if (IS_ERR(mdrv->dcss))
+		return PTR_ERR(mdrv->dcss);
 
 	dev_set_drvdata(dev, mdrv);
 
@@ -73,75 +69,22 @@ static int dcss_drv_init(struct device *dev, bool componentized)
 dcss_shutoff:
 	dcss_dev_destroy(mdrv->dcss);
 
-err:
-	kfree(mdrv);
 	return err;
 }
 
-static void dcss_drv_deinit(struct device *dev, bool componentized)
-{
-	struct dcss_drv *mdrv = dev_get_drvdata(dev);
-
-	dcss_kms_detach(mdrv->kms, componentized);
-	dcss_dev_destroy(mdrv->dcss);
-
-	kfree(mdrv);
-}
-
-static int dcss_drv_bind(struct device *dev)
-{
-	return dcss_drv_init(dev, true);
-}
-
-static void dcss_drv_unbind(struct device *dev)
-{
-	return dcss_drv_deinit(dev, true);
-}
-
-static const struct component_master_ops dcss_master_ops = {
-	.bind	= dcss_drv_bind,
-	.unbind	= dcss_drv_unbind,
-};
-
-static int compare_of(struct device *dev, void *data)
-{
-	return dev->of_node == data;
-}
-
-static int dcss_drv_platform_probe(struct platform_device *pdev)
-{
-	struct device *dev = &pdev->dev;
-	struct component_match *match = NULL;
-	struct device_node *remote;
-
-	if (!dev->of_node)
-		return -ENODEV;
-
-	remote = of_graph_get_remote_node(dev->of_node, 0, 0);
-	if (!remote)
-		return -ENODEV;
-
-	if (of_device_is_compatible(remote, "fsl,imx8mq-nwl-dsi")) {
-		of_node_put(remote);
-		return dcss_drv_init(dev, false);
-	}
-
-	drm_of_component_match_add(dev, &match, compare_of, remote);
-	of_node_put(remote);
-
-	return component_master_add_with_match(dev, &dcss_master_ops, match);
-}
-
-static int dcss_drv_platform_remove(struct platform_device *pdev)
+static void dcss_drv_platform_remove(struct platform_device *pdev)
 {
 	struct dcss_drv *mdrv = dev_get_drvdata(&pdev->dev);
 
-	if (mdrv->is_componentized)
-		component_master_del(&pdev->dev, &dcss_master_ops);
-	else
-		dcss_drv_deinit(&pdev->dev, false);
+	dcss_kms_detach(mdrv->kms);
+	dcss_dev_destroy(mdrv->dcss);
+}
 
-	return 0;
+static void dcss_drv_platform_shutdown(struct platform_device *pdev)
+{
+	struct dcss_drv *mdrv = dev_get_drvdata(&pdev->dev);
+
+	dcss_kms_shutdown(mdrv->kms);
 }
 
 static struct dcss_type_data dcss_types[] = {
@@ -170,7 +113,8 @@ MODULE_DEVICE_TABLE(of, dcss_of_match);
 
 static struct platform_driver dcss_platform_driver = {
 	.probe	= dcss_drv_platform_probe,
-	.remove	= dcss_drv_platform_remove,
+	.remove_new = dcss_drv_platform_remove,
+	.shutdown = dcss_drv_platform_shutdown,
 	.driver	= {
 		.name = "imx-dcss",
 		.of_match_table	= dcss_of_match,

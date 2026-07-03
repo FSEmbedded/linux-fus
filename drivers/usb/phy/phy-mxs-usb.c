@@ -19,7 +19,6 @@
 #include <linux/mfd/syscon.h>
 #include <linux/iopoll.h>
 #include <linux/regulator/consumer.h>
-#include <linux/pm_runtime.h>
 
 #define DRIVER_NAME "mxs_phy"
 
@@ -72,9 +71,6 @@
 #define BM_USBPHY_PLL_EN_USB_CLKS		BIT(6)
 
 /* Anatop Registers */
-#define ANADIG_PLL_USB2				0x20
-#define ANADIG_PLL_USB2_SET			0x24
-#define ANADIG_PLL_USB2_CLR			0x28
 #define ANADIG_REG_1P1_SET			0x114
 #define ANADIG_REG_1P1_CLR			0x118
 
@@ -133,38 +129,6 @@
 #define BM_ANADIG_REG_1P1_ENABLE_WEAK_LINREG	BIT(18)
 #define BM_ANADIG_REG_1P1_TRACK_VDD_SOC_CAP	BIT(19)
 
-#define BM_ANADIG_PLL_USB2_HOLD_RING_OFF	BIT(11)
-
-/* DCD module, the offset is 0x800 */
-#define DCD_CONTROL				0x800
-#define DCD_CLOCK				(DCD_CONTROL + 0x4)
-#define DCD_STATUS				(DCD_CONTROL + 0x8)
-#define DCD_TIMER1				(DCD_CONTROL + 0x14)
-
-#define DCD_CONTROL_SR				BIT(25)
-#define DCD_CONTROL_START			BIT(24)
-#define DCD_CONTROL_BC12			BIT(17)
-#define DCD_CONTROL_IE				BIT(16)
-#define DCD_CONTROL_IF				BIT(8)
-#define DCD_CONTROL_IACK			BIT(0)
-
-#define DCD_CLOCK_MHZ				BIT(0)
-
-#define DCD_STATUS_ACTIVE			BIT(22)
-#define DCD_STATUS_TO				BIT(21)
-#define DCD_STATUS_ERR				BIT(20)
-#define DCD_STATUS_SEQ_STAT			(BIT(18) | BIT(19))
-#define DCD_CHG_PORT				BIT(19)
-#define DCD_CHG_DET				(BIT(18) | BIT(19))
-#define DCD_CHG_DPIN				BIT(18)
-#define DCD_STATUS_SEQ_RES			(BIT(16) | BIT(17))
-#define DCD_SDP_PORT				BIT(16)
-#define DCD_CDP_PORT				BIT(17)
-#define DCD_DCP_PORT				(BIT(16) | BIT(17))
-
-#define DCD_TVDPSRC_ON_MASK			GENMASK(9, 0)
-#define DCD_TVDPSRC_ON_VALUE			0xf0 /* 240ms */
-
 #define to_mxs_phy(p) container_of((p), struct mxs_phy, phy)
 
 /* Do disconnection between PHY and controller without vbus */
@@ -198,17 +162,13 @@
 #define MXS_PHY_TX_D_CAL_MAX			119
 
 /*
- * At some versions, the PHY2's clock is controlled by hardware directly,
+ * At imx6q/6sl/6sx, the PHY2's clock is controlled by hardware directly,
  * eg, according to PHY's suspend status. In these PHYs, we only need to
  * open the clock at the initialization and close it at its shutdown routine.
- * It will be benefit for remote wakeup case which needs to send resume
- * signal as soon as possible, and in this case, the resume signal can be sent
- * out without software interfere.
+ * These PHYs can send resume signal without software interfere if not
+ * gate clock.
  */
 #define MXS_PHY_HARDWARE_CONTROL_PHY2_CLK	BIT(4)
-
-/* The MXS PHYs which have DCD module for charger detection */
-#define MXS_PHY_HAS_DCD				BIT(5)
 
 struct mxs_phy_data {
 	unsigned int flags;
@@ -277,8 +237,6 @@ struct mxs_phy {
 	u32 tx_reg_set;
 	u32 tx_reg_mask;
 	struct regulator *phy_3p0;
-	bool hardware_control_phy2_clk;
-	unsigned long clk_rate;
 };
 
 static inline bool is_imx6q_phy(struct mxs_phy *mxs_phy)
@@ -294,11 +252,6 @@ static inline bool is_imx6sl_phy(struct mxs_phy *mxs_phy)
 static inline bool is_imx7ulp_phy(struct mxs_phy *mxs_phy)
 {
 	return mxs_phy->data == &imx7ulp_phy_data;
-}
-
-static inline bool is_imx8ulp_phy(struct mxs_phy *mxs_phy)
-{
-	return mxs_phy->data == &imx8ulp_phy_data;
 }
 
 static inline bool is_imx6ul_phy(struct mxs_phy *mxs_phy)
@@ -635,32 +588,19 @@ static int mxs_phy_suspend(struct usb_phy *x, int suspend)
 		writel(BM_USBPHY_CTRL_CLKGATE,
 		       x->io_priv + HW_USBPHY_CTRL_SET);
 		if (!(mxs_phy->port_id == 1 &&
-				mxs_phy->hardware_control_phy2_clk))
+			(mxs_phy->data->flags &
+				MXS_PHY_HARDWARE_CONTROL_PHY2_CLK)))
 			clk_disable_unprepare(mxs_phy->clk);
-		pm_runtime_put(x->dev);
 	} else {
 		pm_runtime_get_sync(x->dev);
 		mxs_phy_clock_switch_delay();
 		if (!(mxs_phy->port_id == 1 &&
-				mxs_phy->hardware_control_phy2_clk)) {
+			(mxs_phy->data->flags &
+				MXS_PHY_HARDWARE_CONTROL_PHY2_CLK))) {
 			ret = clk_prepare_enable(mxs_phy->clk);
 			if (ret)
 				return ret;
 		}
-
-		/*
-		 * Per IC design's requirement, hold_ring_off bit can be
-		 * cleared 25us after PLL power up and 25us before any USB
-		 * TX/RX.
-		 */
-		if (mxs_phy->port_id == 1 && mxs_phy->regmap_anatop) {
-			udelay(25);
-			regmap_write(mxs_phy->regmap_anatop,
-				     ANADIG_PLL_USB2_CLR,
-				     BM_ANADIG_PLL_USB2_HOLD_RING_OFF);
-			udelay(25);
-		}
-
 		writel(BM_USBPHY_CTRL_CLKGATE,
 		       x->io_priv + HW_USBPHY_CTRL_CLR);
 		writel(0, x->io_priv + HW_USBPHY_PWD);
@@ -1104,29 +1044,16 @@ static int mxs_phy_probe(struct platform_device *pdev)
 	mxs_phy->clk = clk;
 	mxs_phy->data = of_device_get_match_data(&pdev->dev);
 
-	if (mxs_phy->data->flags & MXS_PHY_HAS_DCD)
-		mxs_phy->phy.charger_detect	= mxs_phy_dcd_flow;
-	else
-		mxs_phy->phy.charger_detect	= mxs_phy_charger_detect;
-
-	if (mxs_phy->data->flags & MXS_PHY_SENDING_SOF_TOO_FAST) {
-		mxs_phy->phy.notify_suspend = mxs_phy_on_suspend;
-		mxs_phy->phy.notify_resume = mxs_phy_on_resume;
-	}
-
 	mxs_phy->phy_3p0 = devm_regulator_get(&pdev->dev, "phy-3p0");
 	if (PTR_ERR(mxs_phy->phy_3p0) == -ENODEV)
 		/* not exist */
 		mxs_phy->phy_3p0 = NULL;
 	else if (IS_ERR(mxs_phy->phy_3p0))
 		return dev_err_probe(&pdev->dev, PTR_ERR(mxs_phy->phy_3p0),
-				     "Getting regulator error\n");
+				"Getting regulator error\n");
 
 	if (mxs_phy->phy_3p0)
 		regulator_set_voltage(mxs_phy->phy_3p0, 3200000, 3200000);
-
-	if (mxs_phy->data->flags & MXS_PHY_HARDWARE_CONTROL_PHY2_CLK)
-		mxs_phy->hardware_control_phy2_clk = true;
 
 	platform_set_drvdata(pdev, mxs_phy);
 
@@ -1216,10 +1143,6 @@ static int mxs_phy_system_resume(struct device *dev)
 		mxs_phy_enable_ldo_in_suspend(mxs_phy, false);
 		mxs_phy_wakeup_enable(mxs_phy, false);
 	}
-
-	pm_runtime_disable(dev);
-	pm_runtime_set_active(dev);
-	pm_runtime_enable(dev);
 
 	return 0;
 }

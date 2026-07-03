@@ -522,7 +522,8 @@ static int __cold dpaa2_dpdmai_bind(struct dpaa2_qdma_priv *priv)
 		rx_queue_cfg.dest_cfg.dest_id = ppriv->nctx.dpio_id;
 		rx_queue_cfg.dest_cfg.priority = ppriv->prio;
 		err = dpdmai_set_rx_queue(priv->mc_io, 0, ls_dev->mc_handle,
-					  i, 0, &rx_queue_cfg);
+					  rx_queue_cfg.dest_cfg.priority, 0,
+					  &rx_queue_cfg);
 		if (err) {
 			dev_err(dev, "dpdmai_set_rx_queue() failed\n");
 			return err;
@@ -799,7 +800,6 @@ static const struct fsl_mc_device_id dpaa2_qdma_id_table[] = {
 static struct fsl_mc_driver dpaa2_qdma_driver = {
 	.driver		= {
 		.name	= "dpaa2-qdma",
-		.owner  = THIS_MODULE,
 	},
 	.probe          = dpaa2_qdma_probe,
 	.remove		= dpaa2_qdma_remove,

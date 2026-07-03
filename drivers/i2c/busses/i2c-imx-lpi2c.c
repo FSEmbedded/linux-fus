@@ -160,6 +160,7 @@ struct lpi2c_imx_struct {
 	__u8			*rx_buf;
 	__u8			*tx_buf;
 	struct completion	complete;
+	unsigned long		rate_per;
 	unsigned int		msglen;
 	unsigned int		delivered;
 	unsigned int		block_data;
@@ -167,25 +168,7 @@ struct lpi2c_imx_struct {
 	unsigned int		txfifosize;
 	unsigned int		rxfifosize;
 	enum lpi2c_imx_mode	mode;
-
 	struct i2c_bus_recovery_info rinfo;
-	struct pinctrl *pinctrl;
-	struct pinctrl_state *pinctrl_pins_default;
-	struct pinctrl_state *pinctrl_pins_gpio;
-
-	bool			can_use_dma;
-	bool			using_dma;
-	bool			xferred;
-	bool			is_ndf;
-	struct i2c_msg		*msg;
-	dma_addr_t		dma_addr;
-	struct dma_chan		*dma_tx;
-	struct dma_chan		*dma_rx;
-	enum dma_data_direction dma_direction;
-	u8			*dma_buf;
-	unsigned int		dma_len;
-
-	struct i2c_client	*slave;
 };
 
 static void lpi2c_imx_intctrl(struct lpi2c_imx_struct *lpi2c_imx,
@@ -292,9 +275,7 @@ static int lpi2c_imx_config(struct lpi2c_imx_struct *lpi2c_imx)
 
 	lpi2c_imx_set_mode(lpi2c_imx);
 
-	clk_rate = clk_get_rate(lpi2c_imx->clks[0].clk);
-	if (!clk_rate)
-		return -EINVAL;
+	clk_rate = lpi2c_imx->rate_per;
 
 	if (lpi2c_imx->mode == HS || lpi2c_imx->mode == ULTRA_FAST)
 		filt = 0;
@@ -403,11 +384,11 @@ static int lpi2c_imx_master_disable(struct lpi2c_imx_struct *lpi2c_imx)
 
 static int lpi2c_imx_msg_complete(struct lpi2c_imx_struct *lpi2c_imx)
 {
-	unsigned long timeout;
+	unsigned long time_left;
 
-	timeout = wait_for_completion_timeout(&lpi2c_imx->complete, HZ);
+	time_left = wait_for_completion_timeout(&lpi2c_imx->complete, HZ);
 
-	return timeout ? 0 : -ETIMEDOUT;
+	return time_left ? 0 : -ETIMEDOUT;
 }
 
 static int lpi2c_imx_txfifo_empty(struct lpi2c_imx_struct *lpi2c_imx)
@@ -887,178 +868,16 @@ static irqreturn_t lpi2c_imx_master_isr(struct lpi2c_imx_struct *lpi2c_imx)
 	return IRQ_HANDLED;
 }
 
-static irqreturn_t lpi2c_imx_isr(int irq, void *dev_id)
-{
-	struct lpi2c_imx_struct *lpi2c_imx = dev_id;
-	unsigned int scr;
-	u32 ssr, sier_filter;
-
-	if (lpi2c_imx->slave) {
-		scr = readl(lpi2c_imx->base + LPI2C_SCR);
-		ssr = readl(lpi2c_imx->base + LPI2C_SSR);
-		sier_filter = ssr & readl(lpi2c_imx->base + LPI2C_SIER);
-		if ((scr & SCR_SEN) && sier_filter)
-			return lpi2c_imx_slave_isr(lpi2c_imx, ssr, sier_filter);
-		else
-			return lpi2c_imx_master_isr(lpi2c_imx);
-	} else
-		return lpi2c_imx_master_isr(lpi2c_imx);
-}
-
-static void lpi2c_imx_slave_init(struct lpi2c_imx_struct *lpi2c_imx)
-{
-	int temp;
-
-	/* reset slave module */
-	temp = SCR_RST;
-	writel(temp, lpi2c_imx->base + LPI2C_SCR);
-	writel(0, lpi2c_imx->base + LPI2C_SCR);
-
-	/* Set slave addr */
-	writel((lpi2c_imx->slave->addr << 1), lpi2c_imx->base + LPI2C_SAMR);
-
-	temp = SCFGR1_RXSTALL | SCFGR1_TXDSTALL;
-	writel(temp, lpi2c_imx->base + LPI2C_SCFGR1);
-
-	/*
-	 * set SCFGR2: FILTSDA, FILTSCL and CLKHOLD
-	 * FILTSCL/FILTSDA can eliminate signal skew. It should generally be set to
-	 * the same value and should be set >= 50ns.
-	 * CLKHOLD is only used when clock stretching is enabled, but it will extend
-	 * the clock stretching to ensure there is an additional delay between the
-	 * slave driving SDA and the slave releasing the SCL pin.
-	 * CLKHOLD setting is crucial for lpi2c slave. When master read data from
-	 * slave, if there is a delay caused by cpu idle, excessive load, or other
-	 * delays between two bytes in one message transmission, it will cause very
-	 * short interval time between the driving SDA signal and releasing SCL signal.
-	 * Lpi2c master will mistakenly think that this is a stop signal resulting
-	 * in an arbitration failure. This lpi2c issue can be avoided by setting
-	 * CLKHOLD. In order to ensure lpi2c function normally when the lpi2c clock
-	 * frequency is as low as 100kHz, CLKHOLD should be set 3 and it is also
-	 * compatible with higher clock frequency like 400kHz and 1MHz.
-	 */
-	temp = SCFGR2_FILTSDA(2) | SCFGR2_FILTSCL(2) | SCFGR2_CLKHOLD(3);
-	writel(temp, lpi2c_imx->base + LPI2C_SCFGR2);
-
-	/*
-	 * Enable module
-	 * SCR_FILTEN can enable digital filter and output delay counter for slave mode.
-	 * So SCR_FILTEN need be asserted when enable SDA/SCL FILTER and CLKHOLD.
-	 */
-	writel(SCR_SEN | SCR_FILTEN, lpi2c_imx->base + LPI2C_SCR);
-
-	/* Enable interrupt from i2c module */
-	writel(SLAVE_INT_FLAG, lpi2c_imx->base + LPI2C_SIER);
-}
-
-static int lpi2c_imx_reg_slave(struct i2c_client *client)
-{
-	struct lpi2c_imx_struct *lpi2c_imx = i2c_get_adapdata(client->adapter);
-	int ret;
-
-	if (lpi2c_imx->slave)
-		return -EBUSY;
-
-	lpi2c_imx->slave = client;
-
-	/* Resume */
-	ret = pm_runtime_resume_and_get(lpi2c_imx->adapter.dev.parent);
-	if (ret < 0) {
-		dev_err(&lpi2c_imx->adapter.dev, "failed to resume i2c controller");
-		return ret;
-	}
-
-	lpi2c_imx_slave_init(lpi2c_imx);
-
-	return 0;
-}
-
-static int lpi2c_imx_unreg_slave(struct i2c_client *client)
-{
-	struct lpi2c_imx_struct *lpi2c_imx = i2c_get_adapdata(client->adapter);
-	int ret, temp;
-
-	if (!lpi2c_imx->slave)
-		return -EINVAL;
-
-	/* Reset slave address. */
-	writel(0, lpi2c_imx->base + LPI2C_SAMR);
-
-	temp = SCR_RST;
-	writel(temp, lpi2c_imx->base + LPI2C_SCR);
-	writel(0, lpi2c_imx->base + LPI2C_SCR);
-
-	lpi2c_imx->slave = NULL;
-
-	/* Suspend */
-	ret = pm_runtime_put_sync(lpi2c_imx->adapter.dev.parent);
-	if (ret < 0)
-		dev_err(&lpi2c_imx->adapter.dev, "failed to suspend i2c controller");
-
-	return ret;
-}
-
-static void lpi2c_imx_prepare_recovery(struct i2c_adapter *adap)
-{
-	struct lpi2c_imx_struct *lpi2c_imx;
-
-	lpi2c_imx = container_of(adap, struct lpi2c_imx_struct, adapter);
-
-	pinctrl_select_state(lpi2c_imx->pinctrl, lpi2c_imx->pinctrl_pins_gpio);
-}
-
-static void lpi2c_imx_unprepare_recovery(struct i2c_adapter *adap)
-{
-	struct lpi2c_imx_struct *lpi2c_imx;
-
-	lpi2c_imx = container_of(adap, struct lpi2c_imx_struct, adapter);
-
-	pinctrl_select_state(lpi2c_imx->pinctrl, lpi2c_imx->pinctrl_pins_default);
-}
-
-/*
- * We switch SCL and SDA to their GPIO function and do some bitbanging
- * for bus recovery. These alternative pinmux settings can be
- * described in the device tree by a separate pinctrl state "gpio". If
- * this is missing this is not a big problem, the only implication is
- * that we can't do bus recovery.
- */
 static int lpi2c_imx_init_recovery_info(struct lpi2c_imx_struct *lpi2c_imx,
-		struct platform_device *pdev)
+				  struct platform_device *pdev)
 {
-	struct i2c_bus_recovery_info *rinfo = &lpi2c_imx->rinfo;
+	struct i2c_bus_recovery_info *bri = &lpi2c_imx->rinfo;
 
-	lpi2c_imx->pinctrl = devm_pinctrl_get(&pdev->dev);
-	if (!lpi2c_imx->pinctrl || IS_ERR(lpi2c_imx->pinctrl)) {
-		dev_info(&pdev->dev, "can't get pinctrl, bus recovery not supported\n");
-		return PTR_ERR(lpi2c_imx->pinctrl);
-	}
+	bri->pinctrl = devm_pinctrl_get(&pdev->dev);
+	if (IS_ERR(bri->pinctrl))
+		return PTR_ERR(bri->pinctrl);
 
-	lpi2c_imx->pinctrl_pins_default = pinctrl_lookup_state(lpi2c_imx->pinctrl,
-			PINCTRL_STATE_DEFAULT);
-	lpi2c_imx->pinctrl_pins_gpio = pinctrl_lookup_state(lpi2c_imx->pinctrl,
-			"gpio");
-	rinfo->sda_gpiod = devm_gpiod_get(&pdev->dev, "sda", GPIOD_IN);
-	rinfo->scl_gpiod = devm_gpiod_get(&pdev->dev, "scl", GPIOD_OUT_HIGH_OPEN_DRAIN);
-
-	if (PTR_ERR(rinfo->sda_gpiod) == -EPROBE_DEFER ||
-	    PTR_ERR(rinfo->scl_gpiod) == -EPROBE_DEFER) {
-		return -EPROBE_DEFER;
-	} else if (IS_ERR(rinfo->sda_gpiod) ||
-		   IS_ERR(rinfo->scl_gpiod) ||
-		   IS_ERR(lpi2c_imx->pinctrl_pins_default) ||
-		   IS_ERR(lpi2c_imx->pinctrl_pins_gpio)) {
-		dev_dbg(&pdev->dev, "recovery information incomplete\n");
-		return 0;
-	}
-
-	dev_info(&pdev->dev, "using scl%s for recovery\n",
-		 rinfo->sda_gpiod ? ",sda" : "");
-
-	rinfo->prepare_recovery = lpi2c_imx_prepare_recovery;
-	rinfo->unprepare_recovery = lpi2c_imx_unprepare_recovery;
-	rinfo->recover_bus = i2c_generic_scl_recovery;
-	lpi2c_imx->adapter.bus_recovery_info = rinfo;
+	lpi2c_imx->adapter.bus_recovery_info = bri;
 
 	return 0;
 }
@@ -1078,7 +897,7 @@ static const struct i2c_algorithm lpi2c_imx_algo = {
 
 static const struct of_device_id lpi2c_imx_of_match[] = {
 	{ .compatible = "fsl,imx7ulp-lpi2c" },
-	{ },
+	{ }
 };
 MODULE_DEVICE_TABLE(of, lpi2c_imx_of_match);
 
@@ -1195,6 +1014,24 @@ static int lpi2c_imx_probe(struct platform_device *pdev)
 	i2c_set_adapdata(&lpi2c_imx->adapter, lpi2c_imx);
 	platform_set_drvdata(pdev, lpi2c_imx);
 
+	ret = clk_bulk_prepare_enable(lpi2c_imx->num_clks, lpi2c_imx->clks);
+	if (ret)
+		return ret;
+
+	/*
+	 * Lock the parent clock rate to avoid getting parent clock upon
+	 * each transfer
+	 */
+	ret = devm_clk_rate_exclusive_get(&pdev->dev, lpi2c_imx->clks[0].clk);
+	if (ret)
+		return dev_err_probe(&pdev->dev, ret,
+				     "can't lock I2C peripheral clock rate\n");
+
+	lpi2c_imx->rate_per = clk_get_rate(lpi2c_imx->clks[0].clk);
+	if (!lpi2c_imx->rate_per)
+		return dev_err_probe(&pdev->dev, -EINVAL,
+				     "can't get I2C peripheral clock rate\n");
+
 	pm_runtime_set_autosuspend_delay(&pdev->dev, I2C_PM_TIMEOUT);
 	pm_runtime_use_autosuspend(&pdev->dev);
 	pm_runtime_enable(&pdev->dev);
@@ -1209,18 +1046,6 @@ static int lpi2c_imx_probe(struct platform_device *pdev)
 	/* Give it another chance if pinctrl used is not ready yet */
 	if (ret == -EPROBE_DEFER)
 		goto rpm_disable;
-
-	/* Init DMA */
-	lpi2c_imx->dma_direction = DMA_NONE;
-	lpi2c_imx->dma_rx = lpi2c_imx->dma_tx = NULL;
-	ret = lpi2c_dma_init(&pdev->dev, lpi2c_imx);
-	if (ret) {
-		if (ret == -EPROBE_DEFER)
-			goto rpm_disable;
-		dev_info(&pdev->dev, "use pio mode\n");
-	}
-
-	init_completion(&lpi2c_imx->complete);
 
 	ret = i2c_add_adapter(&lpi2c_imx->adapter);
 	if (ret)

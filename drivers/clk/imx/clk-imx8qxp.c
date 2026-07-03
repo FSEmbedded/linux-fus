@@ -124,7 +124,7 @@ static const char * const pi_pll0_sels[] = {
 
 static inline bool clk_on_imx8dxl(struct device_node *node)
 {
-	return of_device_is_compatible(node, "fsl,imx8dxl-clk") != 0;
+	return of_device_is_compatible(node, "fsl,imx8dxl-clk");
 }
 
 static int imx8qxp_clk_probe(struct platform_device *pdev)

@@ -713,6 +713,8 @@
 			clk: clock-controller@30380000 {
 				compatible = "fsl,imx8mm-ccm";
 				reg = <0x30380000 0x10000>;
+				interrupts = <GIC_SPI 85 IRQ_TYPE_LEVEL_HIGH>,
+					     <GIC_SPI 86 IRQ_TYPE_LEVEL_HIGH>;
 				#clock-cells = <1>;
 				clocks = <&osc_32k>, <&osc_24m>, <&clk_ext1>, <&clk_ext2>,
 					 <&clk_ext3>, <&clk_ext4>;
@@ -724,9 +726,7 @@
 						<&clk IMX8MM_CLK_AUDIO_AHB>,
 						<&clk IMX8MM_CLK_IPG_AUDIO_ROOT>,
 						<&clk IMX8MM_SYS_PLL3>,
-						<&clk IMX8MM_VIDEO_PLL1>,
-						<&clk IMX8MM_AUDIO_PLL1>,
-						<&clk IMX8MM_AUDIO_PLL2>;
+						<&clk IMX8MM_AUDIO_PLL1>;
 				assigned-clock-parents = <&clk IMX8MM_SYS_PLL1_800M>,
 							 <&clk IMX8MM_ARM_PLL_OUT>,
 							 <&clk IMX8MM_SYS_PLL3_OUT>,
@@ -735,9 +735,7 @@
 							<400000000>,
 							<400000000>,
 							<750000000>,
-							<1039500000>,
-							<393216000>,
-							<361267200>;
+							<393216000>;
 			};
 
 			src: reset-controller@30390000 {
@@ -1212,7 +1210,7 @@
 				assigned-clock-parents = <&clk IMX8MM_VIDEO_PLL1_OUT>,
 							 <&clk IMX8MM_SYS_PLL2_1000M>,
 							 <&clk IMX8MM_SYS_PLL1_800M>;
-				assigned-clock-rate = <594000000>, <500000000>, <200000000>;
+				assigned-clock-rates = <24000000>, <500000000>, <200000000>;
 				interrupts = <GIC_SPI 5 IRQ_TYPE_LEVEL_HIGH>;
 				power-domains = <&disp_blk_ctrl IMX8MM_DISPBLK_PD_LCDIF>;
 				status = "disabled";
@@ -1230,14 +1228,10 @@
 				compatible = "fsl,imx8mm-mipi-dsim";
 				reg = <0x32e10000 0x400>;
 				clocks = <&clk IMX8MM_CLK_DSI_CORE>,
-					 <&clk IMX8MM_CLK_DSI_PHY_REF>,
-					 <&clk IMX8MM_CLK_DISP_APB_ROOT>;
-				clock-names = "cfg", "pll-ref", "apb-root";
-				assigned-clocks = <&clk IMX8MM_CLK_DSI_CORE>,
-						  <&clk IMX8MM_CLK_DSI_PHY_REF>;
-				assigned-clock-parents = <&clk IMX8MM_SYS_PLL1_266M>,
-							 <&clk IMX8MM_CLK_24M>;
-				assigned-clock-rates = <266000000>, <12000000>;
+					 <&clk IMX8MM_CLK_DSI_PHY_REF>;
+				clock-names = "bus_clk", "sclk_mipi";
+				assigned-clocks = <&clk IMX8MM_CLK_DSI_CORE>;
+				assigned-clock-parents = <&clk IMX8MM_SYS_PLL1_266M>;
 				interrupts = <GIC_SPI 18 IRQ_TYPE_LEVEL_HIGH>;
 				power-domains = <&disp_blk_ctrl IMX8MM_DISPBLK_PD_MIPI_DSI>;
 				status = "disabled";
@@ -1246,6 +1240,13 @@
 
 					dsim_from_lcdif: endpoint {
 						remote-endpoint = <&lcdif_to_dsim>;
+					};
+
+					port@1 {
+						reg = <1>;
+
+						mipi_dsi_out: endpoint {
+						};
 					};
 				};
 			};
@@ -1308,7 +1309,6 @@
 				reg = <0x32e40000 0x200>;
 				interrupts = <GIC_SPI 40 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&clk IMX8MM_CLK_USB1_CTRL_ROOT>;
-				clock-names = "usb1_ctrl_root_clk";
 				assigned-clocks = <&clk IMX8MM_CLK_USB_BUS>;
 				assigned-clock-parents = <&clk IMX8MM_SYS_PLL2_500M>;
 				phys = <&usbphynop1>;
@@ -1329,7 +1329,6 @@
 				reg = <0x32e50000 0x200>;
 				interrupts = <GIC_SPI 41 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&clk IMX8MM_CLK_USB1_CTRL_ROOT>;
-				clock-names = "usb1_ctrl_root_clk";
 				assigned-clocks = <&clk IMX8MM_CLK_USB_BUS>;
 				assigned-clock-parents = <&clk IMX8MM_SYS_PLL2_500M>;
 				phys = <&usbphynop2>;

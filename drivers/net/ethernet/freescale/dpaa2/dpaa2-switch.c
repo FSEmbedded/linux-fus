@@ -725,7 +725,7 @@ static int dpaa2_switch_port_change_mtu(struct net_device *netdev, int mtu)
 		return err;
 	}
 
-	netdev->mtu = mtu;
+	WRITE_ONCE(netdev->mtu, mtu);
 	return 0;
 }
 
@@ -1654,9 +1654,9 @@ static irqreturn_t dpaa2_switch_irq0_handler_thread(int irq_num, void *arg)
 	struct device *dev = (struct device *)arg;
 	struct ethsw_core *ethsw = dev_get_drvdata(dev);
 	struct ethsw_port_priv *port_priv;
-	u32 status = ~0;
 	int err, if_id;
 	bool had_mac;
+	u32 status;
 
 	err = dpsw_get_irq_status(ethsw->mc_io, 0, ethsw->dpsw_handle,
 				  DPSW_IRQ_INDEX_IF, &status);
@@ -1684,20 +1684,20 @@ static irqreturn_t dpaa2_switch_irq0_handler_thread(int irq_num, void *arg)
 			dpaa2_switch_port_connect_mac(port_priv);
 	}
 
-out:
 	err = dpsw_clear_irq_status(ethsw->mc_io, 0, ethsw->dpsw_handle,
 				    DPSW_IRQ_INDEX_IF, status);
 	if (err)
 		dev_err(dev, "Can't clear irq status (err %d)\n", err);
 
+out:
 	return IRQ_HANDLED;
 }
 
 static int dpaa2_switch_setup_irqs(struct fsl_mc_device *sw_dev)
 {
+	u32 mask = DPSW_IRQ_EVENT_LINK_CHANGED | DPSW_IRQ_EVENT_ENDPOINT_CHANGED;
 	struct device *dev = &sw_dev->dev;
 	struct ethsw_core *ethsw = dev_get_drvdata(dev);
-	u32 mask = DPSW_IRQ_EVENT_LINK_CHANGED;
 	struct fsl_mc_device_irq *irq;
 	int err;
 
@@ -2122,25 +2122,10 @@ static int dpaa2_switch_port_bridge_join(struct net_device *netdev,
 					 struct netlink_ext_ack *extack)
 {
 	struct ethsw_port_priv *port_priv = netdev_priv(netdev);
-	struct ethsw_core *ethsw = port_priv->ethsw_data;
 	struct dpaa2_switch_fdb *old_fdb = port_priv->fdb;
-	struct ethsw_port_priv *other_port_priv;
-	struct net_device *other_dev, *brport_dev;
-	struct list_head *iter;
+	struct ethsw_core *ethsw = port_priv->ethsw_data;
 	bool learn_ena;
 	int err;
-
-	netdev_for_each_lower_dev(upper_dev, other_dev, iter) {
-		if (!dpaa2_switch_port_dev_check(other_dev))
-			continue;
-
-		other_port_priv = netdev_priv(other_dev);
-		if (other_port_priv->ethsw_data != port_priv->ethsw_data) {
-			NL_SET_ERR_MSG_MOD(extack,
-					   "Interface from a different DPSW is in the bridge already");
-			return -EINVAL;
-		}
-	}
 
 	/* Delete the previously manually installed VLAN 1 */
 	err = dpaa2_switch_port_del_vlan(port_priv, 1);
@@ -2164,11 +2149,8 @@ static int dpaa2_switch_port_bridge_join(struct net_device *netdev,
 	if (err)
 		goto err_egress_flood;
 
-	brport_dev = dpaa2_switch_port_to_bridge_port(port_priv);
-	err = switchdev_bridge_port_offload(brport_dev, netdev, port_priv,
-					    &dpaa2_switch_port_switchdev_nb,
-					    &dpaa2_switch_port_switchdev_blocking_nb,
-					    false, extack);
+	err = switchdev_bridge_port_offload(netdev, netdev, NULL,
+					    NULL, NULL, false, extack);
 	if (err)
 		goto err_switchdev_offload;
 
@@ -2290,6 +2272,10 @@ dpaa2_switch_prechangeupper_sanity_checks(struct net_device *netdev,
 					  struct net_device *upper_dev,
 					  struct netlink_ext_ack *extack)
 {
+	struct ethsw_port_priv *port_priv = netdev_priv(netdev);
+	struct ethsw_port_priv *other_port_priv;
+	struct net_device *other_dev;
+	struct list_head *iter;
 	int err;
 
 	if (!br_vlan_enabled(upper_dev)) {
@@ -2302,6 +2288,68 @@ dpaa2_switch_prechangeupper_sanity_checks(struct net_device *netdev,
 		NL_SET_ERR_MSG_MOD(extack,
 				   "Cannot join a bridge while VLAN uppers are present");
 		return 0;
+	}
+
+	netdev_for_each_lower_dev(upper_dev, other_dev, iter) {
+		if (!dpaa2_switch_port_dev_check(other_dev))
+			continue;
+
+		other_port_priv = netdev_priv(other_dev);
+		if (other_port_priv->ethsw_data != port_priv->ethsw_data) {
+			NL_SET_ERR_MSG_MOD(extack,
+					   "Interface from a different DPSW is in the bridge already");
+			return -EINVAL;
+		}
+	}
+
+	return 0;
+}
+
+static int dpaa2_switch_port_prechangeupper(struct net_device *netdev,
+					    struct netdev_notifier_changeupper_info *info)
+{
+	struct netlink_ext_ack *extack;
+	struct net_device *upper_dev;
+	int err;
+
+	if (!dpaa2_switch_port_dev_check(netdev))
+		return 0;
+
+	extack = netdev_notifier_info_to_extack(&info->info);
+	upper_dev = info->upper_dev;
+	if (netif_is_bridge_master(upper_dev)) {
+		err = dpaa2_switch_prechangeupper_sanity_checks(netdev,
+								upper_dev,
+								extack);
+		if (err)
+			return err;
+
+		if (!info->linking)
+			dpaa2_switch_port_pre_bridge_leave(netdev);
+	}
+
+	return 0;
+}
+
+static int dpaa2_switch_port_changeupper(struct net_device *netdev,
+					 struct netdev_notifier_changeupper_info *info)
+{
+	struct netlink_ext_ack *extack;
+	struct net_device *upper_dev;
+
+	if (!dpaa2_switch_port_dev_check(netdev))
+		return 0;
+
+	extack = netdev_notifier_info_to_extack(&info->info);
+
+	upper_dev = info->upper_dev;
+	if (netif_is_bridge_master(upper_dev)) {
+		if (info->linking)
+			return dpaa2_switch_port_bridge_join(netdev,
+							     upper_dev,
+							     extack);
+		else
+			return dpaa2_switch_port_bridge_leave(netdev);
 	}
 
 	return 0;
@@ -2477,116 +2525,25 @@ static int dpaa2_switch_port_bond_leave(struct net_device *netdev,
 static int dpaa2_switch_port_prechangeupper(struct net_device *netdev,
 					    struct netdev_notifier_changeupper_info *info)
 {
-	struct netlink_ext_ack *extack;
-	struct net_device *upper_dev;
-	int err = 0;
-
-	extack = netdev_notifier_info_to_extack(&info->info);
-	upper_dev = info->upper_dev;
-	if (netif_is_bridge_master(upper_dev)) {
-		err = dpaa2_switch_prechangeupper_sanity_checks(netdev,
-								upper_dev,
-								extack);
-		if (err)
-			return err;
-
-		if (!info->linking)
-			dpaa2_switch_port_pre_bridge_leave(netdev);
-	}
-
-	return 0;
-}
-
-static int dpaa2_switch_port_changeupper(struct net_device *netdev,
-					 struct netdev_notifier_changeupper_info *info)
-{
-	struct netlink_ext_ack *extack;
-	struct net_device *upper_dev;
-	int err = 0;
-
-	extack = netdev_notifier_info_to_extack(&info->info);
-	upper_dev = info->upper_dev;
-	if (netif_is_bridge_master(upper_dev)) {
-		if (info->linking)
-			return dpaa2_switch_port_bridge_join(netdev,
-							     upper_dev,
-							     extack);
-		else
-			return dpaa2_switch_port_bridge_leave(netdev);
-	} else if (netif_is_lag_master(upper_dev)) {
-		if (info->linking)
-			return dpaa2_switch_port_bond_join(netdev, upper_dev, extack);
-		else
-			return dpaa2_switch_port_bond_leave(netdev, upper_dev);
-	}
-
-	return err;
-}
-
-static int dpaa2_switch_lag_prechangeupper(struct net_device *netdev,
-					   struct netdev_notifier_changeupper_info *info)
-{
-	struct net_device *lower;
-	struct list_head *iter;
-	int err = 0;
-
-	netdev_for_each_lower_dev(netdev, lower, iter) {
-		if (!dpaa2_switch_port_dev_check(lower))
-			continue;
-
-		err = dpaa2_switch_port_prechangeupper(lower, info);
-		if (err)
-			return err;
-	}
-
-	return err;
-}
-
-static int dpaa2_switch_lag_changeupper(struct net_device *netdev,
-					struct netdev_notifier_changeupper_info *info)
-{
-	struct net_device *lower;
-	struct list_head *iter;
-	int err = 0;
-
-	netdev_for_each_lower_dev(netdev, lower, iter) {
-		if (!dpaa2_switch_port_dev_check(lower))
-			continue;
-
-		err = dpaa2_switch_port_changeupper(lower, info);
-		if (err)
-			return err;
-	}
-
-	return err;
-}
-
-static int dpaa2_switch_port_netdevice_event(struct notifier_block *nb,
-					     unsigned long event, void *ptr)
-{
 	struct net_device *netdev = netdev_notifier_info_to_dev(ptr);
 	int err = 0;
 
 	switch (event) {
 	case NETDEV_PRECHANGEUPPER:
-		if (dpaa2_switch_port_dev_check(netdev))
-			err = dpaa2_switch_port_prechangeupper(netdev, ptr);
-
-		if (netif_is_lag_master(netdev))
-			err = dpaa2_switch_lag_prechangeupper(netdev, ptr);
+		err = dpaa2_switch_port_prechangeupper(netdev, ptr);
+		if (err)
+			return notifier_from_errno(err);
 
 		break;
 	case NETDEV_CHANGEUPPER:
-		if (dpaa2_switch_port_dev_check(netdev))
-			err = dpaa2_switch_port_changeupper(netdev, ptr);
-
-		if (netif_is_lag_master(netdev))
-			err = dpaa2_switch_lag_changeupper(netdev, ptr);
+		err = dpaa2_switch_port_changeupper(netdev, ptr);
+		if (err)
+			return notifier_from_errno(err);
 
 		break;
 	}
 
-	return notifier_from_errno(err);
+	return NOTIFY_DONE;
 }
 
 struct ethsw_switchdev_event_work {
@@ -3019,13 +2976,14 @@ static int dpaa2_switch_refill_bp(struct ethsw_core *ethsw)
 
 static int dpaa2_switch_seed_bp(struct ethsw_core *ethsw)
 {
-	int *count, i;
+	int *count, ret, i;
 
 	for (i = 0; i < DPAA2_ETHSW_NUM_BUFS; i += BUFS_PER_CMD) {
+		ret = dpaa2_switch_add_bufs(ethsw, ethsw->bpid);
 		count = &ethsw->buf_count;
-		*count += dpaa2_switch_add_bufs(ethsw, ethsw->bpid);
+		*count += ret;
 
-		if (unlikely(*count < BUFS_PER_CMD))
+		if (unlikely(ret < BUFS_PER_CMD))
 			return -ENOMEM;
 	}
 

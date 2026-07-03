@@ -1020,8 +1020,7 @@ static int gpmi_setup_interface(struct nand_chip *chip, int chipnr,
 		return PTR_ERR(sdr);
 
 	/* Only MX28/MX6 GPMI controller can reach EDO timings */
-	if (sdr->tRC_min <= 25000 && !GPMI_IS_MX28(this) &&
-	    !(GPMI_IS_MX6(this) || GPMI_IS_MX8(this)))
+	if (sdr->tRC_min <= 25000 && !this->devdata->support_edo_timing)
 		return -ENOTSUPP;
 
 	/* Stop here if this call was just a check */
@@ -1180,6 +1179,7 @@ static const struct gpmi_devdata gpmi_devdata_imx28 = {
 	.type = IS_MX28,
 	.bch_max_ecc_strength = 20,
 	.max_chain_delay = 16000,
+	.support_edo_timing = true,
 	.clks = gpmi_clks_for_mx2x,
 	.clks_count = ARRAY_SIZE(gpmi_clks_for_mx2x),
 };
@@ -1192,6 +1192,7 @@ static const struct gpmi_devdata gpmi_devdata_imx6q = {
 	.type = IS_MX6Q,
 	.bch_max_ecc_strength = 40,
 	.max_chain_delay = 12000,
+	.support_edo_timing = true,
 	.clks = gpmi_clks_for_mx6,
 	.clks_count = ARRAY_SIZE(gpmi_clks_for_mx6),
 };
@@ -1208,6 +1209,7 @@ static const struct gpmi_devdata gpmi_devdata_imx6sx = {
 	.type = IS_MX6SX,
 	.bch_max_ecc_strength = 62,
 	.max_chain_delay = 12000,
+	.support_edo_timing = true,
 	.clks = gpmi_clks_for_mx6,
 	.clks_count = ARRAY_SIZE(gpmi_clks_for_mx6),
 };
@@ -1220,6 +1222,7 @@ static const struct gpmi_devdata gpmi_devdata_imx7d = {
 	.type = IS_MX7D,
 	.bch_max_ecc_strength = 62,
 	.max_chain_delay = 12000,
+	.support_edo_timing = true,
 	.clks = gpmi_clks_for_mx7d,
 	.clks_count = ARRAY_SIZE(gpmi_clks_for_mx7d),
 };
@@ -1231,6 +1234,19 @@ static const struct gpmi_devdata gpmi_devdata_imx8qxp = {
 	.type = IS_MX8QXP,
 	.bch_max_ecc_strength = 62,
 	.max_chain_delay = 12000,
+	.clks = gpmi_clks_for_mx8qxp,
+	.clks_count = ARRAY_SIZE(gpmi_clks_for_mx8qxp),
+};
+
+static const char *gpmi_clks_for_mx8qxp[GPMI_CLK_MAX] = {
+	"gpmi_io", "gpmi_apb", "gpmi_bch", "gpmi_bch_apb",
+};
+
+static const struct gpmi_devdata gpmi_devdata_imx8qxp = {
+	.type = IS_MX8QXP,
+	.bch_max_ecc_strength = 62,
+	.max_chain_delay = 12000,
+	.support_edo_timing = true,
 	.clks = gpmi_clks_for_mx8qxp,
 	.clks_count = ARRAY_SIZE(gpmi_clks_for_mx8qxp),
 };
@@ -2785,7 +2801,7 @@ static const struct of_device_id gpmi_nand_id_table[] = {
 	{ .compatible = "fsl,imx6q-gpmi-nand", .data = &gpmi_devdata_imx6q, },
 	{ .compatible = "fsl,imx6qp-gpmi-nand", .data = &gpmi_devdata_imx6qp, },
 	{ .compatible = "fsl,imx6sx-gpmi-nand", .data = &gpmi_devdata_imx6sx, },
-	{ .compatible = "fsl,imx7d-gpmi-nand", .data = &gpmi_devdata_imx7d, },
+	{ .compatible = "fsl,imx7d-gpmi-nand", .data = &gpmi_devdata_imx7d,},
 	{ .compatible = "fsl,imx8qxp-gpmi-nand", .data = &gpmi_devdata_imx8qxp, },
 	{}
 };

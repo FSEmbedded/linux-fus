@@ -1646,6 +1646,9 @@ static int mxc_jpeg_start_streaming(struct vb2_queue *q, unsigned int count)
 	dev_dbg(ctx->mxc_jpeg->dev, "Start streaming ctx=%p", ctx);
 	q_data->sequence = 0;
 
+	if (V4L2_TYPE_IS_CAPTURE(q->type))
+		ctx->need_initial_source_change_evt = false;
+
 	ret = pm_runtime_resume_and_get(ctx->mxc_jpeg->dev);
 	if (ret < 0) {
 		dev_err(ctx->mxc_jpeg->dev, "Failed to power up jpeg\n");
@@ -1852,17 +1855,6 @@ static int mxc_jpeg_parse(struct mxc_jpeg_ctx *ctx, struct vb2_buffer *vb)
 
 	q_data_out = mxc_jpeg_get_q_data(ctx,
 					 V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE);
-	if (q_data_out->w == 0 && q_data_out->h == 0) {
-		dev_warn(dev, "Invalid user resolution 0x0");
-		dev_warn(dev, "Keeping resolution from JPEG: %dx%d",
-			 header.frame.width, header.frame.height);
-	} else if (header.frame.width != q_data_out->w ||
-		   header.frame.height != q_data_out->h) {
-		dev_err(dev,
-			"Resolution mismatch: %dx%d (JPEG) versus %dx%d(user)",
-			header.frame.width, header.frame.height,
-			q_data_out->w, q_data_out->h);
-	}
 	q_data_out->w = header.frame.width;
 	q_data_out->h = header.frame.height;
 	if (header.frame.width > MXC_JPEG_MAX_WIDTH ||
@@ -2822,7 +2814,7 @@ static int mxc_jpeg_probe(struct platform_device *pdev)
 	ret = mxc_jpeg_attach_pm_domains(jpeg);
 	if (ret < 0) {
 		dev_err(dev, "failed to attach power domains %d\n", ret);
-		return ret;
+		goto err_clk;
 	}
 
 	/* v4l2 */

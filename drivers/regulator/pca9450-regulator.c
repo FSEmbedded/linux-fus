@@ -53,7 +53,7 @@ static const struct regmap_config pca9450_regmap_config = {
 	.val_bits = 8,
 	.volatile_table = &pca9450_volatile_regs,
 	.max_register = PCA9450_MAX_REGISTER - 1,
-	.cache_type = REGCACHE_RBTREE,
+	.cache_type = REGCACHE_MAPLE,
 };
 
 /*
@@ -111,6 +111,14 @@ static const struct linear_range pca9450_dvs_buck_volts[] = {
  * 0.65 to 2.2375V (12.5mV step)
  */
 static const struct linear_range pca9450_trim_dvs_buck_volts[] = {
+	REGULATOR_LINEAR_RANGE(650000, 0x00, 0x7F, 12500),
+};
+
+/*
+ * BUCK1/3
+ * 0.65 to 2.2375V (12.5mV step)
+ */
+static const struct linear_range pca9451a_dvs_buck_volts[] = {
 	REGULATOR_LINEAR_RANGE(650000, 0x00, 0x7F, 12500),
 };
 
@@ -691,37 +699,8 @@ static const struct pca9450_regulator_desc pca9451a_regulators[] = {
 			.ops = &pca9450_dvs_buck_regulator_ops,
 			.type = REGULATOR_VOLTAGE,
 			.n_voltages = PCA9450_BUCK1_VOLTAGE_NUM,
-			.linear_ranges = pca9450_dvs_buck_volts,
-			.n_linear_ranges = ARRAY_SIZE(pca9450_dvs_buck_volts),
-			.vsel_reg = PCA9450_REG_BUCK1OUT_DVS0,
-			.vsel_mask = BUCK1OUT_DVS0_MASK,
-			.enable_reg = PCA9450_REG_BUCK1CTRL,
-			.enable_mask = BUCK1_ENMODE_MASK,
-			.enable_val = BUCK_ENMODE_ONREQ,
-			.ramp_mask = BUCK1_RAMP_MASK,
-			.ramp_delay_table = pca9450_dvs_buck_ramp_table,
-			.n_ramp_values = ARRAY_SIZE(pca9450_dvs_buck_ramp_table),
-			.owner = THIS_MODULE,
-			.of_parse_cb = pca9450_set_dvs_levels,
-		},
-		.dvs = {
-			.run_reg = PCA9450_REG_BUCK1OUT_DVS0,
-			.run_mask = BUCK1OUT_DVS0_MASK,
-			.standby_reg = PCA9450_REG_BUCK1OUT_DVS1,
-			.standby_mask = BUCK1OUT_DVS1_MASK,
-		},
-	},
-	{
-		.desc = {
-			.name = "buck1_trim",
-			.of_match = of_match_ptr("BUCK1"),
-			.regulators_node = of_match_ptr("regulators"),
-			.id = PCA9450_BUCK1,
-			.ops = &pca9450_dvs_buck_regulator_ops,
-			.type = REGULATOR_VOLTAGE,
-			.n_voltages = PCA9450_BUCK1_VOLTAGE_NUM,
-			.linear_ranges = pca9450_trim_dvs_buck_volts,
-			.n_linear_ranges = ARRAY_SIZE(pca9450_trim_dvs_buck_volts),
+			.linear_ranges = pca9451a_dvs_buck_volts,
+			.n_linear_ranges = ARRAY_SIZE(pca9451a_dvs_buck_volts),
 			.vsel_reg = PCA9450_REG_BUCK1OUT_DVS0,
 			.vsel_mask = BUCK1OUT_DVS0_MASK,
 			.enable_reg = PCA9450_REG_BUCK1CTRL,
@@ -846,24 +825,6 @@ static const struct pca9450_regulator_desc pca9451a_regulators[] = {
 	},
 	{
 		.desc = {
-			.name = "ldo3",
-			.of_match = of_match_ptr("LDO3"),
-			.regulators_node = of_match_ptr("regulators"),
-			.id = PCA9450_LDO3,
-			.ops = &pca9450_ldo_regulator_ops,
-			.type = REGULATOR_VOLTAGE,
-			.n_voltages = PCA9450_LDO3_VOLTAGE_NUM,
-			.linear_ranges = pca9450_ldo34_volts,
-			.n_linear_ranges = ARRAY_SIZE(pca9450_ldo34_volts),
-			.vsel_reg = PCA9450_REG_LDO3CTRL,
-			.vsel_mask = LDO3OUT_MASK,
-			.enable_reg = PCA9450_REG_LDO3CTRL,
-			.enable_mask = LDO3_EN_MASK,
-			.owner = THIS_MODULE,
-		},
-	},
-	{
-		.desc = {
 			.name = "ldo4",
 			.of_match = of_match_ptr("LDO4"),
 			.regulators_node = of_match_ptr("regulators"),
@@ -950,11 +911,6 @@ static int pca9450_i2c_probe(struct i2c_client *i2c)
 	bool pmic_trim = false;
 	int ret;
 
-	if (!i2c->irq) {
-		dev_err(&i2c->dev, "No IRQ configured?\n");
-		return -EINVAL;
-	}
-
 	pca9450 = devm_kzalloc(&i2c->dev, sizeof(struct pca9450), GFP_KERNEL);
 	if (!pca9450)
 		return -ENOMEM;
@@ -985,7 +941,6 @@ static int pca9450_i2c_probe(struct i2c_client *i2c)
 		pca9450->rcnt = ARRAY_SIZE(pca9450bc_regulators);
 		break;
 	case PCA9450_TYPE_PCA9451A:
-	case PCA9450_TYPE_PCA9452:
 		regulator_desc = pca9451a_regulators;
 		pca9450->rcnt = ARRAY_SIZE(pca9451a_regulators);
 		break;
@@ -1009,8 +964,7 @@ static int pca9450_i2c_probe(struct i2c_client *i2c)
 	/* Check your board and dts for match the right pmic */
 	if (((device_id >> 4) != 0x1 && type == PCA9450_TYPE_PCA9450A) ||
 	    ((device_id >> 4) != 0x3 && type == PCA9450_TYPE_PCA9450BC) ||
-	    ((device_id >> 4) != 0x9 && type == PCA9450_TYPE_PCA9451A) ||
-	    ((device_id >> 4) != 0x9 && type == PCA9450_TYPE_PCA9452)) {
+	    ((device_id >> 4) != 0x9 && type == PCA9450_TYPE_PCA9451A)) {
 		dev_err(&i2c->dev, "Device id(%x) mismatched\n",
 			device_id >> 4);
 		return -EINVAL;
@@ -1050,23 +1004,25 @@ static int pca9450_i2c_probe(struct i2c_client *i2c)
 		}
 	}
 
-	ret = devm_request_threaded_irq(pca9450->dev, pca9450->irq, NULL,
-					pca9450_irq_handler,
-					(IRQF_TRIGGER_FALLING | IRQF_ONESHOT),
-					"pca9450-irq", pca9450);
-	if (ret != 0) {
-		dev_err(pca9450->dev, "Failed to request IRQ: %d\n",
-			pca9450->irq);
-		return ret;
-	}
-	/* Unmask all interrupt except PWRON/WDOG/RSVD */
-	ret = regmap_update_bits(pca9450->regmap, PCA9450_REG_INT1_MSK,
-				IRQ_VR_FLT1 | IRQ_VR_FLT2 | IRQ_LOWVSYS |
-				IRQ_THERM_105 | IRQ_THERM_125,
-				IRQ_PWRON | IRQ_WDOGB | IRQ_RSVD);
-	if (ret) {
-		dev_err(&i2c->dev, "Unmask irq error\n");
-		return ret;
+	if (pca9450->irq) {
+		ret = devm_request_threaded_irq(pca9450->dev, pca9450->irq, NULL,
+						pca9450_irq_handler,
+						(IRQF_TRIGGER_FALLING | IRQF_ONESHOT),
+						"pca9450-irq", pca9450);
+		if (ret != 0) {
+			dev_err(pca9450->dev, "Failed to request IRQ: %d\n",
+				pca9450->irq);
+			return ret;
+		}
+		/* Unmask all interrupt except PWRON/WDOG/RSVD */
+		ret = regmap_update_bits(pca9450->regmap, PCA9450_REG_INT1_MSK,
+					IRQ_VR_FLT1 | IRQ_VR_FLT2 | IRQ_LOWVSYS |
+					IRQ_THERM_105 | IRQ_THERM_125,
+					IRQ_PWRON | IRQ_WDOGB | IRQ_RSVD);
+		if (ret) {
+			dev_err(&i2c->dev, "Unmask irq error\n");
+			return ret;
+		}
 	}
 
 	/* Clear PRESET_EN bit in BUCK123_DVS to use DVS registers */
@@ -1136,10 +1092,6 @@ static const struct of_device_id pca9450_of_match[] = {
 	{
 		.compatible = "nxp,pca9451a",
 		.data = (void *)PCA9450_TYPE_PCA9451A,
-	},
-	{
-		.compatible = "nxp,pca9452",
-		.data = (void *)PCA9450_TYPE_PCA9452,
 	},
 	{ }
 };

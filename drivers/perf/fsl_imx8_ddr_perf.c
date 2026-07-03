@@ -64,10 +64,6 @@ static DEFINE_IDA(db_ida);
 #define DDR_CAP_AXI_ID_FILTER_ENHANCED		0x3     /* support enhanced AXI ID filter */
 #define DDR_CAP_AXI_ID_PORT_CHANNEL_FILTER	0x4	/* support AXI ID PORT CHANNEL filter */
 
-/* Perf type */
-#define DDR_PERF_TYPE          0x1     /* ddr Perf */
-#define DB_PERF_TYPE           0x2     /* db Perf */
-
 struct fsl_ddr_devtype_data {
 	unsigned int quirks;    /* quirks needed for different DDR Perf core */
 	const char *identifier;	/* system PMU identifier for userspace */
@@ -129,6 +125,11 @@ static const struct fsl_ddr_devtype_data imx8dxl_db_devtype_data = {
 	.type = DB_PERF_TYPE,
 };
 
+static const struct fsl_ddr_devtype_data imx8dxl_devtype_data = {
+	.quirks = DDR_CAP_AXI_ID_PORT_CHANNEL_FILTER,
+	.identifier = "i.MX8DXL",
+};
+
 static const struct of_device_id imx_ddr_pmu_dt_ids[] = {
 	{ .compatible = "fsl,imx8-ddr-pmu", .data = &imx8_devtype_data},
 	{ .compatible = "fsl,imx8m-ddr-pmu", .data = &imx8m_devtype_data},
@@ -136,10 +137,7 @@ static const struct of_device_id imx_ddr_pmu_dt_ids[] = {
 	{ .compatible = "fsl,imx8mm-ddr-pmu", .data = &imx8mm_devtype_data},
 	{ .compatible = "fsl,imx8mn-ddr-pmu", .data = &imx8mn_devtype_data},
 	{ .compatible = "fsl,imx8mp-ddr-pmu", .data = &imx8mp_devtype_data},
-	{ .compatible = "fsl,imx8qxp-ddr-pmu", .data = &imx8qxp_devtype_data},
-	{ .compatible = "fsl,imx8qm-ddr-pmu", .data = &imx8qm_devtype_data},
 	{ .compatible = "fsl,imx8dxl-ddr-pmu", .data = &imx8dxl_devtype_data},
-	{ .compatible = "fsl,imx8dxl-db-pmu", .data = &imx8dxl_db_devtype_data},
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, imx_ddr_pmu_dt_ids);
@@ -666,12 +664,10 @@ static int ddr_perf_event_add(struct perf_event *event, int flags)
 			if (cfg == 0x41) {
 				/* revert axi read channel(axi_channel) value */
 				cfg2 ^= READ_CHANNEL_REVERT;
-
 				cfg2 |= FIELD_PREP(READ_PORT_MASK, cfg2);
 			} else {
 				/* revert axi write channel(axi_channel) value */
 				cfg2 ^= WRITE_CHANNEL_REVERT;
-
 				cfg2 |= FIELD_PREP(WRITE_PORT_MASK, cfg2);
 			}
 
@@ -732,6 +728,7 @@ static void ddr_perf_init(struct ddr_pmu *pmu, void __iomem *base,
 	*pmu = (struct ddr_pmu) {
 		.pmu = (struct pmu) {
 			.module	      = THIS_MODULE,
+			.parent      = dev,
 			.capabilities = PERF_PMU_CAP_NO_EXCLUDE,
 			.task_ctx_nr = perf_invalid_context,
 			.event_init  = ddr_perf_event_init,
@@ -932,7 +929,7 @@ cpuhp_state_err:
 	return ret;
 }
 
-static int ddr_perf_remove(struct platform_device *pdev)
+static void ddr_perf_remove(struct platform_device *pdev)
 {
 	struct ddr_pmu *pmu = platform_get_drvdata(pdev);
 
@@ -941,14 +938,7 @@ static int ddr_perf_remove(struct platform_device *pdev)
 
 	perf_pmu_unregister(&pmu->pmu);
 
-	if (pmu->devtype_data->type & DDR_PERF_TYPE)
-		ida_free(&ddr_ida, pmu->id);
-	else {
-		ddr_perf_clks_disable(pmu);
-		ida_free(&db_ida, pmu->id);
-	}
-
-	return 0;
+	ida_free(&ddr_ida, pmu->id);
 }
 
 static struct platform_driver imx_ddr_pmu_driver = {
@@ -958,8 +948,9 @@ static struct platform_driver imx_ddr_pmu_driver = {
 		.suppress_bind_attrs = true,
 	},
 	.probe          = ddr_perf_probe,
-	.remove         = ddr_perf_remove,
+	.remove_new     = ddr_perf_remove,
 };
 
 module_platform_driver(imx_ddr_pmu_driver);
+MODULE_DESCRIPTION("Freescale i.MX8 DDR Performance Monitor Driver");
 MODULE_LICENSE("GPL v2");

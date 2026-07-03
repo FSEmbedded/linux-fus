@@ -78,8 +78,6 @@ struct rm68200 {
 	struct gpio_desc *enable_gpio;
 	struct gpio_desc *reset_gpio;
 	struct regulator *supply;
-	bool prepared;
-	bool enabled;
 };
 
 static const struct drm_display_mode default_mode = {
@@ -232,14 +230,11 @@ static void rm68200_init_sequence(struct rm68200 *ctx)
 	dcs_write_seq(ctx, MCS_CMD_MODE_SW, MCS_CMD1_UCS);
 }
 
-static int rm68200_disable(struct drm_panel *panel)
+static int rm68200_unprepare(struct drm_panel *panel)
 {
 	struct rm68200 *ctx = panel_to_rm68200(panel);
 	struct mipi_dsi_device *dsi = to_mipi_dsi_device(ctx->dev);
 	int ret;
-
-	if (!ctx->enabled)
-		return 0;
 
 	ret = mipi_dsi_dcs_set_display_off(dsi);
 	if (ret)
@@ -272,8 +267,6 @@ static int rm68200_unprepare(struct drm_panel *panel)
 
 	regulator_disable(ctx->supply);
 
-	ctx->prepared = false;
-
 	return 0;
 }
 
@@ -281,9 +274,6 @@ static int rm68200_prepare(struct drm_panel *panel)
 {
 	struct rm68200 *ctx = panel_to_rm68200(panel);
 	int ret;
-
-	if (ctx->prepared)
-		return 0;
 
 	ret = regulator_enable(ctx->supply);
 	if (ret < 0) {
@@ -328,8 +318,6 @@ static int rm68200_enable(struct drm_panel *panel)
 
 	msleep(20);
 
-	ctx->enabled = true;
-
 	return 0;
 }
 
@@ -358,10 +346,8 @@ static int rm68200_get_modes(struct drm_panel *panel,
 }
 
 static const struct drm_panel_funcs rm68200_drm_funcs = {
-	.disable = rm68200_disable,
 	.unprepare = rm68200_unprepare,
 	.prepare = rm68200_prepare,
-	.enable = rm68200_enable,
 	.get_modes = rm68200_get_modes,
 };
 

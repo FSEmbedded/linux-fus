@@ -16,13 +16,7 @@
 #include <linux/platform_device.h>
 #include <linux/stmp_device.h>
 #include <linux/clk.h>
-#include <linux/libfdt.h>
-#include <linux/of_fdt.h>
-#include <soc/fsl/dcp-blob.h>
-
-#ifdef CONFIG_PM_SLEEP
-#include <linux/freezer.h>
-#endif
+#include <soc/fsl/dcp.h>
 
 #include <crypto/aes.h>
 #include <crypto/sha1.h>
@@ -109,6 +103,7 @@ struct dcp_async_ctx {
 	struct crypto_skcipher		*fallback;
 	unsigned int			key_len;
 	uint8_t				key[AES_KEYSIZE_128];
+	bool				key_referenced;
 };
 
 struct dcp_aes_req_ctx {
@@ -182,6 +177,8 @@ static int dcp_vmi_irq_bak, dcp_irq_bak;
 #define MXS_DCP_CONTROL1_CIPHER_MODE_ECB	(0 << 4)
 #define MXS_DCP_CONTROL1_CIPHER_SELECT_AES128	(0 << 0)
 
+#define MXS_DCP_CONTROL1_KEY_SELECT_SHIFT	8
+
 static int mxs_dcp_start_dma(struct dcp_async_ctx *actx)
 {
 	int dma_err;
@@ -234,24 +231,21 @@ static int mxs_dcp_start_dma(struct dcp_async_ctx *actx)
 static int mxs_dcp_run_aes(struct dcp_async_ctx *actx,
 			   struct skcipher_request *req, int init)
 {
-	dma_addr_t key_phys, src_phys, dst_phys;
+	dma_addr_t key_phys = 0;
+	dma_addr_t src_phys, dst_phys;
 	struct dcp *sdcp = global_sdcp;
 	struct dcp_dma_desc *desc = &sdcp->coh->desc[actx->chan];
 	struct dcp_aes_req_ctx *rctx = skcipher_request_ctx(req);
-	int ret, len_crypto_hdl, len_unique_hdl;
-	const struct fdt_property *prop_crypto, *prop_unique;
-	int nodeoff = fdt_node_offset_by_compatible(initial_boot_params, -1, "fsl,imx28-dcp");
+	bool key_referenced = actx->key_referenced;
+	int ret;
 
-	if (nodeoff < 0) {
-		pr_info("node to update the SoC serial number is not found.\n");
-		return nodeoff;
+	if (!key_referenced) {
+		key_phys = dma_map_single(sdcp->dev, sdcp->coh->aes_key,
+					  2 * AES_KEYSIZE_128, DMA_TO_DEVICE);
+		ret = dma_mapping_error(sdcp->dev, key_phys);
+		if (ret)
+			return ret;
 	}
-
-	key_phys = dma_map_single(sdcp->dev, sdcp->coh->aes_key,
-				  2 * AES_KEYSIZE_128, DMA_TO_DEVICE);
-	ret = dma_mapping_error(sdcp->dev, key_phys);
-	if (ret)
-		return ret;
 
 	src_phys = dma_map_single(sdcp->dev, sdcp->coh->aes_in_buf,
 				  DCP_BUF_SZ, DMA_TO_DEVICE);
@@ -272,8 +266,16 @@ static int mxs_dcp_run_aes(struct dcp_async_ctx *actx,
 	}
 	/* Fill in the DMA descriptor. */
 	desc->control0 = MXS_DCP_CONTROL0_DECR_SEMAPHORE |
-			MXS_DCP_CONTROL0_INTERRUPT |
-			MXS_DCP_CONTROL0_ENABLE_CIPHER;
+		    MXS_DCP_CONTROL0_INTERRUPT |
+		    MXS_DCP_CONTROL0_ENABLE_CIPHER;
+
+	if (key_referenced)
+		/* Set OTP key bit to select the key via KEY_SELECT. */
+		desc->control0 |= MXS_DCP_CONTROL0_OTP_KEY;
+	else
+		/* Payload contains the key. */
+		desc->control0 |= MXS_DCP_CONTROL0_PAYLOAD_KEY;
+
 	if (rctx->enc)
 		desc->control0 |= MXS_DCP_CONTROL0_CIPHER_ENCRYPT;
 
@@ -285,29 +287,9 @@ static int mxs_dcp_run_aes(struct dcp_async_ctx *actx,
 	if (init)
 		desc->control0 |= MXS_DCP_CONTROL0_CIPHER_INIT;
 
-	/*Read device property*/
-	prop_crypto = fdt_get_property(initial_boot_params, nodeoff,
-					"otp_crypto_key", &len_crypto_hdl);
-	prop_unique = fdt_get_property(initial_boot_params, nodeoff,
-					"otp_unique_key", &len_unique_hdl);
+	if (key_referenced)
+		desc->control1 |= sdcp->coh->aes_key[0] << MXS_DCP_CONTROL1_KEY_SELECT_SHIFT;
 
-	if (len_crypto_hdl > 0 && !memcmp(sdcp->coh->aes_key,
-				prop_crypto->data, AES_KEYSIZE_128)) {
-		/* Use AES_OTP CRYPTO_KEY. */
-		desc->control0 |= MXS_DCP_CONTROL0_OTP_KEY;
-		/* Use AES_OTP crypto key. */
-		desc->control1 |= MXS_DCP_CONTROL1_AES_OTP_CRYPTO_KEY;
-		desc->payload = 0;
-	} else if (len_unique_hdl > 0 && (!memcmp(sdcp->coh->aes_key,
-			prop_unique->data, AES_KEYSIZE_128))) {
-		/* Use AES_OTP unique key. */
-		desc->control1 |= MXS_DCP_CONTROL1_AES_OTP_UNIQUE_KEY;
-		desc->payload = 0;
-	} else {
-		/* Payload contains the key. */
-		desc->control0 |= MXS_DCP_CONTROL0_PAYLOAD_KEY;
-		desc->payload = key_phys;
-	}
 	desc->next_cmd_addr = 0;
 	desc->source = src_phys;
 	desc->destination = dst_phys;
@@ -320,9 +302,9 @@ aes_done_run:
 err_dst:
 	dma_unmap_single(sdcp->dev, src_phys, DCP_BUF_SZ, DMA_TO_DEVICE);
 err_src:
-	dma_unmap_single(sdcp->dev, key_phys, 2 * AES_KEYSIZE_128,
-			 DMA_TO_DEVICE);
-
+	if (!key_referenced)
+		dma_unmap_single(sdcp->dev, key_phys, 2 * AES_KEYSIZE_128,
+				 DMA_TO_DEVICE);
 	return ret;
 }
 
@@ -502,7 +484,7 @@ static int mxs_dcp_aes_enqueue(struct skcipher_request *req, int enc, int ecb)
 	struct dcp_aes_req_ctx *rctx = skcipher_request_ctx(req);
 	int ret;
 
-	if (unlikely(actx->key_len != AES_KEYSIZE_128))
+	if (unlikely(actx->key_len != AES_KEYSIZE_128 && !actx->key_referenced))
 		return mxs_dcp_block_fallback(req, enc);
 
 	rctx->enc = enc;
@@ -549,6 +531,7 @@ static int mxs_dcp_aes_setkey(struct crypto_skcipher *tfm, const u8 *key,
 	 * there can still be an operation in progress.
 	 */
 	actx->key_len = len;
+	actx->key_referenced = false;
 	if (len == AES_KEYSIZE_128) {
 		memcpy(actx->key, key, len);
 		return 0;
@@ -563,6 +546,32 @@ static int mxs_dcp_aes_setkey(struct crypto_skcipher *tfm, const u8 *key,
 	crypto_skcipher_set_flags(actx->fallback,
 				  tfm->base.crt_flags & CRYPTO_TFM_REQ_MASK);
 	return crypto_skcipher_setkey(actx->fallback, key, len);
+}
+
+static int mxs_dcp_aes_setrefkey(struct crypto_skcipher *tfm, const u8 *key,
+				 unsigned int len)
+{
+	struct dcp_async_ctx *actx = crypto_skcipher_ctx(tfm);
+
+	if (len != DCP_PAES_KEYSIZE)
+		return -EINVAL;
+
+	switch (key[0]) {
+	case DCP_PAES_KEY_SLOT0:
+	case DCP_PAES_KEY_SLOT1:
+	case DCP_PAES_KEY_SLOT2:
+	case DCP_PAES_KEY_SLOT3:
+	case DCP_PAES_KEY_UNIQUE:
+	case DCP_PAES_KEY_OTP:
+		memcpy(actx->key, key, len);
+		actx->key_len = len;
+		actx->key_referenced = true;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
 }
 
 static int mxs_dcp_aes_fallback_init_tfm(struct crypto_skcipher *tfm)
@@ -586,6 +595,13 @@ static void mxs_dcp_aes_fallback_exit_tfm(struct crypto_skcipher *tfm)
 	struct dcp_async_ctx *actx = crypto_skcipher_ctx(tfm);
 
 	crypto_free_skcipher(actx->fallback);
+}
+
+static int mxs_dcp_paes_init_tfm(struct crypto_skcipher *tfm)
+{
+	crypto_skcipher_set_reqsize(tfm, sizeof(struct dcp_aes_req_ctx));
+
+	return 0;
 }
 
 /*
@@ -944,6 +960,39 @@ static struct skcipher_alg dcp_aes_algs[] = {
 		.ivsize			= AES_BLOCK_SIZE,
 		.init			= mxs_dcp_aes_fallback_init_tfm,
 		.exit			= mxs_dcp_aes_fallback_exit_tfm,
+	}, {
+		.base.cra_name		= "ecb(paes)",
+		.base.cra_driver_name	= "ecb-paes-dcp",
+		.base.cra_priority	= 401,
+		.base.cra_alignmask	= 15,
+		.base.cra_flags		= CRYPTO_ALG_ASYNC | CRYPTO_ALG_INTERNAL,
+		.base.cra_blocksize	= AES_BLOCK_SIZE,
+		.base.cra_ctxsize	= sizeof(struct dcp_async_ctx),
+		.base.cra_module	= THIS_MODULE,
+
+		.min_keysize		= DCP_PAES_KEYSIZE,
+		.max_keysize		= DCP_PAES_KEYSIZE,
+		.setkey			= mxs_dcp_aes_setrefkey,
+		.encrypt		= mxs_dcp_aes_ecb_encrypt,
+		.decrypt		= mxs_dcp_aes_ecb_decrypt,
+		.init			= mxs_dcp_paes_init_tfm,
+	}, {
+		.base.cra_name		= "cbc(paes)",
+		.base.cra_driver_name	= "cbc-paes-dcp",
+		.base.cra_priority	= 401,
+		.base.cra_alignmask	= 15,
+		.base.cra_flags		= CRYPTO_ALG_ASYNC | CRYPTO_ALG_INTERNAL,
+		.base.cra_blocksize	= AES_BLOCK_SIZE,
+		.base.cra_ctxsize	= sizeof(struct dcp_async_ctx),
+		.base.cra_module	= THIS_MODULE,
+
+		.min_keysize		= DCP_PAES_KEYSIZE,
+		.max_keysize		= DCP_PAES_KEYSIZE,
+		.setkey			= mxs_dcp_aes_setrefkey,
+		.encrypt		= mxs_dcp_aes_cbc_encrypt,
+		.decrypt		= mxs_dcp_aes_cbc_decrypt,
+		.ivsize			= AES_BLOCK_SIZE,
+		.init			= mxs_dcp_paes_init_tfm,
 	},
 };
 
@@ -963,7 +1012,6 @@ static struct ahash_alg dcp_sha1_alg = {
 			.cra_name		= "sha1",
 			.cra_driver_name	= "sha1-dcp",
 			.cra_priority		= 400,
-			.cra_alignmask		= 63,
 			.cra_flags		= CRYPTO_ALG_ASYNC,
 			.cra_blocksize		= SHA1_BLOCK_SIZE,
 			.cra_ctxsize		= sizeof(struct dcp_async_ctx),
@@ -990,7 +1038,6 @@ static struct ahash_alg dcp_sha256_alg = {
 			.cra_name		= "sha256",
 			.cra_driver_name	= "sha256-dcp",
 			.cra_priority		= 400,
-			.cra_alignmask		= 63,
 			.cra_flags		= CRYPTO_ALG_ASYNC,
 			.cra_blocksize		= SHA256_BLOCK_SIZE,
 			.cra_ctxsize		= sizeof(struct dcp_async_ctx),
@@ -1232,7 +1279,7 @@ err_destroy_sha_thread:
 	return ret;
 }
 
-static int mxs_dcp_remove(struct platform_device *pdev)
+static void mxs_dcp_remove(struct platform_device *pdev)
 {
 	struct dcp *sdcp = platform_get_drvdata(pdev);
 
@@ -1251,8 +1298,6 @@ static int mxs_dcp_remove(struct platform_device *pdev)
 	platform_set_drvdata(pdev, NULL);
 
 	global_sdcp = NULL;
-
-	return 0;
 }
 
 /*
@@ -1295,7 +1340,7 @@ MODULE_DEVICE_TABLE(of, mxs_dcp_dt_ids);
 
 static struct platform_driver mxs_dcp_driver = {
 	.probe	= mxs_dcp_probe,
-	.remove	= mxs_dcp_remove,
+	.remove_new = mxs_dcp_remove,
 	.driver	= {
 		.name		= "mxs-dcp",
 		.of_match_table	= mxs_dcp_dt_ids,

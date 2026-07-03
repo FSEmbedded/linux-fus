@@ -16,6 +16,43 @@
 #include "fsl_utils.h"
 #include "imx-pcm.h"
 
+#define FSL_XCVR_CAPDS_SIZE	256
+
+enum fsl_xcvr_pll_verison {
+	PLL_MX8MP,
+	PLL_MX95,
+};
+
+struct fsl_xcvr_soc_data {
+	const char *fw_name;
+	bool spdif_only;
+	bool use_edma;
+	bool use_phy;
+	enum fsl_xcvr_pll_verison pll_ver;
+};
+
+struct fsl_xcvr {
+	const struct fsl_xcvr_soc_data *soc_data;
+	struct platform_device *pdev;
+	struct regmap *regmap;
+	struct clk *ipg_clk;
+	struct clk *pll_ipg_clk;
+	struct clk *phy_clk;
+	struct clk *spba_clk;
+	struct clk *pll8k_clk;
+	struct clk *pll11k_clk;
+	struct reset_control *reset;
+	u8 streams;
+	u32 mode;
+	u32 arc_mode;
+	void __iomem *ram_addr;
+	struct snd_dmaengine_dai_dma_data dma_prms_rx;
+	struct snd_dmaengine_dai_dma_data dma_prms_tx;
+	struct snd_aes_iec958 rx_iec958;
+	struct snd_aes_iec958 tx_iec958;
+	u8 cap_ds[FSL_XCVR_CAPDS_SIZE];
+};
+
 static const struct fsl_xcvr_pll_conf {
 	u8 mfi;   /* min=0x18, max=0x38 */
 	u32 mfn;  /* signed int, 2's compl., min=0x3FFF0000, max=0x00010000 */
@@ -147,7 +184,7 @@ static int fsl_xcvr_activate_ctl(struct snd_soc_dai *dai, const char *name,
 
 	lockdep_assert_held(&card->snd_card->controls_rwsem);
 
-	kctl = snd_soc_card_get_kcontrol_locked(card, name);
+	kctl = snd_soc_card_get_kcontrol(card, name);
 	if (kctl == NULL)
 		return -ENOENT;
 
@@ -259,7 +296,8 @@ static int fsl_xcvr_en_phy_pll(struct fsl_xcvr *xcvr, u32 freq, bool tx)
 		return ret;
 	}
 
-	if (!xcvr->soc_data->pll_ver) {
+	switch (xcvr->soc_data->pll_ver) {
+	case PLL_MX8MP:
 		/* PLL: BANDGAP_SET: EN_VBG (enable bandgap) */
 		fsl_xcvr_ai_write(xcvr, FSL_XCVR_PLL_BANDGAP_SET,
 				  FSL_XCVR_PLL_BANDGAP_EN_VBG, 0);
@@ -300,8 +338,8 @@ static int fsl_xcvr_en_phy_pll(struct fsl_xcvr *xcvr, u32 freq, bool tx)
 			fsl_xcvr_ai_write(xcvr, FSL_XCVR_PLL_CTRL0_SET,
 					  FSL_XCVR_PLL_CTRL0_CM2_EN, 0);
 		}
-
-	} else {
+		break;
+	case PLL_MX95:
 		val = fsl_xcvr_pll_cfg[i].mfi << FSL_XCVR_GP_PLL_DIV_MFI_SHIFT | div;
 		fsl_xcvr_ai_write(xcvr, FSL_XCVR_GP_PLL_DIV, val, 0);
 		val = fsl_xcvr_pll_cfg[i].mfn << FSL_XCVR_GP_PLL_NUMERATOR_MFN_SHIFT;
@@ -310,6 +348,10 @@ static int fsl_xcvr_en_phy_pll(struct fsl_xcvr *xcvr, u32 freq, bool tx)
 				  fsl_xcvr_pll_cfg[i].mfd, 0);
 		val = FSL_XCVR_GP_PLL_CTRL_POWERUP | FSL_XCVR_GP_PLL_CTRL_CLKMUX_EN;
 		fsl_xcvr_ai_write(xcvr, FSL_XCVR_GP_PLL_CTRL, val, 0);
+		break;
+	default:
+		dev_err(dev, "Error for PLL version %d\n", xcvr->soc_data->pll_ver);
+		return -EINVAL;
 	}
 
 	if (xcvr->mode == FSL_XCVR_MODE_EARC) { /* eARC mode */
@@ -1269,6 +1311,7 @@ static irqreturn_t irq0_isr(int irq, void *devid)
 static const struct fsl_xcvr_soc_data fsl_xcvr_imx8mp_data = {
 	.fw_name = "imx/xcvr/xcvr-imx8mp.bin",
 	.use_phy = true,
+	.pll_ver = PLL_MX8MP,
 };
 
 static const struct fsl_xcvr_soc_data fsl_xcvr_imx93_data = {
@@ -1280,7 +1323,7 @@ static const struct fsl_xcvr_soc_data fsl_xcvr_imx95_data = {
 	.spdif_only = true,
 	.use_phy = true,
 	.use_edma = true,
-	.pll_ver = 1,
+	.pll_ver = PLL_MX95,
 };
 
 static const struct of_device_id fsl_xcvr_dt_ids[] = {
@@ -1426,7 +1469,7 @@ static void fsl_xcvr_remove(struct platform_device *pdev)
 	pm_runtime_disable(&pdev->dev);
 }
 
-static __maybe_unused int fsl_xcvr_runtime_suspend(struct device *dev)
+static int fsl_xcvr_runtime_suspend(struct device *dev)
 {
 	struct fsl_xcvr *xcvr = dev_get_drvdata(dev);
 	int ret;
@@ -1450,7 +1493,7 @@ static __maybe_unused int fsl_xcvr_runtime_suspend(struct device *dev)
 	return 0;
 }
 
-static __maybe_unused int fsl_xcvr_runtime_resume(struct device *dev)
+static int fsl_xcvr_runtime_resume(struct device *dev)
 {
 	struct fsl_xcvr *xcvr = dev_get_drvdata(dev);
 	int ret;
@@ -1535,9 +1578,7 @@ stop_ipg_clk:
 }
 
 static const struct dev_pm_ops fsl_xcvr_pm_ops = {
-	SET_RUNTIME_PM_OPS(fsl_xcvr_runtime_suspend,
-			   fsl_xcvr_runtime_resume,
-			   NULL)
+	RUNTIME_PM_OPS(fsl_xcvr_runtime_suspend, fsl_xcvr_runtime_resume, NULL)
 	SET_SYSTEM_SLEEP_PM_OPS(pm_runtime_force_suspend,
 				pm_runtime_force_resume)
 };
@@ -1546,10 +1587,10 @@ static struct platform_driver fsl_xcvr_driver = {
 	.probe = fsl_xcvr_probe,
 	.driver = {
 		.name = "fsl,imx8mp-audio-xcvr",
-		.pm = &fsl_xcvr_pm_ops,
+		.pm = pm_ptr(&fsl_xcvr_pm_ops),
 		.of_match_table = fsl_xcvr_dt_ids,
 	},
-	.remove_new = fsl_xcvr_remove,
+	.remove = fsl_xcvr_remove,
 };
 module_platform_driver(fsl_xcvr_driver);
 

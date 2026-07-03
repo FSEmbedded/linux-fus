@@ -115,30 +115,15 @@ static const struct imx_pll14xx_rate_table *imx_get_pll_settings(
 static long pll14xx_calc_rate(struct clk_pll14xx *pll, int mdiv, int pdiv,
 			      int sdiv, int kdiv, unsigned long prate)
 {
-	const struct imx_pll14xx_rate_table *rate_table = pll->rate_table;
-	unsigned long rate = 0;
 	u64 fout = prate;
-	int i;
-
-	/*
-	 * Sometimes, the recalculated rate has deviation due to
-	 * the frac part. So find the accurate pll rate from the table
-	 * first, if no match rate in the table, use the rate calculated
-	 * from the equation below.
-	 */
-	for (i = 0; i < pll->rate_count; i++) {
-		if (rate_table[i].pdiv == pdiv && rate_table[i].mdiv == mdiv &&
-		    rate_table[i].sdiv == sdiv && rate_table[i].kdiv == kdiv)
-			rate = rate_table[i].rate;
-	}
 
 	/* fout = (m * 65536 + k) * Fin / (p * 65536) / (1 << sdiv) */
-	fout *= ((u64)mdiv * 65536 + (u64)kdiv);
+	fout *= (mdiv * 65536 + kdiv);
 	pdiv *= 65536;
 
 	do_div(fout, pdiv << sdiv);
 
-	return rate ? (unsigned long) rate : (unsigned long)fout;
+	return fout;
 }
 
 static long pll1443x_calc_kdiv(int mdiv, int pdiv, int sdiv,
@@ -157,7 +142,7 @@ static void imx_pll14xx_calc_settings(struct clk_pll14xx *pll, unsigned long rat
 {
 	u32 pll_div_ctl0, pll_div_ctl1;
 	int mdiv, pdiv, sdiv, kdiv;
-	long fvco, fout, rate_min, rate_max, dist, best = LONG_MAX;
+	long fout, rate_min, rate_max, dist, best = LONG_MAX;
 	const struct imx_pll14xx_rate_table *tt;
 
 	/*
@@ -169,8 +154,7 @@ static void imx_pll14xx_calc_settings(struct clk_pll14xx *pll, unsigned long rat
 	 * d) -32768 <= k <= 32767
 	 *
 	 * fvco = (m * 65536 + k) * prate / (p * 65536)
-	 *
-	 * e) 1600MHz <= fvco <= 3200MHz
+	 * fout = (m * 65536 + k) * prate / (p * 65536) / (1 << sdiv)
 	 */
 
 	/* First try if we can get the desired rate from one of the static entries */

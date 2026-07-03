@@ -3,26 +3,11 @@
  * Copyright 2019-2021 NXP
  * Zhou Guoniu <guoniu.zhou@nxp.com>
  */
-
 img_ipg_clk: clock-img-ipg {
 	compatible = "fixed-clock";
 	#clock-cells = <0>;
 	clock-frequency = <200000000>;
 	clock-output-names = "img_ipg_clk";
-};
-
-img_axi_clk: clock-img-axi {
-	compatible = "fixed-clock";
-	#clock-cells = <0>;
-	clock-frequency = <400000000>;
-	clock-output-names = "img_axi_clk";
-};
-
-img_pxl_clk: clock-img-pxl {
-	compatible = "fixed-clock";
-	#clock-cells = <0>;
-	clock-frequency = <600000000>;
-	clock-output-names = "img_pxl_clk";
 };
 
 img_subsys: bus@58000000 {
@@ -32,34 +17,28 @@ img_subsys: bus@58000000 {
 	ranges = <0x58000000 0x0 0x58000000 0x1000000>;
 	power-domains = <&pd IMX_SC_R_ISI_CH0>;
 
-	csi0_core_lpcg: clock-controller@58223018 {
-		compatible = "fsl,imx8qxp-lpcg";
-		reg = <0x58223018 0x4>;
-		#clock-cells = <1>;
-		clocks = <&clk IMX_SC_R_CSI_0 IMX_SC_PM_CLK_PER>;
-		bit-offset = <16>;
-		clock-output-names = "csi0_lpcg_core_clk";
-		power-domains = <&pd IMX_SC_R_ISI_CH0>;
+	jpegdec: jpegdec@58400000 {
+		reg = <0x58400000 0x00050000>;
+		interrupts = <GIC_SPI 309 IRQ_TYPE_LEVEL_HIGH>;
+		clocks = <&img_jpeg_dec_lpcg IMX_LPCG_CLK_0>,
+			 <&img_jpeg_dec_lpcg IMX_LPCG_CLK_4>;
+		assigned-clocks = <&img_jpeg_dec_lpcg IMX_LPCG_CLK_0>,
+				  <&img_jpeg_dec_lpcg IMX_LPCG_CLK_4>;
+		assigned-clock-rates = <200000000>, <200000000>;
+		power-domains = <&pd IMX_SC_R_MJPEG_DEC_MP>,
+				<&pd IMX_SC_R_MJPEG_DEC_S0>;
 	};
 
-	csi0_esc_lpcg: clock-controller@5822301c {
-		compatible = "fsl,imx8qxp-lpcg";
-		reg = <0x5822301c 0x4>;
-		#clock-cells = <1>;
-		clocks = <&clk IMX_SC_R_CSI_0 IMX_SC_PM_CLK_MISC>;
-		bit-offset = <16>;
-		clock-output-names = "csi0_lpcg_esc_clk";
-		power-domains = <&pd IMX_SC_R_ISI_CH0>;
-	};
-
-	csi1_core_lpcg: clock-controller@58243018 {
-		compatible = "fsl,imx8qxp-lpcg";
-		reg = <0x58243018 0x4>;
-		#clock-cells = <1>;
-		clocks = <&clk IMX_SC_R_CSI_1 IMX_SC_PM_CLK_PER>;
-		bit-offset = <16>;
-		clock-output-names = "csi1_lpcg_core_clk";
-		power-domains = <&pd IMX_SC_R_ISI_CH0>;
+	jpegenc: jpegenc@58450000 {
+		reg = <0x58450000 0x00050000>;
+		interrupts = <GIC_SPI 305 IRQ_TYPE_LEVEL_HIGH>;
+		clocks = <&img_jpeg_enc_lpcg IMX_LPCG_CLK_0>,
+			 <&img_jpeg_enc_lpcg IMX_LPCG_CLK_4>;
+		assigned-clocks = <&img_jpeg_enc_lpcg IMX_LPCG_CLK_0>,
+				  <&img_jpeg_enc_lpcg IMX_LPCG_CLK_4>;
+		assigned-clock-rates = <200000000>, <200000000>;
+		power-domains = <&pd IMX_SC_R_MJPEG_ENC_MP>,
+				<&pd IMX_SC_R_MJPEG_ENC_S0>;
 	};
 
 	csi1_esc_lpcg: clock-controller@5824301c {

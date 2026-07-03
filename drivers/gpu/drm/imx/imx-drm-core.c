@@ -344,6 +344,7 @@ err_poll_fini:
 	drm_kms_helper_poll_fini(drm);
 	component_unbind_all(drm->dev, drm);
 err_kms:
+	dev_set_drvdata(dev, NULL);
 	drm_dev_put(drm);
 
 	return ret;
@@ -356,6 +357,7 @@ static void imx_drm_unbind(struct device *dev)
 	drm_dev_unregister(drm);
 
 	drm_kms_helper_poll_fini(drm);
+	drm_atomic_helper_shutdown(drm);
 
 	component_unbind_all(drm->dev, drm);
 
@@ -386,10 +388,14 @@ static int imx_drm_platform_probe(struct platform_device *pdev)
 	return ret;
 }
 
-static int imx_drm_platform_remove(struct platform_device *pdev)
+static void imx_drm_platform_remove(struct platform_device *pdev)
 {
 	component_master_del(&pdev->dev, &imx_drm_ops);
-	return 0;
+}
+
+static void imx_drm_platform_shutdown(struct platform_device *pdev)
+{
+	drm_atomic_helper_shutdown(platform_get_drvdata(pdev));
 }
 
 #ifdef CONFIG_PM_SLEEP
@@ -418,7 +424,8 @@ MODULE_DEVICE_TABLE(of, imx_drm_dt_ids);
 
 static struct platform_driver imx_drm_pdrv = {
 	.probe		= imx_drm_platform_probe,
-	.remove		= imx_drm_platform_remove,
+	.remove_new	= imx_drm_platform_remove,
+	.shutdown	= imx_drm_platform_shutdown,
 	.driver		= {
 		.name	= "imx-drm",
 		.pm	= &imx_drm_pm_ops,

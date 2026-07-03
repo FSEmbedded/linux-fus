@@ -341,16 +341,16 @@ static void dirty_init(struct keybuf_key *w)
 	bch_bio_map(bio, NULL);
 }
 
-static void dirty_io_destructor(struct closure *cl)
+static CLOSURE_CALLBACK(dirty_io_destructor)
 {
-	struct dirty_io *io = container_of(cl, struct dirty_io, cl);
+	closure_type(io, struct dirty_io, cl);
 
 	kfree(io);
 }
 
-static void write_dirty_finish(struct closure *cl)
+static CLOSURE_CALLBACK(write_dirty_finish)
 {
-	struct dirty_io *io = container_of(cl, struct dirty_io, cl);
+	closure_type(io, struct dirty_io, cl);
 	struct keybuf_key *w = io->bio.bi_private;
 	struct cached_dev *dc = io->dc;
 
@@ -400,9 +400,9 @@ static void dirty_endio(struct bio *bio)
 	closure_put(&io->cl);
 }
 
-static void write_dirty(struct closure *cl)
+static CLOSURE_CALLBACK(write_dirty)
 {
-	struct dirty_io *io = container_of(cl, struct dirty_io, cl);
+	closure_type(io, struct dirty_io, cl);
 	struct keybuf_key *w = io->bio.bi_private;
 	struct cached_dev *dc = io->dc;
 
@@ -462,9 +462,9 @@ static void read_dirty_endio(struct bio *bio)
 	dirty_endio(bio);
 }
 
-static void read_dirty_submit(struct closure *cl)
+static CLOSURE_CALLBACK(read_dirty_submit)
 {
-	struct dirty_io *io = container_of(cl, struct dirty_io, cl);
+	closure_type(io, struct dirty_io, cl);
 
 	closure_bio_submit(io->dc->disk.c, &io->bio, cl);
 
@@ -915,6 +915,7 @@ static int bch_dirty_init_thread(void *arg)
 	k = p = NULL;
 	prev_idx = 0;
 
+	min_heap_init(&iter.heap, NULL, MAX_BSETS);
 	bch_btree_iter_init(&c->root->keys, &iter, NULL);
 	k = bch_btree_iter_next_filter(&iter, &c->root->keys, bch_ptr_bad);
 	BUG_ON(!k);
@@ -983,6 +984,8 @@ void bch_sectors_dirty_init(struct bcache_device *d)
 	struct sectors_dirty_init op;
 	struct cache_set *c = d->c;
 	struct bch_dirty_init_state state;
+
+	min_heap_init(&iter.heap, NULL, MAX_BSETS);
 
 retry_lock:
 	b = c->root;

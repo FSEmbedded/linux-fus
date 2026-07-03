@@ -67,7 +67,7 @@
 			no-map;
 		};
 
-		rsc_table: rsc-table@1fff8000{
+		rsc_table: rsc-table@1fff8000 {
 			reg = <0 0x1fff8000 0 0x1000>;
 			no-map;
 		};
@@ -404,12 +404,70 @@
 	pinctrl-1 = <&pinctrl_lpi2c7>;
 	status = "okay";
 
+	ptn5150_1: typec@1d {
+		compatible = "nxp,ptn5150";
+		reg = <0x1d>;
+		int-gpios = <&gpiof 3 IRQ_TYPE_EDGE_FALLING>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_typec1>;
+		status = "disabled";
+	};
+
 	pcal6408: gpio@21 {
 		compatible = "nxp,pcal9554b";
 		reg = <0x21>;
 		gpio-controller;
 		#gpio-cells = <2>;
 	};
+
+	ptn5150_2: typec@3d {
+		compatible = "nxp,ptn5150";
+		reg = <0x3d>;
+		int-gpios = <&gpiof 5 IRQ_TYPE_EDGE_FALLING>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_typec2>;
+		status = "disabled";
+	};
+};
+
+&usbotg1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usb1>;
+	dr_mode = "otg";
+	hnp-disable;
+	srp-disable;
+	adp-disable;
+	over-current-active-low;
+	status = "okay";
+};
+
+&usbphy1 {
+	fsl,tx-d-cal = <110>;
+	status = "okay";
+};
+
+&usbmisc1 {
+	status = "okay";
+};
+
+&usbotg2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usb2>;
+	dr_mode = "otg";
+	hnp-disable;
+	srp-disable;
+	adp-disable;
+	over-current-active-low;
+	status = "okay";
+};
+
+&usbphy2 {
+	fsl,tx-d-cal = <110>;
+	status = "okay";
+};
+
+&usbmisc2 {
+	status = "okay";
 };
 
 &sai5 {
@@ -635,32 +693,29 @@
 		>;
 	};
 
-	pinctrl_otgid1: usb1grp {
+	pinctrl_typec1: typec1grp {
+		fsl,pins = <
+			MX8ULP_PAD_PTF3__PTF3           0x3
+		>;
+	};
+
+	pinctrl_typec2: typec2grp {
+		fsl,pins = <
+			MX8ULP_PAD_PTF5__PTF5           0x3
+		>;
+	};
+
+	pinctrl_usb1: usb1grp {
 		fsl,pins = <
 			MX8ULP_PAD_PTF2__USB0_ID	0x10003
 			MX8ULP_PAD_PTF4__USB0_OC	0x10003
 		>;
 	};
 
-	pinctrl_otgid2: usb2grp {
+	pinctrl_usb2: usb2grp {
 		fsl,pins = <
 			MX8ULP_PAD_PTD23__USB1_ID	0x10003
 			MX8ULP_PAD_PTF6__USB1_OC	0x10003
-		>;
-	};
-
-	pinctrl_sai5: sai5grp {
-		fsl,pins = <
-			MX8ULP_PAD_PTF26__I2S5_TX_BCLK  0x43
-			MX8ULP_PAD_PTF27__I2S5_TX_FS    0x43
-			MX8ULP_PAD_PTF28__I2S5_TXD0     0x43
-			MX8ULP_PAD_PTF24__I2S5_RXD3 	0x43
-		>;
-	};
-
-	pinctrl_spdif: spdifgrp {
-		fsl,pins = <
-			MX8ULP_PAD_PTF25__SPDIF_OUT1    0x43
 		>;
 	};
 

@@ -733,9 +733,10 @@ static int mx51_ecspi_prepare_transfer(struct spi_imx_data *spi_imx,
 	if (spi_imx->target_mode)
 		ctrl |= (spi_imx->target_burst * 8 - 1)
 			<< MX51_ECSPI_CTRL_BL_OFFSET;
-	else
+	else {
 		ctrl |= (spi_imx->bits_per_word - 1)
 			<< MX51_ECSPI_CTRL_BL_OFFSET;
+	}
 
 	/* set clock speed */
 	ctrl &= ~(0xf << MX51_ECSPI_CTRL_POSTDIV_OFFSET |
@@ -1131,7 +1132,7 @@ static struct spi_imx_devtype_data imx35_cspi_devtype_data = {
 	.rx_available = mx31_rx_available,
 	.reset = mx31_reset,
 	.fifo_size = 8,
-	.has_dmamode = true,
+	.has_dmamode = false,
 	.dynamic_burst = false,
 	.has_targetmode = false,
 	.devtype = IMX35_CSPI,
@@ -1421,7 +1422,7 @@ static int spi_imx_sdma_init(struct device *dev, struct spi_imx_data *spi_imx,
 	controller->dma_tx = dma_request_chan(dev, "tx");
 	if (IS_ERR(controller->dma_tx)) {
 		ret = PTR_ERR(controller->dma_tx);
-		dev_dbg(dev, "can't get the TX DMA channel, error %d!\n", ret);
+		dev_err_probe(dev, ret, "can't get the TX DMA channel!\n");
 		controller->dma_tx = NULL;
 		goto err;
 	}
@@ -1430,7 +1431,7 @@ static int spi_imx_sdma_init(struct device *dev, struct spi_imx_data *spi_imx,
 	controller->dma_rx = dma_request_chan(dev, "rx");
 	if (IS_ERR(controller->dma_rx)) {
 		ret = PTR_ERR(controller->dma_rx);
-		dev_dbg(dev, "can't get the RX DMA channel, error %d\n", ret);
+		dev_err_probe(dev, ret, "can't get the RX DMA channel!\n");
 		controller->dma_rx = NULL;
 		goto err;
 	}
@@ -1481,7 +1482,7 @@ static int spi_imx_dma_transfer(struct spi_imx_data *spi_imx,
 {
 	struct dma_async_tx_descriptor *desc_tx, *desc_rx;
 	unsigned long transfer_timeout;
-	unsigned long timeout;
+	unsigned long time_left;
 	struct spi_controller *controller = spi_imx->controller;
 	struct sg_table *tx = &transfer->tx_sg, *rx = &transfer->rx_sg;
 	struct scatterlist *last_sg = sg_last(rx->sgl, rx->nents);
@@ -1554,57 +1555,23 @@ static int spi_imx_dma_transfer(struct spi_imx_data *spi_imx,
 	if (!spi_imx->target_mode) {
 		spi_imx->devtype_data->trigger(spi_imx);
 
-		transfer_timeout = spi_imx_calculate_timeout(spi_imx, transfer->len);
+	/* Wait SDMA to finish the data transfer.*/
+	time_left = wait_for_completion_timeout(&spi_imx->dma_tx_completion,
+						transfer_timeout);
+	if (!time_left) {
+		dev_err(spi_imx->dev, "I/O Error in DMA TX\n");
+		dmaengine_terminate_all(controller->dma_tx);
+		dmaengine_terminate_all(controller->dma_rx);
+		return -ETIMEDOUT;
+	}
 
-		/* Wait SDMA to finish the data transfer.*/
-		timeout = wait_for_completion_timeout(&spi_imx->dma_tx_completion,
-							transfer_timeout);
-		if (!timeout) {
-			dev_err(spi_imx->dev, "I/O Error in DMA TX\n");
-			dmaengine_terminate_all(controller->dma_tx);
-			dmaengine_terminate_all(controller->dma_rx);
-			return -ETIMEDOUT;
-		}
-
-		timeout = wait_for_completion_timeout(&spi_imx->dma_rx_completion,
-						      transfer_timeout);
-		if (!timeout) {
-			dev_err(&controller->dev, "I/O Error in DMA RX\n");
-			spi_imx->devtype_data->reset(spi_imx);
-			dmaengine_terminate_all(controller->dma_rx);
-			return -ETIMEDOUT;
-		}
-	} else {
-		spi_imx->target_aborted = false;
-
-		spi_imx->devtype_data->trigger(spi_imx);
-
-		if (wait_for_completion_interruptible(&spi_imx->dma_tx_completion) ||
-			spi_imx->target_aborted) {
-			dev_dbg(spi_imx->dev,
-				"I/O Error in DMA TX interrupted\n");
-			dmaengine_terminate_all(controller->dma_tx);
-			dmaengine_terminate_all(controller->dma_rx);
-			return -EINTR;
-		}
-
-		if (wait_for_completion_interruptible(&spi_imx->dma_rx_completion) ||
-			spi_imx->target_aborted) {
-			dev_dbg(spi_imx->dev,
-				"I/O Error in DMA RX interrupted\n");
-			dmaengine_terminate_all(controller->dma_tx);
-			dmaengine_terminate_all(controller->dma_rx);
-			return -EINTR;
-		}
-
-		/* ecspi has a HW issue when works in target mode,
-		 * after 64 words writtern to TXFIFO, even TXFIFO becomes empty,
-		 * ECSPI_TXDATA keeps shift out the last word data,
-		 * so we have to disable ECSPI when in target mode after the
-		 * transfer completes
-		 */
-		if (spi_imx->devtype_data->disable)
-			spi_imx->devtype_data->disable(spi_imx);
+	time_left = wait_for_completion_timeout(&spi_imx->dma_rx_completion,
+						transfer_timeout);
+	if (!time_left) {
+		dev_err(&controller->dev, "I/O Error in DMA RX\n");
+		spi_imx->devtype_data->reset(spi_imx);
+		dmaengine_terminate_all(controller->dma_rx);
+		return -ETIMEDOUT;
 	}
 
 	return 0;
@@ -1619,7 +1586,7 @@ static int spi_imx_pio_transfer(struct spi_device *spi,
 {
 	struct spi_imx_data *spi_imx = spi_controller_get_devdata(spi->controller);
 	unsigned long transfer_timeout;
-	unsigned long timeout;
+	unsigned long time_left;
 
 	spi_imx->tx_buf = transfer->tx_buf;
 	spi_imx->rx_buf = transfer->rx_buf;
@@ -1635,9 +1602,9 @@ static int spi_imx_pio_transfer(struct spi_device *spi,
 
 	transfer_timeout = spi_imx_calculate_timeout(spi_imx, transfer->len);
 
-	timeout = wait_for_completion_timeout(&spi_imx->xfer_done,
-					      transfer_timeout);
-	if (!timeout) {
+	time_left = wait_for_completion_timeout(&spi_imx->xfer_done,
+						transfer_timeout);
+	if (!time_left) {
 		dev_err(&spi->dev, "I/O Error in PIO\n");
 		spi_imx->devtype_data->reset(spi_imx);
 		return -ETIMEDOUT;
@@ -1785,10 +1752,6 @@ static int spi_imx_setup(struct spi_device *spi)
 	return 0;
 }
 
-static void spi_imx_cleanup(struct spi_device *spi)
-{
-}
-
 static int
 spi_imx_prepare_message(struct spi_controller *controller, struct spi_message *msg)
 {
@@ -1894,7 +1857,6 @@ static int spi_imx_probe(struct platform_device *pdev)
 
 	controller->transfer_one = spi_imx_transfer_one;
 	controller->setup = spi_imx_setup;
-	controller->cleanup = spi_imx_cleanup;
 	controller->prepare_message = spi_imx_prepare_message;
 	controller->unprepare_message = spi_imx_unprepare_message;
 	controller->target_abort = spi_imx_target_abort;
@@ -2009,8 +1971,8 @@ out_register_controller:
 		spi_imx_sdma_exit(spi_imx);
 out_runtime_pm_put:
 	pm_runtime_dont_use_autosuspend(spi_imx->dev);
-	pm_runtime_set_suspended(&pdev->dev);
 	pm_runtime_disable(spi_imx->dev);
+	pm_runtime_set_suspended(&pdev->dev);
 
 	clk_disable_unprepare(spi_imx->clk_ipg);
 out_put_per:
@@ -2042,7 +2004,7 @@ static void spi_imx_remove(struct platform_device *pdev)
 	spi_imx_sdma_exit(spi_imx);
 }
 
-static int __maybe_unused spi_imx_runtime_resume(struct device *dev)
+static int spi_imx_runtime_resume(struct device *dev)
 {
 	struct spi_controller *controller = dev_get_drvdata(dev);
 	struct spi_imx_data *spi_imx;
@@ -2063,7 +2025,7 @@ static int __maybe_unused spi_imx_runtime_resume(struct device *dev)
 	return 0;
 }
 
-static int __maybe_unused spi_imx_runtime_suspend(struct device *dev)
+static int spi_imx_runtime_suspend(struct device *dev)
 {
 	struct spi_controller *controller = dev_get_drvdata(dev);
 	struct spi_imx_data *spi_imx;
@@ -2076,29 +2038,28 @@ static int __maybe_unused spi_imx_runtime_suspend(struct device *dev)
 	return 0;
 }
 
-static int __maybe_unused spi_imx_suspend(struct device *dev)
+static int spi_imx_suspend(struct device *dev)
 {
 	pinctrl_pm_select_sleep_state(dev);
 	return 0;
 }
 
-static int __maybe_unused spi_imx_resume(struct device *dev)
+static int spi_imx_resume(struct device *dev)
 {
 	pinctrl_pm_select_default_state(dev);
 	return 0;
 }
 
 static const struct dev_pm_ops imx_spi_pm = {
-	SET_RUNTIME_PM_OPS(spi_imx_runtime_suspend,
-				spi_imx_runtime_resume, NULL)
-	SET_SYSTEM_SLEEP_PM_OPS(spi_imx_suspend, spi_imx_resume)
+	RUNTIME_PM_OPS(spi_imx_runtime_suspend,	spi_imx_runtime_resume, NULL)
+	SYSTEM_SLEEP_PM_OPS(spi_imx_suspend, spi_imx_resume)
 };
 
 static struct platform_driver spi_imx_driver = {
 	.driver = {
 		   .name = DRIVER_NAME,
 		   .of_match_table = spi_imx_dt_ids,
-		   .pm = &imx_spi_pm,
+		   .pm = pm_ptr(&imx_spi_pm),
 	},
 	.probe = spi_imx_probe,
 	.remove_new = spi_imx_remove,

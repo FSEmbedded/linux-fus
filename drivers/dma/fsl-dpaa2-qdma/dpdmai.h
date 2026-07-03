@@ -9,11 +9,15 @@
 #define DPDMAI_VER_MINOR	3
 
 #define DPDMAI_CMD_BASE_VERSION	1
-#define DPDMAI_CMD_VERSION_2	2
 #define DPDMAI_CMD_ID_OFFSET	4
 
-#define DPDMAI_CMD(id)		((id << DPDMAI_CMD_ID_OFFSET) | DPDMAI_CMD_BASE_VERSION)
-#define DPDMAI_CMD_V2(id)	((id << DPDMAI_CMD_ID_OFFSET) | DPDMAI_CMD_VERSION_2)
+/*
+ * Maximum number of Tx/Rx queues per DPDMAI object
+ */
+#define DPDMAI_MAX_QUEUE_NUM	8
+
+#define DPDMAI_CMDID_FORMAT_V(x, v)	(((x) << DPDMAI_CMD_ID_OFFSET) | (v))
+#define DPDMAI_CMDID_FORMAT(x)		DPDMAI_CMDID_FORMAT_V(x, DPDMAI_CMD_BASE_VERSION)
 
 /* Command IDs */
 #define DPDMAI_CMDID_CLOSE		DPDMAI_CMD(0x800)
@@ -28,18 +32,9 @@
 #define DPDMAI_CMDID_RESET              DPDMAI_CMD(0x005)
 #define DPDMAI_CMDID_IS_ENABLED		DPDMAI_CMD(0x006)
 
-#define DPDMAI_CMDID_SET_RX_QUEUE	DPDMAI_CMD_V2(0x1A0)
-#define DPDMAI_CMDID_GET_RX_QUEUE       DPDMAI_CMD_V2(0x1A1)
-#define DPDMAI_CMDID_GET_TX_QUEUE       DPDMAI_CMD_V2(0x1A2)
-
-/* Macros for accessing command fields smaller than 1byte */
-#define DPDMAI_MASK(field)	\
-	GENMASK(DPDMAI_##field##_SHIFT + DPDMAI_##field##_SIZE - 1,	\
-		DPDMAI_##field##_SHIFT)
-#define dpdmai_set_field(var, field, val)	\
-	((var) |= (((val) << DPDMAI_##field##_SHIFT) & DPDMAI_MASK(field)))
-#define dpdmai_get_field(var, field)	\
-	(((var) & DPDMAI_MASK(field)) >> DPDMAI_##field##_SHIFT)
+#define DPDMAI_CMDID_SET_RX_QUEUE	DPDMAI_CMDID_FORMAT_V(0x1A0, 2)
+#define DPDMAI_CMDID_GET_RX_QUEUE       DPDMAI_CMDID_FORMAT_V(0x1A1, 2)
+#define DPDMAI_CMDID_GET_TX_QUEUE       DPDMAI_CMDID_FORMAT_V(0x1A2, 2)
 
 #define MC_CMD_HDR_TOKEN_O 32  /* Token field offset */
 #define MC_CMD_HDR_TOKEN_S 16  /* Token field size */
@@ -52,11 +47,6 @@
  */
 
 /*
- * Maximum number of Tx/Rx queues per DPDMAI object
- */
-#define DPDMAI_MAX_QUEUE_NUM	8
-
-/**
  * Maximum number of Tx/Rx priorities per DPDMAI object
  */
 #define DPDMAI_PRIO_NUM		2
@@ -68,12 +58,12 @@
 
 /* DPDMAI queue modification options */
 
-/**
+/*
  * Select to modify the user's context associated with the queue
  */
 #define DPDMAI_QUEUE_OPT_USER_CTX	0x1
 
-/**
+/*
  * Select to modify the queue's destination
  */
 #define DPDMAI_QUEUE_OPT_DEST		0x2
@@ -143,6 +133,7 @@ struct dpdmai_rsp_get_tx_queue {
 
 /**
  * struct dpdmai_cfg - Structure representing DPDMAI configuration
+ * @num_queues:	Number of the DMA queues
  * @priorities: Priorities for the DMA hardware processing; valid priorities are
  *	configured with values 1-8; the entry following last valid entry
  *	should be configured with 0
@@ -156,15 +147,17 @@ struct dpdmai_cfg {
  * struct dpdmai_attr - Structure representing DPDMAI attributes
  * @id: DPDMAI object ID
  * @version: DPDMAI version
+ * @version.major: DPDMAI major version
+ * @version.minor: DPDMAI minor version
  * @num_of_priorities: number of priorities
+ * @num_of_queues: number of the DMA queues
  */
 struct dpdmai_attr {
-	int id;
-	/**
-	 * struct version - DPDMAI version
-	 * @major: DPDMAI major version
-	 * @minor: DPDMAI minor version
-	 */
+	int	id;
+	struct {
+		u16 major;
+		u16 minor;
+	} version;
 	u8 num_of_priorities;
 	u8 num_of_queues;
 };
@@ -238,11 +231,7 @@ struct dpdmai_tx_queue_attr {
 int dpdmai_open(struct fsl_mc_io *mc_io, u32 cmd_flags,
 		int dpdmai_id, u16 *token);
 int dpdmai_close(struct fsl_mc_io *mc_io, u32 cmd_flags, u16 token);
-int dpdmai_create(struct fsl_mc_io *mc_io, u32 cmd_flags,
-		  const struct dpdmai_cfg *cfg, u16 token,
-		  u32 *dpdmai_id);
-int dpdmai_destroy(struct fsl_mc_io *mc_io, u32 cmd_flags,
-		   u32 dpdmai_id, u16 token);
+int dpdmai_destroy(struct fsl_mc_io *mc_io, u32 cmd_flags, u32 dpdmai_id, u16 token);
 int dpdmai_enable(struct fsl_mc_io *mc_io, u32 cmd_flags, u16 token);
 int dpdmai_disable(struct fsl_mc_io *mc_io, u32 cmd_flags, u16 token);
 int dpdmai_is_enabled(struct fsl_mc_io *mc_io, u32 cmd_flags,
@@ -250,14 +239,11 @@ int dpdmai_is_enabled(struct fsl_mc_io *mc_io, u32 cmd_flags,
 int dpdmai_reset(struct fsl_mc_io *mc_io, u32 cmd_flags, u16 token);
 int dpdmai_get_attributes(struct fsl_mc_io *mc_io, u32 cmd_flags,
 			  u16 token, struct dpdmai_attr	*attr);
-int dpdmai_set_rx_queue(struct fsl_mc_io *mc_io, u32 cmd_flags,
-			u16 token, u8 queue_idx, u8 priority,
-			const struct dpdmai_rx_queue_cfg *cfg);
-int dpdmai_get_rx_queue(struct fsl_mc_io *mc_io, u32 cmd_flags,
-			u16 token, u8 queue_idx, u8 priority,
-			struct dpdmai_rx_queue_attr *attr);
+int dpdmai_set_rx_queue(struct fsl_mc_io *mc_io, u32 cmd_flags, u16 token,
+			u8 queue_idx, u8 priority, const struct dpdmai_rx_queue_cfg *cfg);
+int dpdmai_get_rx_queue(struct fsl_mc_io *mc_io, u32 cmd_flags, u16 token,
+			u8 queue_idx, u8 priority, struct dpdmai_rx_queue_attr *attr);
 int dpdmai_get_tx_queue(struct fsl_mc_io *mc_io, u32 cmd_flags,
-			u16 token, u8 queue_idx, u8 priority,
-			struct dpdmai_tx_queue_attr *attr);
+			u16 token, u8 queue_idx, u8 priority, struct dpdmai_tx_queue_attr *attr);
 
 #endif /* __FSL_DPDMAI_H */

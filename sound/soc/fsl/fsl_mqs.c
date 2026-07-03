@@ -10,9 +10,7 @@
 #include <linux/moduleparam.h>
 #include <linux/mfd/syscon.h>
 #include <linux/mfd/syscon/imx6q-iomuxc-gpr.h>
-#include <linux/of_device.h>
 #include <linux/pm_runtime.h>
-#include <linux/of.h>
 #include <linux/pm.h>
 #include <linux/slab.h>
 #include <sound/soc.h>
@@ -31,14 +29,16 @@
 #define MQS_CLK_DIV_MASK		(0xFF << 0)
 #define MQS_CLK_DIV_SHIFT		(0)
 
-#define MODE_REG_OWN	0
-#define MODE_REG_GPR	1
-#define MODE_REG_SM	2
+enum reg_type {
+	TYPE_REG_OWN,  /* module own register space */
+	TYPE_REG_GPR,  /* register in GPR space */
+	TYPE_REG_SM,   /* System Manager controls the register */
+};
 
 /**
  * struct fsl_mqs_soc_data - soc specific data
  *
- * @use_gpr: control register is in General Purpose Register group
+ * @type: control register space type
  * @ctrl_off: control register offset
  * @en_mask: enable bit mask
  * @en_shift: enable bit shift
@@ -50,7 +50,7 @@
  * @div_shift: clock divider bit shift
  */
 struct fsl_mqs_soc_data {
-	int  mode;
+	enum reg_type type;
 	int  ctrl_off;
 	int  en_mask;
 	int  en_shift;
@@ -230,37 +230,7 @@ static int fsl_mqs_probe(struct platform_device *pdev)
 	soc_data = of_device_get_match_data(&pdev->dev);
 	mqs_priv->soc = *soc_data;
 
-	elems = of_property_count_u32_elems(np, propname);
-	if (elems == 6) {
-		index = 0;
-
-		ret = of_property_read_u32_index(np, propname, index++, &mqs_priv->soc.mode);
-		if (ret)
-			return -EINVAL;
-
-		ret = of_property_read_u32_index(np, propname, index++, &mqs_priv->soc.ctrl_off);
-		if (ret)
-			return -EINVAL;
-		ret = of_property_read_u32_index(np, propname, index++, &mqs_priv->soc.en_shift);
-		if (ret)
-			return -EINVAL;
-		ret = of_property_read_u32_index(np, propname, index++, &mqs_priv->soc.rst_shift);
-		if (ret)
-			return -EINVAL;
-		ret = of_property_read_u32_index(np, propname, index++, &mqs_priv->soc.osr_shift);
-		if (ret)
-			return -EINVAL;
-		ret = of_property_read_u32_index(np, propname, index++, &mqs_priv->soc.div_shift);
-		if (ret)
-			return -EINVAL;
-
-		mqs_priv->soc.en_mask  = 1 << mqs_priv->soc.en_shift;
-		mqs_priv->soc.rst_mask = 1 << mqs_priv->soc.rst_shift;
-		mqs_priv->soc.osr_mask = 1 << mqs_priv->soc.osr_shift;
-		mqs_priv->soc.div_mask = 0xFF << mqs_priv->soc.div_shift;
-	}
-
-	if (mqs_priv->soc.mode == MODE_REG_GPR) {
+	if (mqs_priv->soc->type == TYPE_REG_GPR) {
 		gpr_np = of_parse_phandle(np, "gpr", 0);
 		if (!gpr_np) {
 			dev_err(&pdev->dev, "failed to get gpr node by phandle\n");
@@ -326,7 +296,6 @@ static void fsl_mqs_remove(struct platform_device *pdev)
 	pm_runtime_disable(&pdev->dev);
 }
 
-#ifdef CONFIG_PM
 static int fsl_mqs_runtime_resume(struct device *dev)
 {
 	struct fsl_mqs *mqs_priv = dev_get_drvdata(dev);
@@ -360,18 +329,14 @@ static int fsl_mqs_runtime_suspend(struct device *dev)
 
 	return 0;
 }
-#endif
 
 static const struct dev_pm_ops fsl_mqs_pm_ops = {
-	SET_RUNTIME_PM_OPS(fsl_mqs_runtime_suspend,
-			   fsl_mqs_runtime_resume,
-			   NULL)
-	SET_SYSTEM_SLEEP_PM_OPS(pm_runtime_force_suspend,
-				pm_runtime_force_resume)
+	RUNTIME_PM_OPS(fsl_mqs_runtime_suspend, fsl_mqs_runtime_resume, NULL)
+	SYSTEM_SLEEP_PM_OPS(pm_runtime_force_suspend, pm_runtime_force_resume)
 };
 
 static const struct fsl_mqs_soc_data fsl_mqs_imx8qm_data = {
-	.mode = MODE_REG_OWN,
+	.type = TYPE_REG_OWN,
 	.ctrl_off = REG_MQS_CTRL,
 	.en_mask  = MQS_EN_MASK,
 	.en_shift = MQS_EN_SHIFT,
@@ -384,7 +349,7 @@ static const struct fsl_mqs_soc_data fsl_mqs_imx8qm_data = {
 };
 
 static const struct fsl_mqs_soc_data fsl_mqs_imx6sx_data = {
-	.mode = MODE_REG_GPR,
+	.type = TYPE_REG_GPR,
 	.ctrl_off = IOMUXC_GPR2,
 	.en_mask  = IMX6SX_GPR2_MQS_EN_MASK,
 	.en_shift = IMX6SX_GPR2_MQS_EN_SHIFT,
@@ -397,7 +362,7 @@ static const struct fsl_mqs_soc_data fsl_mqs_imx6sx_data = {
 };
 
 static const struct fsl_mqs_soc_data fsl_mqs_imx93_data = {
-	.mode = MODE_REG_GPR,
+	.type = TYPE_REG_GPR,
 	.ctrl_off = 0x20,
 	.en_mask  = BIT(1),
 	.en_shift = 1,
@@ -409,8 +374,21 @@ static const struct fsl_mqs_soc_data fsl_mqs_imx93_data = {
 	.div_shift = 8,
 };
 
-static const struct fsl_mqs_soc_data fsl_mqs_imx95_data = {
-	.mode = MODE_REG_GPR,
+static const struct fsl_mqs_soc_data fsl_mqs_imx95_aon_data = {
+	.type = TYPE_REG_SM,
+	.ctrl_off = 0x88,
+	.en_mask  = BIT(1),
+	.en_shift = 1,
+	.rst_mask = BIT(2),
+	.rst_shift = 2,
+	.osr_mask = BIT(3),
+	.osr_shift = 3,
+	.div_mask = GENMASK(15, 8),
+	.div_shift = 8,
+};
+
+static const struct fsl_mqs_soc_data fsl_mqs_imx95_netc_data = {
+	.type = TYPE_REG_GPR,
 	.ctrl_off = 0x0,
 	.en_mask  = BIT(2),
 	.en_shift = 2,
@@ -426,18 +404,19 @@ static const struct of_device_id fsl_mqs_dt_ids[] = {
 	{ .compatible = "fsl,imx8qm-mqs", .data = &fsl_mqs_imx8qm_data },
 	{ .compatible = "fsl,imx6sx-mqs", .data = &fsl_mqs_imx6sx_data },
 	{ .compatible = "fsl,imx93-mqs", .data = &fsl_mqs_imx93_data },
-	{ .compatible = "fsl,imx95-mqs", .data = &fsl_mqs_imx95_data },
+	{ .compatible = "fsl,imx95-aonmix-mqs", .data = &fsl_mqs_imx95_aon_data },
+	{ .compatible = "fsl,imx95-netcmix-mqs", .data = &fsl_mqs_imx95_netc_data },
 	{}
 };
 MODULE_DEVICE_TABLE(of, fsl_mqs_dt_ids);
 
 static struct platform_driver fsl_mqs_driver = {
 	.probe		= fsl_mqs_probe,
-	.remove_new	= fsl_mqs_remove,
+	.remove		= fsl_mqs_remove,
 	.driver		= {
 		.name	= "fsl-mqs",
 		.of_match_table = fsl_mqs_dt_ids,
-		.pm = &fsl_mqs_pm_ops,
+		.pm = pm_ptr(&fsl_mqs_pm_ops),
 	},
 };
 

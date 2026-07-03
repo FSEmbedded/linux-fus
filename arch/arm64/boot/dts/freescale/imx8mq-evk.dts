@@ -173,33 +173,33 @@
 		};
 	};
 
-	sound-hdmi {
-		compatible = "fsl,imx-audio-hdmi";
-		model = "imx-audio-hdmi";
-		audio-cpu = <&sai4>;
-		hdmi-out;
-		constraint-rate = <44100>,
-				<88200>,
-				<176400>,
-				<32000>,
-				<48000>,
-				<96000>,
-				<192000>;
+	spdif_out: spdif-out {
+		compatible = "linux,spdif-dit";
+		#sound-dai-cells = <0>;
+	};
+
+	spdif_in: spdif-in {
+		compatible = "linux,spdif-dir";
+		#sound-dai-cells = <0>;
 	};
 
 	sound-spdif {
 		compatible = "fsl,imx-audio-spdif";
 		model = "imx-spdif";
-		spdif-controller = <&spdif1>;
-		spdif-out;
-		spdif-in;
+		audio-cpu = <&spdif1>;
+		audio-codec = <&spdif_out>, <&spdif_in>;
+	};
+
+	hdmi_arc_in: hdmi-arc-in {
+		compatible = "linux,spdif-dir";
+		#sound-dai-cells = <0>;
 	};
 
 	sound-hdmi-arc {
 		compatible = "fsl,imx-audio-spdif";
 		model = "imx-hdmi-arc";
-		spdif-controller = <&spdif2>;
-		spdif-in;
+		audio-cpu = <&spdif2>;
+		audio-codec = <&hdmi_arc_in>;
 	};
 
 	sound-ak4458 {

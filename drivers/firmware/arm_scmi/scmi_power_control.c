@@ -79,6 +79,7 @@ enum scmi_syspower_state {
  * @reboot_nb: A notifier_block optionally used to track reboot progress
  * @forceful_work: A worker used to trigger a forceful transition once a
  *		   graceful has timed out.
+ * @suspend_work: A worker used to trigger system suspend
  */
 struct scmi_syspower_conf {
 	struct device *dev;
@@ -253,7 +254,6 @@ static void scmi_request_graceful_transition(struct scmi_syspower_conf *sc,
 	case SCMI_SYSTEM_WARMRESET:
 		orderly_reboot();
 		break;
-	case SCMI_IMX_SYSTEM_FULL_SUSPEND:
 	case SCMI_SYSTEM_SUSPEND:
 		schedule_work(&sc->suspend_work);
 		break;
@@ -285,10 +285,8 @@ static int scmi_userspace_notifier(struct notifier_block *nb,
 	struct scmi_system_power_state_notifier_report *er = data;
 	struct scmi_syspower_conf *sc = userspace_nb_to_sconf(nb);
 
-	if ((er->system_state >= SCMI_SYSTEM_MAX &&
-	    er->system_state <= SCMI_IMX_SYSTEM_WAKE) ||
-	    er->system_state == SCMI_SYSTEM_POWERUP ||
-	    er->system_state >= SCMI_IMX_SYSTEM_FULL_WAKE) {
+	if (er->system_state >= SCMI_SYSTEM_MAX ||
+	    er->system_state == SCMI_SYSTEM_POWERUP) {
 		dev_err(sc->dev, "Ignoring unsupported system_state: 0x%X\n",
 			er->system_state);
 		return NOTIFY_DONE;

@@ -6,16 +6,14 @@
 
 #include <dt-bindings/firmware/imx/rsrc.h>
 
-gpu0_subsys: bus@53100000 {
+gpu0_subsys: bus@53000000 {
 	compatible = "simple-bus";
 	#address-cells = <1>;
 	#size-cells = <1>;
-	ranges = <0x53100000 0x0 0x53100000 0x40000>,
-		<0x80000000 0x0 0x80000000 0x80000000>,
-		<0x0 0x0 0x0 0x10000000>;
+	ranges = <0x53000000 0x0 0x53000000 0x1000000>;
 
 	gpu_3d0: gpu@53100000 {
-		compatible = "fsl,imx8-gpu";
+		compatible = "vivante,gc";
 		reg = <0x53100000 0x40000>;
 		interrupts = <GIC_SPI 64 IRQ_TYPE_LEVEL_HIGH>;
 		clocks = <&clk IMX_SC_R_GPU_0_PID0 IMX_SC_PM_CLK_PER>,
@@ -25,6 +23,5 @@ gpu0_subsys: bus@53100000 {
 				  <&clk IMX_SC_R_GPU_0_PID0 IMX_SC_PM_CLK_MISC>;
 		assigned-clock-rates = <700000000>, <850000000>;
 		power-domains = <&pd IMX_SC_R_GPU_0_PID0>;
-		status = "disabled";
 	};
 };
