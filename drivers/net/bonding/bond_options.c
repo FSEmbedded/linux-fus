@@ -89,8 +89,6 @@ static int bond_option_missed_max_set(struct bonding *bond,
 				      const struct bond_opt_value *newval);
 static int bond_option_coupled_control_set(struct bonding *bond,
 					   const struct bond_opt_value *newval);
-static int bond_option_broadcast_neigh_set(struct bonding *bond,
-					   const struct bond_opt_value *newval);
 
 static const struct bond_opt_value bond_mode_tbl[] = {
 	{ "balance-rr",    BOND_MODE_ROUNDROBIN,   BOND_VALFLAG_DEFAULT},
@@ -242,12 +240,6 @@ static const struct bond_opt_value bond_coupled_control_tbl[] = {
 	{ "on",  1,  BOND_VALFLAG_DEFAULT},
 	{ "off", 0,  0},
 	{ NULL,  -1, 0},
-};
-
-static const struct bond_opt_value bond_broadcast_neigh_tbl[] = {
-	{ "off", 0, BOND_VALFLAG_DEFAULT},
-	{ "on",	 1, 0},
-	{ NULL,  -1, 0}
 };
 
 static const struct bond_option bond_opts[BOND_OPT_LAST] = {
@@ -530,14 +522,6 @@ static const struct bond_option bond_opts[BOND_OPT_LAST] = {
 		.flags = BOND_OPTFLAG_IFDOWN,
 		.values = bond_coupled_control_tbl,
 		.set = bond_option_coupled_control_set,
-	},
-	[BOND_OPT_BROADCAST_NEIGH] = {
-		.id = BOND_OPT_BROADCAST_NEIGH,
-		.name = "broadcast_neighbor",
-		.desc = "Broadcast neighbor packets to all active slaves",
-		.unsuppmodes = BOND_MODE_ALL_EX(BIT(BOND_MODE_8023AD)),
-		.values = bond_broadcast_neigh_tbl,
-		.set = bond_option_broadcast_neigh_set,
 	}
 };
 
@@ -1381,7 +1365,7 @@ static void _bond_options_ns_ip6_target_set(struct bonding *bond, int slot,
 
 	if (slot >= 0 && slot < BOND_MAX_NS_TARGETS) {
 		bond_for_each_slave(bond, slave, iter) {
-			WRITE_ONCE(slave->target_last_arp_rx[slot], last_rx);
+			slave->target_last_arp_rx[slot] = last_rx;
 			slave_set_ns_maddr(bond, slave, target, &targets[slot]);
 		}
 		targets[slot] = *target;
@@ -1746,7 +1730,7 @@ static int bond_option_queue_id_set(struct bonding *bond,
 		goto err_no_cmd;
 
 	/* Actually set the qids for the slave */
-	update_slave->queue_id = qid;
+	WRITE_ONCE(update_slave->queue_id, qid);
 
 out:
 	return ret;
@@ -1893,24 +1877,5 @@ static int bond_option_coupled_control_set(struct bonding *bond,
 		    newval->string, newval->value);
 
 	bond->params.coupled_control = newval->value;
-	return 0;
-}
-
-static int bond_option_broadcast_neigh_set(struct bonding *bond,
-					   const struct bond_opt_value *newval)
-{
-	if (bond->params.broadcast_neighbor == newval->value)
-		return 0;
-
-	bond->params.broadcast_neighbor = newval->value;
-	if (bond->dev->flags & IFF_UP) {
-		if (bond->params.broadcast_neighbor)
-			static_branch_inc(&bond_bcast_neigh_enabled);
-		else
-			static_branch_dec(&bond_bcast_neigh_enabled);
-	}
-
-	netdev_dbg(bond->dev, "Setting broadcast_neighbor to %s (%llu)\n",
-		   newval->string, newval->value);
 	return 0;
 }

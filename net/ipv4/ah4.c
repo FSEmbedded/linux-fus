@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-only
 #define pr_fmt(fmt) "IPsec: " fmt
 
-#include <crypto/algapi.h>
 #include <crypto/hash.h>
+#include <crypto/utils.h>
 #include <linux/err.h>
 #include <linux/module.h>
 #include <linux/slab.h>
@@ -130,8 +130,7 @@ static void ah_output_done(void *data, int err)
 	if (x->props.flags & XFRM_STATE_ESN)
 		seqhi_len = sizeof(*seqhi);
 	iph = AH_SKB_CB(skb)->tmp;
-	seqhi = (__be32 *)((char *)iph + ihl);
-	icv = ah_tmp_icv(seqhi, seqhi_len);
+	icv = ah_tmp_icv(iph, ihl);
 	memcpy(ah->auth_data, icv, ahp->icv_trunc_len);
 
 	top_iph->tos = iph->tos;
@@ -284,8 +283,7 @@ static void ah_input_done(void *data, int err)
 	if (x->props.flags & XFRM_STATE_ESN)
 		seqhi_len = sizeof(*seqhi);
 	work_iph = AH_SKB_CB(skb)->tmp;
-	seqhi = (__be32 *)((char *)work_iph + ihl);
-	auth_data = ah_tmp_auth(seqhi, seqhi_len);
+	auth_data = ah_tmp_auth(work_iph, ihl);
 	icv = ah_tmp_icv(auth_data, ahp->icv_trunc_len);
 
 	err = crypto_memneq(icv, auth_data, ahp->icv_trunc_len) ? -EBADMSG : 0;
@@ -607,5 +605,6 @@ static void __exit ah4_fini(void)
 
 module_init(ah4_init);
 module_exit(ah4_fini);
+MODULE_DESCRIPTION("IPv4 AH transformation library");
 MODULE_LICENSE("GPL");
 MODULE_ALIAS_XFRM_TYPE(AF_INET, XFRM_PROTO_AH);

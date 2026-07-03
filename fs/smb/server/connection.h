@@ -52,7 +52,6 @@ struct ksmbd_conn {
 		u8			inet6_addr[16];
 #endif
 	};
-	unsigned int			inet_hash;
 	char				*request_buf;
 	struct ksmbd_transport		*transport;
 	struct nls_table		*local_nls;
@@ -144,8 +143,8 @@ struct ksmbd_transport_ops {
 };
 
 struct ksmbd_transport {
-	struct ksmbd_conn		*conn;
-	struct ksmbd_transport_ops	*ops;
+	struct ksmbd_conn			*conn;
+	const struct ksmbd_transport_ops	*ops;
 };
 
 #define KSMBD_TCP_RECV_TIMEOUT	(7 * HZ)

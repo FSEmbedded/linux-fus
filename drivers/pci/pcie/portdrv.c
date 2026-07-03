@@ -6,6 +6,7 @@
  * Copyright (C) Tom Long Nguyen (tom.l.nguyen@intel.com)
  */
 
+#include <linux/bitfield.h>
 #include <linux/dmi.h>
 #include <linux/init.h>
 #include <linux/module.h>
@@ -48,20 +49,6 @@ static void release_pcie_device(struct device *dev)
 	kfree(to_pcie_device(dev));
 }
 
-/**
- * pcibios_check_service_irqs - check irqs in the device tree
- * @dev: PCI Express port to handle
- * @irqs: Array of irqs to populate
- * @mask: Bitmask of port capabilities returned by get_port_device_capability()
- *
- * Return value: 0 means no service irqs in the device tree
- *
- */
-int __weak pcibios_check_service_irqs(struct pci_dev *dev, int *irqs, int mask)
-{
-	return 0;
-}
-
 /*
  * Fill in *pme, *aer, *dpc with the relevant Interrupt Message Numbers if
  * services are enabled in "mask".  Return the number of MSI/MSI-X vectors
@@ -83,7 +70,7 @@ static int pcie_message_numbers(struct pci_dev *dev, int mask,
 	if (mask & (PCIE_PORT_SERVICE_PME | PCIE_PORT_SERVICE_HP |
 		    PCIE_PORT_SERVICE_BWNOTIF)) {
 		pcie_capability_read_word(dev, PCI_EXP_FLAGS, &reg16);
-		*pme = (reg16 & PCI_EXP_FLAGS_IRQ) >> 9;
+		*pme = FIELD_GET(PCI_EXP_FLAGS_IRQ, reg16);
 		nvec = *pme + 1;
 	}
 
@@ -95,7 +82,7 @@ static int pcie_message_numbers(struct pci_dev *dev, int mask,
 		if (pos) {
 			pci_read_config_dword(dev, pos + PCI_ERR_ROOT_STATUS,
 					      &reg32);
-			*aer = (reg32 & PCI_ERR_ROOT_AER_IRQ) >> 27;
+			*aer = FIELD_GET(PCI_ERR_ROOT_AER_IRQ, reg32);
 			nvec = max(nvec, *aer + 1);
 		}
 	}
@@ -106,7 +93,7 @@ static int pcie_message_numbers(struct pci_dev *dev, int mask,
 		if (pos) {
 			pci_read_config_word(dev, pos + PCI_EXP_DPC_CAP,
 					     &reg16);
-			*dpc = reg16 & PCI_EXP_DPC_IRQ;
+			*dpc = FIELD_GET(PCI_EXP_DPC_IRQ, reg16);
 			nvec = max(nvec, *dpc + 1);
 		}
 	}
@@ -189,25 +176,17 @@ static int pcie_port_enable_irq_vec(struct pci_dev *dev, int *irqs, int mask)
  */
 static int pcie_init_service_irqs(struct pci_dev *dev, int *irqs, int mask)
 {
+	struct pci_host_bridge *host_bridge = pci_find_host_bridge(dev->bus);
 	int ret, i;
-	int irq = -1;
-
-	/* Check if some platforms owns independent irq pins for AER/PME etc.
-	 * Some platforms may own independent AER/PME interrupts and set
-	 * them in the device tree file.
-	 */
-	ret = pcibios_check_service_irqs(dev, irqs, mask);
-	if (ret) {
-		if (dev->irq)
-			irq = dev->irq;
-		for (i = 0; i < PCIE_PORT_DEVICE_MAXSERVICES; i++)
-			if (irqs[i] == -1)
-				irqs[i] = irq;
-		return 0;
-	}
 
 	for (i = 0; i < PCIE_PORT_DEVICE_MAXSERVICES; i++)
 		irqs[i] = -1;
+
+	if (host_bridge->get_service_irqs) {
+		ret = host_bridge->get_service_irqs(host_bridge, irqs, mask);
+		if (ret > 0)
+			return 0;
+	}
 
 	/*
 	 * If we support PME but can't use MSI/MSI-X for it, we have to
@@ -215,15 +194,15 @@ static int pcie_init_service_irqs(struct pci_dev *dev, int *irqs, int mask)
 	 * interrupt.
 	 */
 	if ((mask & PCIE_PORT_SERVICE_PME) && pcie_pme_no_msi())
-		goto legacy_irq;
+		goto intx_irq;
 
 	/* Try to use MSI-X or MSI if supported */
 	if (pcie_port_enable_irq_vec(dev, irqs, mask) == 0)
 		return 0;
 
-legacy_irq:
-	/* fall back to legacy IRQ */
-	ret = pci_alloc_irq_vectors(dev, 1, 1, PCI_IRQ_LEGACY);
+intx_irq:
+	/* fall back to INTX IRQ */
+	ret = pci_alloc_irq_vectors(dev, 1, 1, PCI_IRQ_INTX);
 	if (ret < 0)
 		return -ENODEV;
 
@@ -248,7 +227,7 @@ static int get_port_device_capability(struct pci_dev *dev)
 	struct pci_host_bridge *host = pci_find_host_bridge(dev->bus);
 	int services = 0;
 
-	if (dev->is_hotplug_bridge &&
+	if (dev->is_pciehp &&
 	    (pci_pcie_type(dev) == PCI_EXP_TYPE_ROOT_PORT ||
 	     pci_pcie_type(dev) == PCI_EXP_TYPE_DOWNSTREAM) &&
 	    (pcie_ports_native || host->native_pcie_hotplug)) {
@@ -816,7 +795,7 @@ static const struct pci_error_handlers pcie_portdrv_err_handler = {
 
 static struct pci_driver pcie_portdriver = {
 	.name		= "pcieport",
-	.id_table	= &port_pci_ids[0],
+	.id_table	= port_pci_ids,
 
 	.probe		= pcie_portdrv_probe,
 	.remove		= pcie_portdrv_remove,

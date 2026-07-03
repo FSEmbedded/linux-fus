@@ -175,26 +175,7 @@ static int __nf_conncount_add(struct net *net,
 	bool refcounted = false;
 	int err = 0;
 
-	if (!get_ct_or_tuple_from_skb(net, skb, l3num, &ct, &tuple, &zone, &refcounted))
-		return -ENOENT;
-
-	if (ct && nf_ct_is_confirmed(ct)) {
-		/* local connections are confirmed in postrouting so confirmation
-		 * might have happened before hitting connlimit
-		 */
-		if (skb->skb_iif != LOOPBACK_IFINDEX) {
-			err = -EEXIST;
-			goto out_put;
-		}
-
-		/* this is likely a local connection, skip optimization to avoid
-		 * adding duplicates from a 'packet train'
-		 */
-		goto check_connections;
-	}
-
-	if ((u32)jiffies == list->last_gc &&
-	    (list->count - list->last_gc_count) < CONNCOUNT_GC_MAX_COLLECT)
+	if ((u32)jiffies == list->last_gc)
 		goto add_new_node;
 
 check_connections:
@@ -310,6 +291,10 @@ static bool __nf_conncount_gc_list(struct net *net,
 	if ((u32)jiffies == READ_ONCE(list->last_gc))
 		return false;
 
+	/* don't bother if other cpu is already doing GC */
+	if (!spin_trylock(&list->list_lock))
+		return false;
+
 	list_for_each_entry_safe(conn, conn_n, &list->head, node) {
 		found = find_or_evict(net, list, conn);
 		if (IS_ERR(found)) {
@@ -404,11 +389,7 @@ insert_tree(struct net *net,
 	const struct nf_conntrack_zone *zone = &nf_ct_zone_dflt;
 	bool do_gc = true, refcounted = false;
 	unsigned int count = 0, gc_count = 0;
-	struct rb_node **rbnode, *parent;
-	struct nf_conntrack_tuple tuple;
-	struct nf_conncount_tuple *conn;
-	struct nf_conncount_rb *rbconn;
-	struct nf_conn *ct = NULL;
+	bool do_gc = true;
 
 	spin_lock_bh(&nf_conncount_locks[hash]);
 restart:
@@ -477,6 +458,20 @@ restart:
 		rb_link_node_rcu(&rbconn->node, parent, rbnode);
 		rb_insert_color(&rbconn->node, root);
 	}
+
+	conn->tuple = *tuple;
+	conn->zone = *zone;
+	conn->cpu = raw_smp_processor_id();
+	conn->jiffies32 = (u32)jiffies;
+	memcpy(rbconn->key, key, sizeof(u32) * data->keylen);
+
+	nf_conncount_list_init(&rbconn->list);
+	list_add(&conn->node, &rbconn->list.head);
+	count = 1;
+	rbconn->list.count = count;
+
+	rb_link_node_rcu(&rbconn->node, parent, rbnode);
+	rb_insert_color(&rbconn->node, root);
 out_unlock:
 	if (refcounted)
 		nf_ct_put(ct);
@@ -620,11 +615,10 @@ unsigned int nf_conncount_count_skb(struct net *net,
 }
 EXPORT_SYMBOL_GPL(nf_conncount_count_skb);
 
-struct nf_conncount_data *nf_conncount_init(struct net *net, unsigned int family,
-					    unsigned int keylen)
+struct nf_conncount_data *nf_conncount_init(struct net *net, unsigned int keylen)
 {
 	struct nf_conncount_data *data;
-	int ret, i;
+	int i;
 
 	if (keylen % sizeof(u32) ||
 	    keylen / sizeof(u32) > MAX_KEYLEN ||
@@ -636,12 +630,6 @@ struct nf_conncount_data *nf_conncount_init(struct net *net, unsigned int family
 	data = kmalloc(sizeof(*data), GFP_KERNEL);
 	if (!data)
 		return ERR_PTR(-ENOMEM);
-
-	ret = nf_ct_netns_get(net, family);
-	if (ret < 0) {
-		kfree(data);
-		return ERR_PTR(ret);
-	}
 
 	for (i = 0; i < ARRAY_SIZE(data->root); ++i)
 		data->root[i] = RB_ROOT;
@@ -679,13 +667,11 @@ static void destroy_tree(struct rb_root *r)
 	}
 }
 
-void nf_conncount_destroy(struct net *net, unsigned int family,
-			  struct nf_conncount_data *data)
+void nf_conncount_destroy(struct net *net, struct nf_conncount_data *data)
 {
 	unsigned int i;
 
 	cancel_work_sync(&data->gc_work);
-	nf_ct_netns_put(net, family);
 
 	for (i = 0; i < ARRAY_SIZE(data->root); ++i)
 		destroy_tree(&data->root[i]);
@@ -701,15 +687,11 @@ static int __init nf_conncount_modinit(void)
 	for (i = 0; i < CONNCOUNT_SLOTS; ++i)
 		spin_lock_init(&nf_conncount_locks[i]);
 
-	conncount_conn_cachep = kmem_cache_create("nf_conncount_tuple",
-					   sizeof(struct nf_conncount_tuple),
-					   0, 0, NULL);
+	conncount_conn_cachep = KMEM_CACHE(nf_conncount_tuple, 0);
 	if (!conncount_conn_cachep)
 		return -ENOMEM;
 
-	conncount_rb_cachep = kmem_cache_create("nf_conncount_rb",
-					   sizeof(struct nf_conncount_rb),
-					   0, 0, NULL);
+	conncount_rb_cachep = KMEM_CACHE(nf_conncount_rb, 0);
 	if (!conncount_rb_cachep) {
 		kmem_cache_destroy(conncount_conn_cachep);
 		return -ENOMEM;

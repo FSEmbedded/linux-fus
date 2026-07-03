@@ -15,7 +15,7 @@
 #include <linux/platform_device.h>
 #include <linux/spi/spi.h>
 
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 
 #define SSI_TIMEOUT_MS		2000
 #define SSI_POLL_TIMEOUT_US	200
@@ -673,6 +673,10 @@ static int uniphier_spi_probe(struct platform_device *pdev)
 		goto out_host_put;
 	}
 
+	ret = clk_prepare_enable(priv->clk);
+	if (ret)
+		goto out_host_put;
+
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0) {
 		ret = irq;
@@ -747,7 +751,7 @@ static int uniphier_spi_probe(struct platform_device *pdev)
 
 	host->max_dma_len = min(dma_tx_burst, dma_rx_burst);
 
-	ret = spi_register_controller(host);
+	ret = devm_spi_register_controller(&pdev->dev, host);
 	if (ret)
 		goto out_release_dma;
 
@@ -763,6 +767,9 @@ out_release_dma:
 		host->dma_tx = NULL;
 	}
 
+out_disable_clk:
+	clk_disable_unprepare(priv->clk);
+
 out_host_put:
 	spi_controller_put(host);
 	return ret;
@@ -771,8 +778,12 @@ out_host_put:
 static void uniphier_spi_remove(struct platform_device *pdev)
 {
 	struct spi_controller *host = platform_get_drvdata(pdev);
+	struct uniphier_spi_priv *priv = spi_controller_get_devdata(host);
 
-	spi_controller_get(host);
+	if (host->dma_tx)
+		dma_release_channel(host->dma_tx);
+	if (host->dma_rx)
+		dma_release_channel(host->dma_rx);
 
 	spi_unregister_controller(host);
 

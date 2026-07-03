@@ -56,6 +56,7 @@
 #define SMSC_MDIONAME		"smsc911x-mdio"
 #define SMSC_DRV_VERSION	"2008-10-21"
 
+MODULE_DESCRIPTION("SMSC LAN911x/LAN921x Ethernet driver");
 MODULE_LICENSE("GPL");
 MODULE_VERSION(SMSC_DRV_VERSION);
 MODULE_ALIAS("platform:smsc911x");
@@ -2324,7 +2325,7 @@ static int smsc911x_init(struct net_device *dev)
 	return 0;
 }
 
-static int smsc911x_drv_remove(struct platform_device *pdev)
+static void smsc911x_drv_remove(struct platform_device *pdev)
 {
 	struct net_device *dev;
 	struct smsc911x_data *pdata;
@@ -2358,8 +2359,6 @@ static int smsc911x_drv_remove(struct platform_device *pdev)
 	free_netdev(dev);
 
 	pm_runtime_disable(&pdev->dev);
-
-	return 0;
 }
 
 /* standard register acces */
@@ -2678,7 +2677,7 @@ MODULE_DEVICE_TABLE(acpi, smsc911x_acpi_match);
 
 static struct platform_driver smsc911x_driver = {
 	.probe = smsc911x_drv_probe,
-	.remove = smsc911x_drv_remove,
+	.remove_new = smsc911x_drv_remove,
 	.driver = {
 		.name	= SMSC_CHIPNAME,
 		.pm	= SMSC911X_PM_OPS,

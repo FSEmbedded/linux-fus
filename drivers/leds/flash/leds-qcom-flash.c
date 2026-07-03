@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022, 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/bitfield.h>
@@ -114,39 +114,36 @@ enum {
 	REG_THERM_THRSH1,
 	REG_THERM_THRSH2,
 	REG_THERM_THRSH3,
-	REG_TORCH_CLAMP,
 	REG_MAX_COUNT,
 };
 
 static const struct reg_field mvflash_3ch_regs[REG_MAX_COUNT] = {
-	[REG_STATUS1]		= REG_FIELD(0x08, 0, 7),
-	[REG_STATUS2]		= REG_FIELD(0x09, 0, 7),
-	[REG_STATUS3]		= REG_FIELD(0x0a, 0, 7),
-	[REG_CHAN_TIMER]	= REG_FIELD_ID(0x40, 0, 7, 3, 1),
-	[REG_ITARGET]		= REG_FIELD_ID(0x43, 0, 6, 3, 1),
-	[REG_MODULE_EN]		= REG_FIELD(0x46, 7, 7),
-	[REG_IRESOLUTION]	= REG_FIELD(0x47, 0, 5),
-	[REG_CHAN_STROBE]	= REG_FIELD_ID(0x49, 0, 2, 3, 1),
-	[REG_CHAN_EN]		= REG_FIELD(0x4c, 0, 2),
-	[REG_THERM_THRSH1]	= REG_FIELD(0x56, 0, 2),
-	[REG_THERM_THRSH2]	= REG_FIELD(0x57, 0, 2),
-	[REG_THERM_THRSH3]	= REG_FIELD(0x58, 0, 2),
-	[REG_TORCH_CLAMP]	= REG_FIELD(0xec, 0, 6),
+	REG_FIELD(0x08, 0, 7),			/* status1	*/
+	REG_FIELD(0x09, 0, 7),                  /* status2	*/
+	REG_FIELD(0x0a, 0, 7),                  /* status3	*/
+	REG_FIELD_ID(0x40, 0, 7, 3, 1),         /* chan_timer	*/
+	REG_FIELD_ID(0x43, 0, 6, 3, 1),         /* itarget	*/
+	REG_FIELD(0x46, 7, 7),                  /* module_en	*/
+	REG_FIELD(0x47, 0, 5),                  /* iresolution	*/
+	REG_FIELD_ID(0x49, 0, 2, 3, 1),         /* chan_strobe	*/
+	REG_FIELD(0x4c, 0, 2),                  /* chan_en	*/
+	REG_FIELD(0x56, 0, 2),			/* therm_thrsh1 */
+	REG_FIELD(0x57, 0, 2),			/* therm_thrsh2 */
+	REG_FIELD(0x58, 0, 2),			/* therm_thrsh3 */
 };
 
 static const struct reg_field mvflash_4ch_regs[REG_MAX_COUNT] = {
-	[REG_STATUS1]		= REG_FIELD(0x06, 0, 7),
-	[REG_STATUS2]		= REG_FIELD(0x07, 0, 6),
-	[REG_STATUS3]		= REG_FIELD(0x09, 0, 7),
-	[REG_CHAN_TIMER]	= REG_FIELD_ID(0x3e, 0, 7, 4, 1),
-	[REG_ITARGET]		= REG_FIELD_ID(0x42, 0, 6, 4, 1),
-	[REG_MODULE_EN]		= REG_FIELD(0x46, 7, 7),
-	[REG_IRESOLUTION]	= REG_FIELD(0x49, 0, 3),
-	[REG_CHAN_STROBE]	= REG_FIELD_ID(0x4a, 0, 6, 4, 1),
-	[REG_CHAN_EN]		= REG_FIELD(0x4e, 0, 3),
-	[REG_THERM_THRSH1]	= REG_FIELD(0x7a, 0, 2),
-	[REG_THERM_THRSH2]	= REG_FIELD(0x78, 0, 2),
-	[REG_TORCH_CLAMP]	= REG_FIELD(0xed, 0, 6),
+	REG_FIELD(0x06, 0, 7),			/* status1	*/
+	REG_FIELD(0x07, 0, 6),			/* status2	*/
+	REG_FIELD(0x09, 0, 7),			/* status3	*/
+	REG_FIELD_ID(0x3e, 0, 7, 4, 1),		/* chan_timer	*/
+	REG_FIELD_ID(0x42, 0, 6, 4, 1),		/* itarget	*/
+	REG_FIELD(0x46, 7, 7),			/* module_en	*/
+	REG_FIELD(0x49, 0, 3),			/* iresolution	*/
+	REG_FIELD_ID(0x4a, 0, 6, 4, 1),		/* chan_strobe	*/
+	REG_FIELD(0x4e, 0, 3),			/* chan_en	*/
+	REG_FIELD(0x7a, 0, 2),			/* therm_thrsh1 */
+	REG_FIELD(0x78, 0, 2),			/* therm_thrsh2 */
 };
 
 struct qcom_flash_data {
@@ -159,7 +156,6 @@ struct qcom_flash_data {
 	u8			max_channels;
 	u8			chan_en_bits;
 	u8			revision;
-	u8			torch_clamp;
 };
 
 struct qcom_flash_led {
@@ -937,7 +933,7 @@ release:
 	return rc;
 }
 
-static int qcom_flash_led_remove(struct platform_device *pdev)
+static void qcom_flash_led_remove(struct platform_device *pdev)
 {
 	struct qcom_flash_data *flash_data = platform_get_drvdata(pdev);
 
@@ -945,7 +941,6 @@ static int qcom_flash_led_remove(struct platform_device *pdev)
 		v4l2_flash_release(flash_data->v4l2_flash[flash_data->leds_count--]);
 
 	mutex_destroy(&flash_data->lock);
-	return 0;
 }
 
 static const struct of_device_id qcom_flash_led_match_table[] = {
@@ -960,7 +955,7 @@ static struct platform_driver qcom_flash_led_driver = {
 		.of_match_table = qcom_flash_led_match_table,
 	},
 	.probe = qcom_flash_led_probe,
-	.remove = qcom_flash_led_remove,
+	.remove_new = qcom_flash_led_remove,
 };
 
 module_platform_driver(qcom_flash_led_driver);

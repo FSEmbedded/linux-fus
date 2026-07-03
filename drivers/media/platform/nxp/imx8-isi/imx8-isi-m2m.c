@@ -43,6 +43,7 @@ struct mxc_isi_m2m_ctx_queue_data {
 	struct v4l2_pix_format_mplane format;
 	const struct mxc_isi_format_info *info;
 	u32 sequence;
+	bool streaming;
 };
 
 struct mxc_isi_m2m_ctx {
@@ -122,6 +123,8 @@ static void mxc_isi_m2m_device_run(void *priv)
 {
 	struct mxc_isi_m2m_ctx *ctx = priv;
 	struct mxc_isi_m2m *m2m = ctx->m2m;
+	const struct mxc_isi_plat_data *pdata = m2m->isi->pdata;
+	const struct v4l2_pix_format_mplane *cap_pix = &ctx->queues.cap.format;
 	struct vb2_v4l2_buffer *src_vbuf, *dst_vbuf;
 	struct mxc_isi_m2m_buffer *src_buf, *dst_buf;
 
@@ -174,6 +177,7 @@ static void mxc_isi_m2m_device_run(void *priv)
 	mxc_isi_channel_set_inbuf(m2m->pipe, src_buf->dma_addrs[0]);
 	mxc_isi_channel_set_outbuf(m2m->pipe, dst_buf->dma_addrs, MXC_ISI_BUF1);
 	mxc_isi_channel_set_outbuf(m2m->pipe, dst_buf->dma_addrs, MXC_ISI_BUF2);
+	mxc_isi_channel_set_max_size(m2m->pipe, cap_pix, pdata->buf_max_size);
 
 	mxc_isi_channel_enable(m2m->pipe);
 
@@ -572,6 +576,136 @@ static int mxc_isi_m2m_s_fmt_vid(struct file *file, void *fh,
 	return 0;
 }
 
+static int mxc_isi_m2m_streamon(struct file *file, void *fh,
+				enum v4l2_buf_type type)
+{
+	struct mxc_isi_m2m_ctx *ctx = to_isi_m2m_ctx(fh);
+	struct mxc_isi_m2m_ctx_queue_data *q = mxc_isi_m2m_ctx_qdata(ctx, type);
+	const struct v4l2_pix_format_mplane *out_pix = &ctx->queues.out.format;
+	const struct v4l2_pix_format_mplane *cap_pix = &ctx->queues.cap.format;
+	const struct mxc_isi_format_info *cap_info = ctx->queues.cap.info;
+	const struct mxc_isi_format_info *out_info = ctx->queues.out.info;
+	struct mxc_isi_m2m *m2m = ctx->m2m;
+	bool bypass;
+	int ret;
+
+	if (q->streaming)
+		return 0;
+
+	mutex_lock(&m2m->lock);
+
+	if (m2m->usage_count == INT_MAX) {
+		ret = -EOVERFLOW;
+		goto unlock;
+	}
+
+	bypass = cap_pix->width == out_pix->width &&
+		 cap_pix->height == out_pix->height &&
+		 cap_info->encoding == out_info->encoding;
+
+	/*
+	 * Acquire the pipe and initialize the channel with the first user of
+	 * the M2M device.
+	 */
+	if (m2m->usage_count == 0) {
+		ret = mxc_isi_channel_acquire(m2m->pipe,
+					      &mxc_isi_m2m_frame_write_done,
+					      bypass);
+		if (ret)
+			goto unlock;
+
+		mxc_isi_channel_get(m2m->pipe);
+	}
+
+	m2m->usage_count++;
+
+	/*
+	 * Allocate resources for the channel, counting how many users require
+	 * buffer chaining.
+	 */
+	if (!ctx->chained && out_pix->width > MXC_ISI_MAX_WIDTH_UNCHAINED && !bypass) {
+		ret = mxc_isi_channel_chain(m2m->pipe, bypass);
+		if (ret)
+			goto deinit;
+
+		m2m->chained_count++;
+		ctx->chained = true;
+	}
+
+	/*
+	 * Drop the lock to start the stream, as the .device_run() operation
+	 * needs to acquire it.
+	 */
+	mutex_unlock(&m2m->lock);
+	ret = v4l2_m2m_ioctl_streamon(file, fh, type);
+	if (ret) {
+		/* Reacquire the lock for the cleanup path. */
+		mutex_lock(&m2m->lock);
+		goto unchain;
+	}
+
+	q->streaming = true;
+
+	return 0;
+
+unchain:
+	if (ctx->chained && --m2m->chained_count == 0)
+		mxc_isi_channel_unchain(m2m->pipe);
+	ctx->chained = false;
+
+deinit:
+	if (--m2m->usage_count == 0) {
+		mxc_isi_channel_put(m2m->pipe);
+		mxc_isi_channel_release(m2m->pipe);
+	}
+
+unlock:
+	mutex_unlock(&m2m->lock);
+	return ret;
+}
+
+static int mxc_isi_m2m_streamoff(struct file *file, void *fh,
+				 enum v4l2_buf_type type)
+{
+	struct mxc_isi_m2m_ctx *ctx = to_isi_m2m_ctx(fh);
+	struct mxc_isi_m2m_ctx_queue_data *q = mxc_isi_m2m_ctx_qdata(ctx, type);
+	struct mxc_isi_m2m *m2m = ctx->m2m;
+
+	v4l2_m2m_ioctl_streamoff(file, fh, type);
+
+	if (!q->streaming)
+		return 0;
+
+	mutex_lock(&m2m->lock);
+
+	/*
+	 * If the last context is this one, reset it to make sure the device
+	 * will be reconfigured when streaming is restarted.
+	 */
+	if (m2m->last_ctx == ctx)
+		m2m->last_ctx = NULL;
+
+	/* Free the channel resources if this is the last chained context. */
+	if (ctx->chained && --m2m->chained_count == 0)
+		mxc_isi_channel_unchain(m2m->pipe);
+	ctx->chained = false;
+
+	/* Turn off the light with the last user. */
+	if (--m2m->usage_count == 0) {
+		mxc_isi_channel_disable(m2m->pipe);
+		mxc_isi_channel_put(m2m->pipe);
+		mxc_isi_channel_release(m2m->pipe);
+	}
+
+	WARN_ON(m2m->usage_count < 0);
+
+	mutex_unlock(&m2m->lock);
+
+	q->streaming = false;
+
+	return 0;
+}
+
 static const struct v4l2_ioctl_ops mxc_isi_m2m_ioctl_ops = {
 	.vidioc_querycap		= mxc_isi_m2m_querycap,
 
@@ -733,7 +867,7 @@ int mxc_isi_m2m_resume(struct mxc_isi_pipe *pipe)
 	mxc_isi_channel_get(pipe);
 
 	if (ctx->chained)
-		mxc_isi_channel_chain(pipe);
+		mxc_isi_channel_chain(pipe, false);
 
 	m2m->last_ctx = NULL;
 	v4l2_m2m_resume(m2m->m2m_dev);

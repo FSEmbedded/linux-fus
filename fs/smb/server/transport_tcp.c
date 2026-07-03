@@ -37,7 +37,7 @@ struct tcp_transport {
 	unsigned int			nr_iov;
 };
 
-static struct ksmbd_transport_ops ksmbd_tcp_transport_ops;
+static const struct ksmbd_transport_ops ksmbd_tcp_transport_ops;
 
 static void tcp_stop_kthread(struct task_struct *kthread);
 static struct interface *alloc_iface(char *ifname);
@@ -77,7 +77,7 @@ static struct tcp_transport *alloc_transport(struct socket *client_sk)
 	struct tcp_transport *t;
 	struct ksmbd_conn *conn;
 
-	t = kzalloc(sizeof(*t), GFP_KERNEL);
+	t = kzalloc(sizeof(*t), KSMBD_DEFAULT_GFP);
 	if (!t)
 		return NULL;
 	t->sock = client_sk;
@@ -89,21 +89,13 @@ static struct tcp_transport *alloc_transport(struct socket *client_sk)
 	}
 
 #if IS_ENABLED(CONFIG_IPV6)
-	if (client_sk->sk->sk_family == AF_INET6) {
+	if (client_sk->sk->sk_family == AF_INET6)
 		memcpy(&conn->inet6_addr, &client_sk->sk->sk_v6_daddr, 16);
-		conn->inet_hash = ipv6_addr_hash(&client_sk->sk->sk_v6_daddr);
-	} else {
+	else
 		conn->inet_addr = inet_sk(client_sk->sk)->inet_daddr;
-		conn->inet_hash = ipv4_addr_hash(inet_sk(client_sk->sk)->inet_daddr);
-	}
 #else
 	conn->inet_addr = inet_sk(client_sk->sk)->inet_daddr;
-	conn->inet_hash = ipv4_addr_hash(inet_sk(client_sk->sk)->inet_daddr);
 #endif
-	down_write(&conn_list_lock);
-	hash_add(conn_list, &conn->hlist, conn->inet_hash);
-	up_write(&conn_list_lock);
-
 	conn->transport = KSMBD_TRANS(t);
 	KSMBD_TRANS(t)->conn = conn;
 	KSMBD_TRANS(t)->ops = &ksmbd_tcp_transport_ops;
@@ -172,7 +164,7 @@ static struct kvec *get_conn_iovec(struct tcp_transport *t, unsigned int nr_segs
 		return t->iov;
 
 	/* not big enough -- allocate a new one and release the old */
-	new_iov = kmalloc_array(nr_segs, sizeof(*new_iov), GFP_KERNEL);
+	new_iov = kmalloc_array(nr_segs, sizeof(*new_iov), KSMBD_DEFAULT_GFP);
 	if (new_iov) {
 		kfree(t->iov);
 		t->iov = new_iov;
@@ -250,8 +242,7 @@ static int ksmbd_kthread_fn(void *p)
 	struct socket *client_sk = NULL;
 	struct interface *iface = (struct interface *)p;
 	struct ksmbd_conn *conn;
-	int ret, inet_hash;
-	unsigned int max_ip_conns;
+	int ret;
 
 	while (!kthread_should_stop()) {
 		mutex_lock(&iface->sock_release_lock);
@@ -269,50 +260,33 @@ static int ksmbd_kthread_fn(void *p)
 			continue;
 		}
 
-		if (!server_conf.max_ip_connections)
-			goto skip_max_ip_conns_limit;
-
 		/*
 		 * Limits repeated connections from clients with the same IP.
 		 */
-#if IS_ENABLED(CONFIG_IPV6)
-		if (client_sk->sk->sk_family == AF_INET6)
-			inet_hash = ipv6_addr_hash(&client_sk->sk->sk_v6_daddr);
-		else
-			inet_hash = ipv4_addr_hash(inet_sk(client_sk->sk)->inet_daddr);
-#else
-		inet_hash = ipv4_addr_hash(inet_sk(client_sk->sk)->inet_daddr);
-#endif
-
-		max_ip_conns = 0;
 		down_read(&conn_list_lock);
-		hash_for_each_possible(conn_list, conn, hlist, inet_hash) {
+		list_for_each_entry(conn, &conn_list, conns_list)
 #if IS_ENABLED(CONFIG_IPV6)
 			if (client_sk->sk->sk_family == AF_INET6) {
 				if (memcmp(&client_sk->sk->sk_v6_daddr,
-					   &conn->inet6_addr, 16) == 0)
-					max_ip_conns++;
+					   &conn->inet6_addr, 16) == 0) {
+					ret = -EAGAIN;
+					break;
+				}
 			} else if (inet_sk(client_sk->sk)->inet_daddr ==
-				 conn->inet_addr)
-				max_ip_conns++;
-#else
-			if (inet_sk(client_sk->sk)->inet_daddr ==
-			    conn->inet_addr)
-				max_ip_conns++;
-#endif
-			if (server_conf.max_ip_connections <= max_ip_conns) {
+				 conn->inet_addr) {
 				ret = -EAGAIN;
 				break;
 			}
-		}
+#else
+			if (inet_sk(client_sk->sk)->inet_daddr ==
+			    conn->inet_addr) {
+				ret = -EAGAIN;
+				break;
+			}
+#endif
 		up_read(&conn_list_lock);
-		if (ret == -EAGAIN) {
-			/* Per-IP limit hit: release the just-accepted socket. */
-			sock_release(client_sk);
+		if (ret == -EAGAIN)
 			continue;
-		}
-
-skip_max_ip_conns_limit:
 
 		if (server_conf.max_connections &&
 		    atomic_inc_return(&active_num_conn) > server_conf.max_connections) {
@@ -606,9 +580,11 @@ static int ksmbd_netdev_event(struct notifier_block *nb, unsigned long event,
 				return NOTIFY_OK;
 		}
 		if (!iface && bind_additional_ifaces) {
-			iface = alloc_iface(kstrdup(netdev->name, GFP_KERNEL));
+			iface = alloc_iface(kstrdup(netdev->name, KSMBD_DEFAULT_GFP));
 			if (!iface)
 				return NOTIFY_OK;
+			ksmbd_debug(CONN, "netdev-up event: netdev(%s) is going up\n",
+				    iface->name);
 			ret = create_socket(iface);
 			if (ret)
 				break;
@@ -678,7 +654,7 @@ static struct interface *alloc_iface(char *ifname)
 	if (!ifname)
 		return NULL;
 
-	iface = kzalloc(sizeof(struct interface), GFP_KERNEL);
+	iface = kzalloc(sizeof(struct interface), KSMBD_DEFAULT_GFP);
 	if (!iface) {
 		kfree(ifname);
 		return NULL;
@@ -701,7 +677,7 @@ int ksmbd_tcp_set_interfaces(char *ifc_list, int ifc_list_sz)
 	}
 
 	while (ifc_list_sz > 0) {
-		if (!alloc_iface(kstrdup(ifc_list, GFP_KERNEL)))
+		if (!alloc_iface(kstrdup(ifc_list, KSMBD_DEFAULT_GFP)))
 			return -ENOMEM;
 
 		sz = strlen(ifc_list);
@@ -717,7 +693,7 @@ int ksmbd_tcp_set_interfaces(char *ifc_list, int ifc_list_sz)
 	return 0;
 }
 
-static struct ksmbd_transport_ops ksmbd_tcp_transport_ops = {
+static const struct ksmbd_transport_ops ksmbd_tcp_transport_ops = {
 	.read		= ksmbd_tcp_read,
 	.writev		= ksmbd_tcp_writev,
 	.disconnect	= ksmbd_tcp_disconnect,

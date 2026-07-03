@@ -26,6 +26,8 @@
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_graph.h>
+#include <linux/of_platform.h>
+#include <linux/platform_device.h>
 #include <linux/regmap.h>
 
 #define REG_VENDOR_ID(n)	(0x00 + (n))	/* n: 0/1 */
@@ -338,6 +340,7 @@ struct it6263 {
 	struct gpio_desc *reset_gpio;
 	bool is_hdmi;
 	bool split_mode;
+	bool de_ssc_enable;
 };
 
 struct it6263_minimode {
@@ -403,7 +406,8 @@ static void it6263_reset(struct it6263 *it6263)
 static void it6263_lvds_reset(struct it6263 *it6263)
 {
 	/* AFE PLL reset */
-	lvds_update_bits(it6263, LVDS_REG_PLL, 0x1, 0x0);
+	lvds_update_bits(it6263, LVDS_REG_PLL,
+			 it6263->de_ssc_enable ? 0x07 : 0x1, 0x0);
 	usleep_range(1000, 2000);
 	lvds_update_bits(it6263, LVDS_REG_PLL, 0x1, 0x1);
 
@@ -414,6 +418,13 @@ static void it6263_lvds_reset(struct it6263 *it6263)
 	lvds_update_bits(it6263, LVDS_REG_SW_RST, SOFT_PCLK_DM_RST, 0x0);
 
 	usleep_range(1000, 2000);
+
+	if (!it6263->de_ssc_enable)
+		return;
+
+	lvds_update_bits(it6263, 0x2c, BIT(6), BIT(6));
+	usleep_range(1000, 2000);
+	lvds_update_bits(it6263, 0x2c, BIT(6), 0);
 }
 
 static void it6263_lvds_set_interface(struct it6263 *it6263)
@@ -447,11 +458,23 @@ static void it6263_lvds_set_afe(struct it6263 *it6263)
 	lvds_update_bits(it6263, LVDS_REG_PLL, 0x07, 0);
 }
 
+static void it6263_lvds_de_ssc_enable(struct it6263 *it6263)
+{
+	if (!it6263->de_ssc_enable)
+		return;
+
+	lvds_update_bits(it6263, LVDS_REG_PLL, 0x07, 0x07);
+	lvds_update_bits(it6263, 0x2c, BIT(6), BIT(6));
+	usleep_range(1000, 2000);
+	lvds_update_bits(it6263, 0x2c, BIT(6), 0);
+}
+
 static void it6263_lvds_config(struct it6263 *it6263)
 {
 	it6263_lvds_reset(it6263);
 	it6263_lvds_set_interface(it6263);
 	it6263_lvds_set_afe(it6263);
+	it6263_lvds_de_ssc_enable(it6263);
 }
 
 static void it6263_hdmi_config(struct it6263 *it6263)
@@ -571,19 +594,23 @@ it6263_read_edid(void *data, u8 *buf, unsigned int block, size_t len)
 	return 0;
 }
 
-static struct edid *it6263_get_edid(struct it6263 *it6263)
+static const struct drm_edid *
+it6263_get_edid(struct it6263 *it6263, struct drm_connector *connector)
 {
-	struct edid *edid;
+	const struct drm_edid *drm_edid;
+	const struct edid *edid;
 
-	edid = drm_do_get_edid(&it6263->connector, it6263_read_edid, it6263);
-	if (!edid) {
+	drm_edid = drm_edid_read_custom(connector, it6263_read_edid, it6263);
+	if (!drm_edid) {
 		dev_warn(&it6263->hdmi_i2c->dev, "Failed to read EDID\n");
 		return NULL;
 	}
+
+	/* FIXME: This should use connector->display_info.is_hdmi. */
+	edid = drm_edid_raw(drm_edid);
 	it6263->is_hdmi = drm_detect_hdmi_monitor(edid);
 
-	return edid;
-
+	return drm_edid;
 }
 
 static enum drm_mode_status
@@ -610,17 +637,17 @@ static int it6263_connector_get_modes(struct drm_connector *connector)
 {
 	struct it6263 *it6263 = connector_to_it6263(connector);
 	u32 bus_format = MEDIA_BUS_FMT_RGB888_1X24;
-	struct edid *edid;
+	const struct drm_edid *drm_edid;
 	int num = 0;
 	int ret;
 
-	edid = it6263_get_edid(it6263);
-	if (!edid)
+	drm_edid = it6263_get_edid(it6263, connector);
+	if (!drm_edid)
 		return 0;
 
-	drm_connector_update_edid_property(connector, edid);
-	num = drm_add_edid_modes(connector, edid);
-	kfree(edid);
+	drm_edid_connector_update(connector, drm_edid);
+	num = drm_edid_connector_add_modes(connector);
+	kfree(drm_edid);
 
 	ret = drm_display_info_set_bus_formats(&connector->display_info,
 					       &bus_format, 1);
@@ -839,13 +866,13 @@ it6263_bridge_detect(struct drm_bridge *bridge)
 	return connector_status_disconnected;
 }
 
-static struct edid
-*it6263_bridge_get_edid(struct drm_bridge *bridge,
+static const struct drm_edid *
+it6263_bridge_edid_read(struct drm_bridge *bridge,
 			struct drm_connector *connector)
 {
 	struct it6263 *it6263 = bridge_to_it6263(bridge);
 
-	return it6263_get_edid(it6263);
+	return it6263_get_edid(it6263, connector);
 }
 
 static enum drm_mode_status
@@ -870,7 +897,7 @@ static const struct drm_bridge_funcs it6263_bridge_funcs = {
 	.atomic_check = it6263_bridge_atomic_check,
 	.atomic_get_input_bus_fmts = it6263_bridge_atomic_get_input_bus_fmts,
 	.detect = it6263_bridge_detect,
-	.get_edid = it6263_bridge_get_edid,
+	.edid_read = it6263_bridge_edid_read,
 };
 
 static int it6263_check_chipid(struct it6263 *it6263)
@@ -1025,6 +1052,8 @@ static int it6263_probe(struct i2c_client *client)
 		goto unregister_lvds_i2c;
 	}
 
+	it6263->de_ssc_enable = of_property_read_bool(np, "de-ssc-enable");
+
 	it6263_reset(it6263);
 
 	ret = regmap_write(it6263->hdmi_regmap, HDMI_REG_SW_RST, HDMI_RST_ALL);
@@ -1081,6 +1110,7 @@ of_reconfig:
 
 	if (remote_node) {
 		int num_endpoints = 0;
+		struct platform_device *pdev;
 
 		/*
 		 * Remote node should have two endpoints (input and output: us)
@@ -1093,6 +1123,22 @@ of_reconfig:
 			num_endpoints++;
 
 		if (num_endpoints > 2) {
+			of_node_put(remote_node);
+			return ret;
+		}
+
+		/*
+		 * If the remote_node is an actual platform device, turning the node status to
+		 * 'disabled' will actually call device_del() which, in turn, will attempt to
+		 * purge all the supplier-consumer device links. However, in this case, since the
+		 * LDB driver is a supplier to IT6263, the device link is in DL_STATE_CONSUMER_PROBE
+		 * and we get a warning. If the remote node is not a supplier (channel@0,
+		 * lvds-channel@0, etc.) then there are no issues. So, only continue disabling the
+		 * nodes that are not resource suppliers for it6263.
+		 */
+		pdev = of_find_device_by_node(remote_node);
+		if (pdev) {
+			platform_device_put(pdev);
 			of_node_put(remote_node);
 			return ret;
 		}

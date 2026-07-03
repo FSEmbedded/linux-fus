@@ -316,6 +316,14 @@ static int fts_input_report_b(struct fts_ts_data *ts_data, struct ts_event *even
 		}
 	}
 
+	if (touch_down_point_cur)
+		input_report_key(input_dev, BTN_TOUCH, 1);
+	else if (touch_event_coordinate || ts_data->touch_points) {
+		if (ts_data->touch_points && (ts_data->log_level >= 1))
+			dev_dbg(&ts_data->client->dev, "[B]Points All Up!");
+		input_report_key(input_dev, BTN_TOUCH, 0);
+	}
+
 	ts_data->touch_points = touch_down_point_cur;
 	input_sync(input_dev);
 	return 0;
@@ -633,6 +641,7 @@ static int fts_input_init(struct fts_ts_data *ts_data)
 
 	__set_bit(EV_SYN, input_dev->evbit);
 	__set_bit(EV_ABS, input_dev->evbit);
+	__set_bit(EV_KEY, input_dev->evbit);
 	__set_bit(BTN_TOUCH, input_dev->keybit);
 	__set_bit(INPUT_PROP_DIRECT, input_dev->propbit);
 

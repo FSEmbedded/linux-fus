@@ -20,6 +20,12 @@
 		stdout-path = &lpuart1;
 	};
 
+	dmic: dmic {
+		compatible = "dmic-codec";
+		#sound-dai-cells = <0>;
+		num-channels = <4>;
+	};
+
 	reserved-memory {
 		#address-cells = <2>;
 		#size-cells = <2>;
@@ -131,6 +137,9 @@
 			cpu {
 				sound-dai = <&micfil>;
 			};
+			codec {
+				sound-dai = <&dmic>;
+			};
 		};
 	};
 };
@@ -162,8 +171,6 @@
 };
 
 &lpi2c1 {
-	#address-cells = <1>;
-	#size-cells = <0>;
 	clock-frequency = <400000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_lpi2c1>;
@@ -211,8 +218,6 @@
 };
 
 &lpi2c2 {
-	#address-cells = <1>;
-	#size-cells = <0>;
 	clock-frequency = <400000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_lpi2c2>;
@@ -379,6 +384,10 @@
 	assigned-clock-parents = <&clk IMX91_CLK_AUDIO_PLL>;
 	assigned-clock-rates = <24576000>;
 	fsl,sai-mclk-direction-output;
+	clocks = <&clk IMX91_CLK_SAI1_IPG>, <&clk IMX91_CLK_DUMMY>,
+		 <&clk IMX91_CLK_SAI1_GATE>, <&clk IMX91_CLK_DUMMY>,
+		 <&clk IMX91_CLK_DUMMY>, <&clk IMX91_CLK_AUDIO_PLL>;
+	clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3", "pll8k";
 	status = "okay";
 };
 
@@ -406,6 +415,7 @@
 	pinctrl-1 = <&pinctrl_usdhc1_100mhz>;
 	pinctrl-2 = <&pinctrl_usdhc1_200mhz>;
 	bus-width = <8>;
+	fsl,tuning-step = <1>;
 	non-removable;
 	status = "okay";
 };
@@ -419,6 +429,7 @@
 	fsl,cd-gpio-wakeup-disable;
 	vmmc-supply = <&reg_usdhc2_vmmc>;
 	bus-width = <4>;
+	fsl,tuning-step = <1>;
 	no-sdio;
 	no-mmc;
 	status = "okay";

@@ -9,6 +9,7 @@
 
 #define pr_fmt(fmt)	"OF: " fmt
 
+#include <linux/cleanup.h>
 #include <linux/device.h>
 #include <linux/of.h>
 #include <linux/spinlock.h>
@@ -988,7 +989,7 @@ EXPORT_SYMBOL_GPL(of_changeset_add_prop_string);
 int of_changeset_add_prop_string_array(struct of_changeset *ocs,
 				       struct device_node *np,
 				       const char *prop_name,
-				       const char **str_array, size_t sz)
+				       const char * const *str_array, size_t sz)
 {
 	struct property prop;
 	int i, ret;
@@ -1036,10 +1037,9 @@ int of_changeset_add_prop_u32_array(struct of_changeset *ocs,
 				    const u32 *array, size_t sz)
 {
 	struct property prop;
-	__be32 *val;
-	int i, ret;
+	__be32 *val __free(kfree) = kcalloc(sz, sizeof(__be32), GFP_KERNEL);
+	int i;
 
-	val = kcalloc(sz, sizeof(__be32), GFP_KERNEL);
 	if (!val)
 		return -ENOMEM;
 
@@ -1049,9 +1049,31 @@ int of_changeset_add_prop_u32_array(struct of_changeset *ocs,
 	prop.length = sizeof(u32) * sz;
 	prop.value = (void *)val;
 
-	ret = of_changeset_add_prop_helper(ocs, np, &prop);
-	kfree(val);
-
-	return ret;
+	return of_changeset_add_prop_helper(ocs, np, &prop);
 }
 EXPORT_SYMBOL_GPL(of_changeset_add_prop_u32_array);
+
+/**
+ * of_changeset_add_prop_bool - Add a boolean property (i.e. a property without
+ * any values) to a changeset.
+ *
+ * @ocs:	changeset pointer
+ * @np:		device node pointer
+ * @prop_name:	name of the property to be added
+ *
+ * Create a boolean property and add it to a changeset.
+ *
+ * Return: 0 on success, a negative error value in case of an error.
+ */
+int of_changeset_add_prop_bool(struct of_changeset *ocs, struct device_node *np,
+			       const char *prop_name)
+{
+	struct property prop;
+
+	prop.name = (char *)prop_name;
+	prop.length = 0;
+	prop.value = NULL;
+
+	return of_changeset_add_prop_helper(ocs, np, &prop);
+}
+EXPORT_SYMBOL_GPL(of_changeset_add_prop_bool);

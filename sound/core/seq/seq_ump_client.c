@@ -108,7 +108,6 @@ static int seq_ump_process_event(struct snd_seq_event *ev, int direct,
 static int seq_ump_client_open(struct seq_ump_client *client, int dir)
 {
 	struct snd_ump_endpoint *ump = client->ump;
-	struct snd_rawmidi_file rfile = {};
 	int err;
 
 	guard(mutex)(&ump->open_mutex);
@@ -119,8 +118,6 @@ static int seq_ump_client_open(struct seq_ump_client *client, int dir)
 					      &rfile);
 		if (err < 0)
 			return err;
-		scoped_guard(write_lock_irqsave, &client->output_lock)
-			client->out_rfile = rfile;
 	}
 	client->opened[dir]++;
 	return 0;
@@ -133,16 +130,9 @@ static int seq_ump_client_close(struct seq_ump_client *client, int dir)
 	struct snd_rawmidi_file rfile = {};
 
 	guard(mutex)(&ump->open_mutex);
-	if (!--client->opened[dir]) {
-		if (dir == STR_OUT) {
-			scoped_guard(write_lock_irqsave, &client->output_lock) {
-				rfile = client->out_rfile;
-				client->out_rfile = (struct snd_rawmidi_file){};
-			}
-			if (rfile.rmidi)
-				snd_rawmidi_kernel_release(&rfile);
-		}
-	}
+	if (!--client->opened[dir])
+		if (dir == STR_OUT)
+			snd_rawmidi_kernel_release(&client->out_rfile);
 	return 0;
 }
 
@@ -202,6 +192,8 @@ static void fill_port_info(struct snd_seq_port_info *port,
 	port->ump_group = group->group + 1;
 	if (!group->active)
 		port->capability |= SNDRV_SEQ_PORT_CAP_INACTIVE;
+	if (group->is_midi1)
+		port->flags |= SNDRV_SEQ_PORT_FLG_IS_MIDI1;
 	port->type = SNDRV_SEQ_PORT_TYPE_MIDI_GENERIC |
 		SNDRV_SEQ_PORT_TYPE_MIDI_UMP |
 		SNDRV_SEQ_PORT_TYPE_HARDWARE |
@@ -236,7 +228,7 @@ static int seq_ump_group_init(struct seq_ump_client *client, int group_index)
 		return -ENOMEM;
 
 	fill_port_info(port, client, group);
-	port->flags = SNDRV_SEQ_PORT_FLG_GIVEN_PORT;
+	port->flags |= SNDRV_SEQ_PORT_FLG_GIVEN_PORT;
 	memset(&pcallbacks, 0, sizeof(pcallbacks));
 	pcallbacks.owner = THIS_MODULE;
 	pcallbacks.private_data = client;
@@ -283,6 +275,8 @@ static void update_port_infos(struct seq_ump_client *client)
 						new);
 		if (err < 0)
 			continue;
+		/* notify to system port */
+		snd_seq_system_client_ev_port_change(client->seq_client, i);
 	}
 }
 

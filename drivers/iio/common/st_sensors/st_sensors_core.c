@@ -16,7 +16,7 @@
 #include <linux/property.h>
 #include <linux/regulator/consumer.h>
 #include <linux/regmap.h>
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 #include <linux/iio/common/st_sensors.h>
 
 #include "st_sensors_core.h"
@@ -607,7 +607,6 @@ int st_sensors_verify_id(struct iio_dev *indio_dev)
 		if (sdata->sensor_settings->wai != wai) {
 			dev_warn(parent, "%s: WhoAmI mismatch (0x%x).\n",
 				 indio_dev->name, wai);
-			return -EINVAL;
 		}
 	}
 

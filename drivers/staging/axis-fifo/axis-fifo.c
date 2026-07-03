@@ -164,14 +164,9 @@ static ssize_t sysfs_read(struct device *dev, char *buf,
 {
 	struct axis_fifo *fifo = dev_get_drvdata(dev);
 	unsigned int read_val;
-	unsigned int len;
-	char tmp[32];
 
 	read_val = ioread32(fifo->base_addr + addr_offset);
-	len =  snprintf(tmp, sizeof(tmp), "0x%x\n", read_val);
-	memcpy(buf, tmp, len);
-
-	return len;
+	return sysfs_emit(buf, "0x%x\n", read_val);
 }
 
 static ssize_t isr_store(struct device *dev, struct device_attribute *attr,
@@ -380,8 +375,8 @@ static ssize_t axis_fifo_read(struct file *f, char __user *buf,
 		 */
 		mutex_lock(&fifo->read_lock);
 		ret = wait_event_interruptible_timeout(fifo->read_queue,
-			ioread32(fifo->base_addr + XLLF_RDFO_OFFSET),
-			read_timeout);
+						       ioread32(fifo->base_addr + XLLF_RDFO_OFFSET),
+						       read_timeout);
 
 		if (ret <= 0) {
 			if (ret == 0) {
@@ -524,9 +519,9 @@ static ssize_t axis_fifo_write(struct file *f, const char __user *buf,
 		 */
 		mutex_lock(&fifo->write_lock);
 		ret = wait_event_interruptible_timeout(fifo->write_queue,
-			ioread32(fifo->base_addr + XLLF_TDFV_OFFSET)
-				 >= words_to_write,
-			write_timeout);
+						       ioread32(fifo->base_addr + XLLF_TDFV_OFFSET)
+								>= words_to_write,
+						       write_timeout);
 
 		if (ret <= 0) {
 			if (ret == 0) {
@@ -540,10 +535,25 @@ static ssize_t axis_fifo_write(struct file *f, const char __user *buf,
 		}
 	}
 
-	txbuf = vmemdup_user(buf, len);
-	if (IS_ERR(txbuf)) {
-		ret = PTR_ERR(txbuf);
-		goto end_unlock;
+	/* write data from an intermediate buffer into the fifo IP, refilling
+	 * the buffer with userspace data as needed
+	 */
+	copied = 0;
+	while (words_to_write > 0) {
+		copy = min(words_to_write, WRITE_BUF_SIZE);
+
+		if (copy_from_user(tmp_buf, buf + copied * sizeof(u32),
+				   copy * sizeof(u32))) {
+			ret = -EFAULT;
+			goto end_unlock;
+		}
+
+		for (i = 0; i < copy; i++)
+			iowrite32(tmp_buf[i], fifo->base_addr +
+				  XLLF_TDFD_OFFSET);
+
+		copied += copy;
+		words_to_write -= copy;
 	}
 
 	for (int i = 0; i < words_to_write; ++i)

@@ -89,8 +89,6 @@ struct microcode_amd {
 	unsigned int			mpb[];
 };
 
-#define PATCH_MAX_SIZE (3 * PAGE_SIZE)
-
 static struct equiv_cpu_table {
 	unsigned int num_entries;
 	struct equiv_cpu_entry *entry;
@@ -176,83 +174,51 @@ static u32 cpuid_to_ucode_rev(unsigned int val)
 	return p.ucode_rev;
 }
 
-static u32 get_cutoff_revision(u32 rev)
-{
-	switch (rev >> 8) {
-	case 0x80012: return 0x8001277; break;
-	case 0x80082: return 0x800820f; break;
-	case 0x83010: return 0x830107c; break;
-	case 0x86001: return 0x860010e; break;
-	case 0x86081: return 0x8608108; break;
-	case 0x87010: return 0x8701034; break;
-	case 0x8a000: return 0x8a0000a; break;
-	case 0xa0010: return 0xa00107a; break;
-	case 0xa0011: return 0xa0011da; break;
-	case 0xa0012: return 0xa001243; break;
-	case 0xa0082: return 0xa00820e; break;
-	case 0xa1011: return 0xa101153; break;
-	case 0xa1012: return 0xa10124e; break;
-	case 0xa1081: return 0xa108109; break;
-	case 0xa2010: return 0xa20102f; break;
-	case 0xa2012: return 0xa201212; break;
-	case 0xa4041: return 0xa404109; break;
-	case 0xa5000: return 0xa500013; break;
-	case 0xa6012: return 0xa60120a; break;
-	case 0xa7041: return 0xa704109; break;
-	case 0xa7052: return 0xa705208; break;
-	case 0xa7080: return 0xa708009; break;
-	case 0xa70c0: return 0xa70C009; break;
-	case 0xaa001: return 0xaa00116; break;
-	case 0xaa002: return 0xaa00218; break;
-	case 0xb0021: return 0xb002146; break;
-	case 0xb0081: return 0xb008111; break;
-	case 0xb1010: return 0xb101046; break;
-	case 0xb2040: return 0xb204031; break;
-	case 0xb4040: return 0xb404031; break;
-	case 0xb4041: return 0xb404101; break;
-	case 0xb6000: return 0xb600031; break;
-	case 0xb6080: return 0xb608031; break;
-	case 0xb7000: return 0xb700031; break;
-	default: break;
-
-	}
-	return 0;
-}
-
 static bool need_sha_check(u32 cur_rev)
 {
-	u32 cutoff;
-
 	if (!cur_rev) {
 		cur_rev = cpuid_to_ucode_rev(bsp_cpuid_1_eax);
 		pr_info_once("No current revision, generating the lowest one: 0x%x\n", cur_rev);
 	}
 
-	cutoff = get_cutoff_revision(cur_rev);
-	if (cutoff)
-		return cur_rev <= cutoff;
+	switch (cur_rev >> 8) {
+	case 0x80012: return cur_rev <= 0x800126f; break;
+	case 0x80082: return cur_rev <= 0x800820f; break;
+	case 0x83010: return cur_rev <= 0x830107c; break;
+	case 0x86001: return cur_rev <= 0x860010e; break;
+	case 0x86081: return cur_rev <= 0x8608108; break;
+	case 0x87010: return cur_rev <= 0x8701034; break;
+	case 0x8a000: return cur_rev <= 0x8a0000a; break;
+	case 0xa0010: return cur_rev <= 0xa00107a; break;
+	case 0xa0011: return cur_rev <= 0xa0011da; break;
+	case 0xa0012: return cur_rev <= 0xa001243; break;
+	case 0xa0082: return cur_rev <= 0xa00820e; break;
+	case 0xa1011: return cur_rev <= 0xa101153; break;
+	case 0xa1012: return cur_rev <= 0xa10124e; break;
+	case 0xa1081: return cur_rev <= 0xa108109; break;
+	case 0xa2010: return cur_rev <= 0xa20102f; break;
+	case 0xa2012: return cur_rev <= 0xa201212; break;
+	case 0xa4041: return cur_rev <= 0xa404109; break;
+	case 0xa5000: return cur_rev <= 0xa500013; break;
+	case 0xa6012: return cur_rev <= 0xa60120a; break;
+	case 0xa7041: return cur_rev <= 0xa704109; break;
+	case 0xa7052: return cur_rev <= 0xa705208; break;
+	case 0xa7080: return cur_rev <= 0xa708009; break;
+	case 0xa70c0: return cur_rev <= 0xa70C009; break;
+	case 0xaa001: return cur_rev <= 0xaa00116; break;
+	case 0xaa002: return cur_rev <= 0xaa00218; break;
+	case 0xb0021: return cur_rev <= 0xb002146; break;
+	case 0xb1010: return cur_rev <= 0xb101046; break;
+	case 0xb2040: return cur_rev <= 0xb204031; break;
+	case 0xb4040: return cur_rev <= 0xb404031; break;
+	case 0xb6000: return cur_rev <= 0xb600031; break;
+	case 0xb7000: return cur_rev <= 0xb700031; break;
+	default: break;
+	}
 
 	pr_info("You should not be seeing this. Please send the following couple of lines to x86-<at>-kernel.org\n");
 	pr_info("CPUID(1).EAX: 0x%x, current revision: 0x%x\n", bsp_cpuid_1_eax, cur_rev);
 	return true;
-}
-
-static bool cpu_has_entrysign(void)
-{
-	unsigned int fam   = x86_family(bsp_cpuid_1_eax);
-	unsigned int model = x86_model(bsp_cpuid_1_eax);
-
-	if (fam == 0x17 || fam == 0x19)
-		return true;
-
-	if (fam == 0x1a) {
-		if (model <= 0x2f ||
-		    (0x40 <= model && model <= 0x4f) ||
-		    (0x60 <= model && model <= 0x7f))
-			return true;
-	}
-
-	return false;
 }
 
 static bool verify_sha256_digest(u32 patch_id, u32 cur_rev, const u8 *data, unsigned int len)
@@ -262,7 +228,7 @@ static bool verify_sha256_digest(u32 patch_id, u32 cur_rev, const u8 *data, unsi
 	struct sha256_state s;
 	int i;
 
-	if (!cpu_has_entrysign())
+	if (x86_family(bsp_cpuid_1_eax) < 0x17)
 		return true;
 
 	if (!need_sha_check(cur_rev))
@@ -404,8 +370,7 @@ static bool verify_equivalence_table(const u8 *buf, size_t buf_size)
  * On success, @sh_psize returns the patch size according to the section header,
  * to the caller.
  */
-static bool
-__verify_patch_section(const u8 *buf, size_t buf_size, u32 *sh_psize)
+static bool __verify_patch_section(const u8 *buf, size_t buf_size, u32 *sh_psize)
 {
 	u32 p_type, p_size;
 	const u32 *hdr;
@@ -441,7 +406,7 @@ __verify_patch_section(const u8 *buf, size_t buf_size, u32 *sh_psize)
  * exceed the per-family maximum). @sh_psize is the size read from the section
  * header.
  */
-static bool __verify_patch_size(u32 sh_psize, size_t buf_size)
+static unsigned int __verify_patch_size(u32 sh_psize, size_t buf_size)
 {
 	u8 family = x86_family(bsp_cpuid_1_eax);
 	u32 max_size;
@@ -508,7 +473,8 @@ static int verify_patch(const u8 *buf, size_t buf_size, u32 *patch_size)
 		return -1;
 	}
 
-	if (!__verify_patch_size(sh_psize, buf_size)) {
+	ret = __verify_patch_size(sh_psize, buf_size);
+	if (!ret) {
 		pr_debug("Per-family patch size mismatch.\n");
 		return -1;
 	}
@@ -704,7 +670,7 @@ static bool get_builtin_microcode(struct cpio_data *cp)
 
 	if (family >= 0x15)
 		snprintf(fw_name, sizeof(fw_name),
-			 "amd-ucode/microcode_amd_fam%.2xh.bin", family);
+			 "amd-ucode/microcode_amd_fam%02hhxh.bin", family);
 
 	if (firmware_request_builtin(&fw, fw_name)) {
 		cp->size = fw.size;

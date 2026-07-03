@@ -74,30 +74,6 @@
  * intervals and if the stand deviation of these 8 intervals is below a
  * threshold value, we use the average of these intervals as prediction.
  *
- * Limiting Performance Impact
- * ---------------------------
- * C states, especially those with large exit latencies, can have a real
- * noticeable impact on workloads, which is not acceptable for most sysadmins,
- * and in addition, less performance has a power price of its own.
- *
- * As a general rule of thumb, menu assumes that the following heuristic
- * holds:
- *     The busier the system, the less impact of C states is acceptable
- *
- * This rule-of-thumb is implemented using a performance-multiplier:
- * If the exit latency times the performance multiplier is longer than
- * the predicted duration, the C state is not considered a candidate
- * for selection due to a too high performance impact. So the higher
- * this multiplier is, the longer we need to be idle to pick a deep C
- * state, and thus the less likely a busy CPU will hit such a deep
- * C state.
- *
- * Currently there is only one value determining the factor:
- * 10 points are added for each process that is waiting for IO on this CPU.
- * (This value was experimentally determined.)
- * Utilization is no longer a factor as it was shown that it never contributed
- * significantly to the performance multiplier in the first place.
- *
  */
 
 struct menu_device {
@@ -232,8 +208,19 @@ again:
 	 * unless there is a clear indication that the given CPU is most likley
 	 * going to be woken up shortly.
 	 */
-	if (divisor * 4 <= INTERVALS * 3)
+	if (divisor * 4 <= INTERVALS * 3) {
+		/*
+		 * If there are sufficiently many data points still under
+		 * consideration after the outliers have been eliminated,
+		 * returning without a prediction would be a mistake because it
+		 * is likely that the next interval will not exceed the current
+		 * maximum, so return the latter in that case.
+		 */
+		if (divisor >= INTERVALS / 2)
+			return max;
+
 		return UINT_MAX;
+	}
 
 	thresh = max - 1;
 	goto again;
@@ -325,6 +312,16 @@ static int menu_select(struct cpuidle_driver *drv, struct cpuidle_device *dev,
 	}
 
 	/*
+	 * If the tick is already stopped, the cost of possible short idle
+	 * duration misprediction is much higher, because the CPU may be stuck
+	 * in a shallow idle state for a long time as a result of it.  In that
+	 * case, say we might mispredict and use the known time till the closest
+	 * timer event for the idle state selection.
+	 */
+	if (tick_nohz_tick_stopped() && predicted_ns < TICK_NSEC)
+		predicted_ns = data->next_timer_ns;
+
+	/*
 	 * Find the idle state with the lowest power while satisfying
 	 * our constraints.
 	 */
@@ -340,6 +337,44 @@ static int menu_select(struct cpuidle_driver *drv, struct cpuidle_device *dev,
 
 		if (s->exit_latency_ns > latency_req)
 			break;
+
+		if (s->target_residency_ns > predicted_ns) {
+			/*
+			 * Use a physical idle state, not busy polling, unless
+			 * a timer is going to trigger soon enough.
+			 */
+			if ((drv->states[idx].flags & CPUIDLE_FLAG_POLLING) &&
+			    s->target_residency_ns <= data->next_timer_ns) {
+				predicted_ns = s->target_residency_ns;
+				idx = i;
+				break;
+			}
+			if (predicted_ns < TICK_NSEC)
+				break;
+
+			if (!tick_nohz_tick_stopped()) {
+				/*
+				 * If the state selected so far is shallow,
+				 * waking up early won't hurt, so retain the
+				 * tick in that case and let the governor run
+				 * again in the next iteration of the loop.
+				 */
+				predicted_ns = drv->states[idx].target_residency_ns;
+				break;
+			}
+
+			/*
+			 * If the state selected so far is shallow and this
+			 * state's target residency matches the time till the
+			 * closest timer event, select this one to avoid getting
+			 * stuck in the shallow one for too long.
+			 */
+			if (drv->states[idx].target_residency_ns < TICK_NSEC &&
+			    s->target_residency_ns <= delta_tick)
+				idx = i;
+
+			return idx;
+		}
 
 		if (s->target_residency_ns <= predicted_ns) {
 			idx = i;

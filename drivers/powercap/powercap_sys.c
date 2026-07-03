@@ -625,6 +625,11 @@ struct powercap_control_type *powercap_register_control_type(
 	INIT_LIST_HEAD(&control_type->node);
 	control_type->dev.class = &powercap_class;
 	dev_set_name(&control_type->dev, "%s", name);
+	result = device_register(&control_type->dev);
+	if (result) {
+		put_device(&control_type->dev);
+		return ERR_PTR(result);
+	}
 	idr_init(&control_type->idr);
 
 	mutex_lock(&powercap_cntrl_list_lock);

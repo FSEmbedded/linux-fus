@@ -79,6 +79,35 @@ void *kasan_mem_to_shadow(const void *addr)
 		return mem_to_shadow(addr);
 	else
 		return (void *)(kasan_early_shadow_page);
+	} else {
+		unsigned long maddr = (unsigned long)addr;
+		unsigned long xrange = (maddr >> XRANGE_SHIFT) & 0xffff;
+		unsigned long offset = 0;
+
+		if (maddr >= FIXADDR_START)
+			return (void *)(kasan_early_shadow_page);
+
+		maddr &= XRANGE_SHADOW_MASK;
+		switch (xrange) {
+		case XKPRANGE_CC_SEG:
+			offset = XKPRANGE_CC_SHADOW_OFFSET;
+			break;
+		case XKPRANGE_UC_SEG:
+			offset = XKPRANGE_UC_SHADOW_OFFSET;
+			break;
+		case XKPRANGE_WC_SEG:
+			offset = XKPRANGE_WC_SHADOW_OFFSET;
+			break;
+		case XKVRANGE_VC_SEG:
+			offset = XKVRANGE_VC_SHADOW_OFFSET;
+			break;
+		default:
+			WARN_ON(1);
+			return NULL;
+		}
+
+		return (void *)((maddr >> KASAN_SHADOW_SCALE_SHIFT) + offset);
+	}
 }
 
 const void *kasan_shadow_to_mem(const void *shadow_addr)
@@ -121,7 +150,7 @@ static phys_addr_t __init kasan_alloc_zeroed_page(int node)
 
 static pte_t *__init kasan_pte_offset(pmd_t *pmdp, unsigned long addr, int node, bool early)
 {
-	if (__pmd_none(early, READ_ONCE(*pmdp))) {
+	if (__pmd_none(early, pmdp_get(pmdp))) {
 		phys_addr_t pte_phys = early ?
 				__pa_symbol(kasan_early_shadow_pte) : kasan_alloc_zeroed_page(node);
 		if (!early)
@@ -134,7 +163,7 @@ static pte_t *__init kasan_pte_offset(pmd_t *pmdp, unsigned long addr, int node,
 
 static pmd_t *__init kasan_pmd_offset(pud_t *pudp, unsigned long addr, int node, bool early)
 {
-	if (__pud_none(early, READ_ONCE(*pudp))) {
+	if (__pud_none(early, pudp_get(pudp))) {
 		phys_addr_t pmd_phys = early ?
 				__pa_symbol(kasan_early_shadow_pmd) : kasan_alloc_zeroed_page(node);
 		if (!early)
@@ -147,7 +176,7 @@ static pmd_t *__init kasan_pmd_offset(pud_t *pudp, unsigned long addr, int node,
 
 static pud_t *__init kasan_pud_offset(p4d_t *p4dp, unsigned long addr, int node, bool early)
 {
-	if (__p4d_none(early, READ_ONCE(*p4dp))) {
+	if (__p4d_none(early, p4dp_get(p4dp))) {
 		phys_addr_t pud_phys = early ?
 			__pa_symbol(kasan_early_shadow_pud) : kasan_alloc_zeroed_page(node);
 		if (!early)
@@ -183,7 +212,7 @@ static void __init kasan_pte_populate(pmd_t *pmdp, unsigned long addr,
 					      : kasan_alloc_zeroed_page(node);
 		next = addr + PAGE_SIZE;
 		set_pte(ptep, pfn_pte(__phys_to_pfn(page_phys), PAGE_KERNEL));
-	} while (ptep++, addr = next, addr != end && __pte_none(early, READ_ONCE(*ptep)));
+	} while (ptep++, addr = next, addr != end && __pte_none(early, ptep_get(ptep)));
 }
 
 static void __init kasan_pmd_populate(pud_t *pudp, unsigned long addr,
@@ -195,7 +224,7 @@ static void __init kasan_pmd_populate(pud_t *pudp, unsigned long addr,
 	do {
 		next = pmd_addr_end(addr, end);
 		kasan_pte_populate(pmdp, addr, next, node, early);
-	} while (pmdp++, addr = next, addr != end && __pmd_none(early, READ_ONCE(*pmdp)));
+	} while (pmdp++, addr = next, addr != end && __pmd_none(early, pmdp_get(pmdp)));
 }
 
 static void __init kasan_pud_populate(p4d_t *p4dp, unsigned long addr,

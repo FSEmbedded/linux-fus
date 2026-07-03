@@ -144,9 +144,11 @@ static int hisi_trng_get_bytes(struct hisi_trng *trng, u8 *dstn, unsigned int dl
 	int ret;
 	u32 i;
 
-	ret = hisi_trng_reseed(trng);
-	if (ret)
-		return ret;
+	if (dlen > SW_DRBG_BLOCKS_NUM * SW_DRBG_BYTES || dlen == 0) {
+		pr_err("dlen(%u) exceeds limit(%d)!\n", dlen,
+			SW_DRBG_BLOCKS_NUM * SW_DRBG_BYTES);
+		return -EINVAL;
+	}
 
 	do {
 		ret = readl_relaxed_poll_timeout(trng->base + SW_DRBG_STATUS,
@@ -354,7 +356,7 @@ err_remove_from_list:
 	return ret;
 }
 
-static int hisi_trng_remove(struct platform_device *pdev)
+static void hisi_trng_remove(struct platform_device *pdev)
 {
 	struct hisi_trng *trng = platform_get_drvdata(pdev);
 
@@ -365,8 +367,6 @@ static int hisi_trng_remove(struct platform_device *pdev)
 	if (trng->ver != HISI_TRNG_VER_V1 &&
 	    atomic_dec_return(&trng_active_devs) == 0)
 		crypto_unregister_rng(&hisi_trng_alg);
-
-	return 0;
 }
 
 static const struct acpi_device_id hisi_trng_acpi_match[] = {
@@ -377,7 +377,7 @@ MODULE_DEVICE_TABLE(acpi, hisi_trng_acpi_match);
 
 static struct platform_driver hisi_trng_driver = {
 	.probe		= hisi_trng_probe,
-	.remove         = hisi_trng_remove,
+	.remove_new     = hisi_trng_remove,
 	.driver		= {
 		.name	= "hisi-trng-v2",
 		.acpi_match_table = ACPI_PTR(hisi_trng_acpi_match),

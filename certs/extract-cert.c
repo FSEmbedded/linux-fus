@@ -43,7 +43,6 @@ void format(void)
 	exit(2);
 }
 
-#ifdef USE_PKCS11_ENGINE
 static const char *key_pass;
 #endif
 static BIO *wb;

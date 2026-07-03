@@ -317,14 +317,40 @@ static void padata_reorder(struct padata_priv *padata)
 		list_add_tail(&padata->list, &squeue->serial.list);
 		queue_work_on(cb_cpu, pinst->serial_wq, &squeue->work);
 
+	spin_unlock_bh(&pd->lock);
+
+	/*
+	 * The next object that needs serialization might have arrived to
+	 * the reorder queues in the meantime.
+	 *
+	 * Ensure reorder queue is read after pd->lock is dropped so we see
+	 * new objects from another task in padata_do_serial.  Pairs with
+	 * smp_mb in padata_do_serial.
+	 */
+	smp_mb();
+
+	reorder = per_cpu_ptr(pd->reorder_list, pd->cpu);
+	if (!list_empty(&reorder->list) && padata_find_next(pd, false)) {
 		/*
-		 * If the next object that needs serialization is parallel
-		 * processed by another cpu and is still on it's way to the
-		 * cpu's reorder queue, end the loop.
+		 * Other context(eg. the padata_serial_worker) can finish the request.
+		 * To avoid UAF issue, add pd ref here, and put pd ref after reorder_work finish.
 		 */
-		padata = padata_find_next(pd, cpu, processed);
-		spin_unlock(&squeue->serial.lock);
-	} while (padata);
+		padata_get_pd(pd);
+		if (!queue_work(pinst->serial_wq, &pd->reorder_work))
+			padata_put_pd(pd);
+	}
+}
+
+static void invoke_padata_reorder(struct work_struct *work)
+{
+	struct parallel_data *pd;
+
+	local_bh_disable();
+	pd = container_of(work, struct parallel_data, reorder_work);
+	padata_reorder(pd);
+	local_bh_enable();
+	/* Pairs with putting the reorder_work in the serial_wq */
+	padata_put_pd(pd);
 }
 
 static void padata_serial_worker(struct work_struct *serial_work)
@@ -460,7 +486,8 @@ void __init padata_do_multithreaded(struct padata_mt_job *job)
 	struct padata_work my_work, *pw;
 	struct padata_mt_job_state ps;
 	LIST_HEAD(works);
-	int nworks;
+	int nworks, nid;
+	static atomic_t last_used_nid __initdata;
 
 	if (job->size == 0)
 		return;
@@ -502,7 +529,16 @@ void __init padata_do_multithreaded(struct padata_mt_job *job)
 		ps.chunk_size = 1U;
 
 	list_for_each_entry(pw, &works, pw_list)
-		queue_work(system_unbound_wq, &pw->pw_work);
+		if (job->numa_aware) {
+			int old_node = atomic_read(&last_used_nid);
+
+			do {
+				nid = next_node_in(old_node, node_states[N_CPU]);
+			} while (!atomic_try_cmpxchg(&last_used_nid, &old_node, nid));
+			queue_work_node(nid, system_unbound_wq, &pw->pw_work);
+		} else {
+			queue_work(system_unbound_wq, &pw->pw_work);
+		}
 
 	/* Use the current thread, which saves starting a workqueue worker. */
 	padata_work_init(&my_work, padata_mt_helper, &ps, PADATA_WORK_ONSTACK);
@@ -1087,6 +1123,12 @@ void padata_free_shell(struct padata_shell *ps)
 
 	if (!ps)
 		return;
+
+	/*
+	 * Wait for all _do_serial calls to finish to avoid touching
+	 * freed pd's and ps's.
+	 */
+	synchronize_rcu();
 
 	mutex_lock(&ps->pinst->lock);
 	list_del(&ps->list);

@@ -23,6 +23,11 @@ struct cached_dir_dentry {
 	struct dentry *dentry;
 };
 
+struct cached_dir_dentry {
+	struct list_head entry;
+	struct dentry *dentry;
+};
+
 static struct cached_fid *find_or_create_cached_dir(struct cached_fids *cfids,
 						    const char *path,
 						    bool lookup_only,
@@ -371,11 +376,11 @@ out:
 			 * lease. Release one here, and the second below.
 			 */
 			cfid->has_lease = false;
-			close_cached_dir_locked(cfid);
+			kref_put(&cfid->refcount, smb2_close_cached_fid);
 		}
 		spin_unlock(&cfids->cfid_list_lock);
 
-		close_cached_dir(cfid);
+		kref_put(&cfid->refcount, smb2_close_cached_fid);
 	} else {
 		*ret_cfid = cfid;
 		atomic_inc(&tcon->num_remote_opens);
@@ -611,7 +616,7 @@ cached_dir_offload_close(struct work_struct *work)
 
 	WARN_ON(cfid->on_list);
 
-	close_cached_dir(cfid);
+	kref_put(&cfid->refcount, smb2_close_cached_fid);
 	cifs_put_tcon(tcon, netfs_trace_tcon_ref_put_cached_close);
 }
 
@@ -735,7 +740,7 @@ static void cfids_invalidation_worker(struct work_struct *work)
 	list_for_each_entry_safe(cfid, q, &entry, entry) {
 		list_del(&cfid->entry);
 		/* Drop the ref-count acquired in invalidate_all_cached_dirs */
-		close_cached_dir(cfid);
+		kref_put(&cfid->refcount, smb2_close_cached_fid);
 	}
 }
 
@@ -777,18 +782,18 @@ static void cfids_laundromat_worker(struct work_struct *work)
 
 		dput(dentry);
 		if (cfid->is_open) {
-			spin_lock(&cfid->tcon->tc_lock);
+			spin_lock(&cifs_tcp_ses_lock);
 			++cfid->tcon->tc_count;
 			trace_smb3_tcon_ref(cfid->tcon->debug_id, cfid->tcon->tc_count,
 					    netfs_trace_tcon_ref_get_cached_laundromat);
-			spin_unlock(&cfid->tcon->tc_lock);
+			spin_unlock(&cifs_tcp_ses_lock);
 			queue_work(serverclose_wq, &cfid->close_work);
 		} else
 			/*
 			 * Drop the ref-count from above, either the lease-ref (if there
 			 * was one) or the extra one acquired.
 			 */
-			close_cached_dir(cfid);
+			kref_put(&cfid->refcount, smb2_close_cached_fid);
 	}
 	queue_delayed_work(cfid_put_wq, &cfids->laundromat_work,
 			   dir_cache_timeout * HZ);

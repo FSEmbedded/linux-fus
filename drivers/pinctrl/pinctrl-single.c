@@ -81,8 +81,6 @@ struct pcs_conf_type {
  * @name:	pinctrl function name
  * @vals:	register and vals array
  * @nvals:	number of entries in vals array
- * @pgnames:	array of pingroup names the function uses
- * @npgnames:	number of pingroup names the function uses
  * @conf:	array of pin configurations
  * @nconfs:	number of pin configurations available
  * @node:	list node
@@ -91,8 +89,6 @@ struct pcs_function {
 	const char *name;
 	struct pcs_func_vals *vals;
 	unsigned nvals;
-	const char **pgnames;
-	int npgnames;
 	struct pcs_conf_vals *conf;
 	int nconfs;
 	struct list_head node;
@@ -239,32 +235,32 @@ static struct lock_class_key pcs_request_class;
  * does not help in this case.
  */
 
-static unsigned __maybe_unused pcs_readb(void __iomem *reg)
+static unsigned int pcs_readb(void __iomem *reg)
 {
 	return readb(reg);
 }
 
-static unsigned __maybe_unused pcs_readw(void __iomem *reg)
+static unsigned int pcs_readw(void __iomem *reg)
 {
 	return readw(reg);
 }
 
-static unsigned __maybe_unused pcs_readl(void __iomem *reg)
+static unsigned int pcs_readl(void __iomem *reg)
 {
 	return readl(reg);
 }
 
-static void __maybe_unused pcs_writeb(unsigned val, void __iomem *reg)
+static void pcs_writeb(unsigned int val, void __iomem *reg)
 {
 	writeb(val, reg);
 }
 
-static void __maybe_unused pcs_writew(unsigned val, void __iomem *reg)
+static void pcs_writew(unsigned int val, void __iomem *reg)
 {
 	writew(val, reg);
 }
 
-static void __maybe_unused pcs_writel(unsigned val, void __iomem *reg)
+static void pcs_writel(unsigned int val, void __iomem *reg)
 {
 	writel(val, reg);
 }
@@ -556,7 +552,7 @@ static int pcs_pinconf_set(struct pinctrl_dev *pctldev,
 	struct pcs_function *func;
 	unsigned offset = 0, shift = 0, i, data;
 	u32 arg;
-	int j, ret;
+	int j;
 	enum pin_config_param param;
 
 	ret = pcs_get_function(pctldev, pin, &func);
@@ -1637,7 +1633,6 @@ static int pcs_irq_init_chained_handler(struct pcs_device *pcs,
 	return 0;
 }
 
-#ifdef CONFIG_PM
 static int pcs_save_context(struct pcs_device *pcs)
 {
 	int i, mux_bytes;
@@ -1702,14 +1697,9 @@ static void pcs_restore_context(struct pcs_device *pcs)
 	}
 }
 
-static int pinctrl_single_suspend(struct platform_device *pdev,
-					pm_message_t state)
+static int pinctrl_single_suspend_noirq(struct device *dev)
 {
-	struct pcs_device *pcs;
-
-	pcs = platform_get_drvdata(pdev);
-	if (!pcs)
-		return -EINVAL;
+	struct pcs_device *pcs = dev_get_drvdata(dev);
 
 	if (pcs->flags & PCS_CONTEXT_LOSS_OFF) {
 		int ret;
@@ -1722,20 +1712,19 @@ static int pinctrl_single_suspend(struct platform_device *pdev,
 	return pinctrl_force_sleep(pcs->pctl);
 }
 
-static int pinctrl_single_resume(struct platform_device *pdev)
+static int pinctrl_single_resume_noirq(struct device *dev)
 {
-	struct pcs_device *pcs;
-
-	pcs = platform_get_drvdata(pdev);
-	if (!pcs)
-		return -EINVAL;
+	struct pcs_device *pcs = dev_get_drvdata(dev);
 
 	if (pcs->flags & PCS_CONTEXT_LOSS_OFF)
 		pcs_restore_context(pcs);
 
 	return pinctrl_force_default(pcs->pctl);
 }
-#endif
+
+static DEFINE_NOIRQ_DEV_PM_OPS(pinctrl_single_pm_ops,
+			       pinctrl_single_suspend_noirq,
+			       pinctrl_single_resume_noirq);
 
 /**
  * pcs_quirk_missing_pinctrl_cells - handle legacy binding
@@ -1940,16 +1929,11 @@ free:
 	return ret;
 }
 
-static int pcs_remove(struct platform_device *pdev)
+static void pcs_remove(struct platform_device *pdev)
 {
 	struct pcs_device *pcs = platform_get_drvdata(pdev);
 
-	if (!pcs)
-		return 0;
-
 	pcs_free_resources(pcs);
-
-	return 0;
 }
 
 static const struct pcs_soc_data pinctrl_single_omap_wkup = {
@@ -1975,6 +1959,10 @@ static const struct pcs_soc_data pinctrl_single_am654 = {
 	.irq_status_mask = (1 << 30),   /* WKUP_EVT */
 };
 
+static const struct pcs_soc_data pinctrl_single_j7200 = {
+	.flags = PCS_CONTEXT_LOSS_OFF,
+};
+
 static const struct pcs_soc_data pinctrl_single = {
 };
 
@@ -1989,6 +1977,7 @@ static const struct of_device_id pcs_of_match[] = {
 	{ .compatible = "ti,omap3-padconf", .data = &pinctrl_single_omap_wkup },
 	{ .compatible = "ti,omap4-padconf", .data = &pinctrl_single_omap_wkup },
 	{ .compatible = "ti,omap5-padconf", .data = &pinctrl_single_omap_wkup },
+	{ .compatible = "ti,j7200-padconf", .data = &pinctrl_single_j7200 },
 	{ .compatible = "pinctrl-single", .data = &pinctrl_single },
 	{ .compatible = "pinconf-single", .data = &pinconf_single },
 	{ },
@@ -1997,15 +1986,12 @@ MODULE_DEVICE_TABLE(of, pcs_of_match);
 
 static struct platform_driver pcs_driver = {
 	.probe		= pcs_probe,
-	.remove		= pcs_remove,
+	.remove_new	= pcs_remove,
 	.driver = {
 		.name		= DRIVER_NAME,
 		.of_match_table	= pcs_of_match,
+		.pm = pm_sleep_ptr(&pinctrl_single_pm_ops),
 	},
-#ifdef CONFIG_PM
-	.suspend = pinctrl_single_suspend,
-	.resume = pinctrl_single_resume,
-#endif
 };
 
 module_platform_driver(pcs_driver);

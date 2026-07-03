@@ -78,7 +78,7 @@ err0:
 static void omap_ocp2scp_remove(struct platform_device *pdev)
 {
 	pm_runtime_disable(&pdev->dev);
-	of_platform_depopulate(&pdev->dev);
+	device_for_each_child(&pdev->dev, NULL, ocp2scp_remove_devices);
 }
 
 #ifdef CONFIG_OF

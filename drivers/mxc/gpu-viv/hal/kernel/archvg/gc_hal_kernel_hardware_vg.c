@@ -2,7 +2,7 @@
 *
 *    The MIT License (MIT)
 *
-*    Copyright (c) 2014 - 2023 Vivante Corporation
+*    Copyright (c) 2014 - 2024 Vivante Corporation
 *
 *    Permission is hereby granted, free of charge, to any person obtaining a
 *    copy of this software and associated documentation files (the "Software"),
@@ -26,7 +26,7 @@
 *
 *    The GPL License (GPL)
 *
-*    Copyright (C) 2014 - 2023 Vivante Corporation
+*    Copyright (C) 2014 - 2024 Vivante Corporation
 *
 *    This program is free software; you can redistribute it and/or
 *    modify it under the terms of the GNU General Public License
@@ -235,7 +235,7 @@ _IdentifyHardware(IN gckOS         Os,
 }
 
 #if gcdPOWEROFF_TIMEOUT
-void
+static void
 _VGPowerTimerFunction(gctPOINTER Data)
 {
     gckVGHARDWARE hardware = (gckVGHARDWARE)Data;

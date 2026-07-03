@@ -41,21 +41,28 @@
 #define MBOX_TXDB_NAME			"txdb"
 #define MBOX_RXDB_NAME			"rxdb"
 
+#define IMX_SE_LOG_PATH "/var/lib/se_"
 #define SE_RCV_MSG_DEFAULT_TIMEOUT	5000
 #define SE_RCV_MSG_LONG_TIMEOUT		5000000
-#define IMX_SE_LOG_PATH			"/var/lib/se_"
+
+#define FW_NAME_SIZE			50
 
 static int se_log;
 static struct kobject *se_kobj;
 u32 se_rcv_msg_timeout = SE_RCV_MSG_DEFAULT_TIMEOUT;
 
+struct fw_info {
+	u8 fw_name[FW_NAME_SIZE];
+	bool is_fw_name_valid;
+};
+
 struct se_fw_img_name {
-	const u8 *prim_fw_nm_in_rfs;
-	const u8 *seco_fw_nm_in_rfs;
+	struct fw_info prim_fw;
+	struct fw_info secn_fw;
 };
 
 struct se_fw_load_info {
-	const struct se_fw_img_name *se_fw_img_nm;
+	struct se_fw_img_name se_fw_img_nm;
 	bool is_fw_loaded;
 	bool imem_mgmt;
 	struct se_imem_buf imem;
@@ -66,7 +73,7 @@ struct se_if_node_info {
 	u8 se_if_did;
 	struct se_if_defines if_defs;
 	u8 *pool_name;
-	u32 mu_buff_size;
+	uint32_t mu_buff_size;
 	bool reserved_dma_ranges;
 	int (*start_rng)(struct se_if_priv *priv);
 	int (*init_trng)(struct se_if_priv *priv);
@@ -80,12 +87,11 @@ struct se_if_node_info_list {
 	const u16 soc_id;
 	bool soc_register;
 	int (*se_fetch_soc_info)(struct se_if_priv *priv, void *data);
-	const struct se_fw_img_name se_fw_img_nm[2];
 	const struct se_if_node_info info[];
 };
 
 struct se_var_info {
-	u8 board_type;
+	uint8_t board_type;
 	u16 soc_id;
 	u16 soc_rev;
 	u32 fw_vers_word;
@@ -110,12 +116,6 @@ static struct se_if_node_info_list imx8ulp_info = {
 	.soc_id = SOC_ID_OF_IMX8ULP,
 	.soc_register = true,
 	.se_fetch_soc_info = ele_fetch_soc_info,
-	.se_fw_img_nm[0] = {
-			.prim_fw_nm_in_rfs = IMX_ELE_FW_DIR
-				"mx8ulpa2-ahab-container.img",
-			.seco_fw_nm_in_rfs = IMX_ELE_FW_DIR
-				"mx8ulpa2ext-ahab-container.img",
-	},
 	.info = {
 			{
 			.se_if_id = 0,
@@ -158,7 +158,7 @@ static struct se_if_node_info_list imx93_info = {
 			.start_rng = ele_start_rng,
 			.init_trng = ele_trng_init,
 			.se_if_early_init = NULL,
-			.se_if_late_init = ele_init_fw,
+			.se_if_late_init = ele_late_init,
 			},
 	},
 };
@@ -168,14 +168,6 @@ static struct se_if_node_info_list imx95_info = {
 	.soc_id = SOC_ID_OF_IMX95,
 	.soc_register = false,
 	.se_fetch_soc_info = ele_fetch_soc_info,
-	.se_fw_img_nm[0] = {
-			.seco_fw_nm_in_rfs = IMX_ELE_FW_DIR
-				"mx95a0runtime-ahab-container.img",
-	},
-	.se_fw_img_nm[1] = {
-			.seco_fw_nm_in_rfs = IMX_ELE_FW_DIR
-				"mx95b0runtime-ahab-container.img",
-	},
 	.info = {
 			{
 			.se_if_id = 0,
@@ -270,6 +262,141 @@ static struct se_if_node_info_list imx95_info = {
 			{
 			.se_if_id = 5,
 			.mu_buff_size = 0,
+			.if_defs = {
+				.se_if_type = SE_TYPE_ID_V2X_SG,
+				.se_instance_id = 1,
+				.cmd_tag = 0x1e,
+				.rsp_tag = 0xe8,
+				.success_tag = ELE_SUCCESS_IND,
+				.base_api_ver = MESSAGING_VERSION_2,
+				.fw_api_ver = MESSAGING_VERSION_2,
+			},
+			.reserved_dma_ranges = false,
+			.start_rng = NULL,
+			.init_trng = NULL,
+			.se_if_early_init = v2x_early_init,
+			.se_if_late_init = NULL,
+			},
+	},
+};
+
+static struct se_if_node_info_list imx94_info = {
+	.num_mu = 7,
+	.soc_id = SOC_ID_OF_IMX94,
+	.soc_register = false,
+	.se_fetch_soc_info = ele_fetch_soc_info,
+	.info = {
+			{
+			.se_if_id = 0,
+			.mu_buff_size = 0,
+			.if_defs = {
+				.se_if_type = SE_TYPE_ID_HSM,
+				.se_instance_id = 0,
+				.cmd_tag = 0x17,
+				.rsp_tag = 0xe1,
+				.success_tag = ELE_SUCCESS_IND,
+				.base_api_ver = MESSAGING_VERSION_6,
+				.fw_api_ver = MESSAGING_VERSION_7,
+			},
+			.reserved_dma_ranges = true,
+			.start_rng = ele_start_rng,
+			.init_trng = ele_trng_init,
+			.se_if_early_init = NULL,
+			.se_if_late_init = v2x_late_init, // add ele_init_fw
+			},
+			{
+			.se_if_id = 1,
+			.mu_buff_size = 64,
+			.if_defs = {
+				.se_if_type = SE_TYPE_ID_V2X_DBG,
+				.se_instance_id = 0,
+				.cmd_tag = 0x17,
+				.rsp_tag = 0xe1,
+				.success_tag = ELE_SUCCESS_IND,
+				.base_api_ver = MESSAGING_VERSION_2,
+				.fw_api_ver = MESSAGING_VERSION_2,
+			},
+			.reserved_dma_ranges = false,
+			.start_rng = v2x_start_rng,
+			.init_trng = NULL,
+			.se_if_early_init = v2x_early_init,
+			.se_if_late_init = NULL,
+			},
+			{
+			.se_if_id = 2,
+			.mu_buff_size = 256,
+			.if_defs = {
+				.se_if_type = SE_TYPE_ID_V2X_SHE,
+				.se_instance_id = 0,
+				.cmd_tag = 0x1a,
+				.rsp_tag = 0xe4,
+				.success_tag = ELE_SUCCESS_IND,
+				.base_api_ver = MESSAGING_VERSION_2,
+				.fw_api_ver = MESSAGING_VERSION_2,
+			},
+			.reserved_dma_ranges = false,
+			.start_rng = NULL,
+			.init_trng = NULL,
+			.se_if_early_init = v2x_early_init,
+			.se_if_late_init = NULL,
+			},
+			{
+			.se_if_id = 3,
+			.mu_buff_size = 64,
+			.if_defs = {
+				.se_if_type = SE_TYPE_ID_V2X_SHE,
+				.se_instance_id = 1,
+				.cmd_tag = 0x1a,
+				.rsp_tag = 0xe4,
+				.success_tag = ELE_SUCCESS_IND,
+				.base_api_ver = MESSAGING_VERSION_2,
+				.fw_api_ver = MESSAGING_VERSION_2,
+			},
+			.reserved_dma_ranges = false,
+			.start_rng = NULL,
+			.init_trng = NULL,
+			.se_if_early_init = v2x_early_init,
+			.se_if_late_init = NULL,
+			},
+			{
+			.se_if_id = 4,
+			.mu_buff_size = 64,
+			.if_defs = {
+				.se_if_type = SE_TYPE_ID_V2X_SV,
+				.se_instance_id = 0,
+				.cmd_tag = 0x18,
+				.rsp_tag = 0xe2,
+				.success_tag = ELE_SUCCESS_IND,
+				.base_api_ver = MESSAGING_VERSION_2,
+				.fw_api_ver = MESSAGING_VERSION_2,
+			},
+			.reserved_dma_ranges = false,
+			.start_rng = NULL,
+			.init_trng = NULL,
+			.se_if_early_init = v2x_early_init,
+			.se_if_late_init = NULL,
+			},
+			{
+			.se_if_id = 5,
+			.mu_buff_size = 16,
+			.if_defs = {
+				.se_if_type = SE_TYPE_ID_V2X_SG,
+				.se_instance_id = 0,
+				.cmd_tag = 0x1d,
+				.rsp_tag = 0xe7,
+				.success_tag = ELE_SUCCESS_IND,
+				.base_api_ver = MESSAGING_VERSION_2,
+				.fw_api_ver = MESSAGING_VERSION_2,
+			},
+			.reserved_dma_ranges = false,
+			.start_rng = NULL,
+			.init_trng = NULL,
+			.se_if_early_init = v2x_early_init,
+			.se_if_late_init = NULL,
+			},
+			{
+			.se_if_id = 6,
+			.mu_buff_size = 16,
 			.if_defs = {
 				.se_if_type = SE_TYPE_ID_V2X_SG,
 				.se_instance_id = 1,
@@ -428,6 +555,7 @@ static const struct of_device_id se_match[] = {
 	{ .compatible = "fsl,imx93-se", .data = (void *)&imx93_info},
 	{ .compatible = "fsl,imx95-se", .data = (void *)&imx95_info},
 	{ .compatible = "fsl,imx8dxl-se", .data = (void *)&imx8dxl_info},
+	{ .compatible = "fsl,imx94-se", .data = (void *)&imx94_info},
 	{},
 };
 
@@ -458,8 +586,8 @@ char *get_se_if_name(u8 se_if_id)
  * echo 180000 > /sys/kernel/se/se_rcv_msg_timeout
  */
 static ssize_t se_store(struct kobject *kobj,
-			struct kobj_attribute *attr,
-			const char *buf, size_t count)
+				   struct kobj_attribute *attr,
+				   const char *buf, size_t count)
 {
 	int var, ret;
 
@@ -485,8 +613,8 @@ static ssize_t se_store(struct kobject *kobj,
  * se_rcv_msg_timeout: to read the current rcv_msg timeout value in jiffies
  */
 static ssize_t se_show(struct kobject *kobj,
-		       struct kobj_attribute *attr,
-		       char *buf)
+				  struct kobj_attribute *attr,
+				  char *buf)
 {
 	int var = 0;
 
@@ -547,7 +675,7 @@ static bool runtime_fw_status(struct se_if_priv *priv)
 	 */
 	bool fw_prsnt_n_running = false;
 
-	if (get_se_soc_id(priv) == SOC_ID_OF_IMX95)
+	if (get_se_soc_id(priv) == SOC_ID_OF_IMX95 || get_se_soc_id(priv) == SOC_ID_OF_IMX94)
 		fw_prsnt_n_running =
 			(var_se_info.fw_vers_word & 0x1000000) ? true : false;
 
@@ -564,18 +692,19 @@ static bool runtime_fw_status(struct se_if_priv *priv)
  *
  * Return: SoC Id of the device.
  */
-u32 get_se_soc_id(struct se_if_priv *priv)
+uint32_t get_se_soc_id(struct se_if_priv *priv)
 {
-	const struct se_if_node_info_list *info_list =
-						device_get_match_data(priv->dev);
+	const struct se_if_node_info_list *info_list
+			= device_get_match_data(priv->dev);
 
 	if (var_se_info.soc_rev)
 		return var_se_info.soc_id;
 	else
 		return info_list->soc_id;
+
 }
 
-void *imx_get_se_data_info(u32 soc_id, u32 idx)
+void *imx_get_se_data_info(uint32_t soc_id, u32 idx)
 {
 	const struct se_if_node_info_list *info_list;
 	struct se_if_priv *priv;
@@ -583,20 +712,23 @@ void *imx_get_se_data_info(u32 soc_id, u32 idx)
 	switch (soc_id) {
 	case SOC_ID_OF_IMX8ULP:
 		info_list = &imx8ulp_info; break;
+	case SOC_ID_OF_IMX8DXL:
+	case SOC_ID_OF_IMX8QXP:
+		info_list = &imx8dxl_info; break;
 	case SOC_ID_OF_IMX93:
 		info_list = &imx93_info; break;
 	case SOC_ID_OF_IMX95:
 		info_list = &imx95_info; break;
-	case SOC_ID_OF_IMX8DXL:
-	case SOC_ID_OF_IMX8QXP:
-		info_list = &imx8dxl_info; break;
+	case SOC_ID_OF_IMX94:
+		info_list = &imx94_info; break;
 	default:
 		return NULL;
 	}
 
 	if (idx >= info_list->num_mu) {
-		pr_err("%s-<index>, acceptable index range is 0..%d",
-		       NODE_NAME, info_list->num_mu - 1);
+		pr_err("%s-<index>, acceptable index range is 0..%d\n",
+			NODE_NAME,
+			info_list->num_mu - 1);
 		return NULL;
 	}
 
@@ -618,9 +750,49 @@ static struct se_fw_load_info *get_load_fw_instance(struct se_if_priv *priv)
 	return &var_se_info.load_fw;
 }
 
+static char *get_soc_id_str(struct se_if_priv *priv)
+{
+	switch (get_se_soc_id(priv)) {
+	case SOC_ID_OF_IMX8ULP:
+		return "mx8ulp";
+	case SOC_ID_OF_IMX95:
+		return "mx95";
+	case SOC_ID_OF_IMX94:
+		return "mx943";
+	default:
+		return "Unknown SoC ID";
+	}
+}
+
+static void get_fw_nm_in_rfs(struct se_if_priv *priv)
+{
+	if (get_se_soc_id(priv) == SOC_ID_OF_IMX8ULP) {
+		strscpy(var_se_info.load_fw.se_fw_img_nm.prim_fw.fw_name,
+			IMX_ELE_FW_DIR"mx8ulpa2-ahab-container.img",
+			FW_NAME_SIZE);
+
+		strscpy(var_se_info.load_fw.se_fw_img_nm.secn_fw.fw_name,
+			IMX_ELE_FW_DIR"mx8ulpa2ext-ahab-container.img",
+			FW_NAME_SIZE);
+
+		var_se_info.load_fw.se_fw_img_nm.prim_fw.is_fw_name_valid = true;
+		var_se_info.load_fw.se_fw_img_nm.secn_fw.is_fw_name_valid = true;
+	} else if (get_se_soc_id(priv) == SOC_ID_OF_IMX95 ||
+		   get_se_soc_id(priv) == SOC_ID_OF_IMX94) {
+		sprintf(var_se_info.load_fw.se_fw_img_nm.secn_fw.fw_name,
+			"%s%s%xruntime-ahab-container.img",
+			IMX_ELE_FW_DIR,
+			get_soc_id_str(priv),
+			FIELD_GET(DEV_GETINFO_MAJ_VER_MASK,
+				  var_se_info.soc_rev));
+		var_se_info.load_fw.se_fw_img_nm.secn_fw.is_fw_name_valid = true;
+	}
+}
+
 static int se_soc_info(struct se_if_priv *priv)
 {
-	const struct se_if_node_info_list *info_list = device_get_match_data(priv->dev);
+	const struct se_if_node_info_list *info_list
+			= device_get_match_data(priv->dev);
 	struct se_fw_load_info *load_fw = get_load_fw_instance(priv);
 	struct soc_device_attribute *attr;
 	struct ele_dev_info *s_info;
@@ -655,10 +827,13 @@ static int se_soc_info(struct se_if_priv *priv)
 			s_info = (void *)data;
 
 			var_se_info.board_type = 0;
-			var_se_info.soc_id = info_list->soc_id;
+			var_se_info.soc_id = s_info->d_info.soc_id;
 			var_se_info.soc_rev = s_info->d_info.soc_rev;
 			if (load_fw)
 				load_fw->imem.state = s_info->d_addn_info.imem_state;
+
+			/* By default, there is no pending FW to be loaded.*/
+			get_fw_nm_in_rfs(priv);
 		}
 	} else {
 		dev_err(priv->dev, "Failed to fetch SoC revision.");
@@ -686,7 +861,7 @@ static int se_soc_info(struct se_if_priv *priv)
 						FIELD_GET(DEV_GETINFO_MAJ_VER_MASK,
 							  var_se_info.soc_rev));
 
-	switch (info_list->soc_id) {
+	switch (get_se_soc_id(priv)) {
 	case SOC_ID_OF_IMX8ULP:
 		attr->soc_id = devm_kasprintf(priv->dev, GFP_KERNEL,
 					      "i.MX8ULP");
@@ -704,9 +879,9 @@ static int se_soc_info(struct se_if_priv *priv)
 
 	attr->family = devm_kasprintf(priv->dev, GFP_KERNEL, "Freescale i.MX");
 
-	attr->serial_number = devm_kasprintf(priv->dev, GFP_KERNEL, "%016llX",
-					     GET_SERIAL_NUM_FROM_UID(s_info->d_info.uid,
-								     MAX_UID_SIZE >> 2));
+	attr->serial_number
+		= devm_kasprintf(priv->dev, GFP_KERNEL, "%016llX",
+				 GET_SERIAL_NUM_FROM_UID(s_info->d_info.uid, MAX_UID_SIZE >> 2));
 
 	sdev = soc_device_register(attr);
 	if (IS_ERR(sdev))
@@ -727,10 +902,11 @@ static int se_load_firmware(struct se_if_priv *priv)
 	if (!load_fw || load_fw->is_fw_loaded)
 		return 0;
 
-	se_img_file_to_load = load_fw->se_fw_img_nm->seco_fw_nm_in_rfs;
-	if (load_fw->se_fw_img_nm->prim_fw_nm_in_rfs &&
-	    load_fw->imem.state == ELE_IMEM_STATE_BAD)
-		se_img_file_to_load = load_fw->se_fw_img_nm->prim_fw_nm_in_rfs;
+	se_img_file_to_load = load_fw->se_fw_img_nm.secn_fw.fw_name;
+
+	if (load_fw->imem.state == ELE_IMEM_STATE_BAD &&
+			load_fw->se_fw_img_nm.prim_fw.is_fw_name_valid)
+		se_img_file_to_load = load_fw->se_fw_img_nm.prim_fw.fw_name;
 
 	do {
 		ret = request_firmware(&fw, se_img_file_to_load, priv->dev);
@@ -740,8 +916,8 @@ static int se_load_firmware(struct se_if_priv *priv)
 		dev_info(priv->dev, "loading firmware %s\n", se_img_file_to_load);
 
 		/* allocate buffer to store the SE FW */
-		se_fw_buf = dma_alloc_coherent(priv->dev, fw->size, &se_fw_phyaddr,
-					       GFP_KERNEL);
+		se_fw_buf = dma_alloc_coherent(priv->dev, fw->size,
+				&se_fw_phyaddr, GFP_KERNEL);
 		if (!se_fw_buf) {
 			ret = -ENOMEM;
 			goto exit;
@@ -751,9 +927,9 @@ static int se_load_firmware(struct se_if_priv *priv)
 		ret = ele_fw_authenticate(priv, se_fw_phyaddr);
 		if (ret < 0) {
 			dev_err(priv->dev,
-				"Error %pe: Authenticate & load SE firmware %s.\n",
-				ERR_PTR(ret),
-				se_img_file_to_load);
+					"Error %pe: Authenticate & load SE firmware %s.\n",
+					ERR_PTR(ret),
+					se_img_file_to_load);
 			ret = -EPERM;
 		}
 
@@ -766,8 +942,8 @@ static int se_load_firmware(struct se_if_priv *priv)
 		fw = NULL;
 
 		if (!ret && load_fw->imem.state == ELE_IMEM_STATE_BAD &&
-		    se_img_file_to_load == load_fw->se_fw_img_nm->prim_fw_nm_in_rfs)
-			se_img_file_to_load = load_fw->se_fw_img_nm->seco_fw_nm_in_rfs;
+				se_img_file_to_load == load_fw->se_fw_img_nm.prim_fw.fw_name)
+			se_img_file_to_load = load_fw->se_fw_img_nm.secn_fw.fw_name;
 		else
 			se_img_file_to_load = NULL;
 
@@ -832,6 +1008,7 @@ int se_dump_to_logfl(struct se_if_device_ctx *dev_ctx,
 		caller_type_str = "MU_RCV";
 		break;
 	default:
+
 		is_hex = false;
 		caller_type_str = "SE_DBG";
 		va_start(args, buf);
@@ -870,8 +1047,9 @@ int se_dump_to_logfl(struct se_if_device_ctx *dev_ctx,
 			log_tm.tv_nsec);
 
 		lg_fl_info->lg_file = file_open_root(&lg_fl_info->root,
-						     file_name,
-						     O_CREAT | O_WRONLY | O_SYNC, 0);
+						file_name,
+						O_CREAT | O_WRONLY | O_SYNC,
+						0);
 		path_put(&lg_fl_info->root);
 		if (IS_ERR(lg_fl_info->lg_file)) {
 			dev_err(dev_ctx->priv->dev, "open file %s failed[%ld]\n",
@@ -885,19 +1063,24 @@ int se_dump_to_logfl(struct se_if_device_ctx *dev_ctx,
 	dump_ln_len = SEC_PRN_LEN + NANO_SEC_PRN_LEN +
 			fmt_str_idx + strlen(devname) +
 			strlen(caller_type_str) + buf_size;
-	snprintf(dump_ln, dump_ln_len, fmt_str, log_tm.tv_sec, log_tm.tv_nsec,
-		 devname, caller_type_str, loc_buf,
-		 ((u32 *)buf)[0], ((u32 *)buf)[1],
-		 ((u32 *)buf)[2], ((u32 *)buf)[3],
-		 ((u32 *)buf)[4], ((u32 *)buf)[5],
-		 ((u32 *)buf)[6], ((u32 *)buf)[7],
-		 ((u32 *)buf)[8], ((u32 *)buf)[9],
-		 ((u32 *)buf)[10], ((u32 *)buf)[11],
-		 ((u32 *)buf)[12], ((u32 *)buf)[13],
-		 ((u32 *)buf)[14], ((u32 *)buf)[15]);
+	snprintf(dump_ln, dump_ln_len, fmt_str,
+					log_tm.tv_sec,
+					log_tm.tv_nsec,
+					devname,
+					caller_type_str,
+					loc_buf,
+					((uint32_t *)buf)[0], ((uint32_t *)buf)[1],
+					((uint32_t *)buf)[2], ((uint32_t *)buf)[3],
+					((uint32_t *)buf)[4], ((uint32_t *)buf)[5],
+					((uint32_t *)buf)[6], ((uint32_t *)buf)[7],
+					((uint32_t *)buf)[8], ((uint32_t *)buf)[9],
+					((uint32_t *)buf)[10], ((uint32_t *)buf)[11],
+					((uint32_t *)buf)[12], ((uint32_t *)buf)[13],
+					((uint32_t *)buf)[14], ((uint32_t *)buf)[15]);
 
-	wret = kernel_write(lg_fl_info->lg_file, dump_ln, dump_ln_len,
-			    &lg_fl_info->offset);
+	wret = kernel_write(lg_fl_info->lg_file,
+				dump_ln, dump_ln_len,
+				&lg_fl_info->offset);
 	if (wret < 0) {
 		dev_err(dev_ctx->priv->dev,
 			"Error writing log file: %s.\n",
@@ -923,10 +1106,11 @@ static int init_se_shared_mem(struct se_if_device_ctx *dev_ctx)
 	 * Allocate some memory for data exchanges with S40x.
 	 * This will be used for data not requiring secure memory.
 	 */
-	se_shared_mem_mgmt->non_secure_mem.ptr =
-			dma_alloc_coherent(priv->dev, MAX_DATA_SIZE_PER_USER,
-					   &se_shared_mem_mgmt->non_secure_mem.dma_addr,
-					   GFP_KERNEL);
+	se_shared_mem_mgmt->non_secure_mem.ptr
+			= dma_alloc_coherent(priv->dev,
+					     MAX_DATA_SIZE_PER_USER,
+					     &se_shared_mem_mgmt->non_secure_mem.dma_addr,
+					     GFP_KERNEL);
 	if (!se_shared_mem_mgmt->non_secure_mem.ptr)
 		return -ENOMEM;
 
@@ -953,7 +1137,7 @@ static void cleanup_se_shared_mem(struct se_if_device_ctx *dev_ctx)
 	/* Unmap secure memory shared buffer. */
 	if (se_shared_mem_mgmt->secure_mem.ptr)
 		devm_iounmap(priv->dev,
-			     (void __iomem *)se_shared_mem_mgmt->secure_mem.ptr);
+				(void __iomem *)se_shared_mem_mgmt->secure_mem.ptr);
 
 	se_shared_mem_mgmt->secure_mem.ptr = NULL;
 	se_shared_mem_mgmt->secure_mem.dma_addr = 0;
@@ -982,10 +1166,11 @@ static int se_dev_ctx_cpy_out_data(struct se_if_device_ctx *dev_ctx)
 
 	list_for_each_entry_safe(b_desc, temp, &se_shared_mem_mgmt->pending_out, link) {
 		if (b_desc->usr_buf_ptr && b_desc->shared_buf_ptr && do_cpy) {
+
 			dev_dbg(priv->dev,
 				"Copying output data to user.");
-			if (do_cpy &&
-			    copy_to_user(b_desc->usr_buf_ptr, b_desc->shared_buf_ptr,
+			if (do_cpy && copy_to_user(b_desc->usr_buf_ptr,
+					 b_desc->shared_buf_ptr,
 					 b_desc->size)) {
 				dev_err(priv->dev,
 					"Failure copying output data to user.");
@@ -1021,7 +1206,9 @@ static void se_dev_ctx_shared_mem_cleanup(struct se_if_device_ctx *dev_ctx)
 	int i;
 
 	for (i = 0; i < 2; i++) {
-		list_for_each_entry_safe(b_desc, temp, pending_lists[i], link) {
+		list_for_each_entry_safe(b_desc, temp,
+					 pending_lists[i], link) {
+
 			if (b_desc->shared_buf_ptr) {
 				if (dev_ctx->priv->mu_mem.pos)
 					memset_io(b_desc->shared_buf_ptr, 0, b_desc->size);
@@ -1038,8 +1225,8 @@ static void se_dev_ctx_shared_mem_cleanup(struct se_if_device_ctx *dev_ctx)
 }
 
 static int add_b_desc_to_pending_list(void *shared_ptr_with_pos,
-				      struct se_ioctl_setup_iobuf *io,
-				      struct se_if_device_ctx *dev_ctx)
+			       struct se_ioctl_setup_iobuf *io,
+			       struct se_if_device_ctx *dev_ctx)
 {
 	struct se_shared_mem_mgmt_info *se_shared_mem_mgmt = &dev_ctx->se_shared_mem_mgmt;
 	struct se_buf_desc *b_desc = NULL;
@@ -1080,8 +1267,8 @@ static void if_misc_deregister(void *miscdevice)
 }
 
 static int init_device_context(struct se_if_priv *priv, int ch_id,
-			       struct se_if_device_ctx **new_dev_ctx,
-			       const struct file_operations *se_if_fops)
+			struct se_if_device_ctx **new_dev_ctx,
+			const struct file_operations *se_if_fops)
 {
 	struct se_if_device_ctx *dev_ctx;
 	int ret = 0;
@@ -1101,11 +1288,13 @@ static int init_device_context(struct se_if_priv *priv, int ch_id,
 	if (ch_id)
 		dev_ctx->devname = kasprintf(GFP_KERNEL, "%s%d_ch%d",
 					     get_se_if_name(priv->if_defs->se_if_type),
-					     priv->if_defs->se_instance_id, ch_id);
+					     priv->if_defs->se_instance_id,
+					     ch_id);
 	else
 		dev_ctx->devname = devm_kasprintf(priv->dev, GFP_KERNEL, "%s%d_ch%d",
-						  get_se_if_name(priv->if_defs->se_if_type),
-						  priv->if_defs->se_instance_id, ch_id);
+					     get_se_if_name(priv->if_defs->se_if_type),
+					     priv->if_defs->se_instance_id,
+					     ch_id);
 	if (!dev_ctx->devname) {
 		ret = -ENOMEM;
 		if (ch_id)
@@ -1233,6 +1422,7 @@ static int se_ioctl_cmd_snd_rcv_rsp_handler(struct se_if_device_ctx *dev_ctx,
 			       cmd_snd_rcv_rsp_info.tx_buf_sz,
 			       rx_msg,
 			       cmd_snd_rcv_rsp_info.rx_buf_sz);
+
 	if (err < 0)
 		goto exit;
 
@@ -1291,7 +1481,7 @@ static int se_ioctl_get_mu_info(struct se_if_device_ctx *dev_ctx,
 	if_info.interrupt_idx = 0;
 	if_info.tz = 0;
 	if (get_se_soc_id(priv) == SOC_ID_OF_IMX8DXL ||
-	    get_se_soc_id(priv) == SOC_ID_OF_IMX8QXP) {
+		get_se_soc_id(priv) == SOC_ID_OF_IMX8QXP) {
 		if_info.se_if_id = info->se_if_id + 1;
 		if (priv->if_defs->se_if_type > SE_TYPE_ID_SHE)
 			if_info.se_if_id++;
@@ -1359,11 +1549,11 @@ static int se_ioctl_setup_iobuf_handler(struct se_if_device_ctx *dev_ctx,
 	}
 
 	/* Select the shared memory to be used for this buffer. */
-	if (io.flags & SE_IO_BUF_FLAGS_USE_MU_BUF) {
+	if (io.flags & SE_IO_BUF_FLAGS_USE_MU_BUF)
 		shared_mem = &dev_ctx->priv->mu_mem;
-	} else {
+	else {
 		if ((io.flags & SE_IO_BUF_FLAGS_USE_SEC_MEM) &&
-		    (dev_ctx->priv->flags & SCU_MEM_CFG)) {
+				(dev_ctx->priv->flags & SCU_MEM_CFG)) {
 			/* App requires to use secure memory for this buffer.*/
 			shared_mem = &dev_ctx->se_shared_mem_mgmt.secure_mem;
 		} else {
@@ -1380,7 +1570,7 @@ static int se_ioctl_setup_iobuf_handler(struct se_if_device_ctx *dev_ctx,
 		shared_mem->size, shared_mem->pos);
 
 	if (shared_mem->size < shared_mem->pos ||
-	    round_up(io.length, 8u) > (shared_mem->size - shared_mem->pos)) {
+		round_up(io.length, 8u) > (shared_mem->size - shared_mem->pos)) {
 		dev_err(dev_ctx->priv->dev,
 			"%s: Not enough space in shared memory\n",
 			dev_ctx->devname);
@@ -1403,7 +1593,7 @@ static int se_ioctl_setup_iobuf_handler(struct se_if_device_ctx *dev_ctx,
 
 	if (dev_ctx->priv->flags & SCU_MEM_CFG) {
 		if ((io.flags & SE_IO_BUF_FLAGS_USE_SEC_MEM) &&
-		    !(io.flags & SE_IO_BUF_FLAGS_USE_SHORT_ADDR)) {
+				!(io.flags & SE_IO_BUF_FLAGS_USE_SHORT_ADDR)) {
 			/*Add base address to get full address.#TODO: Add API*/
 			io.ele_addr += SECURE_RAM_BASE_ADDRESS_SCU;
 		}
@@ -1453,7 +1643,7 @@ exit:
 
 /* IOCTL to provide SoC information */
 static int se_ioctl_get_se_soc_info_handler(struct se_if_device_ctx *dev_ctx,
-					    u64 arg)
+					     u64 arg)
 {
 	struct se_ioctl_get_soc_info soc_info;
 	int err = -EINVAL;
@@ -1565,6 +1755,7 @@ static int se_ioctl_get_time(struct se_if_device_ctx *dev_ctx, unsigned long arg
 exit:
 	return err;
 }
+
 
 /*
  * File operations for user-space
@@ -1755,7 +1946,7 @@ static long se_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 {
 	struct se_if_device_ctx *dev_ctx = fp->private_data;
 	struct se_if_priv *priv = dev_ctx->priv;
-	int err;
+	int err = -EINVAL;
 
 	/* Prevent race during change of device context */
 	if (mutex_lock_interruptible(&dev_ctx->fops_lock))
@@ -1765,9 +1956,9 @@ static long se_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 	case SE_IOCTL_ENABLE_CMD_RCV:
 		if (!priv->cmd_receiver_clbk_hdl.dev_ctx) {
 			if (!priv->cmd_receiver_clbk_hdl.rx_msg) {
-				priv->cmd_receiver_clbk_hdl.rx_msg =
-							kzalloc(MAX_NVM_MSG_LEN,
-								GFP_KERNEL);
+				priv->cmd_receiver_clbk_hdl.rx_msg
+					= kzalloc(MAX_NVM_MSG_LEN,
+						  GFP_KERNEL);
 				if (!priv->cmd_receiver_clbk_hdl.rx_msg) {
 					err = -ENOMEM;
 					break;
@@ -1775,8 +1966,9 @@ static long se_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 			}
 			priv->cmd_receiver_clbk_hdl.rx_msg_sz = MAX_NVM_MSG_LEN;
 			priv->cmd_receiver_clbk_hdl.dev_ctx = dev_ctx;
-			se_dump_to_logfl(dev_ctx, SE_DUMP_KDEBUG_BUFS, 0,
-					 "IOCTL: %s", "SE_IOCTL_ENABLE_CMD_RCV");
+			se_dump_to_logfl(dev_ctx,
+					SE_DUMP_KDEBUG_BUFS, 0,
+					"IOCTL: %s", "SE_IOCTL_ENABLE_CMD_RCV");
 			err = 0;
 		} else {
 			err = -EBUSY;
@@ -1900,11 +2092,12 @@ static void se_if_probe_cleanup(void *plat_dev)
 		}
 	}
 
-	if (priv->lg_fl_info.lg_file &&
-	    filp_close(priv->lg_fl_info.lg_file, NULL)) {
+	if (priv->lg_fl_info.lg_file) {
 		wret = filp_close(priv->lg_fl_info.lg_file, NULL);
 		if (wret)
-			pr_err("Error %pe closing log file.\n",	ERR_PTR(wret));
+			pr_err("Error %pe closing log file.\n",
+				ERR_PTR(wret));
+		priv->lg_fl_info.lg_file = NULL;
 	}
 
 	__list_del_entry(&priv->priv_data);
@@ -1915,28 +2108,12 @@ static void se_if_probe_cleanup(void *plat_dev)
 	of_reserved_mem_device_release(dev);
 
 	/* Free Kobj created for logging */
-	if (se_kobj)
+	if (se_kobj) {
+		sysfs_remove_file(se_kobj, &se_log_attr.attr);
+		sysfs_remove_file(se_kobj, &se_rcv_msg_timeout_attr.attr);
 		kobject_put(se_kobj);
-
-}
-
-static int get_se_fw_img_nm_idx(const struct se_fw_img_name *se_fw_img_nm)
-{
-	char *rev_str;
-	int i = 0;
-
-	rev_str = kasprintf(GFP_KERNEL, "%x", FIELD_GET(DEV_GETINFO_MAJ_VER_MASK,
-							var_se_info.soc_rev));
-
-	for (; i < 2; i++) {
-		if (se_fw_img_nm[i].seco_fw_nm_in_rfs &&
-		    strstr(se_fw_img_nm[i].seco_fw_nm_in_rfs, rev_str))
-			break;
+		se_kobj = NULL;
 	}
-	if (i == 2)
-		i = 0;
-
-	return i;
 }
 
 static int se_if_probe(struct platform_device *pdev)
@@ -1960,6 +2137,7 @@ static int se_if_probe(struct platform_device *pdev)
 			dev->of_node->name,
 			info_list->num_mu - 1);
 		ret = -EINVAL;
+
 		return ret;
 	}
 
@@ -1992,6 +2170,7 @@ static int se_if_probe(struct platform_device *pdev)
 	if (ret)
 		goto exit;
 
+
 	/* Mailbox client configuration */
 	priv->se_mb_cl.dev		= dev;
 	priv->se_mb_cl.tx_block		= false;
@@ -2000,7 +2179,7 @@ static int se_if_probe(struct platform_device *pdev)
 
 	ret = se_if_request_channel(dev, &priv->tx_chan,
 				    &priv->se_mb_cl,
-				    (info_list->soc_id == SOC_ID_OF_IMX8DXL) ?
+				    (get_se_soc_id(priv) == SOC_ID_OF_IMX8DXL) ?
 					MBOX_TXDB_NAME : MBOX_TX_NAME);
 	if (ret)
 		goto exit;
@@ -2008,7 +2187,7 @@ static int se_if_probe(struct platform_device *pdev)
 	ret = se_if_request_channel(dev,
 				    &priv->rx_chan,
 				    &priv->se_mb_cl,
-				    (info_list->soc_id == SOC_ID_OF_IMX8DXL) ?
+				    (get_se_soc_id(priv) == SOC_ID_OF_IMX8DXL) ?
 					MBOX_RXDB_NAME : MBOX_RX_NAME);
 	if (ret)
 		goto exit;
@@ -2027,7 +2206,7 @@ static int se_if_probe(struct platform_device *pdev)
 
 	if (info->pool_name) {
 		priv->mem_pool = of_gen_pool_get(dev->of_node,
-						 info->pool_name, 0);
+							 info->pool_name, 0);
 		if (!priv->mem_pool) {
 			dev_err(dev,
 				"Unable to get sram pool = %s\n",
@@ -2083,17 +2262,13 @@ static int se_if_probe(struct platform_device *pdev)
 			dev_err(dev, "Failed[0x%x] to init trng.\n", ret);
 	}
 
-	/* By default, there is no pending FW to be loaded.*/
-	if (info_list->se_fw_img_nm[0].seco_fw_nm_in_rfs) {
+	if (var_se_info.load_fw.se_fw_img_nm.secn_fw.is_fw_name_valid) {
 		load_fw = get_load_fw_instance(priv);
 
 		if (load_fw) {
-			load_fw->se_fw_img_nm =
-				&info_list->se_fw_img_nm[get_se_fw_img_nm_idx
-							 (info_list->se_fw_img_nm)];
 			load_fw->is_fw_loaded = runtime_fw_status(priv);
 
-			if (load_fw->se_fw_img_nm->prim_fw_nm_in_rfs) {
+			if (load_fw->se_fw_img_nm.prim_fw.is_fw_name_valid) {
 				/* allocate buffer where SE store encrypted IMEM */
 				load_fw->imem.buf = dmam_alloc_coherent(priv->dev,
 									ELE_IMEM_SIZE,
@@ -2114,13 +2289,12 @@ static int se_if_probe(struct platform_device *pdev)
 	if (!se_kobj) {
 		ret = se_sysfs_log();
 		if (ret)
-			pr_warn("Warn: Creating sysfs entry - se_log & se_rcv_msg_timeout: %d",
-				ret);
+			pr_warn("Warn: Creating sysfs entry for se_log and  se_rcv_msg_timeout: %d\n", ret);
 	}
 
 	dev_info(dev, "i.MX secure-enclave: %s%d interface to firmware, configured.\n",
-		 get_se_if_name(priv->if_defs->se_if_type),
-		 priv->if_defs->se_instance_id);
+			get_se_if_name(priv->if_defs->se_if_type),
+			priv->if_defs->se_instance_id);
 	return ret;
 
 exit:
@@ -2129,11 +2303,19 @@ exit:
 	return dev_err_probe(dev, ret, "%s: Probe failed.", __func__);
 }
 
-static int se_if_remove(struct platform_device *pdev)
+static void se_if_remove(struct platform_device *pdev)
 {
+	struct device *dev = &pdev->dev;
+	struct se_if_priv *priv;
+	struct se_if_node_info *info;
+
+	priv = dev_get_drvdata(dev);
+	info = container_of(priv->if_defs, typeof(*info), if_defs);
+
 	se_if_probe_cleanup(pdev);
 
-	return 0;
+	if (info->init_trng)
+		ele_trng_exit(priv);
 }
 
 static int se_suspend(struct device *dev)
@@ -2144,12 +2326,11 @@ static int se_suspend(struct device *dev)
 	int ret = 0;
 
 	se_rcv_msg_timeout = SE_RCV_MSG_DEFAULT_TIMEOUT;
-
 	if (priv->if_defs->se_if_type == SE_TYPE_ID_V2X_DBG) {
 		ret = v2x_suspend(priv);
 		if (ret) {
 			dev_err(dev, "Failure V2X-FW suspend[0x%x].", ret);
-			return ret;
+			goto exit;
 		}
 	}
 
@@ -2160,9 +2341,14 @@ static int se_suspend(struct device *dev)
 
 	load_fw = get_load_fw_instance(priv);
 
-	if (load_fw && load_fw->imem_mgmt)
+	if (load_fw && load_fw->imem_mgmt) {
 		ret = se_save_imem_state(priv, &load_fw->imem);
-
+		if (ret) {
+			dev_err(dev, "Failure saving IMEM state[0x%x]", ret);
+			goto exit;
+		}
+	}
+exit:
 	return ret;
 }
 
@@ -2174,7 +2360,8 @@ static int se_resume(struct device *dev)
 	int ret = 0;
 
 	if (priv->if_defs->se_if_type == SE_TYPE_ID_V2X_DBG) {
-		if (v2x_resume(priv))
+		ret = v2x_resume(priv);
+		if (ret)
 			dev_err(dev, "Failure V2X-FW resume[0x%x].", ret);
 	}
 
@@ -2188,8 +2375,11 @@ static int se_resume(struct device *dev)
 
 	load_fw = get_load_fw_instance(priv);
 
-	if (load_fw && load_fw->imem_mgmt)
-		se_restore_imem_state(priv, &load_fw->imem);
+	if (load_fw && load_fw->imem_mgmt) {
+		ret = se_restore_imem_state(priv, &load_fw->imem);
+		if (ret)
+			dev_err(dev, "Failure restoring IMEM state[0x%x]", ret);
+	}
 
 	return ret;
 }

@@ -25,6 +25,9 @@
 
 #define HZIP_ALG_DEFLATE			GENMASK(5, 4)
 
+static DEFINE_MUTEX(zip_algs_lock);
+static unsigned int zip_available_devs;
+
 enum hisi_zip_alg_type {
 	HZIP_ALG_TYPE_COMP = 0,
 	HZIP_ALG_TYPE_DECOMP = 1,
@@ -53,7 +56,7 @@ struct hisi_zip_req {
 struct hisi_zip_req_q {
 	struct hisi_zip_req *q;
 	unsigned long *req_bitmap;
-	rwlock_t req_lock;
+	spinlock_t req_lock;
 	u16 size;
 };
 
@@ -114,22 +117,21 @@ static struct hisi_zip_req *hisi_zip_create_req(struct hisi_zip_qp_ctx *qp_ctx,
 	struct hisi_zip_req *req_cache;
 	int req_id;
 
-	write_lock(&req_q->req_lock);
+	spin_lock(&req_q->req_lock);
 
 	req_id = find_first_zero_bit(req_q->req_bitmap, req_q->size);
 	if (req_id >= req_q->size) {
-		write_unlock(&req_q->req_lock);
+		spin_unlock(&req_q->req_lock);
 		dev_dbg(&qp_ctx->qp->qm->pdev->dev, "req cache is full!\n");
 		return ERR_PTR(-EAGAIN);
 	}
 	set_bit(req_id, req_q->req_bitmap);
 
-	write_unlock(&req_q->req_lock);
+	spin_unlock(&req_q->req_lock);
 
 	req_cache = q + req_id;
 	req_cache->req_id = req_id;
 	req_cache->req = req;
-	req_cache->qp_ctx = qp_ctx;
 
 	return req_cache;
 }
@@ -139,9 +141,9 @@ static void hisi_zip_remove_req(struct hisi_zip_qp_ctx *qp_ctx,
 {
 	struct hisi_zip_req_q *req_q = &qp_ctx->req_q;
 
-	write_lock(&req_q->req_lock);
+	spin_lock(&req_q->req_lock);
 	clear_bit(req->req_id, req_q->req_bitmap);
-	write_unlock(&req_q->req_lock);
+	spin_unlock(&req_q->req_lock);
 }
 
 static void hisi_zip_fill_addr(struct hisi_zip_sqe *sqe, struct hisi_zip_req *req)
@@ -180,8 +182,7 @@ static void hisi_zip_fill_req_type(struct hisi_zip_sqe *sqe, u8 req_type)
 
 static void hisi_zip_fill_tag(struct hisi_zip_sqe *sqe, struct hisi_zip_req *req)
 {
-	sqe->dw26 = lower_32_bits((u64)req);
-	sqe->dw27 = upper_32_bits((u64)req);
+	sqe->dw26 = req->req_id;
 }
 
 static void hisi_zip_fill_sqe_type(struct hisi_zip_sqe *sqe, u8 sqe_type)
@@ -213,6 +214,7 @@ static int hisi_zip_do_work(struct hisi_zip_qp_ctx *qp_ctx,
 {
 	struct hisi_acc_sgl_pool *pool = qp_ctx->sgl_pool;
 	struct hisi_zip_dfx *dfx = &qp_ctx->zip_dev->dfx;
+	struct hisi_zip_req_q *req_q = &qp_ctx->req_q;
 	struct acomp_req *a_req = req->req;
 	struct hisi_qp *qp = qp_ctx->qp;
 	struct device *dev = &qp->qm->pdev->dev;
@@ -244,7 +246,9 @@ static int hisi_zip_do_work(struct hisi_zip_qp_ctx *qp_ctx,
 
 	/* send command to start a task */
 	atomic64_inc(&dfx->send_cnt);
+	spin_lock_bh(&req_q->req_lock);
 	ret = hisi_qp_send(qp, &zip_sqe);
+	spin_unlock_bh(&req_q->req_lock);
 	if (unlikely(ret < 0)) {
 		atomic64_inc(&dfx->send_busy_cnt);
 		ret = -EAGAIN;
@@ -259,6 +263,11 @@ err_unmap_output:
 err_unmap_input:
 	hisi_acc_sg_buf_unmap(dev, a_req->src, req->hw_src);
 	return ret;
+}
+
+static u32 hisi_zip_get_tag(struct hisi_zip_sqe *sqe)
+{
+	return sqe->dw26;
 }
 
 static u32 hisi_zip_get_status(struct hisi_zip_sqe *sqe)
@@ -382,6 +391,7 @@ static const struct hisi_zip_sqe_ops hisi_zip_ops = {
 	.fill_req_type		= hisi_zip_fill_req_type,
 	.fill_tag		= hisi_zip_fill_tag,
 	.fill_sqe_type		= hisi_zip_fill_sqe_type,
+	.get_tag		= hisi_zip_get_tag,
 	.get_status		= hisi_zip_get_status,
 	.get_dstlen		= hisi_zip_get_dstlen,
 };
@@ -448,7 +458,7 @@ static int hisi_zip_create_req_q(struct hisi_zip_ctx *ctx)
 
 			goto err_free_comp_q;
 		}
-		rwlock_init(&req_q->req_lock);
+		spin_lock_init(&req_q->req_lock);
 
 		req_q->q = kcalloc(req_q->size, sizeof(struct hisi_zip_req),
 				   GFP_KERNEL);
@@ -582,6 +592,7 @@ static struct acomp_alg hisi_zip_acomp_deflate = {
 	.base			= {
 		.cra_name		= "deflate",
 		.cra_driver_name	= "hisi-deflate-acomp",
+		.cra_flags		= CRYPTO_ALG_ASYNC,
 		.cra_module		= THIS_MODULE,
 		.cra_priority		= HZIP_ALG_PRIORITY,
 		.cra_ctxsize		= sizeof(struct hisi_zip_ctx),
@@ -612,10 +623,29 @@ static void hisi_zip_unregister_deflate(struct hisi_qm *qm)
 
 int hisi_zip_register_to_crypto(struct hisi_qm *qm)
 {
-	return hisi_zip_register_deflate(qm);
+	int ret = 0;
+
+	mutex_lock(&zip_algs_lock);
+	if (zip_available_devs++)
+		goto unlock;
+
+	ret = hisi_zip_register_deflate(qm);
+	if (ret)
+		zip_available_devs--;
+
+unlock:
+	mutex_unlock(&zip_algs_lock);
+	return ret;
 }
 
 void hisi_zip_unregister_from_crypto(struct hisi_qm *qm)
 {
+	mutex_lock(&zip_algs_lock);
+	if (--zip_available_devs)
+		goto unlock;
+
 	hisi_zip_unregister_deflate(qm);
+
+unlock:
+	mutex_unlock(&zip_algs_lock);
 }

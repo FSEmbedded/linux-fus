@@ -122,9 +122,7 @@ static int report_mmio_enabled(struct pci_dev *dev, void *data)
 
 	device_lock(&dev->dev);
 	pdrv = dev->driver;
-	if (!pdrv ||
-		!pdrv->err_handler ||
-		!pdrv->err_handler->mmio_enabled)
+	if (!pdrv || !pdrv->err_handler || !pdrv->err_handler->mmio_enabled)
 		goto out;
 
 	err_handler = pdrv->err_handler;
@@ -143,9 +141,7 @@ static int report_slot_reset(struct pci_dev *dev, void *data)
 
 	device_lock(&dev->dev);
 	pdrv = dev->driver;
-	if (!pdrv ||
-		!pdrv->err_handler ||
-		!pdrv->err_handler->slot_reset)
+	if (!pdrv || !pdrv->err_handler || !pdrv->err_handler->slot_reset)
 		goto out;
 
 	err_handler = pdrv->err_handler;
@@ -164,9 +160,7 @@ static int report_resume(struct pci_dev *dev, void *data)
 	device_lock(&dev->dev);
 	pdrv = dev->driver;
 	if (!pci_dev_set_io_state(dev, pci_channel_io_normal) ||
-		!pdrv ||
-		!pdrv->err_handler ||
-		!pdrv->err_handler->resume)
+	    !pdrv || !pdrv->err_handler || !pdrv->err_handler->resume)
 		goto out;
 
 	err_handler = pdrv->err_handler;
@@ -246,11 +240,6 @@ pci_ers_result_t pcie_do_recovery(struct pci_dev *dev,
 	}
 
 	if (status == PCI_ERS_RESULT_NEED_RESET) {
-		/*
-		 * TODO: Should call platform-specific
-		 * functions to reset slot before calling
-		 * drivers' slot_reset callbacks?
-		 */
 		status = PCI_ERS_RESULT_RECOVERED;
 		pci_dbg(bridge, "broadcast slot_reset message\n");
 		pci_walk_bridge(bridge, report_slot_reset, &status);
@@ -283,8 +272,8 @@ failed:
 
 	pci_walk_bridge(bridge, report_perm_failure_detected, NULL);
 
-	/* TODO: Should kernel panic here? */
 	pci_info(bridge, "device recovery failed\n");
 
 	return status;
 }
+EXPORT_SYMBOL_GPL(pcie_do_recovery);

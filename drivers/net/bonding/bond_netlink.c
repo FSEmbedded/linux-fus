@@ -54,7 +54,8 @@ static int bond_fill_slave_info(struct sk_buff *skb,
 		    slave_dev->addr_len, slave->perm_hwaddr))
 		goto nla_put_failure;
 
-	if (nla_put_u16(skb, IFLA_BOND_SLAVE_QUEUE_ID, slave->queue_id))
+	if (nla_put_u16(skb, IFLA_BOND_SLAVE_QUEUE_ID,
+			READ_ONCE(slave->queue_id)))
 		goto nla_put_failure;
 
 	if (nla_put_s32(skb, IFLA_BOND_SLAVE_PRIO, slave->prio))
@@ -103,7 +104,7 @@ nla_put_failure:
 }
 
 /* Limit the max delay range to 300s */
-static struct netlink_range_validation delay_range = {
+static const struct netlink_range_validation delay_range = {
 	.max = 300000,
 };
 

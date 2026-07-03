@@ -446,8 +446,6 @@ struct dpu95_soc {
 	struct dpu95_hscaler		*hs[2];
 	struct dpu95_layerblend		*lb[6];
 	struct dpu95_vscaler		*vs[2];
-
-	bool				use_vs4;
 };
 
 struct dpu95_units {

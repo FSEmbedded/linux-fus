@@ -991,7 +991,6 @@ static int ad_marker_send(struct port *port, struct bond_marker *marker)
 static void ad_mux_machine(struct port *port, bool *update_slave_arr)
 {
 	struct bonding *bond = __get_bond_by_port(port);
-	struct aggregator *aggregator;
 	mux_states_t last_state;
 
 	/* keep current State Machine state to compare later if it was
@@ -1050,7 +1049,7 @@ static void ad_mux_machine(struct port *port, bool *update_slave_arr)
 			if ((port->sm_vars & AD_PORT_SELECTED) &&
 			    (port->partner_oper.port_state & LACP_STATE_SYNCHRONIZATION) &&
 			    !__check_agg_selection_timer(port)) {
-				if (aggregator->is_active) {
+				if (port->aggregator->is_active) {
 					int state = AD_MUX_COLLECTING_DISTRIBUTING;
 
 					if (!bond->params.coupled_control)
@@ -1079,7 +1078,7 @@ static void ad_mux_machine(struct port *port, bool *update_slave_arr)
 				 * sure that a collecting distributing
 				 * port in an active aggregator is enabled
 				 */
-				if (aggregator->is_active &&
+				if (port->aggregator->is_active &&
 				    !__port_is_collecting_distributing(port)) {
 					__enable_port(port);
 					*update_slave_arr = true;
@@ -1098,7 +1097,7 @@ static void ad_mux_machine(struct port *port, bool *update_slave_arr)
 					 */
 					struct slave *slave = port->slave;
 
-					if (aggregator->is_active &&
+					if (port->aggregator->is_active &&
 					    bond_is_slave_rx_disabled(slave)) {
 						ad_enable_collecting(port);
 						*update_slave_arr = true;
@@ -1118,8 +1117,8 @@ static void ad_mux_machine(struct port *port, bool *update_slave_arr)
 				 * sure that a collecting distributing
 				 * port in an active aggregator is enabled
 				 */
-				if (aggregator &&
-				    aggregator->is_active &&
+				if (port->aggregator &&
+				    port->aggregator->is_active &&
 				    !__port_is_collecting_distributing(port)) {
 					__enable_port(port);
 					*update_slave_arr = true;
@@ -2023,15 +2022,13 @@ static void ad_initialize_port(struct port *port, const struct bond_params *bond
  */
 static void ad_enable_collecting(struct port *port)
 {
-	struct aggregator *aggregator = rcu_dereference(port->aggregator);
-
-	if (aggregator->is_active) {
+	if (port->aggregator->is_active) {
 		struct slave *slave = port->slave;
 
 		slave_dbg(slave->bond->dev, slave->dev,
 			  "Enabling collecting on port %d (LAG %d)\n",
 			  port->actor_port_number,
-			  aggregator->aggregator_identifier);
+			  port->aggregator->aggregator_identifier);
 		__enable_collecting_port(port);
 	}
 }
@@ -2043,13 +2040,11 @@ static void ad_enable_collecting(struct port *port)
  */
 static void ad_disable_distributing(struct port *port, bool *update_slave_arr)
 {
-	struct aggregator *aggregator = rcu_dereference(port->aggregator);
-
-	if (aggregator && __agg_has_partner(aggregator)) {
+	if (port->aggregator && __agg_has_partner(port->aggregator)) {
 		slave_dbg(port->slave->bond->dev, port->slave->dev,
 			  "Disabling distributing on port %d (LAG %d)\n",
 			  port->actor_port_number,
-			  aggregator->aggregator_identifier);
+			  port->aggregator->aggregator_identifier);
 		__disable_distributing_port(port);
 		/* Slave array needs an update */
 		*update_slave_arr = true;
@@ -2087,9 +2082,7 @@ static void ad_enable_collecting_distributing(struct port *port,
 static void ad_disable_collecting_distributing(struct port *port,
 					       bool *update_slave_arr)
 {
-	struct aggregator *aggregator = rcu_dereference(port->aggregator);
-
-	if (aggregator && __agg_has_partner(aggregator)) {
+	if (port->aggregator && __agg_has_partner(port->aggregator)) {
 		slave_dbg(port->slave->bond->dev, port->slave->dev,
 			  "Disabling port %d (LAG %d)\n",
 			  port->actor_port_number,
@@ -2205,9 +2198,6 @@ void bond_3ad_bind_slave(struct slave *slave)
 		port = &(SLAVE_AD_INFO(slave)->port);
 
 		ad_initialize_port(port, &bond->params);
-
-		/* Port priority is initialized. Update it to slave's ad info */
-		SLAVE_AD_INFO(slave)->port_priority = port->actor_port_priority;
 
 		port->slave = slave;
 		port->actor_port_number = SLAVE_AD_INFO(slave)->id;

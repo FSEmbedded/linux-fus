@@ -1006,6 +1006,8 @@ struct nfs_client *nfs4_set_ds_client(struct nfs_server *mds_srv,
 	cl_init.hostname = buf;
 
 	switch (ds_proto) {
+	case XPRT_TRANSPORT_RDMA:
+	case XPRT_TRANSPORT_TCP:
 	case XPRT_TRANSPORT_TCP_TLS:
 		if (mds_srv->nfs_client->cl_xprtsec.policy != RPC_XPRTSEC_NONE)
 			cl_init.xprtsec = mds_srv->nfs_client->cl_xprtsec;

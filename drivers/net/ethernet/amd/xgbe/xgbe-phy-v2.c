@@ -2988,9 +2988,7 @@ static int xgbe_phy_link_status(struct xgbe_prv_data *pdata, int *an_restart)
 			xgbe_phy_set_mode(pdata, phy_data->cur_mode);
 		}
 
-		if (pdata->rx_adapt_done) {
-			/* Adaptation complete, safe to re-enable data path */
-			xgbe_phy_start_data_path(pdata);
+		if (pdata->rx_adapt_done)
 			return 1;
 		}
 	} else if (reg & MDIO_STAT1_LSTATUS)

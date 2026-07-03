@@ -113,7 +113,6 @@ extern const struct dev_pm_ops dcss_dev_pm_ops;
 /* BLKCTL */
 int dcss_blkctl_init(struct dcss_dev *dcss, unsigned long blkctl_base);
 void dcss_blkctl_cfg(struct dcss_blkctl *blkctl);
-void dcss_blkctl_exit(struct dcss_blkctl *blkctl);
 
 /* CTXLD */
 int dcss_ctxld_init(struct dcss_dev *dcss, unsigned long ctxld_base);
@@ -287,7 +286,8 @@ bool dcss_hdr10_pipe_cfg_is_supported(struct dcss_hdr10 *hdr10,
 				      struct dcss_hdr10_pipe_cfg *opipe_cfg);
 void dcss_hdr10_setup(struct dcss_hdr10 *hdr10, int ch_num,
 		      struct dcss_hdr10_pipe_cfg *ipipe_cfg,
-		      struct dcss_hdr10_pipe_cfg *opipe_cfg);
+		      struct dcss_hdr10_pipe_cfg *opipe_cfg,
+		      u32 format);
 
 /* enums common to both WRSCL and RDSRC */
 enum dcss_wrscl_rdsrc_psize {

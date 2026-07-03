@@ -313,7 +313,7 @@ free_regmap:
 	return ret;
 }
 
-static int imx93_blk_ctrl_remove(struct platform_device *pdev)
+static void imx93_blk_ctrl_remove(struct platform_device *pdev)
 {
 	struct imx93_blk_ctrl *bc = dev_get_drvdata(&pdev->dev);
 	int i;
@@ -327,8 +327,6 @@ static int imx93_blk_ctrl_remove(struct platform_device *pdev)
 
 		pm_genpd_remove(&domain->genpd);
 	}
-
-	return 0;
 }
 
 static const struct imx93_blk_ctrl_domain_data imx93_media_blk_ctl_domain_data[] = {
@@ -477,7 +475,7 @@ MODULE_DEVICE_TABLE(of, imx93_blk_ctrl_of_match);
 
 static struct platform_driver imx93_blk_ctrl_driver = {
 	.probe = imx93_blk_ctrl_probe,
-	.remove = imx93_blk_ctrl_remove,
+	.remove_new = imx93_blk_ctrl_remove,
 	.driver = {
 		.name = "imx93-blk-ctrl",
 		.pm = &imx93_blk_ctrl_pm_ops,

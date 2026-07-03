@@ -9,10 +9,6 @@
 #include <linux/mutex.h>
 
 struct se_msg_seq_ctrl {
-	/*
-	 * lock to ensure one message sequence flow,
-	 * completes un-interrupted.
-	 */
 	struct mutex se_msg_sq_lk;
 	void *exp_tx_msg;
 };

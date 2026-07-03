@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: (GPL-2.0 OR BSD-3-Clause)
 /*
- * Wave6 series multi-standard codec IP - low level access functions
+ * Wave6 series multi-standard codec IP - debug interface
  *
- * Copyright (C) 2021 CHIPS&MEDIA INC
+ * Copyright (C) 2025 CHIPS&MEDIA INC
  */
 
 #include <linux/types.h>
@@ -47,7 +47,7 @@ static int wave6_vpu_dbg_instance(struct seq_file *s, void *data)
 	num = scnprintf(str, sizeof(str),
 			"output (%2d, %2d): fmt = %c%c%c%c %d x %d, %d;\n",
 			vb2_is_streaming(vq),
-			vq->num_buffers,
+			vb2_get_num_buffers(vq),
 			inst->src_fmt.pixelformat,
 			inst->src_fmt.pixelformat >> 8,
 			inst->src_fmt.pixelformat >> 16,
@@ -62,7 +62,7 @@ static int wave6_vpu_dbg_instance(struct seq_file *s, void *data)
 	num = scnprintf(str, sizeof(str),
 			"capture(%2d, %2d): fmt = %c%c%c%c %d x %d, %d;\n",
 			vb2_is_streaming(vq),
-			vq->num_buffers,
+			vb2_get_num_buffers(vq),
 			inst->dst_fmt.pixelformat,
 			inst->dst_fmt.pixelformat >> 8,
 			inst->dst_fmt.pixelformat >> 16,
@@ -78,6 +78,15 @@ static int wave6_vpu_dbg_instance(struct seq_file *s, void *data)
 			v4l2_m2m_num_dst_bufs_ready(inst->v4l2_fh.m2m_ctx),
 			wave6_vpu_get_consumed_fb_num(inst),
 			wave6_vpu_get_used_fb_num(inst));
+	if (seq_write(s, str, num))
+		return 0;
+
+	num = scnprintf(str, sizeof(str),
+			"fbc(required/acquired/registered/used) : %d, %d, %d, %d\n",
+			inst->fbc_buf_required,
+			inst->fbc_buf_acquired,
+			inst->fbc_buf_registered,
+			inst->fbc_buf_used);
 	if (seq_write(s, str, num))
 		return 0;
 
@@ -135,11 +144,13 @@ static int wave6_vpu_dbg_instance(struct seq_file *s, void *data)
 		return 0;
 
 	num = scnprintf(str, sizeof(str),
-			"latency(ms) first: %llu.%06llu, max %llu.%06llu\n",
+			"latency(ms) first: %llu.%06llu, max %llu.%06llu, setup %llu.%06llu\n",
 			perf->latency_first / NSEC_PER_MSEC,
 			perf->latency_first % NSEC_PER_MSEC,
 			perf->latency_max / NSEC_PER_MSEC,
-			perf->latency_max % NSEC_PER_MSEC);
+			perf->latency_max % NSEC_PER_MSEC,
+			(perf->ts_first - perf->ts_start) / NSEC_PER_MSEC,
+			(perf->ts_first - perf->ts_start) % NSEC_PER_MSEC);
 	if (seq_write(s, str, num))
 		return 0;
 
@@ -152,6 +163,11 @@ static int wave6_vpu_dbg_instance(struct seq_file *s, void *data)
 	if (seq_write(s, str, num))
 		return 0;
 
+	num = scnprintf(str, sizeof(str), "memory usage : %lu\n",
+			imx_mur_long_read(inst->recorder));
+	if (seq_write(s, str, num))
+		return 0;
+
 	if (inst->type == VPU_INST_TYPE_DEC) {
 		num = scnprintf(str, sizeof(str), "%s order\n",
 				inst->disp_mode == DISP_MODE_DISP_ORDER ? "display" : "decode");
@@ -159,7 +175,7 @@ static int wave6_vpu_dbg_instance(struct seq_file *s, void *data)
 			return 0;
 	} else {
 		struct enc_info *p_enc_info = &inst->codec_info->enc_info;
-		struct enc_wave_param *param = &p_enc_info->open_param.wave_param;
+		struct enc_codec_param *param = &p_enc_info->open_param.codec_param;
 
 		num = scnprintf(str, sizeof(str), "profile %d, level %d, tier %d\n",
 				param->profile, param->level, param->tier);
@@ -174,7 +190,7 @@ static int wave6_vpu_dbg_instance(struct seq_file *s, void *data)
 		num = scnprintf(str, sizeof(str), "rc %d, mode %d, bitrate %d\n",
 				param->en_rate_control,
 				param->rc_mode,
-				param->enc_bit_rate);
+				param->bitrate);
 		if (seq_write(s, str, num))
 			return 0;
 

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: (GPL-2.0 OR BSD-3-Clause)
 /*
- * Wave6 series multi-standard codec IP - vpu control device
+ * Wave6 series multi-standard codec IP - wave6 control driver
  *
- * Copyright (C) 2021 CHIPS&MEDIA INC
+ * Copyright (C) 2025 CHIPS&MEDIA INC
  */
 
 #include <linux/kernel.h>
@@ -23,6 +23,7 @@
 #include <linux/units.h>
 #include <linux/pm_opp.h>
 #include <linux/freezer.h>
+#include <linux/imx_memory_usage.h>
 
 #include "wave6-vpuconfig.h"
 #include "wave6-regdefine.h"
@@ -95,6 +96,7 @@ struct loger_t {
 #endif
 
 #define WAVE6_MAX_INST_NUMBER		32
+#define WAVE6_PRE_INST_NUMBER		WAVE6_MAX_INST_NUMBER
 
 struct vpu_ctrl {
 	struct device *dev;
@@ -109,8 +111,8 @@ struct vpu_ctrl {
 	const struct vpu_ctrl_resource *res;
 	struct gen_pool *sram_pool;
 	struct vpu_dma_buf sram_buf;
-	struct dma_pool *dma_pool;
-	struct vpu_buf buffers[WAVE6_MAX_INST_NUMBER];
+	struct vpu_buf work_buf[WAVE6_MAX_INST_NUMBER];
+	u32 acquired_buffer_count;
 	u32 required_buffer_count;
 	bool support_follower;
 	wait_queue_head_t load_fw_wq;
@@ -126,6 +128,7 @@ struct vpu_ctrl {
 	struct device *dev_perf;
 	int clk_id;
 	unsigned long *freq_table;
+	struct imx_mur_node *recorder;
 };
 
 #define DOMAIN_VPU_PWR	0
@@ -141,14 +144,13 @@ static const struct vpu_ctrl_resource wave633c_ctrl_data = {
 static void wave6_vpu_ctrl_init_loger(struct vpu_ctrl *ctrl)
 {
 	ctrl->loger_buf.size = TRACEBUF_SIZE + sizeof(struct loger_t);
-	ctrl->loger_buf.vaddr = dma_alloc_coherent(ctrl->dev,
-						   ctrl->loger_buf.size,
-						   &ctrl->loger_buf.daddr,
-						   GFP_KERNEL);
-	if (!ctrl->loger_buf.vaddr) {
+	ctrl->loger_buf.recorder = ctrl->recorder;
+	ctrl->loger_buf.label = "loger_buf";
+	if (wave6_alloc_dma(ctrl->dev, &ctrl->loger_buf)) {
 		ctrl->loger_buf.size = 0;
 		return;
 	}
+
 	ctrl->loger = ctrl->loger_buf.vaddr;
 	ctrl->loger->size = TRACEBUF_SIZE;
 }
@@ -156,13 +158,7 @@ static void wave6_vpu_ctrl_init_loger(struct vpu_ctrl *ctrl)
 static void wave6_vpu_ctrl_free_loger(struct vpu_ctrl *ctrl)
 {
 	ctrl->loger = NULL;
-	if (ctrl->loger_buf.vaddr)
-		dma_free_coherent(ctrl->dev,
-				  ctrl->loger_buf.size,
-				  ctrl->loger_buf.vaddr,
-				  ctrl->loger_buf.daddr);
-
-	memset(&ctrl->loger_buf, 0, sizeof(ctrl->loger_buf));
+	wave6_free_dma(&ctrl->loger_buf);
 }
 
 static void wave6_vpu_ctrl_start_loger(struct vpu_ctrl *ctrl, struct wave6_vpu_entity *entity)
@@ -269,6 +265,13 @@ int wave6_alloc_dma(struct device *dev, struct vpu_buf *vb)
 	if (!vaddr)
 		return -ENOMEM;
 
+	if (vb->recorder) {
+		if (vb->label)
+			imx_mur_long_new_and_add(vb->recorder, vb->size, vb->label);
+		else
+			imx_mur_long_add(vb->recorder, vb->size);
+	}
+
 	vb->vaddr = vaddr;
 	vb->daddr = daddr;
 	vb->dev = dev;
@@ -277,35 +280,33 @@ int wave6_alloc_dma(struct device *dev, struct vpu_buf *vb)
 }
 EXPORT_SYMBOL_GPL(wave6_alloc_dma);
 
-int wave6_write_dma(struct vpu_buf *vb, size_t offset, u8 *data, int len)
-{
-	if (!vb)
-		return -EINVAL;
-
-	if (!vb->vaddr) {
-		dev_err(vb->dev, "%s(): unable to write to unmapped buffer\n", __func__);
-		return -EINVAL;
-	}
-
-	if (offset > vb->size || len > vb->size || offset + len > vb->size) {
-		dev_err(vb->dev, "%s(): buffer too small\n", __func__);
-		return -ENOSPC;
-	}
-
-	memcpy(vb->vaddr + offset, data, len);
-	return len;
-}
-EXPORT_SYMBOL_GPL(wave6_write_dma);
-
 void wave6_free_dma(struct vpu_buf *vb)
 {
 	if (!vb || !vb->size || !vb->vaddr)
 		return;
 
+	if (vb->recorder) {
+		if (vb->label)
+			imx_mur_long_sub_and_del(vb->recorder, vb->size);
+		else
+			imx_mur_long_sub(vb->recorder, vb->size);
+	}
+
 	dma_free_coherent(vb->dev, vb->size, vb->vaddr, vb->daddr);
 	memset(vb, 0, sizeof(*vb));
 }
 EXPORT_SYMBOL_GPL(wave6_free_dma);
+
+struct imx_mur_node *wave6_vpu_ctrl_get_recorder(struct device *dev)
+{
+	struct vpu_ctrl *ctrl = dev_get_drvdata(dev);
+
+	if (!ctrl)
+		return NULL;
+
+	return ctrl->recorder;
+}
+EXPORT_SYMBOL_GPL(wave6_vpu_ctrl_get_recorder);
 
 static const char *wave6_vpu_ctrl_state_name(u32 state)
 {
@@ -334,9 +335,9 @@ static int wave6_vpu_ctrl_wait_busy(struct wave6_vpu_entity *entity)
 {
 	u32 val;
 
-	return read_poll_timeout(entity->read_reg, val, val == 0,
-				 10, W6_VPU_POLL_TIMEOUT, false,
-				 entity->dev, W6_VPU_BUSY_STATUS);
+	return read_poll_timeout(entity->read_reg, val, !val,
+				 W6_VPU_POLL_DELAY_US, W6_VPU_POLL_TIMEOUT,
+				 false, entity->dev, W6_VPU_BUSY_STATUS);
 }
 
 static int wave6_vpu_ctrl_check_result(struct wave6_vpu_entity *entity)
@@ -384,7 +385,7 @@ static int wave6_vpu_ctrl_init_vpu(struct vpu_ctrl *ctrl)
 				       ctrl->sram_buf.dma_addr);
 	entity->write_reg(entity->dev, W6_CMD_INIT_VPU_SEC_AXI_SIZE_CORE0,
 				       ctrl->sram_buf.size);
-	wave6_vpu_ctrl_writel(ctrl->dev, W6_COMMAND_GB, W6_INIT_VPU);
+	wave6_vpu_ctrl_writel(ctrl->dev, W6_COMMAND_GB, W6_CMD_INIT_VPU);
 	wave6_vpu_ctrl_writel(ctrl->dev, W6_VPU_REMAP_CORE_START_GB, 1);
 
 	ret = wave6_vpu_ctrl_wait_busy(entity);
@@ -421,7 +422,7 @@ static void wave6_vpu_ctrl_clear_firmware_buffers(struct vpu_ctrl *ctrl,
 	dprintk(ctrl->dev, "clear firmware work buffers\n");
 
 	entity->write_reg(entity->dev, W6_VPU_BUSY_STATUS, 1);
-	entity->write_reg(entity->dev, W6_COMMAND, W6_INIT_WORK_BUF);
+	entity->write_reg(entity->dev, W6_COMMAND, W6_CMD_INIT_WORK_BUF);
 	entity->write_reg(entity->dev, W6_VPU_HOST_INT_REQ, 1);
 
 	ret = wave6_vpu_ctrl_wait_busy(entity);
@@ -437,26 +438,37 @@ static void wave6_vpu_ctrl_clear_firmware_buffers(struct vpu_ctrl *ctrl,
 	}
 }
 
-static void wave6_vpu_ctrl_prepare_work_buffer(struct vpu_ctrl *ctrl)
+static void wave6_vpu_ctrl_acquire_work_buffer(struct vpu_ctrl *ctrl)
 {
-	struct vpu_buf buf;
+	struct vpu_buf *buf;
 
-	if (ctrl->required_buffer_count >= WAVE6_MAX_INST_NUMBER)
+	if (ctrl->acquired_buffer_count >= WAVE6_MAX_INST_NUMBER)
 		return;
 
-	memset(&buf, 0, sizeof(buf));
-
-	buf.vaddr = dma_pool_alloc(ctrl->dma_pool, GFP_KERNEL, &buf.daddr);
-	if (!buf.vaddr)
+	buf = &ctrl->work_buf[ctrl->acquired_buffer_count];
+	buf->size = WAVE6_WORKBUF_SIZE;
+	buf->recorder = ctrl->recorder;
+	buf->label = "work_buf";
+	if (wave6_alloc_dma(ctrl->dev, buf))
 		return;
 
-	dma_pool_free(ctrl->dma_pool, buf.vaddr, buf.daddr);
+	ctrl->acquired_buffer_count++;
+}
+
+static void wave6_vpu_ctrl_free_buffers(struct vpu_ctrl *ctrl)
+{
+	int i;
+
+	for (i = 0; i < ctrl->acquired_buffer_count; i++)
+		wave6_free_dma(&ctrl->work_buf[i]);
+
+	ctrl->acquired_buffer_count = 0;
 }
 
 int wave6_vpu_ctrl_require_buffer(struct device *dev, struct wave6_vpu_entity *entity)
 {
 	struct vpu_ctrl *ctrl = dev_get_drvdata(dev);
-	struct vpu_buf *pbuf;
+	struct vpu_buf *vb;
 	u32 size;
 	int ret;
 
@@ -476,24 +488,19 @@ int wave6_vpu_ctrl_require_buffer(struct device *dev, struct wave6_vpu_entity *e
 		goto exit;
 
 	WARN_ON(size > WAVE6_WORKBUF_SIZE);
-
-	if (ctrl->required_buffer_count >= WAVE6_MAX_INST_NUMBER)
+	if (size > WAVE6_WORKBUF_SIZE)
 		goto exit;
 
-	pbuf = &ctrl->buffers[ctrl->required_buffer_count];
-	pbuf->vaddr = dma_pool_alloc(ctrl->dma_pool, GFP_ATOMIC | __GFP_ZERO, &pbuf->daddr);
-	if (!pbuf->vaddr)
+	if (WARN_ON(ctrl->required_buffer_count >= ctrl->acquired_buffer_count))
 		goto exit;
 
-	pbuf->size = WAVE6_WORKBUF_SIZE;
-	entity->write_reg(entity->dev, W6_CMD_SET_CTRL_WORK_BUF_ADDR, pbuf->daddr);
+	vb = &ctrl->work_buf[ctrl->required_buffer_count];
+	entity->write_reg(entity->dev, W6_CMD_SET_CTRL_WORK_BUF_ADDR, vb->daddr);
 	ctrl->required_buffer_count++;
 	ret = 0;
 exit:
 	entity->write_reg(entity->dev, W6_CMD_SET_CTRL_WORK_BUF_SIZE, 0);
 	pm_runtime_put_sync(ctrl->dev);
-	dprintk(dev, "require work buffer, ret = %d\n", ret);
-	wave6_vpu_ctrl_prepare_work_buffer(ctrl);
 	return ret;
 }
 EXPORT_SYMBOL_GPL(wave6_vpu_ctrl_require_buffer);
@@ -501,8 +508,6 @@ EXPORT_SYMBOL_GPL(wave6_vpu_ctrl_require_buffer);
 static void wave6_vpu_ctrl_clear_buffers(struct vpu_ctrl *ctrl)
 {
 	struct wave6_vpu_entity *entity;
-	struct vpu_buf *pbuf;
-	u32 i;
 
 	dprintk(ctrl->dev, "clear all buffers\n");
 
@@ -511,11 +516,6 @@ static void wave6_vpu_ctrl_clear_buffers(struct vpu_ctrl *ctrl)
 	if (entity)
 		wave6_vpu_ctrl_clear_firmware_buffers(ctrl, entity);
 
-	for (i = 0; i < ctrl->required_buffer_count; i++) {
-		pbuf = &ctrl->buffers[i];
-		dma_pool_free(ctrl->dma_pool, pbuf->vaddr, pbuf->daddr);
-		memset(pbuf, 0, sizeof(*pbuf));
-	}
 	ctrl->required_buffer_count = 0;
 }
 
@@ -582,7 +582,7 @@ static void wave6_vpu_ctrl_load_firmware(const struct firmware *fw, void *contex
 
 	product_code = entity->read_reg(entity->dev, W6_VPU_RET_PRODUCT_VERSION);
 	if (!PRODUCT_CODE_W_SERIES(product_code)) {
-		dev_err(ctrl->dev, "unknown product id : %08x\n", product_code);
+		dev_err(ctrl->dev, "unknown product : %08x\n", product_code);
 		ret = -EINVAL;
 		goto exit;
 	}
@@ -620,8 +620,8 @@ static int wave6_vpu_ctrl_sleep(struct vpu_ctrl *ctrl, struct wave6_vpu_entity *
 	dprintk(ctrl->dev, "sleep firmware\n");
 
 	entity->write_reg(entity->dev, W6_VPU_BUSY_STATUS, 1);
-	entity->write_reg(entity->dev, W6_CMD_INSTANCE_INFO, (0 << 16) | 0);
-	entity->write_reg(entity->dev, W6_COMMAND, W6_SLEEP_VPU);
+	entity->write_reg(entity->dev, W6_CMD_INSTANCE_INFO, 0);
+	entity->write_reg(entity->dev, W6_COMMAND, W6_CMD_SLEEP_VPU);
 	entity->write_reg(entity->dev, W6_VPU_HOST_INT_REQ, 1);
 
 	ret = wave6_vpu_ctrl_wait_busy(entity);
@@ -656,7 +656,7 @@ static int wave6_vpu_ctrl_wakeup(struct vpu_ctrl *ctrl, struct wave6_vpu_entity 
 				       ctrl->sram_buf.dma_addr);
 	entity->write_reg(entity->dev, W6_CMD_INIT_VPU_SEC_AXI_SIZE_CORE0,
 				       ctrl->sram_buf.size);
-	wave6_vpu_ctrl_writel(ctrl->dev, W6_COMMAND_GB, W6_WAKEUP_VPU);
+	wave6_vpu_ctrl_writel(ctrl->dev, W6_COMMAND_GB, W6_CMD_WAKEUP_VPU);
 	wave6_vpu_ctrl_writel(ctrl->dev, W6_VPU_REMAP_CORE_START_GB, 1);
 
 	ret = wave6_vpu_ctrl_wait_busy(entity);
@@ -686,7 +686,7 @@ static int wave6_vpu_ctrl_try_boot(struct vpu_ctrl *ctrl, struct wave6_vpu_entit
 	if (reload_firmware)
 		wave6_vpu_ctrl_set_state(ctrl, WAVE6_VPU_STATE_OFF);
 
-	if (entity->read_reg(entity->dev, W6_VCPU_CUR_PC)) {
+	if (entity->read_reg(entity->dev, W6_VPU_VCPU_CUR_PC)) {
 		dprintk(ctrl->dev, "try boot directly as firmware is running\n");
 		wave6_vpu_ctrl_boot_done(ctrl, ctrl->state == WAVE6_VPU_STATE_SLEEP);
 		return 0;
@@ -728,8 +728,8 @@ EXPORT_SYMBOL_GPL(wave6_vpu_ctrl_support_follower);
 int wave6_vpu_ctrl_resume_and_get(struct device *dev, struct wave6_vpu_entity *entity)
 {
 	struct vpu_ctrl *ctrl = dev_get_drvdata(dev);
-	bool boot_flag;
-	int ret = 0;
+	bool boot;
+	int ret;
 
 	if (!ctrl)
 		return -EINVAL;
@@ -753,12 +753,12 @@ int wave6_vpu_ctrl_resume_and_get(struct device *dev, struct wave6_vpu_entity *e
 	entity->booted = false;
 
 	if (ctrl->current_entity)
-		boot_flag = false;
+		boot = false;
 	else
-		boot_flag = list_empty(&ctrl->entities) ? true : false;
+		boot = list_empty(&ctrl->entities) ? true : false;
 
 	list_add_tail(&entity->list, &ctrl->entities);
-	if (boot_flag)
+	if (boot)
 		ret = wave6_vpu_ctrl_try_boot(ctrl, entity);
 
 	if (ctrl->state == WAVE6_VPU_STATE_ON)
@@ -790,7 +790,7 @@ void wave6_vpu_ctrl_put_sync(struct device *dev, struct wave6_vpu_entity *entity
 
 	list_del_init(&entity->list);
 	if (list_empty(&ctrl->entities)) {
-		if (!entity->read_reg(entity->dev, W6_VCPU_CUR_PC))
+		if (!entity->read_reg(entity->dev, W6_VPU_VCPU_CUR_PC))
 			wave6_vpu_ctrl_set_state(ctrl, WAVE6_VPU_STATE_OFF);
 		else
 			wave6_vpu_ctrl_sleep(ctrl, entity);
@@ -825,7 +825,7 @@ int wave6_vpu_ctrl_wait_done(struct device *dev)
 						 wave6_vpu_ctrl_get_state(dev) ==
 						 WAVE6_VPU_STATE_ON,
 						 msecs_to_jiffies(W6_BOOT_WAIT_TIMEOUT));
-	if (ret == -ERESTARTSYS || ret == 0) {
+	if (ret == -ERESTARTSYS || !ret) {
 		dev_err(ctrl->dev, "fail to wait vcpu boot done,ret %d\n", ret);
 		mutex_lock(&ctrl->ctrl_lock);
 		wave6_vpu_ctrl_set_state(ctrl, WAVE6_VPU_STATE_OFF);
@@ -881,6 +881,7 @@ static void wave6_vpu_ctrl_init_reserved_boot_region(struct vpu_ctrl *ctrl)
 		return;
 	}
 
+	imx_mur_long_new_and_add(ctrl->recorder, ctrl->boot_mem.size, "boot_mem");
 	dev_info(ctrl->dev, "boot phys_addr: %pad, dma_addr: %pad, size: 0x%zx\n",
 		 &ctrl->boot_mem.phys_addr,
 		 &ctrl->boot_mem.dma_addr,
@@ -934,21 +935,10 @@ static int wave6_cooling_set_cur_state(struct thermal_cooling_device *cdev,
 				       unsigned long state)
 {
 	struct vpu_ctrl *ctrl = cdev->devdata;
-	struct wave6_vpu_entity *entity;
 
 	ctrl->thermal_event = state;
 
-	list_for_each_entry(entity, &ctrl->entities, list) {
-		if (entity->pause)
-			entity->pause(entity->dev, 0);
-	}
-
 	wave6_vpu_ctrl_thermal_update(ctrl->dev, state);
-
-	list_for_each_entry(entity, &ctrl->entities, list) {
-		if (entity->pause)
-			entity->pause(entity->dev, 1);
-	}
 
 	return 0;
 }
@@ -1100,12 +1090,7 @@ static int wave6_vpu_ctrl_probe(struct platform_device *pdev)
 
 	ctrl->num_clks = ret;
 
-	ctrl->dma_pool = dma_pool_create(dev_name(ctrl->dev), ctrl->dev,
-					 WAVE6_WORKBUF_SIZE, 4096, 0);
-	if (!ctrl->dma_pool) {
-		dev_err(ctrl->dev, "failed to create DMA pool\n");
-		return -ENOMEM;
-	}
+	ctrl->recorder = imx_mur_create_node(NULL, "wave6-vpu");
 
 	np = of_parse_phandle(pdev->dev.of_node, "boot", 0);
 	if (np) {
@@ -1151,13 +1136,15 @@ static int wave6_vpu_ctrl_probe(struct platform_device *pdev)
 	wave6_vpu_ctrl_create_debugfs(ctrl);
 #endif
 
-	wave6_vpu_ctrl_prepare_work_buffer(ctrl);
+	for (int i = 0; i < WAVE6_PRE_INST_NUMBER; i++)
+		wave6_vpu_ctrl_acquire_work_buffer(ctrl);
+
 	pm_runtime_enable(&pdev->dev);
 
 	return 0;
 }
 
-static int wave6_vpu_ctrl_remove(struct platform_device *pdev)
+static void wave6_vpu_ctrl_remove(struct platform_device *pdev)
 {
 	struct vpu_ctrl *ctrl = dev_get_drvdata(&pdev->dev);
 
@@ -1169,7 +1156,7 @@ static int wave6_vpu_ctrl_remove(struct platform_device *pdev)
 	pm_runtime_disable(&pdev->dev);
 
 	wave6_vpu_ctrl_clear_buffers(ctrl);
-	dma_pool_destroy(ctrl->dma_pool);
+	wave6_vpu_ctrl_free_buffers(ctrl);
 	wave6_cooling_remove(ctrl);
 	if (ctrl->sram_pool && ctrl->sram_buf.vaddr) {
 		dma_unmap_resource(&pdev->dev,
@@ -1187,9 +1174,8 @@ static int wave6_vpu_ctrl_remove(struct platform_device *pdev)
 				   ctrl->boot_mem.size,
 				   DMA_BIDIRECTIONAL,
 				   0);
+	imx_mur_destroy_node(ctrl->recorder);
 	mutex_destroy(&ctrl->ctrl_lock);
-
-	return 0;
 }
 
 #ifdef CONFIG_PM

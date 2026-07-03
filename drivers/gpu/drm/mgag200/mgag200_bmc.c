@@ -3,9 +3,14 @@
 #include <linux/delay.h>
 #include <linux/iopoll.h>
 
+#include <drm/drm_atomic_helper.h>
+#include <drm/drm_edid.h>
+#include <drm/drm_managed.h>
+#include <drm/drm_probe_helper.h>
+
 #include "mgag200_drv.h"
 
-void mgag200_bmc_disable_vidrst(struct mga_device *mdev)
+void mgag200_bmc_stop_scanout(struct mga_device *mdev)
 {
 	u8 tmp;
 	int ret;
@@ -56,14 +61,9 @@ void mgag200_bmc_disable_vidrst(struct mga_device *mdev)
 				MGA1064_SPAREREG);
 }
 
-void mgag200_bmc_enable_vidrst(struct mga_device *mdev)
+void mgag200_bmc_start_scanout(struct mga_device *mdev)
 {
 	u8 tmp;
-
-	/* Ensure that the vrsten and hrsten are set */
-	WREG8(MGAREG_CRTCEXT_INDEX, 1);
-	tmp = RREG8(MGAREG_CRTCEXT_DATA);
-	WREG8(MGAREG_CRTCEXT_DATA, tmp | 0x88);
 
 	/* Assert rstlvl2 */
 	WREG8(DAC_INDEX, MGA1064_REMHEADCTL2);

@@ -162,16 +162,15 @@ static struct max16065_data *max16065_update_device(struct device *dev)
 		}
 
 		for (i = 0; i < 2; i++)
-			WRITE_ONCE(data->fault[i],
-				   i2c_smbus_read_byte_data(client, MAX16065_FAULT(i)));
+			data->fault[i]
+			  = i2c_smbus_read_byte_data(client, MAX16065_FAULT(i));
 
 		/*
 		 * MAX16067 and MAX16068 have separate undervoltage and
 		 * overvoltage alarm bits. Squash them together.
 		 */
 		if (data->chip == max16067 || data->chip == max16068)
-			WRITE_ONCE(data->fault[0],
-				   data->fault[0] | data->fault[1]);
+			data->fault[0] |= data->fault[1];
 
 		data->last_updated = jiffies;
 		data->valid = true;

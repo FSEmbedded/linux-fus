@@ -399,6 +399,17 @@ static void card_free(struct snd_card *card)
 	usb_put_dev(cdev->chip.dev);
 }
 
+static void card_free(struct snd_card *card)
+{
+	struct snd_usb_caiaqdev *cdev = caiaqdev(card);
+
+#ifdef CONFIG_SND_USB_CAIAQ_INPUT
+	snd_usb_caiaq_input_free(cdev);
+#endif
+	snd_usb_caiaq_audio_free(cdev);
+	usb_reset_device(cdev->chip.dev);
+}
+
 static int create_card(struct usb_device *usb_dev,
 		       struct usb_interface *intf,
 		       struct snd_card **cardp)
@@ -512,10 +523,8 @@ static int init_card(struct snd_usb_caiaqdev *cdev)
 	scnprintf(card->longname, sizeof(card->longname), "%s %s (%s)",
 		       cdev->vendor_name, cdev->product_name, usbpath);
 
-	err = setup_card(cdev);
-	if (err < 0)
-		goto err_kill_urb;
-
+	setup_card(cdev);
+	card->private_free = card_free;
 	return 0;
 
  err_kill_urb:

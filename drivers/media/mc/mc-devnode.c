@@ -58,7 +58,7 @@ static void media_devnode_release(struct device *cd)
 	pr_debug("%s: Media Devnode Deallocated\n", __func__);
 }
 
-static struct bus_type media_bus_type = {
+static const struct bus_type media_bus_type = {
 	.name = MEDIA_NAME,
 };
 
@@ -185,7 +185,6 @@ static int media_release(struct inode *inode, struct file *filp)
 	   return value is ignored. */
 	put_device(&devnode->dev);
 
-	pr_debug("%s: Media Release\n", __func__);
 	return 0;
 }
 
@@ -200,7 +199,6 @@ static const struct file_operations media_devnode_fops = {
 #endif /* CONFIG_COMPAT */
 	.release = media_release,
 	.poll = media_poll,
-	.llseek = no_llseek,
 };
 
 int __must_check media_devnode_register(struct media_device *mdev,

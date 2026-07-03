@@ -10,6 +10,17 @@ EXTRA_SOURCES := validate.c ../harness.c stubs.S
 
 top_srcdir = ../../../../..
 include ../../lib.mk
+include ../flags.mk
+
+# The loops are all 64-bit code
+CFLAGS += -m64
+CFLAGS += -I$(CURDIR)
+CFLAGS += -D SELFTEST
+CFLAGS += -maltivec
+CFLAGS += -mcpu=power4
+
+# Use our CFLAGS for the implicit .S rule & set the asm machine type
+ASFLAGS = $(CFLAGS) -Wa,-mpower4
 
 # The loops are all 64-bit code
 CFLAGS += -m64

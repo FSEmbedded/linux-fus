@@ -62,9 +62,7 @@ setup() {
 }
 
 cleanup() {
-	wait_client $CLIENT_NS1
-	wait_client $CLIENT_NS2
-	stop_server
+	ip netns exec $SERVER_NS pkill sctp_hello 2>&1 >/dev/null
 	cleanup_ns $CLIENT_NS1 $CLIENT_NS2 $SERVER_NS
 }
 

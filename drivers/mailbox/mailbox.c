@@ -412,10 +412,14 @@ struct mbox_chan *mbox_request_channel(struct mbox_client *cl, int index)
 		return ERR_PTR(-ENODEV);
 	}
 
-	fwnode = dev_fwnode(dev);
-	if (!fwnode) {
-		dev_dbg(dev, "No owner fwnode\n");
-		return ERR_PTR(-ENODEV);
+	mutex_lock(&con_mutex);
+
+	ret = of_parse_phandle_with_args(dev->of_node, "mboxes", "#mbox-cells",
+					 index, &spec);
+	if (ret) {
+		dev_dbg(dev, "%s: can't parse \"mboxes\" property\n", __func__);
+		mutex_unlock(&con_mutex);
+		return ERR_PTR(ret);
 	}
 
 	ret = fwnode_property_get_reference_args(fwnode, "mboxes", "#mbox-cells",
@@ -463,8 +467,16 @@ EXPORT_SYMBOL_GPL(mbox_request_channel);
 struct mbox_chan *mbox_request_channel_byname(struct mbox_client *cl,
 					      const char *name)
 {
-	int index = device_property_match_string(cl->dev, "mbox-names", name);
+	struct device_node *np = cl->dev->of_node;
+	int index;
 
+	if (index < 0) {
+		dev_err(cl->dev, "%s() could not locate channel named \"%s\"\n",
+			__func__, name);
+		return ERR_PTR(-EINVAL);
+	}
+
+	index = of_property_match_string(np, "mbox-names", name);
 	if (index < 0) {
 		dev_err(cl->dev, "%s() could not locate channel named \"%s\"\n",
 			__func__, name);

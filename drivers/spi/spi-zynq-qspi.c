@@ -379,9 +379,20 @@ static int zynq_qspi_setup_op(struct spi_device *spi)
 {
 	struct spi_controller *ctlr = spi->controller;
 	struct zynq_qspi *qspi = spi_controller_get_devdata(ctlr);
+	int ret;
 
 	if (ctlr->busy)
 		return -EBUSY;
+
+	ret = clk_enable(qspi->refclk);
+	if (ret)
+		return ret;
+
+	ret = clk_enable(qspi->pclk);
+	if (ret) {
+		clk_disable(qspi->refclk);
+		return ret;
+	}
 
 	zynq_qspi_write(qspi, ZYNQ_QSPI_ENABLE_OFFSET,
 			ZYNQ_QSPI_ENABLE_ENABLE_MASK);
@@ -567,7 +578,7 @@ static int zynq_qspi_exec_mem_op(struct spi_mem *mem,
 	}
 
 	if (op->dummy.nbytes) {
-		tmpbuf = kzalloc(op->dummy.nbytes, GFP_KERNEL);
+		tmpbuf = kmalloc(op->dummy.nbytes, GFP_KERNEL);
 		if (!tmpbuf)
 			return -ENOMEM;
 
@@ -664,6 +675,18 @@ static int zynq_qspi_probe(struct platform_device *pdev)
 		goto remove_ctlr;
 	}
 
+	ret = clk_prepare_enable(xqspi->pclk);
+	if (ret) {
+		dev_err(&pdev->dev, "Unable to enable APB clock.\n");
+		goto remove_ctlr;
+	}
+
+	ret = clk_prepare_enable(xqspi->refclk);
+	if (ret) {
+		dev_err(&pdev->dev, "Unable to enable device clock.\n");
+		goto clk_dis_pclk;
+	}
+
 	xqspi->irq = platform_get_irq(pdev, 0);
 	if (xqspi->irq < 0) {
 		ret = xqspi->irq;
@@ -701,12 +724,16 @@ static int zynq_qspi_probe(struct platform_device *pdev)
 
 	ret = spi_register_controller(ctlr);
 	if (ret) {
-		dev_err(&pdev->dev, "failed to register controller\n");
-		goto remove_ctlr;
+		dev_err(&pdev->dev, "devm_spi_register_controller failed\n");
+		goto clk_dis_all;
 	}
 
 	return ret;
 
+clk_dis_all:
+	clk_disable_unprepare(xqspi->refclk);
+clk_dis_pclk:
+	clk_disable_unprepare(xqspi->pclk);
 remove_ctlr:
 	spi_controller_put(ctlr);
 

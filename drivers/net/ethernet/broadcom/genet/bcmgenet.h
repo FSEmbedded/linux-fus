@@ -662,7 +662,7 @@ struct bcmgenet_priv {
 
 	struct bcmgenet_mib_counters mib;
 
-	struct ethtool_eee eee;
+	struct ethtool_keee eee;
 };
 
 static inline bool bcmgenet_has_40bits(struct bcmgenet_priv *priv)

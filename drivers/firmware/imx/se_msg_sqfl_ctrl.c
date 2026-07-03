@@ -27,7 +27,7 @@ void se_qualify_msg_seq_flow(struct se_msg_seq_ctrl *se_msg_sq_ctl,
 			     void *tx_msg)
 {
 	if (mutex_is_locked(&se_msg_sq_ctl->se_msg_sq_lk) &&
-	    se_msg_sq_ctl->exp_tx_msg != tx_msg) {
+			se_msg_sq_ctl->exp_tx_msg != tx_msg) {
 		guard(mutex)(&se_msg_sq_ctl->se_msg_sq_lk);
 	}
 }

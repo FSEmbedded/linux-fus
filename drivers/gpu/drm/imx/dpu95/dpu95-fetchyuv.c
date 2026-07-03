@@ -184,17 +184,9 @@ struct dpu95_fetchunit *dpu95_fy_get(struct dpu95_soc *dpu, unsigned int id)
 	if (IS_ERR(fu->hs))
 		return ERR_CAST(fu->hs);
 
-	if (dpu->use_vs4 && fu->type == DPU95_DISP) {
-		fu->vs = dpu95_vs_get(dpu, 4);
-		if (IS_ERR(fu->vs))
-			return ERR_CAST(fu->vs);
-	}
-
-	if (fu->type == DPU95_BLIT) {
-		fu->vs = dpu95_vs_get(dpu, 9);
-		if (IS_ERR(fu->vs))
-			return ERR_CAST(fu->vs);
-	}
+	fu->vs = dpu95_vs_get(dpu, fu->type == DPU95_DISP ? 4 : 9);
+	if (IS_ERR(fu->vs))
+		return ERR_CAST(fu->vs);
 
 	return fu;
 }

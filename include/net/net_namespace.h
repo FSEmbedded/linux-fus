@@ -67,8 +67,6 @@ struct net {
 						 */
 	spinlock_t		rules_mod_lock;
 
-	atomic_t		dev_unreg_count;
-
 	unsigned int		dev_base_seq;	/* protected by rtnl_mutex */
 	u32			ifindex;
 
@@ -470,8 +468,8 @@ struct pernet_operations {
 	/* Following method is called with RTNL held. */
 	void (*exit_batch_rtnl)(struct list_head *net_exit_list,
 				struct list_head *dev_kill_list);
-	unsigned int *id;
-	size_t size;
+	unsigned int * const id;
+	const size_t size;
 };
 
 /*

@@ -44,22 +44,16 @@
 	dsp: cm7-dsp@80000000 {
 		compatible = "fsl,imx95-cm7-dsp";
 
-		reg = <0x0 0x80000000 0x0 0x400000>,
-		      <0x0 0x86000000 0x0 0x3000>;
-		reg-names = "dram", "mailbox";
+		reg = <0x0 0x80000000 0x0 0x6100000>;
 
 		memory-region = <&adma_res>;
 
 		mboxes = <&mu7 2 0>, <&mu7 2 1>, <&mu7 3 0>, <&mu7 3 1>;
 		mbox-names = "txdb0", "txdb1", "rxdb0", "rxdb1";
 
-		tplg-name = "sof-imx95-wm8962.tplg";
-		machine-drv-name = "asoc-audio-graph-card2";
-
 		cpu: port {
 			cpu_ep: endpoint { remote-endpoint = <&codec_ep>; };
 		};
-
 	};
 };
 

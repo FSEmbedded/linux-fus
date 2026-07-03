@@ -60,7 +60,6 @@ v2x_mu_sv0: secure-enclave-2 {
 		  &v2x_sv0 3 0>;
 	status = "okay";
 };
-
 v2x_mu_sv1: secure-enclave-3 {
 	compatible = "fsl,imx8dxl-se";
 	mbox-names = "txdb", "rxdb";
@@ -68,7 +67,6 @@ v2x_mu_sv1: secure-enclave-3 {
 		  &v2x_sv1 3 0>;
 	status = "okay";
 };
-
 v2x_mu_she: secure-enclave-4 {
 	compatible = "fsl,imx8dxl-se";
 	mbox-names = "txdb", "rxdb";
@@ -76,7 +74,6 @@ v2x_mu_she: secure-enclave-4 {
 		  &v2x_she 3 0>;
 	status = "okay";
 };
-
 v2x_mu_sg0: secure-enclave-5 {
 	compatible = "fsl,imx8dxl-se";
 	mbox-names = "txdb", "rxdb";
@@ -84,7 +81,6 @@ v2x_mu_sg0: secure-enclave-5 {
 		  &v2x_sg0 3 0>;
 	status = "okay";
 };
-
 v2x_mu_sg1: secure-enclave-6 {
 	compatible = "fsl,imx8dxl-se";
 	mbox-names = "txdb", "rxdb";

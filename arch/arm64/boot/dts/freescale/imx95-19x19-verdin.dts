@@ -18,7 +18,7 @@
 		#size-cells = <2>;
 		/* will be updated by U-boot when booting Xen */
 		module@0 {
-			bootargs = "earlycon=xen console=hvc0 loglevel=8 root=/dev/mmcblk1p2 rw rootwait";
+			bootargs = "console=hvc0 loglevel=8 root=/dev/mmcblk1p2 rw rootwait";
 			compatible = "xen,linux-zimage", "xen,multiboot-module";
 			reg = <0x00000000 0x9e000000 0x00000000 0x2000000>;
 		};
@@ -134,12 +134,6 @@
 	status = "okay";
 };
 
-&netc_prb_ierb {
-	netc-interfaces = <NXP_NETC_RGMII
-			   NXP_NETC_RGMII
-			   NXP_NETC_SERIAL>;
-};
-
 &i2c6_gpio_expander_21 {
 	status = "disabled";
 };
@@ -170,7 +164,7 @@
 };
 
 &lpi2c4 {
-	/delete-node/ codec@1a;
+	/delete-node/ audio-codec@1a;
 
 	wm8904: codec@1a {
 		#sound-dai-cells = <0>;
@@ -250,7 +244,7 @@
 };
 
 &thermal_zones {
-	a55 {
+	a55-thermal {
 		trips {
 			/delete-node/ trip2;
 			/delete-node/ trip3;
@@ -277,10 +271,10 @@
 
 	pinctrl_enetc1: enetc1grp {
 		fsl,pins = <
-			IMX95_PAD_ENET2_TD3__NETCMIX_TOP_ETH1_RGMII_TD3		0x57e
-			IMX95_PAD_ENET2_TD2__NETCMIX_TOP_ETH1_RGMII_TD2		0x57e
-			IMX95_PAD_ENET2_TD1__NETCMIX_TOP_ETH1_RGMII_TD1		0x57e
-			IMX95_PAD_ENET2_TD0__NETCMIX_TOP_ETH1_RGMII_TD0		0x57e
+			IMX95_PAD_ENET2_TD3__NETCMIX_TOP_ETH1_RGMII_TD3		0x50e
+			IMX95_PAD_ENET2_TD2__NETCMIX_TOP_ETH1_RGMII_TD2		0x50e
+			IMX95_PAD_ENET2_TD1__NETCMIX_TOP_ETH1_RGMII_TD1		0x50e
+			IMX95_PAD_ENET2_TD0__NETCMIX_TOP_ETH1_RGMII_TD0		0x50e
 			IMX95_PAD_ENET2_TX_CTL__NETCMIX_TOP_ETH1_RGMII_TX_CTL	0x57e
 			IMX95_PAD_ENET2_TXC__NETCMIX_TOP_ETH1_RGMII_TX_CLK	0x58e
 			IMX95_PAD_ENET2_RX_CTL__NETCMIX_TOP_ETH1_RGMII_RX_CTL	0x57e

@@ -749,7 +749,7 @@ struct lynx_28g_lane {
 
 struct lynx_info {
 	int (*get_pccr)(enum lynx_28g_lane_mode lane_mode, int lane,
-		        struct lynx_pccr *pccr);
+			struct lynx_pccr *pccr);
 	int (*get_pcvt_offset)(int lane, enum lynx_28g_lane_mode mode);
 	bool (*lane_supports_mode)(int lane, enum lynx_28g_lane_mode mode);
 	int first_lane;
@@ -1952,7 +1952,6 @@ static void lynx_28g_get_pcvt_addr(struct phy *phy,
 		break;
 	case PHY_PCVT_ETHERNET_ANLT:
 		WARN_ON(lynx_anlt_read(lane, lane_mode, CR(1), &cr1));
-		dev_info(&phy->dev, "ANLT%dCR1 = 0x%x\n", lane->id, cr1);
 		pcvt->addr.mdio = LYNX_28G_MDEV_PORT_X(cr1);
 		break;
 	default:
@@ -2111,7 +2110,7 @@ static void lynx_28g_lane_read_configuration(struct lynx_28g_lane *lane)
 }
 
 static struct phy *lynx_28g_xlate(struct device *dev,
-				  struct of_phandle_args *args)
+				  const struct of_phandle_args *args)
 {
 	struct lynx_28g_priv *priv = dev_get_drvdata(dev);
 	int idx = args->args[0];

@@ -69,12 +69,12 @@ struct user_watch_state {
 };
 
 struct user_watch_state_v2 {
-	__u64 dbg_info;
+	uint64_t dbg_info;
 	struct {
-		__u64    addr;
-		__u64    mask;
-		__u32    ctrl;
-		__u32    pad;
+		uint64_t    addr;
+		uint64_t    mask;
+		uint32_t    ctrl;
+		uint32_t    pad;
 	} dbg_regs[14];
 };
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0+ OR BSD-3-Clause)
 /* Copyright 2019 NXP */
 #include <linux/fsl/enetc_mdio.h>
-#include <linux/fsl/netc_prb_ierb.h>
+#include <linux/fsl/netc_global.h>
 #include <linux/of_mdio.h>
 #include <linux/of_platform.h>
 #include <linux/pinctrl/consumer.h>
@@ -27,13 +27,7 @@ static int enetc_pci_mdio_probe(struct pci_dev *pdev,
 	struct mii_bus *bus;
 	int err;
 
-	if (of_device_is_compatible(node, "fsl,imx95-netc-emdio")) {
-		err = netc_ierb_get_init_status();
-		if (err) {
-			dev_err(dev, "Cannot get IERB init status: %d\n", err);
-			return err;
-		}
-	}
+	pinctrl_pm_select_default_state(dev);
 
 	pinctrl_pm_select_default_state(dev);
 
@@ -121,6 +115,7 @@ err_mdiobus_alloc:
 err_hw_alloc:
 	iounmap(port_regs);
 err_ioremap:
+
 	return err;
 }
 

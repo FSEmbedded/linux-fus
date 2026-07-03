@@ -225,7 +225,7 @@ static int tilcdc_init(const struct drm_driver *ddrv, struct device *dev)
 	if (IS_ERR(priv->mmio)) {
 		dev_err(dev, "failed to request / ioremap\n");
 		ret = PTR_ERR(priv->mmio);
-		goto free_wq;
+		goto init_failed;
 	}
 
 	priv->clk = clk_get(dev, "fck");
@@ -576,19 +576,18 @@ static int tilcdc_pdev_probe(struct platform_device *pdev)
 						       match);
 }
 
-static int tilcdc_pdev_remove(struct platform_device *pdev)
+static void tilcdc_pdev_remove(struct platform_device *pdev)
 {
 	int ret;
 
 	ret = tilcdc_get_external_components(&pdev->dev, NULL);
 	if (ret < 0)
-		return ret;
+		dev_err(&pdev->dev, "tilcdc_get_external_components() failed (%pe)\n",
+			ERR_PTR(ret));
 	else if (ret == 0)
 		tilcdc_fini(platform_get_drvdata(pdev));
 	else
 		component_master_del(&pdev->dev, &tilcdc_comp_ops);
-
-	return 0;
 }
 
 static void tilcdc_pdev_shutdown(struct platform_device *pdev)
@@ -605,7 +604,7 @@ MODULE_DEVICE_TABLE(of, tilcdc_of_match);
 
 static struct platform_driver tilcdc_platform_driver = {
 	.probe      = tilcdc_pdev_probe,
-	.remove     = tilcdc_pdev_remove,
+	.remove_new = tilcdc_pdev_remove,
 	.shutdown   = tilcdc_pdev_shutdown,
 	.driver     = {
 		.name   = "tilcdc",

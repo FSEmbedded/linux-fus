@@ -2,7 +2,7 @@
 *
 *    The MIT License (MIT)
 *
-*    Copyright (c) 2014 - 2023 Vivante Corporation
+*    Copyright (c) 2014 - 2024 Vivante Corporation
 *
 *    Permission is hereby granted, free of charge, to any person obtaining a
 *    copy of this software and associated documentation files (the "Software"),
@@ -26,7 +26,7 @@
 *
 *    The GPL License (GPL)
 *
-*    Copyright (C) 2014 - 2023 Vivante Corporation
+*    Copyright (C) 2014 - 2024 Vivante Corporation
 *
 *    This program is free software; you can redistribute it and/or
 *    modify it under the terms of the GNU General Public License
@@ -351,7 +351,11 @@ _NonContiguous1MPagesAlloc(IN struct gfp_mdl_priv *MdlPriv,
         if (MdlPriv->Pages1M[i] == gcvNULL) {
             int order = get_order(gcd1M_PAGE_SIZE);
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 7, 0)
+            if (order >= MAX_PAGE_ORDER)
+#else
             if (order >= MAX_ORDER)
+#endif
                 gcmkONERROR(gcvSTATUS_OUT_OF_MEMORY);
 
             MdlPriv->Pages1M[i] = alloc_pages(Gfp, order);
@@ -478,7 +482,11 @@ Alloc:
         if (mdlPriv->contiguousPages == gcvNULL) {
             int order = get_order(bytes);
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 7, 0)
+            if (order >= MAX_PAGE_ORDER) {
+#else
             if (order >= MAX_ORDER) {
+#endif
                 status = gcvSTATUS_OUT_OF_MEMORY;
                 goto OnError;
             }
@@ -1165,6 +1173,7 @@ _GFPAlloctorInit(IN gckOS Os, IN gcsDEBUGFS_DIR *Parent, OUT gckALLOCATOR *Alloc
                           | gcvALLOC_FLAG_MEMLIMIT
                           | gcvALLOC_FLAG_ALLOC_ON_FAULT
                           | gcvALLOC_FLAG_DMABUF_EXPORTABLE
+                          | gcvALLOC_FLAG_FROM_USER
 #if (defined(CONFIG_ZONE_DMA32) || defined(CONFIG_ZONE_DMA)) && LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 37)
                           | gcvALLOC_FLAG_4GB_ADDR
 #endif

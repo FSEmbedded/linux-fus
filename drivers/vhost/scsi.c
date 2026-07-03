@@ -27,7 +27,7 @@
 #include <linux/miscdevice.h>
 #include <linux/blk_types.h>
 #include <linux/bio.h>
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 #include <scsi/scsi_common.h>
 #include <scsi/scsi_proto.h>
 #include <target/target_core_base.h>
@@ -210,6 +210,7 @@ struct vhost_scsi {
 
 struct vhost_scsi_tmf {
 	struct vhost_work vwork;
+	struct work_struct flush_work;
 	struct vhost_scsi *vhost;
 	struct vhost_scsi_virtqueue *svq;
 
@@ -358,14 +359,23 @@ static void vhost_scsi_release_tmf_res(struct vhost_scsi_tmf *tmf)
 	vhost_scsi_put_inflight(inflight);
 }
 
+static void vhost_scsi_drop_cmds(struct vhost_scsi_virtqueue *svq)
+{
+	struct vhost_scsi_cmd *cmd, *t;
+	struct llist_node *llnode;
+
+	llnode = llist_del_all(&svq->completion_list);
+	llist_for_each_entry_safe(cmd, t, llnode, tvc_completion_list)
+		vhost_scsi_release_cmd_res(&cmd->tvc_se_cmd);
+}
+
 static void vhost_scsi_release_cmd(struct se_cmd *se_cmd)
 {
 	if (se_cmd->se_cmd_flags & SCF_SCSI_TMR_CDB) {
 		struct vhost_scsi_tmf *tmf = container_of(se_cmd,
 					struct vhost_scsi_tmf, se_cmd);
-		struct vhost_virtqueue *vq = &tmf->svq->vq;
 
-		vhost_vq_work_queue(vq, &tmf->vwork);
+		schedule_work(&tmf->flush_work);
 	} else {
 		struct vhost_scsi_cmd *cmd = container_of(se_cmd,
 					struct vhost_scsi_cmd, tvc_se_cmd);
@@ -373,7 +383,8 @@ static void vhost_scsi_release_cmd(struct se_cmd *se_cmd)
 					struct vhost_scsi_virtqueue, vq);
 
 		llist_add(&cmd->tvc_completion_list, &svq->completion_list);
-		vhost_vq_work_queue(&svq->vq, &svq->completion_work);
+		if (!vhost_vq_work_queue(&svq->vq, &svq->completion_work))
+			vhost_scsi_drop_cmds(svq);
 	}
 }
 
@@ -624,7 +635,7 @@ vhost_scsi_get_cmd(struct vhost_virtqueue *vq, struct vhost_scsi_tpg *tpg,
 
 	tag = sbitmap_get(&svq->scsi_tags);
 	if (tag < 0) {
-		pr_err("Unable to obtain tag for vhost_scsi_cmd\n");
+		pr_warn_once("Guest sent too many cmds. Returning TASK_SET_FULL.\n");
 		return ERR_PTR(-ENOMEM);
 	}
 
@@ -923,26 +934,71 @@ static void vhost_scsi_target_queue_cmd(struct vhost_scsi_cmd *cmd)
 			       cmd->tvc_prot_sgl_count, GFP_KERNEL))
 		return;
 
-	target_queue_submission(se_cmd);
+	target_submit(se_cmd);
 }
+
+static void
+vhost_scsi_send_status(struct vhost_scsi *vs, struct vhost_virtqueue *vq,
+		       struct vhost_scsi_ctx *vc, u8 status)
+{
+	struct virtio_scsi_cmd_resp rsp;
+	struct iov_iter iov_iter;
+	int ret;
+
+	memset(&rsp, 0, sizeof(rsp));
+	rsp.status = status;
+
+	iov_iter_init(&iov_iter, ITER_DEST, &vq->iov[vc->out], vc->in,
+		      sizeof(rsp));
+
+	ret = copy_to_iter(&rsp, sizeof(rsp), &iov_iter);
+
+	if (likely(ret == sizeof(rsp)))
+		vhost_add_used_and_signal(&vs->dev, vq, vc->head, 0);
+	else
+		pr_err("Faulted on virtio_scsi_cmd_resp\n");
+}
+
+#define TYPE_IO_CMD    0
+#define TYPE_CTRL_TMF  1
+#define TYPE_CTRL_AN   2
 
 static void
 vhost_scsi_send_bad_target(struct vhost_scsi *vs,
 			   struct vhost_virtqueue *vq,
-			   int head, unsigned out)
+			   struct vhost_scsi_ctx *vc, int type)
 {
-	struct virtio_scsi_cmd_resp __user *resp;
-	struct virtio_scsi_cmd_resp rsp;
+	union {
+		struct virtio_scsi_cmd_resp cmd;
+		struct virtio_scsi_ctrl_tmf_resp tmf;
+		struct virtio_scsi_ctrl_an_resp an;
+	} rsp;
+	struct iov_iter iov_iter;
+	size_t rsp_size;
 	int ret;
 
 	memset(&rsp, 0, sizeof(rsp));
-	rsp.response = VIRTIO_SCSI_S_BAD_TARGET;
-	resp = vq->iov[out].iov_base;
-	ret = __copy_to_user(resp, &rsp, sizeof(rsp));
-	if (!ret)
-		vhost_add_used_and_signal(&vs->dev, vq, head, 0);
+
+	if (type == TYPE_IO_CMD) {
+		rsp_size = sizeof(struct virtio_scsi_cmd_resp);
+		rsp.cmd.response = VIRTIO_SCSI_S_BAD_TARGET;
+	} else if (type == TYPE_CTRL_TMF) {
+		rsp_size = sizeof(struct virtio_scsi_ctrl_tmf_resp);
+		rsp.tmf.response = VIRTIO_SCSI_S_BAD_TARGET;
+	} else {
+		rsp_size = sizeof(struct virtio_scsi_ctrl_an_resp);
+		rsp.an.response = VIRTIO_SCSI_S_BAD_TARGET;
+	}
+
+	iov_iter_init(&iov_iter, ITER_DEST, &vq->iov[vc->out], vc->in,
+		      rsp_size);
+
+	ret = copy_to_iter(&rsp, rsp_size, &iov_iter);
+
+	if (likely(ret == rsp_size))
+		vhost_add_used_and_signal(&vs->dev, vq, vc->head, 0);
 	else
-		pr_err("Faulted on virtio_scsi_cmd_resp\n");
+		pr_err("Faulted on virtio scsi type=%d\n", type);
 }
 
 static int
@@ -1173,7 +1229,7 @@ vhost_scsi_handle_vq(struct vhost_scsi *vs, struct vhost_virtqueue *vq)
 			/*
 			 * Set prot_iter to data_iter and truncate it to
 			 * prot_bytes, and advance data_iter past any
-			 * preceeding prot_bytes that may be present.
+			 * preceding prot_bytes that may be present.
 			 *
 			 * Also fix up the exp_data_len to reflect only the
 			 * actual data payload length.
@@ -1211,8 +1267,8 @@ vhost_scsi_handle_vq(struct vhost_scsi *vs, struct vhost_virtqueue *vq)
 					 exp_data_len + prot_bytes,
 					 data_direction);
 		if (IS_ERR(cmd)) {
-			vq_err(vq, "vhost_scsi_get_cmd failed %ld\n",
-			       PTR_ERR(cmd));
+			ret = PTR_ERR(cmd);
+			vq_err(vq, "vhost_scsi_get_tag failed %dd\n", ret);
 			goto err;
 		}
 		cmd->tvc_vhost = vs;
@@ -1249,11 +1305,15 @@ err:
 		 * EINVAL: Invalid response buffer, drop the request
 		 * EIO:    Respond with bad target
 		 * EAGAIN: Pending request
+		 * ENOMEM: Could not allocate resources for request
 		 */
 		if (ret == -ENXIO)
 			break;
 		else if (ret == -EIO)
-			vhost_scsi_send_bad_target(vs, vq, vc.head, vc.out);
+			vhost_scsi_send_bad_target(vs, vq, &vc, TYPE_IO_CMD);
+		else if (ret == -ENOMEM)
+			vhost_scsi_send_status(vs, vq, &vc,
+					       SAM_STAT_TASK_SET_FULL);
 	} while (likely(!vhost_exceeds_weight(vq, ++c, 0)));
 out:
 	mutex_unlock(&vq->mutex);
@@ -1285,27 +1345,12 @@ static void vhost_scsi_tmf_resp_work(struct vhost_work *work)
 {
 	struct vhost_scsi_tmf *tmf = container_of(work, struct vhost_scsi_tmf,
 						  vwork);
-	struct vhost_virtqueue *ctl_vq, *vq;
-	int resp_code, i;
+	int resp_code;
 
-	if (tmf->scsi_resp == TMR_FUNCTION_COMPLETE) {
-		/*
-		 * Flush IO vqs that don't share a worker with the ctl to make
-		 * sure they have sent their responses before us.
-		 */
-		ctl_vq = &tmf->vhost->vqs[VHOST_SCSI_VQ_CTL].vq;
-		for (i = VHOST_SCSI_VQ_IO; i < tmf->vhost->dev.nvqs; i++) {
-			vq = &tmf->vhost->vqs[i].vq;
-
-			if (vhost_vq_is_setup(vq) &&
-			    vq->worker != ctl_vq->worker)
-				vhost_vq_flush(vq);
-		}
-
+	if (tmf->scsi_resp == TMR_FUNCTION_COMPLETE)
 		resp_code = VIRTIO_SCSI_S_FUNCTION_SUCCEEDED;
-	} else {
+	else
 		resp_code = VIRTIO_SCSI_S_FUNCTION_REJECTED;
-	}
 
 	mutex_lock(&tmf->svq->vq.mutex);
 	vhost_scsi_send_tmf_resp(tmf->vhost, &tmf->svq->vq, tmf->in_iovs,
@@ -1313,6 +1358,20 @@ static void vhost_scsi_tmf_resp_work(struct vhost_work *work)
 	mutex_unlock(&tmf->svq->vq.mutex);
 
 	vhost_scsi_release_tmf_res(tmf);
+}
+
+static void vhost_scsi_tmf_flush_work(struct work_struct *work)
+{
+	struct vhost_scsi_tmf *tmf = container_of(work, struct vhost_scsi_tmf,
+						 flush_work);
+	struct vhost_virtqueue *vq = &tmf->svq->vq;
+	/*
+	 * Make sure we have sent responses for other commands before we
+	 * send our response.
+	 */
+	vhost_dev_flush(vq->dev);
+	if (!vhost_vq_work_queue(vq, &tmf->vwork))
+		vhost_scsi_release_tmf_res(tmf);
 }
 
 static void
@@ -1338,6 +1397,7 @@ vhost_scsi_handle_tmf(struct vhost_scsi *vs, struct vhost_scsi_tpg *tpg,
 	if (!tmf)
 		goto send_reject;
 
+	INIT_WORK(&tmf->flush_work, vhost_scsi_tmf_flush_work);
 	vhost_work_init(&tmf->vwork, vhost_scsi_tmf_resp_work);
 	tmf->vhost = vs;
 	tmf->svq = svq;
@@ -1486,7 +1546,10 @@ err:
 		if (ret == -ENXIO)
 			break;
 		else if (ret == -EIO)
-			vhost_scsi_send_bad_target(vs, vq, vc.head, vc.out);
+			vhost_scsi_send_bad_target(vs, vq, &vc,
+						   v_req.type == VIRTIO_SCSI_T_TMF ?
+						   TYPE_CTRL_TMF :
+						   TYPE_CTRL_AN);
 	} while (likely(!vhost_exceeds_weight(vq, ++c, 0)));
 out:
 	mutex_unlock(&vq->mutex);
@@ -2618,6 +2681,9 @@ static const struct target_core_fabric_ops vhost_scsi_ops = {
 	.tfc_wwn_attrs			= vhost_scsi_wwn_attrs,
 	.tfc_tpg_base_attrs		= vhost_scsi_tpg_attrs,
 	.tfc_tpg_attrib_attrs		= vhost_scsi_tpg_attrib_attrs,
+
+	.default_submit_type		= TARGET_QUEUE_SUBMIT,
+	.direct_submit_supp		= 1,
 };
 
 static int __init vhost_scsi_init(void)

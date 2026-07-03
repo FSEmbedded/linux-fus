@@ -211,7 +211,7 @@ static struct ksmbd_inode *ksmbd_inode_get(struct ksmbd_file *fp)
 	if (ci)
 		return ci;
 
-	ci = kmalloc(sizeof(struct ksmbd_inode), GFP_KERNEL);
+	ci = kmalloc(sizeof(struct ksmbd_inode), KSMBD_DEFAULT_GFP);
 	if (!ci)
 		return NULL;
 
@@ -333,14 +333,6 @@ static void __ksmbd_remove_durable_fd(struct ksmbd_file *fp)
 		return;
 
 	idr_remove(global_ft.idr, fp->persistent_id);
-	/*
-	 * Clear persistent_id so a later __ksmbd_close_fd() that runs from a
-	 * delayed putter (e.g. when a concurrent ksmbd_lookup_fd_inode()
-	 * walker held the final reference) does not re-issue idr_remove() on
-	 * an id that idr_alloc_cyclic() may have already handed out to a new
-	 * durable handle.
-	 */
-	fp->persistent_id = KSMBD_NO_FID;
 }
 
 static void ksmbd_remove_durable_fd(struct ksmbd_file *fp)
@@ -648,7 +640,7 @@ static int __open_id(struct ksmbd_file_table *ft, struct ksmbd_file *fp,
 		return -EMFILE;
 	}
 
-	idr_preload(GFP_KERNEL);
+	idr_preload(KSMBD_DEFAULT_GFP);
 	write_lock(&ft->lock);
 	ret = idr_alloc_cyclic(ft->idr, fp, 0, INT_MAX - 1, GFP_NOWAIT);
 	if (ret >= 0) {
@@ -676,7 +668,7 @@ struct ksmbd_file *ksmbd_open_fd(struct ksmbd_work *work, struct file *filp)
 	struct ksmbd_file *fp;
 	int ret;
 
-	fp = kmem_cache_zalloc(filp_cache, GFP_KERNEL);
+	fp = kmem_cache_zalloc(filp_cache, KSMBD_DEFAULT_GFP);
 	if (!fp) {
 		pr_err("Failed to allocate memory\n");
 		return ERR_PTR(-ENOMEM);
@@ -733,7 +725,6 @@ __close_file_table_ids(struct ksmbd_session *sess,
 				    struct ksmbd_file *fp,
 				    struct ksmbd_user *user))
 {
-	struct ksmbd_file_table *ft = &sess->file_table;
 	struct ksmbd_file *fp;
 	unsigned int id = 0;
 	int num = 0;
@@ -746,7 +737,7 @@ __close_file_table_ids(struct ksmbd_session *sess,
 			break;
 		}
 
-		if (skip(tcon, fp, sess->user) ||
+		if (skip(tcon, fp) ||
 		    !atomic_dec_and_test(&fp->refcount)) {
 			id++;
 			write_unlock(&ft->lock);
@@ -806,12 +797,8 @@ static bool tree_conn_fd_check(struct ksmbd_tree_connect *tcon,
 
 static bool ksmbd_durable_scavenger_alive(void)
 {
-	mutex_lock(&durable_scavenger_lock);
-	if (!durable_scavenger_running) {
-		mutex_unlock(&durable_scavenger_lock);
+	if (!durable_scavenger_running)
 		return false;
-	}
-	mutex_unlock(&durable_scavenger_lock);
 
 	if (kthread_should_stop())
 		return false;
@@ -822,37 +809,24 @@ static bool ksmbd_durable_scavenger_alive(void)
 	return true;
 }
 
-static void ksmbd_scavenger_dispose_dh(struct ksmbd_file *fp)
+static void ksmbd_scavenger_dispose_dh(struct list_head *head)
 {
-	/*
-	 * Durable-preserved fp can remain linked on f_ci->m_fp_list for
-	 * share-mode checks.  Unlink it before final close; fp->node is not
-	 * available as a scavenger-private list node because re-adding it to
-	 * another list corrupts m_fp_list.
-	 */
-	down_write(&fp->f_ci->m_lock);
-	list_del_init(&fp->node);
-	up_write(&fp->f_ci->m_lock);
+	while (!list_empty(head)) {
+		struct ksmbd_file *fp;
 
-	/*
-	 * Drop both the durable lifetime reference and the transient reference
-	 * taken by the scavenger under global_ft.lock.  If a concurrent
-	 * ksmbd_lookup_fd_inode() (or any other m_fp_list walker) snatched fp
-	 * before the unlink above, that holder owns the final close via
-	 * ksmbd_fd_put() -> __ksmbd_close_fd().  Otherwise the scavenger is
-	 * the last putter and finalises fp here.
-	 */
-	if (atomic_sub_and_test(2, &fp->refcount))
+		fp = list_first_entry(head, struct ksmbd_file, node);
+		list_del_init(&fp->node);
 		__ksmbd_close_fd(NULL, fp);
+	}
 }
 
 static int ksmbd_durable_scavenger(void *dummy)
 {
 	struct ksmbd_file *fp = NULL;
-	struct ksmbd_file *expired_fp;
 	unsigned int id;
 	unsigned int min_timeout = 1;
 	bool found_fp_timeout;
+	LIST_HEAD(scavenger_list);
 	unsigned long remaining_jiffies;
 
 	__module_get(THIS_MODULE);
@@ -862,6 +836,8 @@ static int ksmbd_durable_scavenger(void *dummy)
 		if (try_to_freeze())
 			continue;
 
+		found_fp_timeout = false;
+
 		remaining_jiffies = wait_event_timeout(dh_wq,
 				   ksmbd_durable_scavenger_alive() == false,
 				   __msecs_to_jiffies(min_timeout));
@@ -870,38 +846,22 @@ static int ksmbd_durable_scavenger(void *dummy)
 		else
 			min_timeout = DURABLE_HANDLE_MAX_TIMEOUT;
 
-		do {
-			expired_fp = NULL;
-			found_fp_timeout = false;
+		write_lock(&global_ft.lock);
+		idr_for_each_entry(global_ft.idr, fp, id) {
+			if (!fp->durable_timeout)
+				continue;
 
-			write_lock(&global_ft.lock);
-			idr_for_each_entry(global_ft.idr, fp, id) {
+			if (atomic_read(&fp->refcount) > 1 ||
+			    fp->conn)
+				continue;
+
+			found_fp_timeout = true;
+			if (fp->durable_scavenger_timeout <=
+			    jiffies_to_msecs(jiffies)) {
+				__ksmbd_remove_durable_fd(fp);
+				list_add(&fp->node, &scavenger_list);
+			} else {
 				unsigned long durable_timeout;
-
-				if (!fp->durable_timeout)
-					continue;
-
-				if (atomic_read(&fp->refcount) > 1 ||
-				    fp->conn)
-					continue;
-
-				found_fp_timeout = true;
-				if (fp->durable_scavenger_timeout <=
-				    jiffies_to_msecs(jiffies)) {
-					__ksmbd_remove_durable_fd(fp);
-					/*
-					 * Take a transient reference so fp
-					 * cannot be freed by an in-flight
-					 * ksmbd_lookup_fd_inode() that found
-					 * it through f_ci->m_fp_list while we
-					 * drop global_ft.lock and reach the
-					 * m_fp_list unlink in
-					 * ksmbd_scavenger_dispose_dh().
-					 */
-					atomic_inc(&fp->refcount);
-					expired_fp = fp;
-					break;
-				}
 
 				durable_timeout =
 					fp->durable_scavenger_timeout -
@@ -910,19 +870,16 @@ static int ksmbd_durable_scavenger(void *dummy)
 				if (min_timeout > durable_timeout)
 					min_timeout = durable_timeout;
 			}
-			write_unlock(&global_ft.lock);
+		}
+		write_unlock(&global_ft.lock);
 
-			if (expired_fp)
-				ksmbd_scavenger_dispose_dh(expired_fp);
-		} while (expired_fp);
+		ksmbd_scavenger_dispose_dh(&scavenger_list);
 
 		if (found_fp_timeout == false)
 			break;
 	}
 
-	mutex_lock(&durable_scavenger_lock);
 	durable_scavenger_running = false;
-	mutex_unlock(&durable_scavenger_lock);
 
 	module_put(THIS_MODULE);
 
@@ -966,60 +923,6 @@ void ksmbd_stop_durable_scavenger(void)
 		wake_up(&dh_wq);
 	mutex_unlock(&durable_scavenger_lock);
 	kthread_stop(server_conf.dh_task);
-}
-
-/*
- * ksmbd_vfs_copy_durable_owner - Copy owner info for durable reconnect
- * @fp: ksmbd file pointer to store owner info
- * @user: user pointer to copy from
- *
- * This function binds the current user's identity to the file handle
- * to satisfy MS-SMB2 Step 8 (SecurityContext matching) during reconnect.
- *
- * Return: 0 on success, or negative error code on failure
- */
-static int ksmbd_vfs_copy_durable_owner(struct ksmbd_file *fp,
-		struct ksmbd_user *user)
-{
-	if (!user)
-		return -EINVAL;
-
-	/* Duplicate the user name to ensure identity persistence */
-	fp->owner.name = kstrdup(user->name, GFP_KERNEL);
-	if (!fp->owner.name)
-		return -ENOMEM;
-
-	fp->owner.uid = user->uid;
-	fp->owner.gid = user->gid;
-
-	return 0;
-}
-
-/**
- * ksmbd_vfs_compare_durable_owner - Verify if the requester is original owner
- * @fp: existing ksmbd file pointer
- * @user: user pointer of the reconnect requester
- *
- * Compares the UID, GID, and name of the current requester against the
- * original owner stored in the file handle.
- *
- * Return: true if the user matches, false otherwise
- */
-bool ksmbd_vfs_compare_durable_owner(struct ksmbd_file *fp,
-		struct ksmbd_user *user)
-{
-	if (!user || !fp->owner.name)
-		return false;
-
-	/* Check if the UID and GID match first (fast path) */
-	if (fp->owner.uid != user->uid || fp->owner.gid != user->gid)
-		return false;
-
-	/* Validate the account name to ensure the same SecurityContext */
-	if (strcmp(fp->owner.name, user->name))
-		return false;
-
-	return true;
 }
 
 static bool session_fd_check(struct ksmbd_tree_connect *tcon,
@@ -1108,7 +1011,7 @@ int ksmbd_validate_name_reconnect(struct ksmbd_share_config *share,
 	char *pathname, *ab_pathname;
 	int ret = 0;
 
-	pathname = kmalloc(PATH_MAX, GFP_KERNEL);
+	pathname = kmalloc(PATH_MAX, KSMBD_DEFAULT_GFP);
 	if (!pathname)
 		return -EACCES;
 
@@ -1173,16 +1076,19 @@ int ksmbd_reopen_durable_fd(struct ksmbd_work *work, struct ksmbd_file *fp)
 	}
 	up_write(&ci->m_lock);
 
-	fp->owner.uid = fp->owner.gid = 0;
-	kfree(fp->owner.name);
-	fp->owner.name = NULL;
-
+	fp->f_state = FP_NEW;
+	__open_id(&work->sess->file_table, fp, OPEN_ID_TYPE_VOLATILE_ID);
+	if (!has_file_id(fp->volatile_id)) {
+		fp->conn = NULL;
+		fp->tcon = NULL;
+		return -EBADF;
+	}
 	return 0;
 }
 
 int ksmbd_init_file_table(struct ksmbd_file_table *ft)
 {
-	ft->idr = kzalloc(sizeof(struct idr), GFP_KERNEL);
+	ft->idr = kzalloc(sizeof(struct idr), KSMBD_DEFAULT_GFP);
 	if (!ft->idr)
 		return -ENOMEM;
 

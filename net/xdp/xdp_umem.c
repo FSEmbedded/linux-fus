@@ -148,6 +148,12 @@ static int xdp_umem_account_pages(struct xdp_umem *umem)
 	return 0;
 }
 
+#define XDP_UMEM_FLAGS_VALID ( \
+		XDP_UMEM_UNALIGNED_CHUNK_FLAG | \
+		XDP_UMEM_TX_SW_CSUM | \
+		XDP_UMEM_TX_METADATA_LEN | \
+	0)
+
 static int xdp_umem_reg(struct xdp_umem *umem, struct xdp_umem_reg *mr)
 {
 	bool unaligned_chunks = mr->flags & XDP_UMEM_UNALIGNED_CHUNK_FLAG;
@@ -167,7 +173,7 @@ static int xdp_umem_reg(struct xdp_umem *umem, struct xdp_umem_reg *mr)
 		return -EINVAL;
 	}
 
-	if (mr->flags & ~XDP_UMEM_UNALIGNED_CHUNK_FLAG)
+	if (mr->flags & ~XDP_UMEM_FLAGS_VALID)
 		return -EINVAL;
 
 	if (!unaligned_chunks && !is_power_of_2(chunk_size))
@@ -199,6 +205,12 @@ static int xdp_umem_reg(struct xdp_umem *umem, struct xdp_umem_reg *mr)
 	if (headroom > chunk_size - XDP_PACKET_HEADROOM -
 		       SKB_DATA_ALIGN(sizeof(struct skb_shared_info)) - 128)
 		return -EINVAL;
+
+	if (mr->flags & XDP_UMEM_TX_METADATA_LEN) {
+		if (mr->tx_metadata_len >= 256 || mr->tx_metadata_len % 8)
+			return -EINVAL;
+		umem->tx_metadata_len = mr->tx_metadata_len;
+	}
 
 	umem->size = size;
 	umem->headroom = headroom;

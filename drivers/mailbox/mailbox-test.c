@@ -425,7 +425,7 @@ err_free_chans:
 	return ret;
 }
 
-static int mbox_test_remove(struct platform_device *pdev)
+static void mbox_test_remove(struct platform_device *pdev)
 {
 	struct mbox_test_device *tdev = platform_get_drvdata(pdev);
 
@@ -435,8 +435,6 @@ static int mbox_test_remove(struct platform_device *pdev)
 		mbox_free_channel(tdev->tx_channel);
 	if (tdev->rx_channel && tdev->rx_channel != tdev->tx_channel)
 		mbox_free_channel(tdev->rx_channel);
-
-	return 0;
 }
 
 static const struct of_device_id mbox_test_match[] = {
@@ -451,7 +449,7 @@ static struct platform_driver mbox_test_driver = {
 		.of_match_table = mbox_test_match,
 	},
 	.probe  = mbox_test_probe,
-	.remove = mbox_test_remove,
+	.remove_new = mbox_test_remove,
 };
 module_platform_driver(mbox_test_driver);
 

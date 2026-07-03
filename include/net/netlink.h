@@ -41,7 +41,8 @@
  *   nlmsg_get_pos()			return current position in message
  *   nlmsg_trim()			trim part of message
  *   nlmsg_cancel()			cancel message construction
- *   nlmsg_free()			free a netlink message
+ *   nlmsg_consume()			free a netlink message (expected)
+ *   nlmsg_free()			free a netlink message (drop)
  *
  * Message Sending:
  *   nlmsg_multicast()			multicast message to several groups
@@ -157,7 +158,11 @@
  *   nla_parse()			parse and validate stream of attrs
  *   nla_parse_nested()			parse nested attributes
  *   nla_for_each_attr()		loop over all attributes
+ *   nla_for_each_attr_type()		loop over all attributes with the
+ *					given type
  *   nla_for_each_nested()		loop over the nested attributes
+ *   nla_for_each_nested_type()		loop over the nested attributes with
+ *					the given type
  *=========================================================================
  */
 
@@ -360,8 +365,8 @@ struct nla_policy {
 		const u32 mask;
 		const char *reject_message;
 		const struct nla_policy *nested_policy;
-		struct netlink_range_validation *range;
-		struct netlink_range_validation_signed *range_signed;
+		const struct netlink_range_validation *range;
+		const struct netlink_range_validation_signed *range_signed;
 		struct {
 			s16 min, max;
 		};
@@ -822,7 +827,7 @@ nlmsg_parse_deprecated_strict(const struct nlmsghdr *nlh, int hdrlen,
 /**
  * nlmsg_find_attr - find a specific attribute in a netlink message
  * @nlh: netlink message header
- * @hdrlen: length of familiy specific header
+ * @hdrlen: length of family specific header
  * @attrtype: type of attribute to look for
  *
  * Returns the first attribute which matches the specified type.
@@ -844,7 +849,7 @@ static inline struct nlattr *nlmsg_find_attr(const struct nlmsghdr *nlh,
  *
  * Validates all attributes in the specified attribute stream against the
  * specified policy. Validation is done in liberal mode.
- * See documenation of struct nla_policy for more details.
+ * See documentation of struct nla_policy for more details.
  *
  * Returns 0 on success or a negative error code.
  */
@@ -867,7 +872,7 @@ static inline int nla_validate_deprecated(const struct nlattr *head, int len,
  *
  * Validates all attributes in the specified attribute stream against the
  * specified policy. Validation is done in strict mode.
- * See documenation of struct nla_policy for more details.
+ * See documentation of struct nla_policy for more details.
  *
  * Returns 0 on success or a negative error code.
  */
@@ -882,7 +887,7 @@ static inline int nla_validate(const struct nlattr *head, int len, int maxtype,
 /**
  * nlmsg_validate_deprecated - validate a netlink message including attributes
  * @nlh: netlinket message header
- * @hdrlen: length of familiy specific header
+ * @hdrlen: length of family specific header
  * @maxtype: maximum attribute type to be expected
  * @policy: validation policy
  * @extack: extended ACK report struct
@@ -928,7 +933,7 @@ static inline u32 nlmsg_seq(const struct nlmsghdr *nlh)
  * nlmsg_for_each_attr - iterate over a stream of attributes
  * @pos: loop counter, set to current attribute
  * @nlh: netlink message header
- * @hdrlen: length of familiy specific header
+ * @hdrlen: length of family specific header
  * @rem: initialized to len, holds bytes currently remaining in stream
  */
 #define nlmsg_for_each_attr(pos, nlh, hdrlen, rem) \
@@ -1011,11 +1016,25 @@ static inline struct sk_buff *nlmsg_new(size_t payload, gfp_t flags)
 }
 
 /**
+ * nlmsg_new_large - Allocate a new netlink message with non-contiguous
+ * physical memory
+ * @payload: size of the message payload
+ *
+ * The allocated skb is unable to have frag page for shinfo->frags*,
+ * as the NULL setting for skb->head in netlink_skb_destructor() will
+ * bypass most of the handling in skb_release_data()
+ */
+static inline struct sk_buff *nlmsg_new_large(size_t payload)
+{
+	return netlink_alloc_large_skb(nlmsg_total_size(payload), 0);
+}
+
+/**
  * nlmsg_end - Finalize a netlink message
  * @skb: socket buffer the message is stored in
  * @nlh: netlink message header
  *
- * Corrects the netlink message header to include the appeneded
+ * Corrects the netlink message header to include the appended
  * attributes. Only necessary if attributes have been added to
  * the message.
  */
@@ -1064,12 +1083,51 @@ static inline void nlmsg_cancel(struct sk_buff *skb, struct nlmsghdr *nlh)
 }
 
 /**
- * nlmsg_free - free a netlink message
+ * nlmsg_free - drop a netlink message
  * @skb: socket buffer of netlink message
  */
 static inline void nlmsg_free(struct sk_buff *skb)
 {
 	kfree_skb(skb);
+}
+
+/**
+ * nlmsg_consume - free a netlink message
+ * @skb: socket buffer of netlink message
+ */
+static inline void nlmsg_consume(struct sk_buff *skb)
+{
+	consume_skb(skb);
+}
+
+/**
+ * nlmsg_multicast_filtered - multicast a netlink message with filter function
+ * @sk: netlink socket to spread messages to
+ * @skb: netlink message as socket buffer
+ * @portid: own netlink portid to avoid sending to yourself
+ * @group: multicast group id
+ * @flags: allocation flags
+ * @filter: filter function
+ * @filter_data: filter function private data
+ *
+ * Return: 0 on success, negative error code for failure.
+ */
+static inline int nlmsg_multicast_filtered(struct sock *sk, struct sk_buff *skb,
+					   u32 portid, unsigned int group,
+					   gfp_t flags,
+					   netlink_filter_fn filter,
+					   void *filter_data)
+{
+	int err;
+
+	NETLINK_CB(skb).dst_group = group;
+
+	err = netlink_broadcast_filtered(sk, skb, portid, group, flags,
+					 filter, filter_data);
+	if (err > 0)
+		err = 0;
+
+	return err;
 }
 
 /**
@@ -1083,15 +1141,8 @@ static inline void nlmsg_free(struct sk_buff *skb)
 static inline int nlmsg_multicast(struct sock *sk, struct sk_buff *skb,
 				  u32 portid, unsigned int group, gfp_t flags)
 {
-	int err;
-
-	NETLINK_CB(skb).dst_group = group;
-
-	err = netlink_broadcast(sk, skb, portid, group, flags);
-	if (err > 0)
-		err = 0;
-
-	return err;
+	return nlmsg_multicast_filtered(sk, skb, portid, group, flags,
+					NULL, NULL);
 }
 
 /**
@@ -1200,7 +1251,7 @@ static inline void *nla_data(const struct nlattr *nla)
  * nla_len - length of payload
  * @nla: netlink attribute
  */
-static inline int nla_len(const struct nlattr *nla)
+static inline u16 nla_len(const struct nlattr *nla)
 {
 	return nla->nla_len - NLA_HDRLEN;
 }
@@ -1854,10 +1905,11 @@ static inline struct nla_bitfield32 nla_get_bitfield32(const struct nlattr *nla)
  * @src: netlink attribute to duplicate from
  * @gfp: GFP mask
  */
-static inline void *nla_memdup(const struct nlattr *src, gfp_t gfp)
+static inline void *nla_memdup_noprof(const struct nlattr *src, gfp_t gfp)
 {
-	return kmemdup(nla_data(src), nla_len(src), gfp);
+	return kmemdup_noprof(nla_data(src), nla_len(src), gfp);
 }
+#define nla_memdup(...)	alloc_hooks(nla_memdup_noprof(__VA_ARGS__))
 
 /**
  * nla_nest_start_noflag - Start a new level of nested attributes
@@ -1902,7 +1954,7 @@ static inline struct nlattr *nla_nest_start(struct sk_buff *skb, int attrtype)
  * @start: container attribute
  *
  * Corrects the container attribute header to include the all
- * appeneded attributes.
+ * appended attributes.
  *
  * Returns the total data length of the skb.
  */
@@ -1935,7 +1987,7 @@ static inline void nla_nest_cancel(struct sk_buff *skb, struct nlattr *start)
  *
  * Validates all attributes in the nested attribute stream against the
  * specified policy. Attributes with a type exceeding maxtype will be
- * ignored. See documenation of struct nla_policy for more details.
+ * ignored. See documentation of struct nla_policy for more details.
  *
  * Returns 0 on success or a negative error code.
  */
@@ -2034,6 +2086,18 @@ static inline int nla_total_size_64bit(int payload)
 	     pos = nla_next(pos, &(rem)))
 
 /**
+ * nla_for_each_attr_type - iterate over a stream of attributes
+ * @pos: loop counter, set to current attribute
+ * @type: required attribute type for @pos
+ * @head: head of attribute stream
+ * @len: length of attribute stream
+ * @rem: initialized to len, holds bytes currently remaining in stream
+ */
+#define nla_for_each_attr_type(pos, type, head, len, rem) \
+	nla_for_each_attr(pos, head, len, rem) \
+		if (nla_type(pos) == type)
+
+/**
  * nla_for_each_nested - iterate over nested attributes
  * @pos: loop counter, set to current attribute
  * @nla: attribute containing the nested attributes
@@ -2041,6 +2105,17 @@ static inline int nla_total_size_64bit(int payload)
  */
 #define nla_for_each_nested(pos, nla, rem) \
 	nla_for_each_attr(pos, nla_data(nla), nla_len(nla), rem)
+
+/**
+ * nla_for_each_nested_type - iterate over nested attributes
+ * @pos: loop counter, set to current attribute
+ * @type: required attribute type for @pos
+ * @nla: attribute containing the nested attributes
+ * @rem: initialized to len, holds bytes currently remaining in stream
+ */
+#define nla_for_each_nested_type(pos, type, nla, rem) \
+	nla_for_each_nested(pos, nla, rem) \
+		if (nla_type(pos) == type)
 
 /**
  * nla_is_last - Test if attribute is last in stream

@@ -64,6 +64,7 @@ static const struct imx_pll14xx_rate_table imx_pll1443x_tbl[] = {
 	PLL_1443X_RATE(650000000U, 325, 3, 2, 0),
 	PLL_1443X_RATE(594000000U, 198, 2, 2, 0),
 	PLL_1443X_RATE(519750000U, 173, 2, 2, 16384),
+	PLL_1443X_RATE(400000000U, 200, 3, 2, 0),
 	PLL_1443X_RATE(393216000U, 262, 2, 3, 9437),
 	PLL_1443X_RATE(361267200U, 361, 3, 3, 17511),
 	PLL_1443X_RATE(245760000U, 328, 4, 3, 0xae15),
@@ -169,6 +170,7 @@ static void imx_pll14xx_calc_settings(struct clk_pll14xx *pll, unsigned long rat
 	 * d) -32768 <= k <= 32767
 	 *
 	 * fvco = (m * 65536 + k) * prate / (p * 65536)
+	 * fout = (m * 65536 + k) * prate / (p * 65536) / (1 << sdiv)
 	 *
 	 * e) 1600MHz <= fvco <= 3200MHz
 	 */

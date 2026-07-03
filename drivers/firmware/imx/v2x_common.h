@@ -3,6 +3,7 @@
  * Copyright 2024 NXP
  */
 
+
 #ifndef __V2X_COMMON_H__
 #define __V2X_COMMON_H__
 

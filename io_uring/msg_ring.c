@@ -13,7 +13,6 @@
 #include "filetable.h"
 #include "msg_ring.h"
 
-
 /* All valid masks for MSG_RING */
 #define IORING_MSG_RING_MASK		(IORING_MSG_RING_CQE_SKIP | \
 					IORING_MSG_RING_FLAGS_PASS)
@@ -68,59 +67,52 @@ void io_msg_ring_cleanup(struct io_kiocb *req)
 
 static inline bool io_msg_need_remote(struct io_ring_ctx *target_ctx)
 {
-	if (!target_ctx->task_complete)
-		return false;
-	return current != target_ctx->submitter_task;
+	return target_ctx->task_complete;
 }
 
-static int io_msg_exec_remote(struct io_kiocb *req, task_work_func_t func)
+static void io_msg_tw_complete(struct io_kiocb *req, struct io_tw_state *ts)
 {
-	struct io_ring_ctx *ctx = req->file->private_data;
-	struct io_msg *msg = io_kiocb_to_cmd(req, struct io_msg);
-	struct task_struct *task = READ_ONCE(ctx->submitter_task);
+	struct io_ring_ctx *ctx = req->ctx;
 
-	if (unlikely(!task))
-		return -EOWNERDEAD;
-
-	init_task_work(&msg->tw, func);
-	if (task_work_add(ctx->submitter_task, &msg->tw, TWA_SIGNAL))
-		return -EOWNERDEAD;
-
-	return IOU_ISSUE_SKIP_COMPLETE;
+	io_add_aux_cqe(ctx, req->cqe.user_data, req->cqe.res, req->cqe.flags);
+	kfree_rcu(req, rcu_head);
+	percpu_ref_put(&ctx->refs);
 }
 
-static void io_msg_tw_complete(struct callback_head *head)
+static int io_msg_remote_post(struct io_ring_ctx *ctx, struct io_kiocb *req,
+			      int res, u32 cflags, u64 user_data)
 {
-	struct io_msg *msg = container_of(head, struct io_msg, tw);
-	struct io_kiocb *req = cmd_to_io_kiocb(msg);
-	struct io_ring_ctx *target_ctx = req->file->private_data;
-	int ret = 0;
-
-	if (current->flags & PF_EXITING) {
-		ret = -EOWNERDEAD;
-	} else {
-		u32 flags = 0;
-
-		if (msg->flags & IORING_MSG_RING_FLAGS_PASS)
-			flags = msg->cqe_flags;
-
-		/*
-		 * If the target ring is using IOPOLL mode, then we need to be
-		 * holding the uring_lock for posting completions. Other ring
-		 * types rely on the regular completion locking, which is
-		 * handled while posting.
-		 */
-		if (target_ctx->flags & IORING_SETUP_IOPOLL)
-			mutex_lock(&target_ctx->uring_lock);
-		if (!io_post_aux_cqe(target_ctx, msg->user_data, msg->len, flags))
-			ret = -EOVERFLOW;
-		if (target_ctx->flags & IORING_SETUP_IOPOLL)
-			mutex_unlock(&target_ctx->uring_lock);
+	req->task = READ_ONCE(ctx->submitter_task);
+	if (!req->task) {
+		kfree_rcu(req, rcu_head);
+		return -EOWNERDEAD;
 	}
+	req->opcode = IORING_OP_NOP;
+	req->cqe.user_data = user_data;
+	io_req_set_res(req, res, cflags);
+	percpu_ref_get(&ctx->refs);
+	req->ctx = ctx;
+	req->io_task_work.func = io_msg_tw_complete;
+	io_req_task_work_add_remote(req, ctx, IOU_F_TWQ_LAZY_WAKE);
+	return 0;
+}
 
-	if (ret < 0)
-		req_set_fail(req);
-	io_req_queue_tw_complete(req, ret);
+static int io_msg_data_remote(struct io_kiocb *req)
+{
+	struct io_ring_ctx *target_ctx = req->file->private_data;
+	struct io_msg *msg = io_kiocb_to_cmd(req, struct io_msg);
+	struct io_kiocb *target;
+	u32 flags = 0;
+
+	target = kmem_cache_alloc(req_cachep, GFP_KERNEL | __GFP_NOWARN | __GFP_ZERO);
+	if (unlikely(!target))
+		return -ENOMEM;
+
+	if (msg->flags & IORING_MSG_RING_FLAGS_PASS)
+		flags = msg->cqe_flags;
+
+	return io_msg_remote_post(target_ctx, target, msg->len, flags,
+					msg->user_data);
 }
 
 static int io_msg_ring_data(struct io_kiocb *req, unsigned int issue_flags)
@@ -138,7 +130,7 @@ static int io_msg_ring_data(struct io_kiocb *req, unsigned int issue_flags)
 		return -EBADFD;
 
 	if (io_msg_need_remote(target_ctx))
-		return io_msg_exec_remote(req, io_msg_tw_complete);
+		return io_msg_data_remote(req);
 
 	if (msg->flags & IORING_MSG_RING_FLAGS_PASS)
 		flags = msg->cqe_flags;
@@ -147,13 +139,11 @@ static int io_msg_ring_data(struct io_kiocb *req, unsigned int issue_flags)
 	if (target_ctx->flags & IORING_SETUP_IOPOLL) {
 		if (unlikely(io_double_lock_ctx(target_ctx, issue_flags)))
 			return -EAGAIN;
-		if (io_post_aux_cqe(target_ctx, msg->user_data, msg->len, flags))
-			ret = 0;
-		io_double_unlock_ctx(target_ctx);
-	} else {
-		if (io_post_aux_cqe(target_ctx, msg->user_data, msg->len, flags))
-			ret = 0;
 	}
+	if (io_post_aux_cqe(target_ctx, msg->user_data, msg->len, flags))
+		ret = 0;
+	if (target_ctx->flags & IORING_SETUP_IOPOLL)
+		io_double_unlock_ctx(target_ctx);
 	return ret;
 }
 
@@ -220,6 +210,22 @@ static void io_msg_tw_fd_complete(struct callback_head *head)
 	io_req_queue_tw_complete(req, ret);
 }
 
+static int io_msg_fd_remote(struct io_kiocb *req)
+{
+	struct io_ring_ctx *ctx = req->file->private_data;
+	struct io_msg *msg = io_kiocb_to_cmd(req, struct io_msg);
+	struct task_struct *task = READ_ONCE(ctx->submitter_task);
+
+	if (unlikely(!task))
+		return -EOWNERDEAD;
+
+	init_task_work(&msg->tw, io_msg_tw_fd_complete);
+	if (task_work_add(task, &msg->tw, TWA_SIGNAL))
+		return -EOWNERDEAD;
+
+	return IOU_ISSUE_SKIP_COMPLETE;
+}
+
 static int io_msg_send_fd(struct io_kiocb *req, unsigned int issue_flags)
 {
 	struct io_ring_ctx *target_ctx = req->file->private_data;
@@ -242,7 +248,7 @@ static int io_msg_send_fd(struct io_kiocb *req, unsigned int issue_flags)
 	}
 
 	if (io_msg_need_remote(target_ctx))
-		return io_msg_exec_remote(req, io_msg_tw_fd_complete);
+		return io_msg_fd_remote(req);
 	return io_msg_install_complete(req, issue_flags);
 }
 
@@ -295,4 +301,11 @@ done:
 	}
 	io_req_set_res(req, ret, 0);
 	return IOU_OK;
+}
+
+void io_msg_cache_free(const void *entry)
+{
+	struct io_kiocb *req = (struct io_kiocb *) entry;
+
+	kmem_cache_free(req_cachep, req);
 }

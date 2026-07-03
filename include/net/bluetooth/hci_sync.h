@@ -37,6 +37,10 @@ struct hci_cmd_sync_work_entry {
 };
 
 struct adv_info;
+
+struct sk_buff *hci_cmd_sync_alloc(struct hci_dev *hdev, u16 opcode, u32 plen,
+				   const void *param, struct sock *sk);
+
 /* Function with sync suffix shall not be called with hdev->lock held as they
  * wait the command to complete and in the meantime an event could be received
  * which could attempt to acquire hdev->lock causing a deadlock.
@@ -152,6 +156,8 @@ int hci_update_discoverable(struct hci_dev *hdev);
 
 int hci_update_connectable_sync(struct hci_dev *hdev);
 
+int hci_inquiry_sync(struct hci_dev *hdev, u8 length, u8 num_rsp);
+
 int hci_start_discovery_sync(struct hci_dev *hdev);
 int hci_stop_discovery_sync(struct hci_dev *hdev);
 
@@ -159,6 +165,7 @@ int hci_suspend_sync(struct hci_dev *hdev);
 int hci_resume_sync(struct hci_dev *hdev);
 
 struct hci_conn;
+struct hci_conn_params;
 
 int hci_abort_conn_sync(struct hci_dev *hdev, struct hci_conn *conn, u8 reason);
 
@@ -177,3 +184,8 @@ int hci_connect_acl_sync(struct hci_dev *hdev, struct hci_conn *conn);
 int hci_connect_le_sync(struct hci_dev *hdev, struct hci_conn *conn);
 
 int hci_cancel_connect_sync(struct hci_dev *hdev, struct hci_conn *conn);
+int hci_le_conn_update_sync(struct hci_dev *hdev, struct hci_conn *conn,
+			    struct hci_conn_params *params);
+
+int hci_connect_pa_sync(struct hci_dev *hdev, struct hci_conn *conn);
+int hci_connect_big_sync(struct hci_dev *hdev, struct hci_conn *conn);

@@ -26,7 +26,7 @@
 #include <linux/usb/cdc.h>
 #include <linux/wwan.h>
 #include <asm/byteorder.h>
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 #include <linux/usb/cdc-wdm.h>
 
 #define DRIVER_AUTHOR "Oliver Neukum"
@@ -225,8 +225,7 @@ static void wdm_in_callback(struct urb *urb)
 		/* we may already be in overflow */
 		if (!test_bit(WDM_OVERFLOW, &desc->flags)) {
 			memmove(desc->ubuf + desc->length, desc->inbuf, length);
-			smp_wmb(); /* against wdm_read() */
-			WRITE_ONCE(desc->length, desc->length + length);
+			desc->length += length;
 		}
 	}
 skip_error:

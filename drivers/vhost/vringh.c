@@ -1616,4 +1616,5 @@ EXPORT_SYMBOL(vringh_need_notify_iotlb);
 
 #endif
 
+MODULE_DESCRIPTION("host side of a virtio ring");
 MODULE_LICENSE("GPL");

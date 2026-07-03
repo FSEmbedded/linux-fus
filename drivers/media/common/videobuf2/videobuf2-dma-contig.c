@@ -428,6 +428,17 @@ static int
 vb2_dc_dmabuf_ops_begin_cpu_access(struct dma_buf *dbuf,
 				   enum dma_data_direction direction)
 {
+	struct vb2_dc_buf *buf = dbuf->priv;
+	struct sg_table *sgt = buf->dma_sgt;
+
+	if (!buf->non_coherent_mem)
+		return 0;
+
+	if (buf->vaddr)
+		invalidate_kernel_vmap_range(buf->vaddr, buf->size);
+
+	dma_sync_sgtable_for_cpu(buf->dev, sgt, direction);
+
 	return 0;
 }
 
@@ -435,6 +446,17 @@ static int
 vb2_dc_dmabuf_ops_end_cpu_access(struct dma_buf *dbuf,
 				 enum dma_data_direction direction)
 {
+	struct vb2_dc_buf *buf = dbuf->priv;
+	struct sg_table *sgt = buf->dma_sgt;
+
+	if (!buf->non_coherent_mem)
+		return 0;
+
+	if (buf->vaddr)
+		flush_kernel_vmap_range(buf->vaddr, buf->size);
+
+	dma_sync_sgtable_for_device(buf->dev, sgt, direction);
+
 	return 0;
 }
 
@@ -543,13 +565,14 @@ static void vb2_dc_put_userptr(void *buf_priv)
 		 */
 		dma_unmap_sgtable(buf->dev, sgt, buf->dma_dir,
 				  DMA_ATTR_SKIP_CPU_SYNC);
-		pages = frame_vector_pages(buf->vec);
-		/* sgt should exist only if vector contains pages... */
-		BUG_ON(IS_ERR(pages));
 		if (buf->dma_dir == DMA_FROM_DEVICE ||
-		    buf->dma_dir == DMA_BIDIRECTIONAL)
-			for (i = 0; i < frame_vector_count(buf->vec); i++)
-				set_page_dirty_lock(pages[i]);
+				buf->dma_dir == DMA_BIDIRECTIONAL) {
+			pages = frame_vector_pages(buf->vec);
+			/* sgt should exist only if vector contains pages... */
+			if (!WARN_ON_ONCE(IS_ERR(pages)))
+				for (i = 0; i < frame_vector_count(buf->vec); i++)
+					set_page_dirty_lock(pages[i]);
+		}
 		sg_free_table(sgt);
 		kfree(sgt);
 	} else {
@@ -854,8 +877,7 @@ int vb2_dma_contig_set_max_seg_size(struct device *dev, unsigned int size)
 		return -ENODEV;
 	}
 	if (dma_get_max_seg_size(dev) < size)
-		return dma_set_max_seg_size(dev, size);
-
+		dma_set_max_seg_size(dev, size);
 	return 0;
 }
 EXPORT_SYMBOL_GPL(vb2_dma_contig_set_max_seg_size);

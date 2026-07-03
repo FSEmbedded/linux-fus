@@ -157,8 +157,8 @@ static int hfsplus_uni2asc(struct super_block *sb, const struct hfsplus_unistr *
 	ip = ustr->unicode;
 
 	ustrlen = be16_to_cpu(ustr->length);
-	if (ustrlen > max_len) {
-		ustrlen = max_len;
+	if (ustrlen > HFSPLUS_MAX_STRLEN) {
+		ustrlen = HFSPLUS_MAX_STRLEN;
 		pr_err("invalid length %u has been corrected to %d\n",
 			be16_to_cpu(ustr->length), ustrlen);
 	}

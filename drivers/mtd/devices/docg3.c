@@ -2056,7 +2056,7 @@ static void docg3_release(struct platform_device *pdev)
 		if (cascade->floors[floor])
 			doc_release_device(cascade->floors[floor]);
 
-	bch_free(cascade->bch);
+	bch_free(docg3->cascade->bch);
 }
 
 #ifdef CONFIG_OF

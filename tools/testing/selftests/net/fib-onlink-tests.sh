@@ -173,10 +173,8 @@ setup()
 
 	set -e
 
-	# create namespaces
-	setup_ns ns1
-	IP="ip -netns $ns1"
-	setup_ns ns2
+	# create namespace
+	setup_ns PEER_NS
 
 	# add vrf table
 	${IP} li add ${VRF} type vrf table ${VRF_TABLE}
@@ -213,6 +211,18 @@ setup()
 	${IP} -6 ro add table ${VRF_TABLE} default via ${V6ADDRS[p7]/::[0-9]/::64}
 
 	set +e
+}
+
+cleanup()
+{
+	# make sure we start from a clean slate
+	cleanup_ns ${PEER_NS} 2>/dev/null
+	for n in 1 3 5 7; do
+		ip link del ${NETIFS[p${n}]} 2>/dev/null
+	done
+	ip link del ${VRF} 2>/dev/null
+	ip ro flush table ${VRF_TABLE}
+	ip -6 ro flush table ${VRF_TABLE}
 }
 
 ################################################################################

@@ -187,8 +187,6 @@ static void usb6fire_chip_disconnect(struct usb_interface *intf)
 			if (card)
 				snd_card_disconnect(card);
 			usb6fire_chip_abort(chip);
-			if (card)
-				snd_card_free_when_closed(card);
 		}
 	}
 }

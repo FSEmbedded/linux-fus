@@ -6,8 +6,7 @@
 #include <linux/delay.h>
 #include <linux/dmaengine.h>
 #include <linux/module.h>
-#include <linux/of_device.h>
-#include <linux/of_address.h>
+#include <linux/of.h>
 #include <linux/pm_runtime.h>
 #include <linux/rpmsg.h>
 #include <linux/slab.h>
@@ -222,21 +221,6 @@ static int fsl_rpmsg_probe(struct platform_device *pdev)
 		dai_drv->capture.rates = rpmsg->soc_data->rates;
 		dai_drv->playback.formats = rpmsg->soc_data->formats;
 		dai_drv->capture.formats = rpmsg->soc_data->formats;
-
-		/* setup rpmsg-micfil channels and rates */
-		if (of_node_name_eq(np, "rpmsg_micfil")) {
-			rpmsg->buffer_size[SNDRV_PCM_STREAM_CAPTURE] = RPMSG_CAPTURE_BUFFER_SIZE;
-			dai_drv->capture.channels_min = 1;
-			dai_drv->capture.channels_max = 8;
-			dai_drv->capture.rates = SNDRV_PCM_RATE_8000_48000;
-			dai_drv->capture.formats = SNDRV_PCM_FMTBIT_S32_LE;
-			if (of_device_is_compatible(np, "fsl,imx8mm-rpmsg-audio"))
-				dai_drv->capture.formats = SNDRV_PCM_FMTBIT_S16_LE;
-
-			if (of_device_is_compatible(np, "fsl,imx8ulp-rpmsg-audio") ||
-			    of_device_is_compatible(np, "fsl,imx93-rpmsg-audio"))
-				dai_drv->capture.rates = SNDRV_PCM_RATE_16000;
-		}
 	}
 
 	/* Use rpmsg channel name as cpu dai name */
@@ -250,6 +234,21 @@ static int fsl_rpmsg_probe(struct platform_device *pdev)
 		}
 	}
 	dai_drv->name = dai_name;
+
+	/* setup rpmsg-micfil channels and rates */
+	if (!strcmp(dai_name, "rpmsg-micfil-channel")) {
+		rpmsg->buffer_size[SNDRV_PCM_STREAM_CAPTURE] = RPMSG_CAPTURE_BUFFER_SIZE;
+		dai_drv->capture.channels_min = 1;
+		dai_drv->capture.channels_max = 8;
+		dai_drv->capture.rates = SNDRV_PCM_RATE_8000_48000;
+		dai_drv->capture.formats = SNDRV_PCM_FMTBIT_S32_LE;
+		if (of_device_is_compatible(np, "fsl,imx8mm-rpmsg-audio"))
+			dai_drv->capture.formats = SNDRV_PCM_FMTBIT_S16_LE;
+
+		if (of_device_is_compatible(np, "fsl,imx8ulp-rpmsg-audio") ||
+		    of_device_is_compatible(np, "fsl,imx93-rpmsg-audio"))
+			dai_drv->capture.rates = SNDRV_PCM_RATE_16000;
+	}
 
 	if (of_property_read_bool(np, "fsl,enable-lpa")) {
 		rpmsg->enable_lpa = 1;
@@ -306,7 +305,6 @@ static void fsl_rpmsg_remove(struct platform_device *pdev)
 		platform_device_unregister(rpmsg->card_pdev);
 }
 
-#ifdef CONFIG_PM
 static int fsl_rpmsg_runtime_resume(struct device *dev)
 {
 	struct fsl_rpmsg *rpmsg = dev_get_drvdata(dev);
@@ -341,20 +339,18 @@ static int fsl_rpmsg_runtime_suspend(struct device *dev)
 
 	return 0;
 }
-#endif
 
 static const struct dev_pm_ops fsl_rpmsg_pm_ops = {
-	SET_RUNTIME_PM_OPS(fsl_rpmsg_runtime_suspend,
-			   fsl_rpmsg_runtime_resume,
-			   NULL)
+	RUNTIME_PM_OPS(fsl_rpmsg_runtime_suspend, fsl_rpmsg_runtime_resume,
+		       NULL)
 };
 
 static struct platform_driver fsl_rpmsg_driver = {
 	.probe  = fsl_rpmsg_probe,
-	.remove_new = fsl_rpmsg_remove,
+	.remove = fsl_rpmsg_remove,
 	.driver = {
 		.name = "fsl_rpmsg",
-		.pm = &fsl_rpmsg_pm_ops,
+		.pm = pm_ptr(&fsl_rpmsg_pm_ops),
 		.of_match_table = fsl_rpmsg_ids,
 	},
 };

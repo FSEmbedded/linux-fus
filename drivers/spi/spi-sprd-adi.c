@@ -528,7 +528,7 @@ static int sprd_adi_probe(struct platform_device *pdev)
 	pdev->id = of_alias_get_id(np, "spi");
 	num_chipselect = of_get_child_count(np);
 
-	ctlr = devm_spi_alloc_host(&pdev->dev, sizeof(struct sprd_adi));
+	ctlr = spi_alloc_host(&pdev->dev, sizeof(struct sprd_adi));
 	if (!ctlr)
 		return -ENOMEM;
 
@@ -581,11 +581,17 @@ static int sprd_adi_probe(struct platform_device *pdev)
 		ret = devm_register_restart_handler(&pdev->dev,
 						    sadi->data->restart,
 						    sadi);
-		if (ret)
-			return dev_err_probe(&pdev->dev, ret, "can not register restart handler\n");
+		if (ret) {
+			dev_err(&pdev->dev, "can not register restart handler\n");
+			goto put_ctlr;
+		}
 	}
 
 	return 0;
+
+put_ctlr:
+	spi_controller_put(ctlr);
+	return ret;
 }
 
 static struct sprd_adi_data sc9860_data = {

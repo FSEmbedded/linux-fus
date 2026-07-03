@@ -34,7 +34,6 @@
 #include <xen/features.h>
 #include <xen/hvc-console.h>
 #include "xen-ops.h"
-#include "mmu.h"
 
 #define GB(x) ((uint64_t)(x) * 1024 * 1024 * 1024)
 
@@ -656,7 +655,7 @@ static void __init xen_e820_swap_entry_with_ram(struct e820_entry *swap_entry)
 			/* Fill new entry (keep size and page offset). */
 			entry->type = swap_entry->type;
 			entry->addr = entry_end - swap_size +
-				      swap_entry->addr - swap_addr;
+				      swap_addr - swap_entry->addr;
 			entry->size = swap_entry->size;
 
 			/* Convert old entry to RAM, align to pages. */

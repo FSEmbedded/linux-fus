@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
 /*
  *
- * (C) COPYRIGHT 2010-2024 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2025 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -53,29 +53,6 @@ struct kbase_device;
 int kbase_pm_init(struct kbase_device *kbdev);
 
 /**
- * kbase_pm_powerup - Power up GPU after all modules have been initialized
- *                    and interrupt handlers installed.
- *
- * @kbdev:     The kbase device structure for the device (must be a valid pointer)
- * @flags:     Flags to pass on to kbase_pm_init_hw
- *
- * Return: 0 if powerup was successful.
- */
-int kbase_pm_powerup(struct kbase_device *kbdev, unsigned int flags);
-
-/**
- * kbase_pm_halt - Halt the power management framework.
- *
- * @kbdev: The kbase device structure for the device (must be a valid pointer)
- *
- * Should ensure that no new interrupts are generated,
- * but allow any currently running interrupt handlers to complete successfully.
- * The GPU is forced off by the time this function returns, regardless of
- * whether or not the active power policy asks for the GPU to be powered off.
- */
-void kbase_pm_halt(struct kbase_device *kbdev);
-
-/**
  * kbase_pm_term - Terminate the power management framework.
  *
  * @kbdev:     The kbase device structure for the device (must be a valid pointer)
@@ -124,6 +101,12 @@ enum kbase_pm_suspend_handler {
 	 * Active count should always start at 0 in this case.
 	 */
 	KBASE_PM_SUSPEND_HANDLER_VM_GPU_GRANTED,
+	/** Always increase the active count. This is used primarily to restore
+	 * its value in case of an earlier unsuccessful power down. Powering
+	 * down could fail if the GPU is still in use, we must ensure that the
+	 * counter's value is restored as part of a full reversal.
+	 */
+	KBASE_PM_SUSPEND_HANDLER_ALWAYS_INCREASE
 };
 
 /**
@@ -146,8 +129,8 @@ int kbase_pm_context_active_handle_suspend(struct kbase_device *kbdev,
 					   enum kbase_pm_suspend_handler suspend_handler);
 
 /**
- * kbase_pm_context_active_handle_suspend_locked - Same as kbase_pm_context_active_handle_suspend(),
- *                                                 except that pm.lock is held by the caller.
+ * kbase_pm_context_active_handle_suspend_locked - Same as kbase_pm_context_active_handle_suspend()
+ *                          except that pm.lock and scheduler.lock (for CSF) is held by the caller.
  *
  * @kbdev:     The kbase device structure for the device (must be a valid pointer)
  * @suspend_handler: The handler code for how to handle a suspend that might occur
@@ -270,5 +253,18 @@ void kbase_pm_driver_resume(struct kbase_device *kbdev, bool arb_gpu_start);
  * Kill any running tasks and put the driver into a GPU powered-off state.
  */
 void kbase_pm_handle_gpu_lost(struct kbase_device *kbdev);
+
+/**
+ * kbase_pm_handle_gpu_poweroff_wait_work - Work item for
+ *                                          gpu_poweroff_wait_work.
+ *
+ * @kbdev: The kbase device structure for the device (must be a valid pointer)
+ *
+ * This function synchronises the GPU power state with that of the PM state
+ * machine to either power on -or off- the GPU as required.
+ * It is normally executed as part of the gpu_poweroff_wait_work work item, but
+ * could also be called directly in kbase_csf_scheduler_kthread().
+ */
+void kbase_pm_handle_gpu_poweroff_wait_work(struct kbase_device *kbdev);
 
 #endif /* _KBASE_PM_H_ */

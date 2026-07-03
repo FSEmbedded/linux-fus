@@ -235,7 +235,6 @@ static void ohci_hcd_nxp_remove(struct platform_device *pdev)
 	usb_remove_hcd(hcd);
 	ohci_nxp_stop_hc();
 	usb_put_hcd(hcd);
-	put_device(&isp1301_i2c_client->dev);
 	isp1301_i2c_client = NULL;
 }
 

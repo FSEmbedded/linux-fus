@@ -219,8 +219,9 @@ static void streamzap_callback(struct urb *urb)
 	case -ESHUTDOWN:
 		/*
 		 * this urb is terminated, clean up.
+		 * sz might already be invalid at this point
 		 */
-		dev_dbg(sz->dev, "urb terminated, status: %d\n", urb->status);
+		dev_err(sz->dev, "urb terminated, status: %d\n", urb->status);
 		return;
 	default:
 		break;

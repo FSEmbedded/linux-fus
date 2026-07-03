@@ -66,9 +66,9 @@ dpu95_atomic_set_top_plane_per_crtc(struct drm_plane_state **plane_states, int n
 	}
 }
 
-static int dpu95_plane_alloc_hscaler(struct drm_plane *plane,
-				     struct dpu95_fetchunit *fu,
-				     unsigned int stream_id)
+static struct dpu95_hscaler *
+dpu95_plane_alloc_hscaler(struct drm_plane *plane, struct dpu95_fetchunit *fu,
+			  unsigned int stream_id)
 {
 	struct dpu95_plane *dplane = to_dpu95_plane(plane);
 	const struct dpu95_fetchunit_ops *fu_ops;
@@ -78,7 +78,7 @@ static int dpu95_plane_alloc_hscaler(struct drm_plane *plane,
 	if (dplane->grp->hs_used) {
 		dpu95_plane_dbg(plane, "failed to alloc HScaler on stream%u\n",
 				stream_id);
-		return -EINVAL;
+		return ERR_PTR(-EINVAL);
 	}
 
 	fu_ops = dpu95_fu_get_ops(fu);
@@ -91,12 +91,45 @@ static int dpu95_plane_alloc_hscaler(struct drm_plane *plane,
 		dpu95_plane_dbg(plane,
 				"failed to hot migrate HScaler to stream%u\n",
 				stream_id);
-		return -EINVAL;
+		return ERR_PTR(-EINVAL);
 	}
 
 	dplane->grp->hs_used = true;
 
-	return 0;
+	return hs;
+}
+
+static struct dpu95_vscaler *
+dpu95_plane_alloc_vscaler(struct drm_plane *plane, struct dpu95_fetchunit *fu,
+			  unsigned int stream_id)
+{
+	struct dpu95_plane *dplane = to_dpu95_plane(plane);
+	const struct dpu95_fetchunit_ops *fu_ops;
+	const struct dpu95_vscaler_ops *vs_ops;
+	struct dpu95_vscaler *vs;
+
+	if (dplane->grp->vs_used) {
+		dpu95_plane_dbg(plane, "failed to alloc VScaler on stream%u\n",
+				stream_id);
+		return ERR_PTR(-EINVAL);
+	}
+
+	fu_ops = dpu95_fu_get_ops(fu);
+	vs = fu_ops->get_vscaler(fu);
+	vs_ops = dpu95_vs_get_ops(vs);
+
+	/* avoid VScaler hot migration */
+	if (vs_ops->has_stream_id(vs) &&
+	    vs_ops->get_stream_id(vs) != stream_id) {
+		dpu95_plane_dbg(plane,
+				"failed to hot migrate VScaler to stream%u\n",
+				stream_id);
+		return ERR_PTR(-EINVAL);
+	}
+
+	dplane->grp->vs_used = true;
+
+	return vs;
 }
 
 static int dpu95_plane_alloc_vscaler(struct drm_plane *plane,
@@ -149,6 +182,8 @@ dpu95_atomic_assign_plane_source_per_crtc(struct dpu95_crtc *dpu_crtc,
 	struct dpu95_plane *dplane;
 	struct drm_framebuffer *fb;
 	struct dpu95_fetchunit *fu;
+	struct dpu95_hscaler *hs;
+	struct dpu95_vscaler *vs;
 	struct drm_plane *plane;
 	bool fb_is_packed_yuv422;
 	struct list_head *node;
@@ -158,7 +193,6 @@ dpu95_atomic_assign_plane_source_per_crtc(struct dpu95_crtc *dpu_crtc,
 	bool need_vs;
 	u32 cap_mask;
 	int i, j;
-	int ret;
 
 	/* for active planes only */
 	for (i = 0; i < n; i++) {
@@ -229,9 +263,19 @@ dpu95_atomic_assign_plane_source_per_crtc(struct dpu95_crtc *dpu_crtc,
 				continue;
 
 			if (need_hs) {
-				ret = dpu95_plane_alloc_hscaler(plane, fu, sid);
-				if (ret)
-					return ret;
+				hs = dpu95_plane_alloc_hscaler(plane, fu, sid);
+				if (IS_ERR(hs))
+					return PTR_ERR(hs);
+
+				dpstate->hs = hs;
+			}
+
+			if (need_vs) {
+				vs = dpu95_plane_alloc_vscaler(plane, fu, sid);
+				if (IS_ERR(vs))
+					return PTR_ERR(vs);
+
+				dpstate->vs = vs;
 			}
 
 			if (need_vs) {
@@ -404,7 +448,6 @@ static int dpu95_drm_atomic_check(struct drm_device *dev,
 	struct dpu95_plane_grp *plane_grp = &dpu_drm->dpu_plane_grp;
 	const struct dpu95_fetchunit_ops *fu_ops;
 	struct drm_crtc_state *crtc_state;
-	struct dpu95_crtc *dpu_crtc;
 	struct dpu95_fetchunit *fu;
 	u32 crtc_mask_prone_to_put;
 	u32 crtc_mask_in_state = 0;
@@ -417,11 +460,8 @@ static int dpu95_drm_atomic_check(struct drm_device *dev,
 		return ret;
 
 	/* Set crtc_mask_in_state. */
-	for_each_new_crtc_in_state(state, crtc, crtc_state, i) {
-		dpu_crtc = to_dpu95_crtc(crtc);
-
+	for_each_new_crtc_in_state(state, crtc, crtc_state, i)
 		crtc_mask_in_state |= drm_crtc_mask(crtc);
-	}
 
 	/*
 	 * Those CRTCs not in the state for check are prone to put,

@@ -97,10 +97,10 @@ void exclude_cmds(struct cmdnames *cmds, struct cmdnames *excludes)
 			ei++;
 		}
 	}
-	while (ci < cmds->cnt) {
-		if (ci != cj) {
-			cmds->names[cj] = cmds->names[ci];
-			cmds->names[ci] = NULL;
+	if (ci != cj) {
+		while (ci < cmds->cnt) {
+			cmds->names[cj++] = cmds->names[ci];
+			cmds->names[ci++] = NULL;
 		}
 		ci++;
 		cj++;

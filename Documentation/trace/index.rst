@@ -68,6 +68,8 @@ interactions and system performance.
    :maxdepth: 1
 
    intel_th
+   ring-buffer-design
+   ring-buffer-map
    stm
    sys-t
    coresight/index

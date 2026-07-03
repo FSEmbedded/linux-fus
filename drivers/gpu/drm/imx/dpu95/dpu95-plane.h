@@ -22,6 +22,13 @@ do {									\
 		    _plane->base.id, _plane->name, ##__VA_ARGS__);	\
 } while (0)
 
+#define for_each_old_plane_state_in_state(__state, old_plane_state, __i) \
+	for ((__i) = 0;							\
+	     (__i) < (__state)->dev->mode_config.num_total_plane;	\
+	     (__i)++)							\
+		for_each_if ((__state)->planes[__i].ptr &&		\
+			     ((old_plane_state) = (__state)->planes[__i].old_state, 1))
+
 struct dpu95_drm_device;
 
 struct dpu95_plane {
@@ -39,6 +46,8 @@ struct dpu95_plane_state {
 	struct drm_plane_state	base;
 	union dpu95_plane_stage	stage;
 	struct dpu95_fetchunit	*source;
+	struct dpu95_hscaler	*hs;
+	struct dpu95_vscaler	*vs;
 	struct dpu95_layerblend	*blend;
 	bool			is_top;
 };

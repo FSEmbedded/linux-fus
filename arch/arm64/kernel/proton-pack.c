@@ -896,7 +896,6 @@ static u8 spectre_bhb_loop_affected(void)
 		MIDR_ALL_VERSIONS(MIDR_CORTEX_X2),
 		MIDR_ALL_VERSIONS(MIDR_NEOVERSE_N2),
 		MIDR_ALL_VERSIONS(MIDR_NEOVERSE_V1),
-		MIDR_ALL_VERSIONS(MIDR_HISI_TSV110),
 		{},
 	};
 	static const struct midr_range spectre_bhb_k24_list[] = {
@@ -1016,7 +1015,7 @@ static void this_cpu_set_vectors(enum arm64_bp_harden_el1_vectors slot)
 	 * When KPTI is in use, the vectors are switched when exiting to
 	 * user-space.
 	 */
-	if (arm64_kernel_unmapped_at_el0())
+	if (cpus_have_cap(ARM64_UNMAP_KERNEL_AT_EL0))
 		return;
 
 	write_sysreg(v, vbar_el1);

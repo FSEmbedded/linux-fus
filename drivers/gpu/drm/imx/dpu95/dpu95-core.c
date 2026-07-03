@@ -268,22 +268,6 @@ static const struct dpu95_units dpu_vss = {
 	.hw_init = dpu95_vs_hw_init,
 };
 
-static const unsigned int vs_ids_no_vs4[] = {9};
-static const enum dpu95_unit_type vs_types_no_vs4[] = {DPU95_BLIT};
-static const unsigned long vs_ofss_no_vs4[] = {0xc0000};
-static const unsigned long vs_aux_ofss_no_vs4[] = {0xc1000};
-
-static const struct dpu95_units dpu_vss_no_vs4 = {
-	.ids = vs_ids_no_vs4,
-	.types = vs_types_no_vs4,
-	.ofss = vs_ofss_no_vs4,
-	.aux_ofss = vs_aux_ofss_no_vs4,
-	.cnt = ARRAY_SIZE(vs_ids_no_vs4),
-	.name = "VScaler",
-	.init = dpu95_vs_init,
-	.hw_init = dpu95_vs_hw_init,
-};
-
 static const struct dpu95_units *dpu_all_units[] = {
 	&dpu_cfs,
 	&dpu_dbs,
@@ -296,20 +280,6 @@ static const struct dpu95_units *dpu_all_units[] = {
 	&dpu_hss,
 	&dpu_lbs,
 	&dpu_vss,
-};
-
-static const struct dpu95_units *dpu_all_units_no_vs4[] = {
-	&dpu_cfs,
-	&dpu_dbs,
-	&dpu_dts,
-	&dpu_eds,
-	&dpu_fes,
-	&dpu_fgs,
-	&dpu_fls,
-	&dpu_fys,
-	&dpu_hss,
-	&dpu_lbs,
-	&dpu_vss_no_vs4,
 };
 
 static void dpu95_dm_extdst0_dm_allow_all(struct dpu95_soc *dpu)

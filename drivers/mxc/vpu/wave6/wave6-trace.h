@@ -2,7 +2,7 @@
 /*
  * Wave6 series multi-standard codec IP - wave6 driver tracer
  *
- * Copyright (C) 2021 CHIPS&MEDIA INC
+ * Copyright (C) 2025 CHIPS&MEDIA INC
  */
 
 #undef TRACE_SYSTEM
@@ -23,7 +23,7 @@ DECLARE_EVENT_CLASS(register_access,
 		__field(u32, value)
 	),
 	TP_fast_assign(
-		__assign_str(name, dev_name(dev));
+		__assign_str(name);
 		__entry->addr = addr;
 		__entry->value = value;
 	),
@@ -47,7 +47,7 @@ TRACE_EVENT(send_command,
 		__field(u32, cmd)
 	),
 	TP_fast_assign(
-		__assign_str(name, dev_name(vpu_dev->dev));
+		__assign_str(name);
 		__entry->id = id;
 		__entry->std = std;
 		__entry->cmd = cmd;
@@ -64,7 +64,7 @@ TRACE_EVENT(irq,
 		__field(u32, irq)
 	),
 	TP_fast_assign(
-		__assign_str(name, dev_name(vpu_dev->dev));
+		__assign_str(name);
 		__entry->irq = irq;
 	),
 	TP_printk("%s: irq 0x%x", __get_str(name), __entry->irq)
@@ -80,10 +80,10 @@ TRACE_EVENT(set_state,
 		__string(nxt_state, wave6_vpu_instance_state_name(state))
 	),
 	TP_fast_assign(
-		__assign_str(name, dev_name(inst->dev->dev));
+		__assign_str(name);
 		__entry->id = inst->id;
-		__assign_str(cur_state, wave6_vpu_instance_state_name(inst->state));
-		__assign_str(nxt_state, wave6_vpu_instance_state_name(state));
+		__assign_str(cur_state);
+		__assign_str(nxt_state);
 	),
 	TP_printk("%s: inst[%d] set state %s -> %s",
 		  __get_str(name), __entry->id, __get_str(cur_state), __get_str(nxt_state))
@@ -105,9 +105,9 @@ DECLARE_EVENT_CLASS(inst_internal,
 		__field(u32, error_cnt)
 	),
 	TP_fast_assign(
-		__assign_str(name, dev_name(inst->dev->dev));
+		__assign_str(name);
 		__entry->id = inst->id;
-		__assign_str(type, V4L2_TYPE_IS_OUTPUT(type) ? "output" : "capture");
+		__assign_str(type);
 		__entry->pixelformat  = V4L2_TYPE_IS_OUTPUT(type) ? inst->src_fmt.pixelformat :
 								    inst->dst_fmt.pixelformat;
 		__entry->width = V4L2_TYPE_IS_OUTPUT(type) ? inst->src_fmt.width :
@@ -149,7 +149,7 @@ TRACE_EVENT(dec_pic,
 		__field(u32, size)
 	),
 	TP_fast_assign(
-		__assign_str(name, dev_name(inst->dev->dev));
+		__assign_str(name);
 		__entry->id = inst->id;
 		__entry->srcidx = srcidx;
 		__entry->start = inst->codec_info->dec_info.stream_rd_ptr;
@@ -178,7 +178,7 @@ TRACE_EVENT(source_change,
 		__field(u32, ycbcr_enc)
 	),
 	TP_fast_assign(
-		__assign_str(name, dev_name(inst->dev->dev));
+		__assign_str(name);
 		__entry->id = inst->id;
 		__entry->width = info->pic_width,
 		__entry->height = info->pic_height,
@@ -201,6 +201,31 @@ TRACE_EVENT(source_change,
 		  __entry->colorspace, __entry->xfer_func, __entry->ycbcr_enc)
 );
 
+TRACE_EVENT(set_fb,
+	TP_PROTO(struct vpu_instance *inst, int offset, int count, int fbc_num, int mv_num),
+	TP_ARGS(inst, offset, count, fbc_num, mv_num),
+	TP_STRUCT__entry(
+		__string(name, dev_name(inst->dev->dev))
+		__field(u32, id)
+		__field(u32, offset)
+		__field(u32, count)
+		__field(u32, fbc_num)
+		__field(u32, mv_num)
+	),
+	TP_fast_assign(
+		__assign_str(name);
+		__entry->id = inst->id;
+		__entry->offset = offset;
+		__entry->count = count;
+		__entry->fbc_num = fbc_num;
+		__entry->mv_num = mv_num;
+	),
+	TP_printk("%s: inst[%d] set_fb offset %d, count %d, required %d, %d",
+		  __get_str(name), __entry->id,
+		  __entry->offset, __entry->count,
+		  __entry->fbc_num, __entry->mv_num)
+);
+
 TRACE_EVENT(dec_done,
 	TP_PROTO(struct vpu_instance *inst, struct dec_output_info *info),
 	TP_ARGS(inst, info),
@@ -218,15 +243,15 @@ TRACE_EVENT(dec_done,
 		__field(u32, warn)
 	),
 	TP_fast_assign(
-		__assign_str(name, dev_name(inst->dev->dev));
+		__assign_str(name);
 		__entry->id = inst->id;
-		__entry->dec_flag = info->frame_decoded_flag;
+		__entry->dec_flag = info->frame_decoded;
 		__entry->dec_poc = info->decoded_poc;
-		__entry->disp_flag = info->frame_display_flag;
+		__entry->disp_flag = info->frame_display;
 		__entry->disp_cnt = info->disp_frame_num;
 		__entry->rel_cnt = info->release_disp_frame_num;
-		__entry->src_ch = info->notification_flag & DEC_NOTI_FLAG_SEQ_CHANGE;
-		__entry->eos = info->stream_end_flag;
+		__entry->src_ch = info->notification_flags & DEC_NOTI_FLAG_SEQ_CHANGE;
+		__entry->eos = info->stream_end;
 		__entry->error = info->error_reason;
 		__entry->warn = info->warn_info;
 	),
@@ -257,7 +282,7 @@ TRACE_EVENT(enc_pic,
 		__field(u32, end_flag)
 	),
 	TP_fast_assign(
-		__assign_str(name, dev_name(inst->dev->dev));
+		__assign_str(name);
 		__entry->id = inst->id;
 		__entry->srcidx = param->src_idx;
 		__entry->buf_y = param->source_frame->buf_y;
@@ -268,7 +293,7 @@ TRACE_EVENT(enc_pic,
 		__entry->size_strm = param->pic_stream_buffer_size;
 		__entry->force_type_enable = param->force_pic_type_enable;
 		__entry->force_type = param->force_pic_type;
-		__entry->end_flag = param->src_end_flag;
+		__entry->end_flag = param->src_end;
 	),
 	TP_printk("%s: inst[%d] src[%2d] %8x %8x %8x (%d); dst %8x(%d); force type %d(%d), end %d",
 		  __get_str(name), __entry->id, __entry->srcidx,
@@ -291,7 +316,7 @@ TRACE_EVENT(enc_done,
 		__field(u32, avg_qp)
 	),
 	TP_fast_assign(
-		__assign_str(name, dev_name(inst->dev->dev));
+		__assign_str(name);
 		__entry->id = inst->id;
 		__entry->srcidx = info->enc_src_idx;
 		__entry->frmidx = info->recon_frame_index;
@@ -316,9 +341,9 @@ TRACE_EVENT(s_ctrl,
 		__field(u32, val)
 	),
 	TP_fast_assign(
-		__assign_str(name, dev_name(inst->dev->dev));
+		__assign_str(name);
 		__entry->id = inst->id;
-		__assign_str(ctrl_name, ctrl->name);
+		__assign_str(ctrl_name);
 		__entry->val = ctrl->val;
 	),
 	TP_printk("%s: inst[%d] %s = %d",

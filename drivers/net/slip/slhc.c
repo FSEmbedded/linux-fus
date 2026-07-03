@@ -77,7 +77,7 @@
 #include <linux/timer.h>
 #include <linux/uaccess.h>
 #include <net/checksum.h>
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 
 static unsigned char *encode(unsigned char *cp, unsigned short n);
 static long decode(unsigned char **cpp, const unsigned char *end);
@@ -658,10 +658,6 @@ slhc_remember(struct slcompress *comp, unsigned char *icp, int isize)
 	struct cstate *cs;
 	unsigned int ihl;
 
-	if (!comp->rstate) {
-		comp->sls_i_error++;
-		return slhc_toss(comp);
-	}
 	/* The packet is shorter than a legal IP header.
 	 * Also make sure isize is positive.
 	 */
@@ -776,4 +772,5 @@ EXPORT_SYMBOL(slhc_compress);
 EXPORT_SYMBOL(slhc_uncompress);
 EXPORT_SYMBOL(slhc_toss);
 
+MODULE_DESCRIPTION("Compression helpers for SLIP (serial line)");
 MODULE_LICENSE("Dual BSD/GPL");

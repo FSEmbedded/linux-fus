@@ -8,7 +8,7 @@
 
 /*
  * accept_memory() and process_unaccepted_memory() called from EFI stub which
- * runs before decompresser and its early_tdx_detect().
+ * runs before decompressor and its early_tdx_detect().
  *
  * Enumerate TDX directly from the early users.
  */
@@ -40,8 +40,7 @@ void arch_accept_memory(phys_addr_t start, phys_addr_t end)
 	if (early_is_tdx_guest()) {
 		if (!tdx_accept_memory(start, end))
 			panic("TDX: Failed to accept memory\n");
-	} else if (sevsnp || (sev_get_status() & MSR_AMD64_SEV_SNP_ENABLED)) {
-		sevsnp = true;
+	} else if (early_is_sevsnp_guest()) {
 		snp_accept_memory(start, end);
 	} else {
 		error("Cannot accept memory: unknown platform\n");

@@ -53,6 +53,7 @@ static void msm_disp_state_print_regs(const u32 *dump_addr, u32 len,
 {
 	void __iomem *addr, *end_addr;
 	int i;
+	void __iomem *addr;
 	u32 num_rows;
 
 	if (!dump_addr) {
@@ -61,7 +62,6 @@ static void msm_disp_state_print_regs(const u32 *dump_addr, u32 len,
 	}
 
 	addr = base_addr;
-	end_addr = base_addr + len;
 	num_rows = len / REG_DUMP_ALIGN;
 
 	for (i = 0; i < num_rows; i++) {

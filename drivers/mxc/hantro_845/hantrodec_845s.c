@@ -92,9 +92,9 @@ MODULE_PARM_DESC(hantro_dynamic_clock, "enable or disable dynamic clock rate");
 #define HANTRO_G2_DEC_FIRST_REG            0
 #define HANTRO_G2_DEC_LAST_REG             (HANTRO_G2_DEC_REGS - 1)
 
-#define MAX(a, b) (((a) > (b)) ? (a) : (b))
+#define MAX_VAL(a, b) (((a) > (b)) ? (a) : (b))
 
-#define DEC_IO_SIZE_MAX             (MAX(HANTRO_G2_DEC_REGS, HANTRO_G1_TOTAL_REGS) * 4)
+#define DEC_IO_SIZE_MAX             (MAX_VAL(HANTRO_G2_DEC_REGS, HANTRO_G1_TOTAL_REGS) * 4)
 
 #define HANTRO_CORE_ID_INVALID		(-1)
 
@@ -142,6 +142,9 @@ typedef struct {
 	struct clk *bus;
 } hantrodec_clk;
 
+static int irq_dec_err_count;
+module_param(irq_dec_err_count, int, 0444);
+
 static int hantro_dbg = -1;
 module_param(hantro_dbg, int, 0644);
 MODULE_PARM_DESC(hantro_dbg, "Debug level (0-1)");
@@ -153,6 +156,11 @@ MODULE_PARM_DESC(hantro_dbg, "Debug level (0-1)");
 		} \
 	} while (0)
 
+#define PERROR(dev, fmt, arg...)	          \
+	do {                                      \
+		if (hantro_dbg >= 0)              \
+			dev_err(dev, fmt, ##arg); \
+	} while (0)
 
 static int hantrodec_major;
 static int cores;
@@ -183,6 +191,7 @@ typedef struct {
 	int thermal_event;
 	struct thermal_cooling_device *cooling;
 	bool skip_blkctrl;
+	u32 irq_status_dec;
 } hantrodec_t;
 
 static hantrodec_t hantrodec_data[HXDEC_MAX_CORES]; /* dynamic allocation? */
@@ -789,6 +798,7 @@ static long DecFlushRegs(hantrodec_t *dev, struct core_desc *Core)
 		if (down_timeout(&dev->core_suspend_sem, msecs_to_jiffies(10000)))
 			pr_err("core suspend sem down error id %d\n", dev->core_id);
 	}
+	dev->irq_status_dec = 0;
 	/* write the status register, which may start the decoder */
 	iowrite32(dev->dec_regs[1], dev->hwregs + 4);
 
@@ -944,7 +954,9 @@ static long WaitDecReadyAndRefreshRegs(hantrodec_t *dev, struct core_desc *Core)
 		pr_err("DEC[%d]  failed to wait_event_interruptible interrupted\n", dev->core_id);
 		return -ERESTARTSYS;
 	} else if (ret == 0) {
-		pr_err("DEC[%d]  wait_event_interruptible timeout\n", dev->core_id);
+		dev_err(dev->dev,
+			"DEC[%d] wait_event_interruptible timeout, irq_status_dec = 0x%x\n",
+			dev->core_id, dev->irq_status_dec);
 		dev->timeout = 1;
 		up(&dev->core_suspend_sem);
 	}
@@ -1839,15 +1851,36 @@ static irqreturn_t hantrodec_isr(int irq, void *dev_id)
 		irq_status_dec &= (~HANTRODEC_DEC_IRQ);
 		iowrite32(irq_status_dec, hwregs + HANTRODEC_IRQ_STAT_DEC_OFF);
 
-		if (irq_status_dec & HANTRODEC_DEC_DONE) {
+		atomic_inc(&hantrodec_data[dev->core_id].irq_rx);
+		dev->irq_status_dec = irq_status_dec;
+
+		if (irq_status_dec & HANTRODEC_DEC_END_MASK) {
 			PDEBUG("decoder IRQ received! Core %d\n", dev->core_id);
+
+			if (irq_status_dec & HANTRODEC_DEC_ERROR_MASK) {
+				if (irq_status_dec & HANTRODEC_DEC_BUS_ERROR)
+					PERROR(dev->dev,
+					       "[%d] bus error\n", atomic_read(&dev->irq_rx));
+
+				if (irq_status_dec & HANTRODEC_DEC_STRM_BUF_EMPTY)
+					PERROR(dev->dev,
+					       "[%d] stream buffer empty\n",
+					       atomic_read(&dev->irq_rx));
+
+				if (irq_status_dec & HANTRODEC_DEC_ASO_DETECTED)
+					PERROR(dev->dev,
+					       "[%d] detect ASO\n", atomic_read(&dev->irq_rx));
+
+				if (irq_status_dec & HANTRODEC_DEC_STRM_INPUT_ERR)
+					PERROR(dev->dev,
+					       "[%d] stream input error\n",
+					       atomic_read(&dev->irq_rx));
+
+				irq_dec_err_count++;
+			}
+
 			up(&dev->core_suspend_sem);
-
-			atomic_inc(&hantrodec_data[dev->core_id].irq_rx);
-
 			dec_irq |= (1 << dev->core_id);
-
-			//wake_up_interruptible_all(&dec_wait_queue);
 			wake_up_all(&dec_wait_queue);
 		}
 		handled++;
@@ -1992,7 +2025,7 @@ out:
 	return err;
 }
 
-static int hantro_dev_remove(struct platform_device *pdev)
+static void hantro_dev_remove(struct platform_device *pdev)
 {
 	hantrodec_t *dev = platform_get_drvdata(pdev);
 
@@ -2014,8 +2047,6 @@ static int hantro_dev_remove(struct platform_device *pdev)
 		pr_err("hantro: decrease cores count incorrect.\n");
 		cores = 0;
 	}
-
-	return 0;
 }
 
 #ifdef CONFIG_PM
