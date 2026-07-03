@@ -321,6 +321,9 @@
 			  &mu7 3 1>;
 		memory-region = <&vdevbuffer>, <&vdev0vring0>, <&vdev0vring1>,
 				<&vdev1vring0>, <&vdev1vring1>, <&rsc_table>;
+		/* cpuid and lmmid must align with SM firmware */
+		fsl,cpu-id = <1>;
+		fsl,lmm-id = <1>;
 		fsl,startup-delay-ms = <50>;
 		status = "okay";
 	};
@@ -575,8 +578,6 @@
 
 	bluetooth {
 		compatible = "nxp,88w8987-bt";
-		/* U-blox 88Q9098 module use the 3Mbps by default */
-		fw-init-baudrate = <3000000>;
 	};
 };
 
@@ -752,7 +753,12 @@
 };
 
 &usb3_phy {
+	fsl,phy-pcs-tx-deemph-3p5db-attenuation-db = <17>;
+	fsl,phy-pcs-tx-swing-full-percent = <100>;
+	fsl,phy-tx-preemp-amp-tune-microamp = <600>;
+	fsl,phy-tx-vboost-level-microvolt = <1156>;
 	status = "okay";
+
 	port {
 		usb3_data_ss: endpoint {
 			remote-endpoint = <&typec_con_ss>;
@@ -994,17 +1000,17 @@
 
 	pinctrl_emdio: emdiogrp{
 		fsl,pins = <
-			IMX95_PAD_ENET1_MDC__NETCMIX_TOP_NETC_MDC		0x57e
-			IMX95_PAD_ENET1_MDIO__NETCMIX_TOP_NETC_MDIO		0x97e
+			IMX95_PAD_ENET1_MDC__NETCMIX_TOP_NETC_MDC		0x50e
+			IMX95_PAD_ENET1_MDIO__NETCMIX_TOP_NETC_MDIO		0x90e
 		>;
 	};
 
 	pinctrl_enetc0: enetc0grp {
 		fsl,pins = <
-			IMX95_PAD_ENET1_TD3__NETCMIX_TOP_ETH0_RGMII_TD3		0x57e
-			IMX95_PAD_ENET1_TD2__NETCMIX_TOP_ETH0_RGMII_TD2		0x57e
-			IMX95_PAD_ENET1_TD1__NETCMIX_TOP_ETH0_RGMII_TD1		0x57e
-			IMX95_PAD_ENET1_TD0__NETCMIX_TOP_ETH0_RGMII_TD0		0x57e
+			IMX95_PAD_ENET1_TD3__NETCMIX_TOP_ETH0_RGMII_TD3		0x50e
+			IMX95_PAD_ENET1_TD2__NETCMIX_TOP_ETH0_RGMII_TD2		0x50e
+			IMX95_PAD_ENET1_TD1__NETCMIX_TOP_ETH0_RGMII_TD1		0x50e
+			IMX95_PAD_ENET1_TD0__NETCMIX_TOP_ETH0_RGMII_TD0		0x50e
 			IMX95_PAD_ENET1_TX_CTL__NETCMIX_TOP_ETH0_RGMII_TX_CTL	0x57e
 			IMX95_PAD_ENET1_TXC__NETCMIX_TOP_ETH0_RGMII_TX_CLK	0x58e
 			IMX95_PAD_ENET1_RX_CTL__NETCMIX_TOP_ETH0_RGMII_RX_CTL	0x57e
@@ -1133,12 +1139,12 @@
 
 	pinctrl_usdhc2_200mhz: usdhc2-200mhzgrp {
 		fsl,pins = <
-			IMX95_PAD_SD2_CLK__USDHC2_CLK			0x15fe
-			IMX95_PAD_SD2_CMD__USDHC2_CMD			0x13fe
-			IMX95_PAD_SD2_DATA0__USDHC2_DATA0		0x13fe
-			IMX95_PAD_SD2_DATA1__USDHC2_DATA1		0x13fe
-			IMX95_PAD_SD2_DATA2__USDHC2_DATA2		0x13fe
-			IMX95_PAD_SD2_DATA3__USDHC2_DATA3		0x13fe
+			IMX95_PAD_SD2_CLK__USDHC2_CLK			0x158e
+			IMX95_PAD_SD2_CMD__USDHC2_CMD			0x138e
+			IMX95_PAD_SD2_DATA0__USDHC2_DATA0		0x138e
+			IMX95_PAD_SD2_DATA1__USDHC2_DATA1		0x138e
+			IMX95_PAD_SD2_DATA2__USDHC2_DATA2		0x138e
+			IMX95_PAD_SD2_DATA3__USDHC2_DATA3		0x138e
 			IMX95_PAD_SD2_VSELECT__USDHC2_VSELECT		0x51e
 		>;
 	};

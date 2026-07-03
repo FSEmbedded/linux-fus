@@ -325,6 +325,8 @@ imx8qm-mek-max9286-csi1-dtbs := imx8qm-mek.dtb imx8qm-mek-max9286-csi1.dtbo
 dtb-${CONFIG_ARCH_MXC} += imx8qm-mek-max9286-csi1.dtb
 imx8qm-mek-max9286-dual-dtbs := imx8qm-mek.dtb imx8qm-mek-max9286-csi0.dtbo imx8qm-mek-max9286-csi1.dtbo
 dtb-${CONFIG_ARCH_MXC} += imx8qm-mek-max9286-dual.dtb
+imx8qm-mek-hdmi-rx-dtbs := imx8qm-mek-hdmi.dtb imx8qm-mek-hdmi-rx.dtbo
+dtb-${CONFIG_ARCH_MXC} += imx8qm-mek-hdmi-rx.dtb
 
 imx8qm-mek-revd-dtbs := imx8qm-mek.dtb imx8qm-mek-revd.dtbo
 imx8qm-mek-revd-rpmsg-dtbs := imx8qm-mek-rpmsg.dtb imx8qm-mek-revd.dtbo
@@ -336,6 +338,10 @@ imx8qm-mek-revd-max9286-csi1-dtbs := imx8qm-mek-max9286-csi1.dtb imx8qm-mek-revd
 imx8qm-mek-revd-max9286-dual-dtbs := imx8qm-mek-max9286-dual.dtb imx8qm-mek-revd.dtbo
 imx8qm-mek-revd-enet2-tja1100-dtbs := imx8qm-mek-enet2-tja1100.dtb imx8qm-mek-revd.dtbo
 imx8qm-mek-revd-hdmi-dtbs := imx8qm-mek-hdmi.dtb imx8qm-mek-revd.dtbo
+imx8qm-mek-revd-hdmi-rx-dtbs := imx8qm-mek-hdmi-rx.dtb imx8qm-mek-revd.dtbo
+imx8qm-mek-revd-hdmi-rx-ov5640-csi0-dtbs := imx8qm-mek-hdmi-rx.dtb imx8qm-mek-ov5640-csi0.dtbo imx8qm-mek-revd.dtbo
+imx8qm-mek-revd-hdmi-rx-ov5640-csi1-dtbs := imx8qm-mek-hdmi-rx.dtb imx8qm-mek-ov5640-csi1.dtbo imx8qm-mek-revd.dtbo
+imx8qm-mek-revd-hdmi-rx-ov5640-dual-dtbs := imx8qm-mek-hdmi-rx.dtb imx8qm-mek-ov5640-csi0.dtbo imx8qm-mek-ov5640-csi1.dtbo imx8qm-mek-revd.dtbo
 imx8qm-mek-revd-jdi-wuxga-lvds1-panel-dtbs := imx8qm-mek-jdi-wuxga-lvds1-panel.dtb imx8qm-mek-revd.dtbo
 imx8qm-mek-revd-jdi-wuxga-lvds1-panel-rpmsg-dtbs := imx8qm-mek-jdi-wuxga-lvds1-panel-rpmsg.dtb imx8qm-mek-revd.dtbo
 imx8qm-mek-revd-pcie-ep-dtbs := imx8qm-mek-pcie-ep.dtb imx8qm-mek-revd.dtbo
@@ -352,6 +358,10 @@ dtb-$(CONFIG_ARCH_MXC) += imx8qm-mek-revd.dtb
 dtb-$(CONFIG_ARCH_MXC) += imx8qm-mek-revd-rpmsg.dtb
 dtb-$(CONFIG_ARCH_MXC) += imx8qm-mek-revd-enet2-tja1100.dtb
 dtb-$(CONFIG_ARCH_MXC) += imx8qm-mek-revd-hdmi.dtb
+dtb-$(CONFIG_ARCH_MXC) += imx8qm-mek-revd-hdmi-rx.dtb
+dtb-$(CONFIG_ARCH_MXC) += imx8qm-mek-revd-hdmi-rx-ov5640-csi0.dtb
+dtb-$(CONFIG_ARCH_MXC) += imx8qm-mek-revd-hdmi-rx-ov5640-csi1.dtb
+dtb-$(CONFIG_ARCH_MXC) += imx8qm-mek-revd-hdmi-rx-ov5640-dual.dtb
 dtb-$(CONFIG_ARCH_MXC) += imx8qm-mek-revd-jdi-wuxga-lvds1-panel.dtb
 dtb-$(CONFIG_ARCH_MXC) += imx8qm-mek-revd-jdi-wuxga-lvds1-panel-rpmsg.dtb
 dtb-$(CONFIG_ARCH_MXC) += imx8qm-mek-revd-pcie-ep.dtb
@@ -460,7 +470,7 @@ dtb-$(CONFIG_ARCH_MXC) += imx93-14x14-evk.dtb \
 			  imx93-14x14-evk-mqs.dtb imx93-14x14-evk-aud-hat.dtb \
 			  imx93-14x14-evk-lvds-it6263.dtb imx93-14x14-evk-sja1105.dtb \
 			  imx93-14x14-evk-flexspi-m2.dtb imx93-14x14-evk-dsi-serdes.dtb \
-			  imx93-14x14-evk-i3c.dtb
+			  imx93-14x14-evk-i3c.dtb imx93-14x14-evk-8mic-reve.dtb
 dtb-$(CONFIG_ARCH_MXC) += imx93-11x11-evk.dtb \
 			  imx93-11x11-evk-inmate.dtb imx93-11x11-evk-root.dtb imx93-11x11-evk-flexio-i2c.dtb \
 			  imx93-11x11-evk-i2c-spi-slave.dtb \
@@ -471,7 +481,8 @@ dtb-$(CONFIG_ARCH_MXC) += imx93-11x11-evk.dtb \
 			  imx93-11x11-evk-mt9m114.dtb \
 			  imx93-11x11-evk-ld.dtb \
 			  imx93-11x11-evk-iw612-otbr.dtb \
-			  imx93-11x11-evk-rpmsg.dtb imx93-11x11-evk-rpmsg-lpv.dtb
+			  imx93-11x11-evk-rpmsg.dtb imx93-11x11-evk-rpmsg-lpv.dtb \
+			  imx93-11x11-evk-8mic-reve.dtb
 
 dtb-$(CONFIG_ARCH_MXC) += imx91-11x11-evk.dtb \
 			  imx91-11x11-evk-flexspi-m2.dtb imx91-11x11-evk-flexspi-nand-m2.dtb \
@@ -481,7 +492,9 @@ dtb-$(CONFIG_ARCH_MXC) += imx91-11x11-evk.dtb \
 			  imx91-11x11-evk-mt9m114.dtb \
 			  imx91-11x11-evk-ld.dtb \
 			  imx91-11x11-evk-i2c-spi-slave.dtb \
-			  imx91-11x11-evk-i3c.dtb
+			  imx91-11x11-evk-i3c.dtb \
+			  imx91-11x11-evk-usbwifi.dtb \
+			  imx91-11x11-evk-8mic-reve.dtb
 
 imx93-11x11-evk-pmic-pf0900-dtbs := imx93-11x11-evk.dtb imx93-11x11-evk-pmic-pf0900.dtbo
 imx93-11x11-evk-pmic-pf0900-root-dtbs := imx93-11x11-evk-root.dtb imx93-11x11-evk-pmic-pf0900.dtbo
@@ -539,10 +552,26 @@ dtb-$(CONFIG_ARCH_MXC) += imx91-9x9-qsb-aud-hat.dtb
 dtb-$(CONFIG_ARCH_MXC) += imx91-9x9-qsb-ld.dtb
 dtb-$(CONFIG_ARCH_MXC) += imx91-9x9-qsb-i2c-spi-slave.dtb
 dtb-$(CONFIG_ARCH_MXC) += imx91-9x9-qsb-i3c.dtb
+
+dtb-$(CONFIG_ARCH_MXC) += imx943-evk.dtb
+imx943-evk-mqs-dtbs := imx943-evk.dtb imx943-evk-mqs.dtbo
+dtb-$(CONFIG_ARCH_MXC) += imx943-evk-mqs.dtb
+dtb-$(CONFIG_ARCH_MXC) += imx943-evk-sgmii.dtb
+dtb-$(CONFIG_ARCH_MXC) += imx943-evk-rpmsg.dtb
+
+imx943-evk-pcie1-ep-dtbs := imx943-evk.dtb imx943-evk-pcie1-ep.dtbo
+dtb-$(CONFIG_ARCH_MXC) += imx943-evk-pcie1-ep.dtb
+
+imx943-evk-sdwifi-dtbs := imx943-evk.dtb imx943-evk-sdwifi.dtbo
+dtb-$(CONFIG_ARCH_MXC) += imx943-evk-sdwifi.dtb
+
+dtb-$(CONFIG_ARCH_MXC) += imx943-evk-root.dtb imx943-evk-inmate.dtb
+
 dtb-$(CONFIG_ARCH_MXC) += imx95-15x15-evk.dtb
 dtb-$(CONFIG_ARCH_MXC) += imx95-15x15-evk-flexspi-m2.dtb
 dtb-$(CONFIG_ARCH_MXC) += imx95-15x15-evk-mqs.dtb
 dtb-$(CONFIG_ARCH_MXC) += imx95-15x15-evk-aud-hat.dtb
+dtb-$(CONFIG_ARCH_MXC) += imx95-15x15-evk-8mic-reve.dtb
 dtb-$(CONFIG_ARCH_MXC) += imx95-15x15-evk-root.dtb imx95-15x15-evk-inmate.dtb
 dtb-$(CONFIG_ARCH_MXC) += imx95-15x15-ab2.dtb
 dtb-$(CONFIG_ARCH_MXC) += imx95-15x15-evk-i2c-spi-slave.dtb
@@ -630,6 +659,9 @@ imx95-15x15-evk-ox03c10-isp-adv7535-dtbs := imx95-15x15-evk-adv7535.dtb \
 					    imx95-15x15-evk-ox03c10.dtbo \
 					    imx95-19x19-evk-neoisp.dtbo
 dtb-$(CONFIG_ARCH_MXC) += imx95-15x15-evk-ox03c10-isp-adv7535.dtb
+imx95-15x15-evk-neutron-dtbs := imx95-15x15-evk.dtb imx95-19x19-evk-neutron.dtbo
+dtb-$(CONFIG_ARCH_MXC) += imx95-15x15-evk-neutron.dtb
+
 dtb-$(CONFIG_ARCH_MXC) += imx95-19x19-evk-sof-wm8962.dtb
 
 imx95-19x19-evk-pcie1-ep-dtbs := imx95-19x19-evk.dtb imx95-19x19-evk-pcie1-ep.dtbo
@@ -750,6 +782,9 @@ imx95-19x19-evk-ox05b1s-isp-lvds-dual-dtbs := imx95-19x19-evk-neoisp.dtb imx95-1
 							  imx95-19x19-evk-ox05b1s-combo.dtbo \
 							  imx95-19x19-evk-it6263-lvds-dual.dtbo
 dtb-$(CONFIG_ARCH_MXC) += imx95-19x19-evk-ox05b1s-isp-lvds-dual.dtb
+
+imx95-19x19-evk-neutron-dtbs := imx95-19x19-evk.dtb imx95-19x19-evk-neutron.dtbo
+dtb-$(CONFIG_ARCH_MXC) += imx95-19x19-evk-neutron.dtb
 
 dtb-$(CONFIG_ARCH_MXC) += imx95-19x19-verdin.dtb
 DTC_FLAGS_imx95-19x19-verdin-rpmsg := -@

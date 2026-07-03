@@ -553,6 +553,7 @@ static inline u64 _enetc_rd_reg64_wa(void __iomem *reg)
 #define enetc_rd64(hw, off)		_enetc_rd_reg64_wa((hw)->reg + (off))
 /* port register accessors - PF only */
 #define enetc_port_rd(hw, off)		enetc_rd_reg((hw)->port + (off))
+#define enetc_port_rd64(hw, off)	_enetc_rd_reg64_wa((hw)->port + (off))
 #define enetc_port_wr(hw, off, val)	enetc_wr_reg((hw)->port + (off), val)
 #define enetc_port_rd_mdio(hw, off)	_enetc_rd_mdio_reg_wa((hw)->port + (off))
 #define enetc_port_wr_mdio(hw, off, val)	_enetc_wr_mdio_reg_wa(\
@@ -599,6 +600,7 @@ union enetc_tx_bd {
 	};
 	struct {
 		__le32 tstamp;
+#define ENETC_TXBD_TSTAMP	GENMASK(29, 0)
 		__le16 tpid;
 		__le16 vid;
 		__le16 lso_sg_size;	// For enetc4
@@ -682,14 +684,24 @@ union enetc_rx_bd {
 	} ext;
 };
 
+#define ENETC_RXBD_PS_L4	GENMASK(4, 0)
+#define ENETC_RXBD_PS_L3	GENMASK(6, 5)
+#define ENETC_RXBD_PS_L3_IPV4	0
+#define ENETC_RXBD_PS_L3_IPV6	1
+#define ENETC_RXBD_PS_ERROR	BIT(15)
 #define ENETC_RXBD_LSTATUS_R	BIT(30)
 #define ENETC_RXBD_LSTATUS_F	BIT(31)
 #define ENETC_RXBD_ERR_MASK	0xff
 #define ENETC_RXBD_LSTATUS(flags)	((flags) << 16)
+#define ENETC_RXBD_FLAG_RSSV	BIT(8)
 #define ENETC_RXBD_FLAG_VLAN	BIT(9)
 #define ENETC_RXBD_FLAG_TSTMP	BIT(10)
 #define ENETC_RXBD_FLAG_L4_CSUM_OK	BIT(12) /* Only TCP and UDP */
 #define ENETC_RXBD_FLAG_TPID	GENMASK(1, 0)
+#define ENETC_RXBD_TPID_8021Q	0
+#define ENETC_RXBD_TPID_8021AD	1
+#define ENETC_RXBD_TPID_CTAG1	2
+#define ENETC_RXBD_TPID_CTAG2	3
 
 #define ENETC_MAC_ADDR_FILT_CNT	8 /* # of supported entries per port */
 #define EMETC_MAC_ADDR_FILT_RES	3 /* # of reserved entries at the beginning */

@@ -123,13 +123,8 @@ static void enetc_set_si_vlan_promisc(struct enetc_pf *pf, int index, bool en)
 {
 	struct enetc_hw *hw = &pf->si->hw;
 
-	if (en)
-		pf->vlan_promisc_simap |= BIT(index);
-	else
-		pf->vlan_promisc_simap &= ~BIT(index);
-
 	if (pf->hw_ops->set_si_vlan_promisc)
-		pf->hw_ops->set_si_vlan_promisc(hw, pf->vlan_promisc_simap);
+		pf->hw_ops->set_si_vlan_promisc(hw, index, en);
 }
 
 int enetc_vlan_rx_add_vid(struct net_device *ndev, __be16 prot, u16 vid)
@@ -244,7 +239,7 @@ int enetc_pf_set_vf_trust(struct net_device *ndev, int vf, bool setting)
 	struct enetc_pf *pf = enetc_si_priv(priv->si);
 	struct enetc_vf_state *vf_state;
 
-	if (vf >= pf->num_vfs)
+	if (vf >= pf->total_vfs)
 		return -EINVAL;
 
 	vf_state = &pf->vf_state[vf];
@@ -348,10 +343,11 @@ void enetc_pf_netdev_setup(struct enetc_si *si, struct net_device *ndev,
 	ndev->netdev_ops = ndev_ops;
 	enetc_set_ethtool_ops(ndev);
 	ndev->watchdog_timeo = 5 * HZ;
+	ndev->max_mtu = ENETC_MAX_MTU;
 
 	ndev->hw_features = NETIF_F_SG | NETIF_F_RXCSUM |
 			    NETIF_F_HW_VLAN_CTAG_TX | NETIF_F_HW_VLAN_CTAG_RX |
-			    NETIF_F_HW_VLAN_CTAG_FILTER | NETIF_F_LOOPBACK |
+			    NETIF_F_HW_VLAN_CTAG_FILTER |
 			    NETIF_F_HW_CSUM | NETIF_F_TSO | NETIF_F_TSO6 |
 			    NETIF_F_GSO_UDP_L4;
 	ndev->features = NETIF_F_HIGHDMA | NETIF_F_SG | NETIF_F_RXCSUM |
@@ -374,17 +370,20 @@ void enetc_pf_netdev_setup(struct enetc_si *si, struct net_device *ndev,
 	ndev->priv_flags |= IFF_UNICAST_FLT;
 	ndev->xdp_features = NETDEV_XDP_ACT_BASIC | NETDEV_XDP_ACT_REDIRECT |
 			     NETDEV_XDP_ACT_NDO_XMIT | NETDEV_XDP_ACT_RX_SG |
-			     NETDEV_XDP_ACT_NDO_XMIT_SG;
+			     NETDEV_XDP_ACT_NDO_XMIT_SG |
+			     NETDEV_XDP_ACT_XSK_ZEROCOPY;
 
 	if (is_enetc_rev1(si)) {
-		ndev->max_mtu = ENETC_MAX_MTU;
 		priv->max_frags_bd = ENETC_MAX_SKB_FRAGS;
 	} else {
-		ndev->max_mtu = ENETC4_MAX_MTU;
 		priv->max_frags_bd = ENETC4_MAX_SKB_FRAGS;
 		priv->active_offloads |= ENETC_F_CHECKSUM;
 		priv->shared_tx_rings = true;
 	}
+
+	ndev->xdp_zc_max_segs = priv->max_frags_bd;
+	ndev->xdp_metadata_ops = &enetc_xdp_metadata_ops;
+	ndev->xsk_tx_metadata_ops = &enetc_xsk_tx_metadata_ops;
 
 	if (si->hw_features & ENETC_SI_F_RSC)
 		ndev->hw_features |= NETIF_F_LRO;
@@ -396,6 +395,9 @@ void enetc_pf_netdev_setup(struct enetc_si *si, struct net_device *ndev,
 		ndev->features |= NETIF_F_HW_TC;
 		ndev->hw_features |= NETIF_F_HW_TC;
 	}
+
+	if (!(si->hw_features & ENETC_SI_F_PPM))
+		ndev->hw_features |= NETIF_F_LOOPBACK;
 
 	/* pick up primary MAC address from SI */
 	enetc_load_primary_mac_addr(&si->hw, ndev);
@@ -448,8 +450,8 @@ static int enetc_imdio_create(struct enetc_pf *pf)
 	struct phylink_pcs *phylink_pcs;
 	struct mii_bus *bus;
 	struct phy *serdes;
+	int err, xpcs_ver;
 	size_t num_phys;
-	int err;
 
 	serdes = devm_of_phy_optional_get(dev, dev->of_node, NULL);
 	if (IS_ERR(serdes))
@@ -506,7 +508,17 @@ static int enetc_imdio_create(struct enetc_pf *pf)
 			goto unregister_mdiobus;
 		}
 	} else {
-		phylink_pcs = xpcs_create_mdiodev_with_phy(bus, 0, 16, pf->if_mode);
+		switch (pf->si->revision) {
+		case NETC_REVISION_4_1:
+			xpcs_ver = DW_XPCS_VER_MX95;
+			break;
+		default:
+			dev_err(dev, "unsupported xpcs version\n");
+			goto unregister_mdiobus;
+		}
+		phylink_pcs = xpcs_create_mdiodev_with_phy(bus, 0, 16, 0,
+							   xpcs_ver,
+							   pf->if_mode);
 		if (IS_ERR(phylink_pcs)) {
 			err = PTR_ERR(phylink_pcs);
 			dev_err(dev, "cannot create xpcs mdiodev (%d)\n", err);
@@ -1025,11 +1037,6 @@ static u16 enetc_msg_pf_set_vf_mac_promisc_mode(struct enetc_pf *pf, int vf_id)
 	int si_id = vf_id + 1;
 	int mac_type;
 
-	if (!enetc_pf_is_vf_trusted(pf, vf_id)) {
-		pf_msg.class_id = ENETC_MSG_CLASS_ID_PERMISSION_DENY;
-		return pf_msg.code;
-	}
-
 	if (!pf->hw_ops->set_si_mac_promisc) {
 		pf_msg.class_id = ENETC_MSG_CLASS_ID_CMD_NOT_SUPPORT;
 		return pf_msg.code;
@@ -1043,8 +1050,15 @@ static u16 enetc_msg_pf_set_vf_mac_promisc_mode(struct enetc_pf *pf, int vf_id)
 	else
 		mac_type = ENETC_MAC_FILTER_TYPE_ALL;
 
-	if (msg->promisc_mode == ENETC_MAC_PROMISC_MODE_ENABLE)
+	if (msg->promisc_mode == ENETC_MAC_PROMISC_MODE_ENABLE) {
+		if (!enetc_pf_is_vf_trusted(pf, vf_id)) {
+			pf_msg.class_id = ENETC_MSG_CLASS_ID_PERMISSION_DENY;
+
+			return pf_msg.code;
+		}
+
 		promisc_mode = true;
+	}
 
 	if (msg->flush_macs)
 		enetc_pf_flush_si_mac_filter(pf, si_id, msg->type);
@@ -1133,8 +1147,10 @@ static void enetc_vlan_list_del_matched_entries(struct enetc_pf *pf, u16 si_bit,
 static void enetc_vfe_to_vaft_data(struct enetc_vfe *vfe,
 				   struct vaft_entry_data *vaft)
 {
-	vaft->keye.tpid = vfe->tpid;
-	vaft->keye.vlan_id = cpu_to_le16(vfe->vid);
+	u16 vid = FIELD_PREP(VAFT_VLAN_ID, vfe->vid);
+
+	vaft->keye.tpid = FIELD_PREP(VAFT_TPID, vfe->tpid);
+	vaft->keye.vlan_id = cpu_to_le16(vid);
 	vaft->cfge.si_bitmap = cpu_to_le16(vfe->si_bitmap);
 }
 
@@ -1385,8 +1401,6 @@ static void enetc_pf_flush_si_vlan_filter(struct enetc_pf *pf, int si_id)
 
 static u16 enetc_msg_pf_flush_vf_vlan_entries(struct enetc_pf *pf, int vf_id)
 {
-	struct enetc_msg_swbd *msg_swbd = &pf->rxmsg[vf_id];
-	struct enetc_msg_vlan_filter_flush *msg;
 	struct enetc_si *si = pf->si;
 	union enetc_pf_msg pf_msg;
 
@@ -1395,7 +1409,6 @@ static u16 enetc_msg_pf_flush_vf_vlan_entries(struct enetc_pf *pf, int vf_id)
 		return pf_msg.code;
 	}
 
-	msg = (struct enetc_msg_vlan_filter_flush *)msg_swbd->vaddr;
 	enetc_pf_flush_si_vlan_filter(pf, vf_id + 1);
 
 	pf_msg.class_id = ENETC_MSG_CLASS_ID_CMD_SUCCESS;
@@ -1698,10 +1711,16 @@ int enetc_sriov_configure(struct pci_dev *pdev, int num_vfs)
 	int err;
 
 	if (enetc_pf_is_owned_by_mcore(pdev)) {
-		err = pci_sriov_configure_simple(pdev, num_vfs);
+		if (!num_vfs) {
+			pci_disable_sriov(pdev);
+
+			return 0;
+		}
+
+		err = pci_enable_sriov(pdev, num_vfs);
 		if (err < 0)
 			dev_err(&pdev->dev,
-				"pci_sriov_configure_simple err %d\n", err);
+				"pci_enable_sriov err %d\n", err);
 
 		return err;
 	}

@@ -976,6 +976,7 @@ static int tcpci_probe(struct i2c_client *client)
 	if (IS_ERR(chip->tcpci))
 		return PTR_ERR(chip->tcpci);
 
+	irq_set_status_flags(client->irq, IRQ_DISABLE_UNLAZY);
 	err = devm_request_threaded_irq(&client->dev, client->irq, NULL,
 					_tcpci_irq,
 					IRQF_SHARED | IRQF_ONESHOT,
@@ -987,6 +988,8 @@ static int tcpci_probe(struct i2c_client *client)
 	err = tcpci_write16(chip->tcpci, TCPC_ALERT_MASK, chip->tcpci->alert_mask);
 	if (err < 0)
 		goto unregister_port;
+
+	device_set_wakeup_capable(chip->tcpci->dev, true);
 
 	return 0;
 
