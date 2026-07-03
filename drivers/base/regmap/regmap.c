@@ -769,14 +769,13 @@ struct regmap *__regmap_init(struct device *dev,
 		map->alloc_flags = GFP_KERNEL;
 
 	map->reg_base = config->reg_base;
+	map->reg_shift = config->pad_bits % 8;
 
-	map->format.reg_bytes = DIV_ROUND_UP(config->reg_bits, 8);
 	map->format.pad_bytes = config->pad_bits / 8;
 	map->format.reg_shift = config->reg_shift;
-	map->format.val_bytes = DIV_ROUND_UP(config->val_bits, 8);
-	map->format.buf_size = DIV_ROUND_UP(config->reg_bits +
-			config->val_bits + config->pad_bits, 8);
-	map->reg_shift = config->pad_bits % 8;
+	map->format.reg_bytes = BITS_TO_BYTES(config->reg_bits);
+	map->format.val_bytes = BITS_TO_BYTES(config->val_bits);
+	map->format.buf_size = BITS_TO_BYTES(config->reg_bits + config->val_bits + config->pad_bits);
 	if (config->reg_stride)
 		map->reg_stride = config->reg_stride;
 	else
@@ -828,7 +827,7 @@ struct regmap *__regmap_init(struct device *dev,
 		map->read_flag_mask = bus->read_flag_mask;
 	}
 
-	if (config && config->read && config->write) {
+	if (config->read && config->write) {
 		map->reg_read  = _regmap_bus_read;
 		if (config->reg_update_bits)
 			map->reg_update_bits = config->reg_update_bits;
@@ -2259,12 +2258,14 @@ EXPORT_SYMBOL_GPL(regmap_field_update_bits_base);
  * @field: Register field to operate on
  * @bits: Bits to test
  *
- * Returns -1 if the underlying regmap_field_read() fails, 0 if at least one of the
- * tested bits is not set and 1 if all tested bits are set.
+ * Returns negative errno if the underlying regmap_field_read() fails,
+ * 0 if at least one of the tested bits is not set and 1 if all tested
+ * bits are set.
  */
 int regmap_field_test_bits(struct regmap_field *field, unsigned int bits)
 {
-	unsigned int val, ret;
+	unsigned int val;
+	int ret;
 
 	ret = regmap_field_read(field, &val);
 	if (ret)
@@ -3118,7 +3119,7 @@ int regmap_fields_read(struct regmap_field *field, unsigned int id,
 EXPORT_SYMBOL_GPL(regmap_fields_read);
 
 static int _regmap_bulk_read(struct regmap *map, unsigned int reg,
-			     unsigned int *regs, void *val, size_t val_count)
+			     const unsigned int *regs, void *val, size_t val_count)
 {
 	u32 *u32 = val;
 	u16 *u16 = val;
@@ -3212,7 +3213,7 @@ EXPORT_SYMBOL_GPL(regmap_bulk_read);
  * A value of zero will be returned on success, a negative errno will
  * be returned in error cases.
  */
-int regmap_multi_reg_read(struct regmap *map, unsigned int *regs, void *val,
+int regmap_multi_reg_read(struct regmap *map, const unsigned int *regs, void *val,
 			  size_t val_count)
 {
 	if (val_count == 0)
@@ -3310,7 +3311,8 @@ EXPORT_SYMBOL_GPL(regmap_update_bits_base);
  */
 int regmap_test_bits(struct regmap *map, unsigned int reg, unsigned int bits)
 {
-	unsigned int val, ret;
+	unsigned int val;
+	int ret;
 
 	ret = regmap_read(map, reg, &val);
 	if (ret)
