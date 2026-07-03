@@ -155,16 +155,17 @@ static inline int extract_bit(const u8 *data, size_t index)
 }
 
 /**
- * longest_prefix_match() - determine the longest prefix
+ * __longest_prefix_match() - determine the longest prefix
  * @trie:	The trie to get internal sizes from
  * @node:	The node to operate on
  * @key:	The key to compare to @node
  *
  * Determine the longest prefix of @node that matches the bits in @key.
  */
-static size_t longest_prefix_match(const struct lpm_trie *trie,
-				   const struct lpm_trie_node *node,
-				   const struct bpf_lpm_trie_key_u8 *key)
+static __always_inline
+size_t __longest_prefix_match(const struct lpm_trie *trie,
+			      const struct lpm_trie_node *node,
+			      const struct bpf_lpm_trie_key_u8 *key)
 {
 	u32 limit = min(node->prefixlen, key->prefixlen);
 	u32 prefixlen = 0, i = 0;
@@ -224,6 +225,13 @@ static size_t longest_prefix_match(const struct lpm_trie *trie,
 	return prefixlen;
 }
 
+static size_t longest_prefix_match(const struct lpm_trie *trie,
+				   const struct lpm_trie_node *node,
+				   const struct bpf_lpm_trie_key_u8 *key)
+{
+	return __longest_prefix_match(trie, node, key);
+}
+
 /* Called from syscall or from eBPF program */
 static void *trie_lookup_elem(struct bpf_map *map, void *_key)
 {
@@ -245,7 +253,7 @@ static void *trie_lookup_elem(struct bpf_map *map, void *_key)
 		 * If it's the maximum possible prefix for this trie, we have
 		 * an exact match and can return it directly.
 		 */
-		matchlen = longest_prefix_match(trie, node, key);
+		matchlen = __longest_prefix_match(trie, node, key);
 		if (matchlen == trie->max_prefixlen) {
 			found = node;
 			break;
@@ -647,7 +655,7 @@ static int trie_get_next_key(struct bpf_map *map, void *_key, void *_next_key)
 	if (!key || key->prefixlen > trie->max_prefixlen)
 		goto find_leftmost;
 
-	node_stack = kmalloc_array(trie->max_prefixlen,
+	node_stack = kmalloc_array(trie->max_prefixlen + 1,
 				   sizeof(struct lpm_trie_node *),
 				   GFP_ATOMIC | __GFP_NOWARN);
 	if (!node_stack)

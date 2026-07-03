@@ -695,6 +695,10 @@ static int omapdrm_init(struct omap_drm_private *priv, struct device *dev)
 	soc = soc_device_match(omapdrm_soc_devices);
 	priv->omaprev = soc ? (uintptr_t)soc->data : 0;
 	priv->wq = alloc_ordered_workqueue("omapdrm", 0);
+	if (!priv->wq) {
+		ret = -ENOMEM;
+		goto err_alloc_workqueue;
+	}
 
 	mutex_init(&priv->list_lock);
 	INIT_LIST_HEAD(&priv->obj_list);
@@ -753,6 +757,7 @@ err_gem_deinit:
 	drm_mode_config_cleanup(ddev);
 	omap_gem_deinit(ddev);
 	destroy_workqueue(priv->wq);
+err_alloc_workqueue:
 	omap_disconnect_pipelines(ddev);
 	drm_dev_put(ddev);
 	return ret;
@@ -816,6 +821,13 @@ static void pdev_remove(struct platform_device *pdev)
 	kfree(priv);
 }
 
+static void pdev_shutdown(struct platform_device *pdev)
+{
+	struct omap_drm_private *priv = platform_get_drvdata(pdev);
+
+	drm_atomic_helper_shutdown(priv->ddev);
+}
+
 #ifdef CONFIG_PM_SLEEP
 static int omap_drm_suspend(struct device *dev)
 {
@@ -845,6 +857,7 @@ static struct platform_driver pdev = {
 	},
 	.probe = pdev_probe,
 	.remove_new = pdev_remove,
+	.shutdown = pdev_shutdown,
 };
 
 static struct platform_driver * const drivers[] = {

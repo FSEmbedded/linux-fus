@@ -46,7 +46,7 @@
 
 struct ib_pkey_cache {
 	int             table_len;
-	u16             table[];
+	u16             table[] __counted_by(table_len);
 };
 
 struct ib_update_work {
@@ -1640,8 +1640,10 @@ int ib_cache_setup_one(struct ib_device *device)
 
 	rdma_for_each_port (device, p) {
 		err = ib_cache_update(device, p, true, true, true);
-		if (err)
+		if (err) {
+			gid_table_cleanup_one(device);
 			return err;
+		}
 	}
 
 	return 0;

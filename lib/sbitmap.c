@@ -65,7 +65,7 @@ static inline bool sbitmap_deferred_clear(struct sbitmap_word *map,
 {
 	unsigned long mask, word_mask;
 
-	guard(spinlock_irqsave)(&map->swap_lock);
+	guard(raw_spinlock_irqsave)(&map->swap_lock);
 
 	if (!map->cleared) {
 		if (depth == 0)
@@ -136,7 +136,7 @@ int sbitmap_init_node(struct sbitmap *sb, unsigned int depth, int shift,
 	}
 
 	for (i = 0; i < sb->map_nr; i++)
-		spin_lock_init(&sb->map[i].swap_lock);
+		raw_spin_lock_init(&sb->map[i].swap_lock);
 
 	return 0;
 }
@@ -410,11 +410,6 @@ static unsigned int sbq_calc_wake_batch(struct sbitmap_queue *sbq,
 	unsigned int shallow_depth;
 
 	/*
-	 * For each batch, we wake up one queue. We need to make sure that our
-	 * batch size is small enough that the full depth of the bitmap,
-	 * potentially limited by a shallow depth, is enough to wake up all of
-	 * the queues.
-	 *
 	 * Each full word of the bitmap has bits_per_word bits, and there might
 	 * be a partial word. There are depth / bits_per_word full words and
 	 * depth % bits_per_word bits left over. In bitwise arithmetic:
