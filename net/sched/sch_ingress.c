@@ -113,15 +113,14 @@ static void ingress_destroy(struct Qdisc *sch)
 {
 	struct ingress_sched_data *q = qdisc_priv(sch);
 	struct net_device *dev = qdisc_dev(sch);
-	struct bpf_mprog_entry *entry;
+	struct bpf_mprog_entry *entry = rtnl_dereference(dev->tcx_ingress);
 
 	if (sch->parent != TC_H_INGRESS)
 		return;
 
 	tcf_block_put_ext(q->block, sch, &q->block_info);
 
-	if (mini_qdisc_pair_inited(&q->miniqp)) {
-		entry = rtnl_dereference(dev->tcx_ingress);
+	if (entry) {
 		tcx_miniq_dec(entry);
 		if (!tcx_entry_is_active(entry)) {
 			tcx_entry_update(dev, NULL, true);
@@ -169,6 +168,7 @@ static struct Qdisc_ops ingress_qdisc_ops __read_mostly = {
 	.ingress_block_get	=	ingress_ingress_block_get,
 	.owner			=	THIS_MODULE,
 };
+MODULE_ALIAS_NET_SCH("ingress");
 
 struct clsact_sched_data {
 	struct tcf_block *ingress_block;
@@ -290,9 +290,10 @@ static int clsact_init(struct Qdisc *sch, struct nlattr *opt,
 
 static void clsact_destroy(struct Qdisc *sch)
 {
-	struct bpf_mprog_entry *ingress_entry, *egress_entry;
 	struct clsact_sched_data *q = qdisc_priv(sch);
 	struct net_device *dev = qdisc_dev(sch);
+	struct bpf_mprog_entry *ingress_entry = rtnl_dereference(dev->tcx_ingress);
+	struct bpf_mprog_entry *egress_entry = rtnl_dereference(dev->tcx_egress);
 
 	if (sch->parent != TC_H_CLSACT)
 		return;
@@ -300,8 +301,7 @@ static void clsact_destroy(struct Qdisc *sch)
 	tcf_block_put_ext(q->ingress_block, sch, &q->ingress_block_info);
 	tcf_block_put_ext(q->egress_block, sch, &q->egress_block_info);
 
-	if (mini_qdisc_pair_inited(&q->miniqp_ingress)) {
-		ingress_entry = rtnl_dereference(dev->tcx_ingress);
+	if (ingress_entry) {
 		tcx_miniq_dec(ingress_entry);
 		if (!tcx_entry_is_active(ingress_entry)) {
 			tcx_entry_update(dev, NULL, true);
@@ -309,8 +309,7 @@ static void clsact_destroy(struct Qdisc *sch)
 		}
 	}
 
-	if (mini_qdisc_pair_inited(&q->miniqp_egress)) {
-		egress_entry = rtnl_dereference(dev->tcx_egress);
+	if (egress_entry) {
 		tcx_miniq_dec(egress_entry);
 		if (!tcx_entry_is_active(egress_entry)) {
 			tcx_entry_update(dev, NULL, false);
@@ -346,6 +345,7 @@ static struct Qdisc_ops clsact_qdisc_ops __read_mostly = {
 	.egress_block_get	=	clsact_egress_block_get,
 	.owner			=	THIS_MODULE,
 };
+MODULE_ALIAS_NET_SCH("clsact");
 
 static int __init ingress_module_init(void)
 {
@@ -370,5 +370,5 @@ static void __exit ingress_module_exit(void)
 module_init(ingress_module_init);
 module_exit(ingress_module_exit);
 
-MODULE_ALIAS("sch_clsact");
 MODULE_LICENSE("GPL");
+MODULE_DESCRIPTION("Ingress and clsact based ingress and egress qdiscs");

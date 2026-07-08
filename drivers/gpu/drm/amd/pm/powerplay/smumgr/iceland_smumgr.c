@@ -2028,7 +2028,7 @@ static int iceland_init_smc_table(struct pp_hwmgr *hwmgr)
 	table->VoltageResponseTime  = 0;
 	table->PhaseResponseTime  = 0;
 	table->MemoryThermThrottleEnable  = 1;
-	table->PCIeBootLinkLevel = (uint8_t) (data->dpm_table.pcie_speed_table.count);
+	table->PCIeBootLinkLevel = 0;
 	table->PCIeGenInterval = 1;
 
 	result = iceland_populate_smc_svi2_config(hwmgr, table);
@@ -2263,6 +2263,7 @@ static uint32_t iceland_get_mac_definition(uint32_t value)
 	case SMU_MAX_ENTRIES_SMIO:
 		return SMU71_MAX_ENTRIES_SMIO;
 	case SMU_MAX_LEVELS_VDDC:
+	case SMU_MAX_LEVELS_VDDGFX:
 		return SMU71_MAX_LEVELS_VDDC;
 	case SMU_MAX_LEVELS_VDDCI:
 		return SMU71_MAX_LEVELS_VDDCI;

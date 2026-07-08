@@ -11,13 +11,6 @@
 
 #define OPLOCK_WAIT_TIME	(35 * HZ)
 
-/* SMB2 Oplock levels */
-#define SMB2_OPLOCK_LEVEL_NONE          0x00
-#define SMB2_OPLOCK_LEVEL_II            0x01
-#define SMB2_OPLOCK_LEVEL_EXCLUSIVE     0x08
-#define SMB2_OPLOCK_LEVEL_BATCH         0x09
-#define SMB2_OPLOCK_LEVEL_LEASE         0xFF
-
 /* Oplock states */
 #define OPLOCK_STATE_NONE	0x00
 #define OPLOCK_ACK_WAIT		0x01
@@ -76,9 +69,8 @@ struct oplock_info {
 	struct lease		*o_lease;
 	struct list_head        op_entry;
 	struct list_head        lease_entry;
-	wait_queue_head_t	oplock_q; /* Other server threads */
-	wait_queue_head_t	oplock_brk; /* oplock breaking wait */
-	struct rcu_head		rcu;
+	wait_queue_head_t oplock_q; /* Other server threads */
+	wait_queue_head_t oplock_brk; /* oplock breaking wait */
 };
 
 struct lease_break_info {
@@ -133,6 +125,5 @@ int smb2_check_durable_oplock(struct ksmbd_conn *conn,
 			      struct ksmbd_share_config *share,
 			      struct ksmbd_file *fp,
 			      struct lease_ctx_info *lctx,
-			      struct ksmbd_user *user,
 			      char *name);
 #endif /* __KSMBD_OPLOCK_H */

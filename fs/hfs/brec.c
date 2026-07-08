@@ -179,7 +179,6 @@ int hfs_brec_remove(struct hfs_find_data *fd)
 	struct hfs_btree *tree;
 	struct hfs_bnode *node, *parent;
 	int end_off, rec_off, data_off, size;
-	int src, dst, len;
 
 	tree = fd->tree;
 	node = fd->bnode;
@@ -209,13 +208,9 @@ again:
 	}
 	hfs_bnode_write_u16(node, offsetof(struct hfs_bnode_desc, num_recs), node->num_recs);
 
-	size = fd->keylength + fd->entrylength;
-
-	if (rec_off == end_off) {
-		src = fd->keyoffset;
-		hfs_bnode_clear(node, src, size);
+	if (rec_off == end_off)
 		goto skip;
-	}
+	size = fd->keylength + fd->entrylength;
 
 	do {
 		data_off = hfs_bnode_read_u16(node, rec_off);
@@ -224,23 +219,9 @@ again:
 	} while (rec_off >= end_off);
 
 	/* fill hole */
-	dst = fd->keyoffset;
-	src = fd->keyoffset + size;
-	len = data_off - src;
-
-	hfs_bnode_move(node, dst, src, len);
-
-	src = dst + len;
-	len = data_off - src;
-
-	hfs_bnode_clear(node, src, len);
-
+	hfs_bnode_move(node, fd->keyoffset, fd->keyoffset + size,
+		       data_off - fd->keyoffset - size);
 skip:
-	/*
-	 * Remove the obsolete offset to free space.
-	 */
-	hfs_bnode_write_u16(node, end_off, 0);
-
 	hfs_bnode_dump(node);
 	if (!fd->record)
 		hfs_brec_update_parent(fd);

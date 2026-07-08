@@ -799,13 +799,10 @@ static struct platform_device omap_mpuio_device = {
 
 static inline void omap_mpuio_init(struct gpio_bank *bank)
 {
-	static bool registered;
-
 	platform_set_drvdata(&omap_mpuio_device, bank);
-	if (!registered) {
-		(void)platform_device_register(&omap_mpuio_device);
-		registered = true;
-	}
+
+	if (platform_driver_register(&omap_mpuio_driver) == 0)
+		(void) platform_device_register(&omap_mpuio_device);
 }
 
 /*---------------------------------------------------------------------*/
@@ -1051,15 +1048,14 @@ static int omap_gpio_chip_init(struct gpio_bank *bank, struct device *pm_dev)
 		bank->chip.label = "mpuio";
 		if (bank->regs->wkup_en)
 			bank->chip.parent = &omap_mpuio_device.dev;
-		bank->chip.base = OMAP_MPUIO(0);
 	} else {
 		label = devm_kasprintf(bank->chip.parent, GFP_KERNEL, "gpio-%d-%d",
 				       gpio, gpio + bank->width - 1);
 		if (!label)
 			return -ENOMEM;
 		bank->chip.label = label;
-		bank->chip.base = -1;
 	}
+	bank->chip.base = -1;
 	bank->chip.ngpio = bank->width;
 
 	irq = &bank->chip.irq;
@@ -1492,7 +1488,7 @@ static int omap_gpio_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int omap_gpio_remove(struct platform_device *pdev)
+static void omap_gpio_remove(struct platform_device *pdev)
 {
 	struct gpio_bank *bank = platform_get_drvdata(pdev);
 
@@ -1501,8 +1497,6 @@ static int omap_gpio_remove(struct platform_device *pdev)
 	pm_runtime_disable(&pdev->dev);
 	if (bank->dbck_flag)
 		clk_unprepare(bank->dbck);
-
-	return 0;
 }
 
 static int __maybe_unused omap_gpio_runtime_suspend(struct device *dev)
@@ -1563,7 +1557,7 @@ static const struct dev_pm_ops gpio_pm_ops = {
 
 static struct platform_driver omap_gpio_driver = {
 	.probe		= omap_gpio_probe,
-	.remove		= omap_gpio_remove,
+	.remove_new	= omap_gpio_remove,
 	.driver		= {
 		.name	= "omap_gpio",
 		.pm	= &gpio_pm_ops,
@@ -1578,24 +1572,13 @@ static struct platform_driver omap_gpio_driver = {
  */
 static int __init omap_gpio_drv_reg(void)
 {
-	int ret;
-
-	ret = platform_driver_register(&omap_mpuio_driver);
-	if (ret)
-		return ret;
-
-	ret = platform_driver_register(&omap_gpio_driver);
-	if (ret)
-		platform_driver_unregister(&omap_mpuio_driver);
-
-	return ret;
+	return platform_driver_register(&omap_gpio_driver);
 }
 postcore_initcall(omap_gpio_drv_reg);
 
 static void __exit omap_gpio_exit(void)
 {
 	platform_driver_unregister(&omap_gpio_driver);
-	platform_driver_unregister(&omap_mpuio_driver);
 }
 module_exit(omap_gpio_exit);
 

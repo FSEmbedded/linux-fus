@@ -196,14 +196,12 @@ codec_put:
 	return ret;
 }
 
-static int fus_wm9715_remove(struct platform_device *pdev)
+static void fus_wm9715_remove(struct platform_device *pdev)
 {
 	struct fus_audio_data *data = platform_get_drvdata(pdev);
 
 	snd_soc_unregister_card(data->card);
 	platform_device_unregister(data->codec);
-
-	return 0;
 }
 
 static const struct of_device_id fus_audio_match[] = {

@@ -151,7 +151,7 @@ static int aa_label_sk_perm(const struct cred *subj_cred,
 			    const char *op, u32 request,
 			    struct sock *sk)
 {
-	struct aa_sk_ctx *ctx = SK_CTX(sk);
+	struct aa_sk_ctx *ctx = aa_sock(sk);
 	int error = 0;
 
 	AA_BUG(!label);
@@ -190,10 +190,8 @@ int aa_sock_file_perm(const struct cred *subj_cred, struct aa_label *label,
 		      const char *op, u32 request, struct socket *sock)
 {
 	AA_BUG(!label);
-
-	/* sock && sock->sk can be NULL for sockets being set up or torn down */
-	if (!sock || !sock->sk)
-		return 0;
+	AA_BUG(!sock);
+	AA_BUG(!sock->sk);
 
 	return aa_label_sk_perm(subj_cred, label, op, request, sock->sk);
 }

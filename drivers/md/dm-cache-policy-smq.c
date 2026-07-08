@@ -1589,18 +1589,14 @@ static int smq_invalidate_mapping(struct dm_cache_policy *p, dm_cblock_t cblock)
 {
 	struct smq_policy *mq = to_smq_policy(p);
 	struct entry *e = get_entry(&mq->cache_alloc, from_cblock(cblock));
-	unsigned long flags;
 
 	if (!e->allocated)
 		return -ENODATA;
 
-	spin_lock_irqsave(&mq->lock, flags);
 	// FIXME: what if this block has pending background work?
 	del_queue(mq, e);
 	h_remove(&mq->table, e);
 	free_entry(&mq->cache_alloc, e);
-	spin_unlock_irqrestore(&mq->lock, flags);
-
 	return 0;
 }
 
@@ -1951,7 +1947,7 @@ static void __exit smq_exit(void)
 module_init(smq_init);
 module_exit(smq_exit);
 
-MODULE_AUTHOR("Joe Thornber <dm-devel@redhat.com>");
+MODULE_AUTHOR("Joe Thornber <dm-devel@lists.linux.dev>");
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("smq cache policy");
 

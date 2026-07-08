@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0+ */
 /*
- * Copyright 2024 NXP
+ * Copyright 2024-2025 NXP
  */
+
 
 #ifndef __ELE_COMMON_H__
 #define __ELE_COMMON_H__
@@ -13,7 +14,7 @@
 
 #define IMX_ELE_FW_DIR                 "imx/ele/"
 
-u32 se_add_msg_crc(u32 *msg, u32 msg_len);
+uint32_t se_add_msg_crc(uint32_t *msg, uint32_t msg_len);
 int ele_msg_rcv(struct se_if_device_ctx *dev_ctx,
 		struct se_clbk_handle *se_clbk_hdl);
 int ele_msg_send(struct se_if_device_ctx *dev_ctx,
@@ -27,8 +28,8 @@ int ele_msg_send_rcv(struct se_if_device_ctx *dev_ctx,
 void se_if_rx_callback(struct mbox_client *mbox_cl, void *msg);
 int se_val_rsp_hdr_n_status(struct se_if_priv *priv,
 			    struct se_api_msg *msg,
-			    u8 msg_id,
-			    u8 sz,
+			    uint8_t msg_id,
+			    uint8_t sz,
 			    bool is_base_api);
 
 /* Fill a command message header with a given command ID and length in bytes. */
@@ -45,6 +46,7 @@ static inline int se_fill_cmd_msg_hdr(struct se_if_priv *priv,
 	return 0;
 }
 
+int ele_late_init(struct se_if_priv *priv);
 int se_save_imem_state(struct se_if_priv *priv, struct se_imem_buf *imem);
 int se_restore_imem_state(struct se_if_priv *priv, struct se_imem_buf *imem);
 

@@ -675,7 +675,7 @@ void ext4_fc_track_range(handle_t *handle, struct inode *inode, ext4_lblk_t star
 
 static void ext4_fc_submit_bh(struct super_block *sb, bool is_tail)
 {
-	blk_opf_t write_flags = JBD2_JOURNAL_REQ_FLAGS;
+	blk_opf_t write_flags = REQ_SYNC;
 	struct buffer_head *bh = EXT4_SB(sb)->s_fc_bh;
 
 	/* Add REQ_FUA | REQ_PREFLUSH only its tail */
@@ -997,7 +997,7 @@ static int ext4_fc_submit_inode_data_all(journal_t *journal)
 			finish_wait(&ei->i_fc_wait, &wait);
 		}
 		spin_unlock(&sbi->s_fc_lock);
-		ret = jbd2_submit_inode_data(journal, READ_ONCE(ei->jinode));
+		ret = jbd2_submit_inode_data(journal, ei->jinode);
 		if (ret)
 			return ret;
 		spin_lock(&sbi->s_fc_lock);
@@ -1022,7 +1022,7 @@ static int ext4_fc_wait_inode_data_all(journal_t *journal)
 			continue;
 		spin_unlock(&sbi->s_fc_lock);
 
-		ret = jbd2_wait_inode_data(journal, READ_ONCE(pos->jinode));
+		ret = jbd2_wait_inode_data(journal, pos->jinode);
 		if (ret)
 			return ret;
 		spin_lock(&sbi->s_fc_lock);
@@ -1601,21 +1601,19 @@ static int ext4_fc_replay_inode(struct super_block *sb,
 	/* Immediately update the inode on disk. */
 	ret = ext4_handle_dirty_metadata(NULL, NULL, iloc.bh);
 	if (ret)
-		goto out_brelse;
+		goto out;
 	ret = sync_dirty_buffer(iloc.bh);
 	if (ret)
-		goto out_brelse;
+		goto out;
 	ret = ext4_mark_inode_used(sb, ino);
 	if (ret)
-		goto out_brelse;
+		goto out;
 
 	/* Given that we just wrote the inode on disk, this SHOULD succeed. */
 	inode = ext4_iget(sb, ino, EXT4_IGET_NORMAL);
 	if (IS_ERR(inode)) {
 		ext4_debug("Inode not found.");
-		inode = NULL;
-		ret = -EFSCORRUPTED;
-		goto out_brelse;
+		return -EFSCORRUPTED;
 	}
 
 	/*
@@ -1632,14 +1630,13 @@ static int ext4_fc_replay_inode(struct super_block *sb,
 	ext4_inode_csum_set(inode, ext4_raw_inode(&iloc), EXT4_I(inode));
 	ret = ext4_handle_dirty_metadata(NULL, NULL, iloc.bh);
 	sync_dirty_buffer(iloc.bh);
-out_brelse:
 	brelse(iloc.bh);
 out:
 	iput(inode);
 	if (!ret)
 		blkdev_issue_flush(sb->s_bdev);
 
-	return ret;
+	return 0;
 }
 
 /*
@@ -1798,7 +1795,7 @@ static int ext4_fc_replay_add_range(struct super_block *sb,
 
 		if (ret == 0) {
 			/* Range is not mapped */
-			path = ext4_find_extent(inode, cur, NULL, 0);
+			path = ext4_find_extent(inode, cur, path, 0);
 			if (IS_ERR(path))
 				goto out;
 			memset(&newex, 0, sizeof(newex));
@@ -1814,7 +1811,6 @@ static int ext4_fc_replay_add_range(struct super_block *sb,
 			up_write((&EXT4_I(inode)->i_data_sem));
 			if (IS_ERR(path))
 				goto out;
-			ext4_free_ext_path(path);
 			goto next;
 		}
 
@@ -1838,7 +1834,7 @@ static int ext4_fc_replay_add_range(struct super_block *sb,
 			 * at the end of the FC replay using our array of
 			 * modified inodes.
 			 */
-			ext4_mb_mark_bb(inode->i_sb, map.m_pblk, map.m_len, 0);
+			ext4_mb_mark_bb(inode->i_sb, map.m_pblk, map.m_len, false);
 			goto next;
 		}
 
@@ -1862,6 +1858,7 @@ next:
 	ext4_ext_replay_shrink_inode(inode, i_size_read(inode) >>
 					sb->s_blocksize_bits);
 out:
+	ext4_free_ext_path(path);
 	iput(inode);
 	return 0;
 }
@@ -1907,7 +1904,7 @@ ext4_fc_replay_del_range(struct super_block *sb,
 		if (ret > 0) {
 			remaining -= ret;
 			cur += ret;
-			ext4_mb_mark_bb(inode->i_sb, map.m_pblk, map.m_len, 0);
+			ext4_mb_mark_bb(inode->i_sb, map.m_pblk, map.m_len, false);
 		} else {
 			remaining -= map.m_len;
 			cur += map.m_len;
@@ -1962,22 +1959,25 @@ static void ext4_fc_set_bitmaps_and_counters(struct super_block *sb)
 				break;
 
 			if (ret > 0) {
-				path = ext4_find_extent(inode, map.m_lblk, NULL, 0);
+				path = ext4_find_extent(inode, map.m_lblk, path, 0);
 				if (!IS_ERR(path)) {
 					for (j = 0; j < path->p_depth; j++)
 						ext4_mb_mark_bb(inode->i_sb,
-							path[j].p_block, 1, 1);
-					ext4_free_ext_path(path);
+							path[j].p_block, 1, true);
+				} else {
+					path = NULL;
 				}
 				cur += ret;
 				ext4_mb_mark_bb(inode->i_sb, map.m_pblk,
-							map.m_len, 1);
+							map.m_len, true);
 			} else {
 				cur = cur + (map.m_len ? map.m_len : 1);
 			}
 		}
 		iput(inode);
 	}
+
+	ext4_free_ext_path(path);
 }
 
 /*

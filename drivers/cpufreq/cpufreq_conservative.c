@@ -187,8 +187,7 @@ static ssize_t down_threshold_store(struct gov_attr_set *attr_set,
 	ret = sscanf(buf, "%u", &input);
 
 	/* cannot be lower than 1 otherwise freq will not fall */
-	if (ret != 1 || input < 1 || input > 100 ||
-			input >= dbs_data->up_threshold)
+	if (ret != 1 || input < 1 || input >= dbs_data->up_threshold)
 		return -EINVAL;
 
 	cs_tuners->down_threshold = input;
@@ -314,17 +313,6 @@ static void cs_start(struct cpufreq_policy *policy)
 	dbs_info->requested_freq = policy->cur;
 }
 
-static void cs_limits(struct cpufreq_policy *policy)
-{
-	struct cs_policy_dbs_info *dbs_info = to_dbs_info(policy->governor_data);
-
-	/*
-	 * The limits have changed, so may have the current frequency. Reset
-	 * requested_freq to avoid any unintended outcomes due to the mismatch.
-	 */
-	dbs_info->requested_freq = policy->cur;
-}
-
 static struct dbs_governor cs_governor = {
 	.gov = CPUFREQ_DBS_GOVERNOR_INITIALIZER("conservative"),
 	.kobj_type = { .default_groups = cs_groups },
@@ -334,7 +322,6 @@ static struct dbs_governor cs_governor = {
 	.init = cs_init,
 	.exit = cs_exit,
 	.start = cs_start,
-	.limits = cs_limits,
 };
 
 #define CPU_FREQ_GOV_CONSERVATIVE	(cs_governor.gov)

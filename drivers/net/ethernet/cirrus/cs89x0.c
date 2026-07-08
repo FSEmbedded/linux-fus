@@ -1271,6 +1271,7 @@ static const struct net_device_ops net_ops = {
 
 static void __init reset_chip(struct net_device *dev)
 {
+#if !defined(CONFIG_MACH_MX31ADS)
 	struct net_local *lp = netdev_priv(dev);
 	unsigned long reset_start_time;
 
@@ -1297,6 +1298,7 @@ static void __init reset_chip(struct net_device *dev)
 	while ((readreg(dev, PP_SelfST) & INIT_DONE) == 0 &&
 	       time_before(jiffies, reset_start_time + 2))
 		;
+#endif /* !CONFIG_MACH_MX31ADS */
 }
 
 /* This is the real probe routine.
@@ -1877,7 +1879,7 @@ free:
 	return err;
 }
 
-static int cs89x0_platform_remove(struct platform_device *pdev)
+static void cs89x0_platform_remove(struct platform_device *pdev)
 {
 	struct net_device *dev = platform_get_drvdata(pdev);
 
@@ -1887,7 +1889,6 @@ static int cs89x0_platform_remove(struct platform_device *pdev)
 	 */
 	unregister_netdev(dev);
 	free_netdev(dev);
-	return 0;
 }
 
 static const struct of_device_id __maybe_unused cs89x0_match[] = {
@@ -1902,7 +1903,7 @@ static struct platform_driver cs89x0_driver = {
 		.name		= DRV_NAME,
 		.of_match_table	= of_match_ptr(cs89x0_match),
 	},
-	.remove	= cs89x0_platform_remove,
+	.remove_new = cs89x0_platform_remove,
 };
 
 module_platform_driver_probe(cs89x0_driver, cs89x0_platform_probe);

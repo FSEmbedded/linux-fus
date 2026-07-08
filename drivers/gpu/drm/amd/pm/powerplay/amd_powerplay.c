@@ -307,6 +307,8 @@ static const struct amd_ip_funcs pp_ip_funcs = {
 	.soft_reset = pp_sw_reset,
 	.set_clockgating_state = pp_set_clockgating_state,
 	.set_powergating_state = pp_set_powergating_state,
+	.dump_ip_state = NULL,
+	.print_ip_state = NULL,
 };
 
 const struct amdgpu_ip_block_version pp_smu_ip_block =
@@ -1027,6 +1029,9 @@ static int pp_get_power_limit(void *handle, uint32_t *limit,
 				*limit /= 100;
 			}
 			break;
+		case PP_PWR_LIMIT_MIN:
+			*limit = 0;
+			break;
 		default:
 			ret = -EOPNOTSUPP;
 			break;
@@ -1373,21 +1378,18 @@ static int pp_set_active_display_count(void *handle, uint32_t count)
 	return phm_set_active_display_count(hwmgr, count);
 }
 
-static int pp_get_asic_baco_capability(void *handle, bool *cap)
+static int pp_get_asic_baco_capability(void *handle)
 {
 	struct pp_hwmgr *hwmgr = handle;
 
-	*cap = false;
 	if (!hwmgr)
-		return -EINVAL;
+		return false;
 
 	if (!(hwmgr->not_vf && amdgpu_dpm) ||
-		!hwmgr->hwmgr_func->get_asic_baco_capability)
-		return 0;
+		!hwmgr->hwmgr_func->get_bamaco_support)
+		return false;
 
-	hwmgr->hwmgr_func->get_asic_baco_capability(hwmgr, cap);
-
-	return 0;
+	return hwmgr->hwmgr_func->get_bamaco_support(hwmgr);
 }
 
 static int pp_get_asic_baco_state(void *handle, int *state)
@@ -1567,7 +1569,16 @@ static void pp_pm_compute_clocks(void *handle)
 	struct amdgpu_device *adev = hwmgr->adev;
 
 	if (!adev->dc_enabled) {
-		amdgpu_dpm_get_display_cfg(adev);
+		amdgpu_dpm_get_active_displays(adev);
+		adev->pm.pm_display_cfg.num_display = adev->pm.dpm.new_active_crtc_count;
+		adev->pm.pm_display_cfg.vrefresh = amdgpu_dpm_get_vrefresh(adev);
+		adev->pm.pm_display_cfg.min_vblank_time = amdgpu_dpm_get_vblank_time(adev);
+		/* we have issues with mclk switching with
+		 * refresh rates over 120 hz on the non-DC code.
+		 */
+		if (adev->pm.pm_display_cfg.vrefresh > 120)
+			adev->pm.pm_display_cfg.min_vblank_time = 0;
+
 		pp_display_configuration_change(handle,
 						&adev->pm.pm_display_cfg);
 	}

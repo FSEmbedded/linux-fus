@@ -415,6 +415,12 @@ efct_intr_thread(int irq, void *handle)
 	return IRQ_HANDLED;
 }
 
+static irqreturn_t
+efct_intr_msix(int irq, void *handle)
+{
+	return IRQ_WAKE_THREAD;
+}
+
 static int
 efct_setup_msix(struct efct *efct, u32 num_intrs)
 {
@@ -444,7 +450,7 @@ efct_setup_msix(struct efct *efct, u32 num_intrs)
 		intr_ctx->index = i;
 
 		rc = request_threaded_irq(pci_irq_vector(efct->pci, i),
-					  NULL, efct_intr_thread, IRQF_ONESHOT,
+					  efct_intr_msix, efct_intr_thread, 0,
 					  EFCT_DRIVER_NAME, intr_ctx);
 		if (rc) {
 			dev_err(&efct->pci->dev,
@@ -772,5 +778,6 @@ static void __exit efct_exit(void)
 module_init(efct_init);
 module_exit(efct_exit);
 MODULE_VERSION(EFCT_DRIVER_VERSION);
+MODULE_DESCRIPTION("Emulex Fibre Channel Target driver");
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Broadcom");

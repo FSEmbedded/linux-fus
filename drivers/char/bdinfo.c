@@ -184,7 +184,7 @@ static int bdinfo_alloc(struct platform_device *pdev, struct bdinfo *pbdi)
 	return 0;
 }
 
-static int bdinfo_remove(struct platform_device *pdev)
+static void bdinfo_remove(struct platform_device *pdev)
 {
 	/* ###TODO: get from pdev */
 	struct bdinfo *bdiTmp = &bdi;
@@ -198,8 +198,6 @@ static int bdinfo_remove(struct platform_device *pdev)
 	}
 
 	bdinfo_free();
-
-	return 0;
 }
 
 static int login_tty_init(struct platform_device *pdev, int i)

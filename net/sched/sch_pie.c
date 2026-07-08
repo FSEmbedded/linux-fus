@@ -89,7 +89,7 @@ static int pie_qdisc_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 	bool enqueue = false;
 
 	if (unlikely(qdisc_qlen(sch) >= sch->limit)) {
-		WRITE_ONCE(q->stats.overlimit, q->stats.overlimit + 1);
+		q->stats.overlimit++;
 		goto out;
 	}
 
@@ -101,7 +101,7 @@ static int pie_qdisc_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 		/* If packet is ecn capable, mark it if drop probability
 		 * is lower than 10%, else drop it.
 		 */
-		WRITE_ONCE(q->stats.ecn_mark, q->stats.ecn_mark + 1);
+		q->stats.ecn_mark++;
 		enqueue = true;
 	}
 
@@ -111,15 +111,15 @@ static int pie_qdisc_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 		if (!q->params.dq_rate_estimator)
 			pie_set_enqueue_time(skb);
 
-		WRITE_ONCE(q->stats.packets_in, q->stats.packets_in + 1);
+		q->stats.packets_in++;
 		if (qdisc_qlen(sch) > q->stats.maxq)
-			WRITE_ONCE(q->stats.maxq, qdisc_qlen(sch));
+			q->stats.maxq = qdisc_qlen(sch);
 
 		return qdisc_enqueue_tail(skb, sch);
 	}
 
 out:
-	WRITE_ONCE(q->stats.dropped, q->stats.dropped + 1);
+	q->stats.dropped++;
 	q->vars.accu_prob = 0;
 	return qdisc_drop(skb, sch, to_free);
 }
@@ -156,36 +156,38 @@ static int pie_change(struct Qdisc *sch, struct nlattr *opt,
 		u32 target = nla_get_u32(tb[TCA_PIE_TARGET]);
 
 		/* convert to pschedtime */
-		q->params.target = PSCHED_NS2TICKS((u64)target * NSEC_PER_USEC);
+		WRITE_ONCE(q->params.target,
+			   PSCHED_NS2TICKS((u64)target * NSEC_PER_USEC));
 	}
 
 	/* tupdate is in jiffies */
 	if (tb[TCA_PIE_TUPDATE])
-		q->params.tupdate =
-			usecs_to_jiffies(nla_get_u32(tb[TCA_PIE_TUPDATE]));
+		WRITE_ONCE(q->params.tupdate,
+			   usecs_to_jiffies(nla_get_u32(tb[TCA_PIE_TUPDATE])));
 
 	if (tb[TCA_PIE_LIMIT]) {
 		u32 limit = nla_get_u32(tb[TCA_PIE_LIMIT]);
 
-		q->params.limit = limit;
-		sch->limit = limit;
+		WRITE_ONCE(q->params.limit, limit);
+		WRITE_ONCE(sch->limit, limit);
 	}
 
 	if (tb[TCA_PIE_ALPHA])
-		q->params.alpha = nla_get_u32(tb[TCA_PIE_ALPHA]);
+		WRITE_ONCE(q->params.alpha, nla_get_u32(tb[TCA_PIE_ALPHA]));
 
 	if (tb[TCA_PIE_BETA])
-		q->params.beta = nla_get_u32(tb[TCA_PIE_BETA]);
+		WRITE_ONCE(q->params.beta, nla_get_u32(tb[TCA_PIE_BETA]));
 
 	if (tb[TCA_PIE_ECN])
-		q->params.ecn = nla_get_u32(tb[TCA_PIE_ECN]);
+		WRITE_ONCE(q->params.ecn, nla_get_u32(tb[TCA_PIE_ECN]));
 
 	if (tb[TCA_PIE_BYTEMODE])
-		q->params.bytemode = nla_get_u32(tb[TCA_PIE_BYTEMODE]);
+		WRITE_ONCE(q->params.bytemode,
+			   nla_get_u32(tb[TCA_PIE_BYTEMODE]));
 
 	if (tb[TCA_PIE_DQ_RATE_ESTIMATOR])
-		q->params.dq_rate_estimator =
-				nla_get_u32(tb[TCA_PIE_DQ_RATE_ESTIMATOR]);
+		WRITE_ONCE(q->params.dq_rate_estimator,
+			   nla_get_u32(tb[TCA_PIE_DQ_RATE_ESTIMATOR]));
 
 	/* Drop excess packets if new limit is lower */
 	qlen = sch->q.qlen;
@@ -212,13 +214,15 @@ void pie_process_dequeue(struct sk_buff *skb, struct pie_params *params,
 	 * packet timestamp.
 	 */
 	if (!params->dq_rate_estimator) {
-		WRITE_ONCE(vars->qdelay,
-			   backlog ? now - pie_get_enqueue_time(skb) : 0);
+		vars->qdelay = now - pie_get_enqueue_time(skb);
 
 		if (vars->dq_tstamp != DTIME_INVALID)
 			dtime = now - vars->dq_tstamp;
 
 		vars->dq_tstamp = now;
+
+		if (backlog == 0)
+			vars->qdelay = 0;
 
 		if (dtime == 0)
 			return;
@@ -258,11 +262,11 @@ void pie_process_dequeue(struct sk_buff *skb, struct pie_params *params,
 			count = count / dtime;
 
 			if (vars->avg_dq_rate == 0)
-				WRITE_ONCE(vars->avg_dq_rate, count);
+				vars->avg_dq_rate = count;
 			else
-				WRITE_ONCE(vars->avg_dq_rate,
+				vars->avg_dq_rate =
 				    (vars->avg_dq_rate -
-				     (vars->avg_dq_rate >> 3)) + (count >> 3));
+				     (vars->avg_dq_rate >> 3)) + (count >> 3);
 
 			/* If the queue has receded below the threshold, we hold
 			 * on to the last drain rate calculated, else we reset
@@ -367,12 +371,12 @@ void pie_calculate_probability(struct pie_params *params, struct pie_vars *vars,
 	if (qdelay > (PSCHED_NS2TICKS(250 * NSEC_PER_MSEC)))
 		delta += MAX_PROB / (100 / 2);
 
-	WRITE_ONCE(vars->prob, vars->prob + delta);
+	vars->prob += delta;
 
 	if (delta > 0) {
 		/* prevent overflow */
 		if (vars->prob < oldprob) {
-			WRITE_ONCE(vars->prob, MAX_PROB);
+			vars->prob = MAX_PROB;
 			/* Prevent normalization error. If probability is at
 			 * maximum value already, we normalize it here, and
 			 * skip the check to do a non-linear drop in the next
@@ -383,7 +387,7 @@ void pie_calculate_probability(struct pie_params *params, struct pie_vars *vars,
 	} else {
 		/* prevent underflow */
 		if (vars->prob > oldprob)
-			WRITE_ONCE(vars->prob, 0);
+			vars->prob = 0;
 	}
 
 	/* Non-linear drop in probability: Reduce drop probability quickly if
@@ -392,9 +396,9 @@ void pie_calculate_probability(struct pie_params *params, struct pie_vars *vars,
 
 	if (qdelay == 0 && qdelay_old == 0 && update_prob)
 		/* Reduce drop probability to 98.4% */
-		WRITE_ONCE(vars->prob, vars->prob - vars->prob / 64);
+		vars->prob -= vars->prob / 64;
 
-	WRITE_ONCE(vars->qdelay, qdelay);
+	vars->qdelay = qdelay;
 	vars->backlog_old = backlog;
 
 	/* We restart the measurement cycle if the following conditions are met
@@ -467,17 +471,18 @@ static int pie_dump(struct Qdisc *sch, struct sk_buff *skb)
 
 	/* convert target from pschedtime to us */
 	if (nla_put_u32(skb, TCA_PIE_TARGET,
-			((u32)PSCHED_TICKS2NS(q->params.target)) /
+			((u32)PSCHED_TICKS2NS(READ_ONCE(q->params.target))) /
 			NSEC_PER_USEC) ||
-	    nla_put_u32(skb, TCA_PIE_LIMIT, sch->limit) ||
+	    nla_put_u32(skb, TCA_PIE_LIMIT, READ_ONCE(sch->limit)) ||
 	    nla_put_u32(skb, TCA_PIE_TUPDATE,
-			jiffies_to_usecs(q->params.tupdate)) ||
-	    nla_put_u32(skb, TCA_PIE_ALPHA, q->params.alpha) ||
-	    nla_put_u32(skb, TCA_PIE_BETA, q->params.beta) ||
+			jiffies_to_usecs(READ_ONCE(q->params.tupdate))) ||
+	    nla_put_u32(skb, TCA_PIE_ALPHA, READ_ONCE(q->params.alpha)) ||
+	    nla_put_u32(skb, TCA_PIE_BETA, READ_ONCE(q->params.beta)) ||
 	    nla_put_u32(skb, TCA_PIE_ECN, q->params.ecn) ||
-	    nla_put_u32(skb, TCA_PIE_BYTEMODE, q->params.bytemode) ||
+	    nla_put_u32(skb, TCA_PIE_BYTEMODE,
+			READ_ONCE(q->params.bytemode)) ||
 	    nla_put_u32(skb, TCA_PIE_DQ_RATE_ESTIMATOR,
-			q->params.dq_rate_estimator))
+			READ_ONCE(q->params.dq_rate_estimator)))
 		goto nla_put_failure;
 
 	return nla_nest_end(skb, opts);
@@ -491,22 +496,22 @@ static int pie_dump_stats(struct Qdisc *sch, struct gnet_dump *d)
 {
 	struct pie_sched_data *q = qdisc_priv(sch);
 	struct tc_pie_xstats st = {
-		.prob		= READ_ONCE(q->vars.prob) << BITS_PER_BYTE,
-		.delay		= ((u32)PSCHED_TICKS2NS(READ_ONCE(q->vars.qdelay))) /
+		.prob		= q->vars.prob << BITS_PER_BYTE,
+		.delay		= ((u32)PSCHED_TICKS2NS(q->vars.qdelay)) /
 				   NSEC_PER_USEC,
-		.packets_in	= READ_ONCE(q->stats.packets_in),
-		.overlimit	= READ_ONCE(q->stats.overlimit),
-		.maxq		= READ_ONCE(q->stats.maxq),
-		.dropped	= READ_ONCE(q->stats.dropped),
-		.ecn_mark	= READ_ONCE(q->stats.ecn_mark),
+		.packets_in	= q->stats.packets_in,
+		.overlimit	= q->stats.overlimit,
+		.maxq		= q->stats.maxq,
+		.dropped	= q->stats.dropped,
+		.ecn_mark	= q->stats.ecn_mark,
 	};
 
 	/* avg_dq_rate is only valid if dq_rate_estimator is enabled */
-	st.dq_rate_estimating = READ_ONCE(q->params.dq_rate_estimator);
+	st.dq_rate_estimating = q->params.dq_rate_estimator;
 
 	/* unscale and return dq_rate in bytes per sec */
-	if (st.dq_rate_estimating)
-		st.avg_dq_rate = READ_ONCE(q->vars.avg_dq_rate) *
+	if (q->params.dq_rate_estimator)
+		st.avg_dq_rate = q->vars.avg_dq_rate *
 				 (PSCHED_TICKS_PER_SEC) >> PIE_SCALE;
 
 	return gnet_stats_copy_app(d, &st, sizeof(st));
@@ -554,6 +559,7 @@ static struct Qdisc_ops pie_qdisc_ops __read_mostly = {
 	.dump_stats	= pie_dump_stats,
 	.owner		= THIS_MODULE,
 };
+MODULE_ALIAS_NET_SCH("pie");
 
 static int __init pie_module_init(void)
 {

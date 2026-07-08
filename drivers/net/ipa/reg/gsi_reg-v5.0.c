@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: GPL-2.0
 
-/* Copyright (C) 2023 Linaro Ltd. */
+/* Copyright (C) 2023-2024 Linaro Ltd. */
 
+#include <linux/array_size.h>
+#include <linux/bits.h>
 #include <linux/types.h>
 
-#include "../gsi.h"
-#include "../reg.h"
 #include "../gsi_reg.h"
+#include "../ipa_version.h"
+#include "../reg.h"
 
 REG(INTER_EE_SRC_CH_IRQ_MSK, inter_ee_src_ch_irq_msk,
     0x0000c01c + 0x1000 * GSI_EE_AP);
@@ -28,7 +30,7 @@ REG_STRIDE_FIELDS(CH_C_CNTXT_0, ch_c_cntxt_0,
 
 static const u32 reg_ch_c_cntxt_1_fmask[] = {
 	[CH_R_LENGTH]					= GENMASK(23, 0),
-	[CH_ERINDEX]					= GENMASK(31, 24),
+	[ERINDEX]					= GENMASK(31, 24),
 };
 
 REG_STRIDE_FIELDS(CH_C_CNTXT_1, ch_c_cntxt_1,
@@ -154,10 +156,9 @@ REG_FIELDS(EV_CH_CMD, ev_ch_cmd, 0x00025010 + 0x12000 * GSI_EE_AP);
 
 static const u32 reg_generic_cmd_fmask[] = {
 	[GENERIC_OPCODE]				= GENMASK(4, 0),
-	[GENERIC_CHID]					= GENMASK(12, 5),
-	[GENERIC_EE]					= GENMASK(16, 13),
-						/* Bits 17-23 reserved */
-	[GENERIC_PARAMS]				= GENMASK(31, 24),
+	[GENERIC_CHID]					= GENMASK(9, 5),
+	[GENERIC_EE]					= GENMASK(13, 10),
+						/* Bits 14-31 reserved */
 };
 
 REG_FIELDS(GENERIC_CMD, generic_cmd, 0x00025018 + 0x12000 * GSI_EE_AP);

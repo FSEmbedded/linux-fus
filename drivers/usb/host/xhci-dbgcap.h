@@ -81,6 +81,7 @@ enum dbc_state {
 	DS_ENABLED,
 	DS_CONNECTED,
 	DS_CONFIGURED,
+	DS_MAX
 };
 
 struct dbc_ep {
@@ -113,7 +114,6 @@ struct dbc_port {
 	unsigned int			tx_boundary;
 
 	bool				registered;
-	bool				tx_running;
 };
 
 struct dbc_driver {

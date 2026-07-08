@@ -49,13 +49,6 @@ static void r8a779f0_eth_serdes_write32(void __iomem *addr, u32 offs, u32 bank, 
 	iowrite32(data, addr + offs);
 }
 
-static u32 r8a779f0_eth_serdes_read32(void __iomem *addr, u32 offs,  u32 bank)
-{
-	iowrite32(bank, addr + R8A779F0_ETH_SERDES_BANK_SELECT);
-
-	return ioread32(addr + offs);
-}
-
 static int
 r8a779f0_eth_serdes_reg_wait(struct r8a779f0_eth_serdes_channel *channel,
 			     u32 offs, u32 bank, u32 mask, u32 expected)
@@ -221,6 +214,10 @@ static int r8a779f0_eth_serdes_hw_init(struct r8a779f0_eth_serdes_channel *chann
 	if (dd->initialized)
 		return 0;
 
+	reset_control_reset(dd->reset);
+
+	usleep_range(1000, 2000);
+
 	ret = r8a779f0_eth_serdes_common_init_ram(dd);
 	if (ret)
 		return ret;
@@ -264,11 +261,19 @@ static int r8a779f0_eth_serdes_init(struct phy *p)
 	return ret;
 }
 
+static int r8a779f0_eth_serdes_exit(struct phy *p)
+{
+	struct r8a779f0_eth_serdes_channel *channel = phy_get_drvdata(p);
+
+	channel->dd->initialized = false;
+
+	return 0;
+}
+
 static int r8a779f0_eth_serdes_hw_init_late(struct r8a779f0_eth_serdes_channel
 *channel)
 {
 	int ret;
-	u32 val;
 
 	ret = r8a779f0_eth_serdes_chan_setting(channel);
 	if (ret)
@@ -281,26 +286,6 @@ static int r8a779f0_eth_serdes_hw_init_late(struct r8a779f0_eth_serdes_channel
 	r8a779f0_eth_serdes_write32(channel->addr, 0x03c0, 0x380, 0x0000);
 
 	r8a779f0_eth_serdes_write32(channel->addr, 0x03d0, 0x380, 0x0000);
-
-	val = r8a779f0_eth_serdes_read32(channel->addr, 0x00c0, 0x180);
-	r8a779f0_eth_serdes_write32(channel->addr, 0x00c0, 0x180, val | BIT(8));
-	ret = r8a779f0_eth_serdes_reg_wait(channel, 0x0100, 0x180, BIT(0), 1);
-	if (ret)
-		return ret;
-	r8a779f0_eth_serdes_write32(channel->addr, 0x00c0, 0x180, val & ~BIT(8));
-	ret = r8a779f0_eth_serdes_reg_wait(channel, 0x0100, 0x180, BIT(0), 0);
-	if (ret)
-		return ret;
-
-	val = r8a779f0_eth_serdes_read32(channel->addr, 0x0144, 0x180);
-	r8a779f0_eth_serdes_write32(channel->addr, 0x0144, 0x180, val | BIT(4));
-	ret = r8a779f0_eth_serdes_reg_wait(channel, 0x0180, 0x180, BIT(0), 1);
-	if (ret)
-		return ret;
-	r8a779f0_eth_serdes_write32(channel->addr, 0x0144, 0x180, val & ~BIT(4));
-	ret = r8a779f0_eth_serdes_reg_wait(channel, 0x0180, 0x180, BIT(0), 0);
-	if (ret)
-		return ret;
 
 	return r8a779f0_eth_serdes_monitor_linkup(channel);
 }
@@ -342,13 +327,14 @@ static int r8a779f0_eth_serdes_set_speed(struct phy *p, int speed)
 
 static const struct phy_ops r8a779f0_eth_serdes_ops = {
 	.init		= r8a779f0_eth_serdes_init,
+	.exit		= r8a779f0_eth_serdes_exit,
 	.power_on	= r8a779f0_eth_serdes_power_on,
 	.set_mode	= r8a779f0_eth_serdes_set_mode,
 	.set_speed	= r8a779f0_eth_serdes_set_speed,
 };
 
 static struct phy *r8a779f0_eth_serdes_xlate(struct device *dev,
-					     struct of_phandle_args *args)
+					     const struct of_phandle_args *args)
 {
 	struct r8a779f0_eth_serdes_drv_data *dd = dev_get_drvdata(dev);
 
@@ -383,8 +369,6 @@ static int r8a779f0_eth_serdes_probe(struct platform_device *pdev)
 	dd->reset = devm_reset_control_get(&pdev->dev, NULL);
 	if (IS_ERR(dd->reset))
 		return PTR_ERR(dd->reset);
-
-	reset_control_reset(dd->reset);
 
 	for (i = 0; i < R8A779F0_ETH_SERDES_NUM; i++) {
 		struct r8a779f0_eth_serdes_channel *channel = &dd->channel[i];

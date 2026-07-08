@@ -74,8 +74,7 @@ static int ext4_getfsmap_dev_compare(const void *p1, const void *p2)
 static bool ext4_getfsmap_rec_before_low_key(struct ext4_getfsmap_info *info,
 					     struct ext4_fsmap *rec)
 {
-	return rec->fmr_physical + rec->fmr_length <=
-	       info->gfi_low.fmr_physical;
+	return rec->fmr_physical < info->gfi_low.fmr_physical;
 }
 
 /*
@@ -201,18 +200,15 @@ static int ext4_getfsmap_meta_helper(struct super_block *sb,
 			  ext4_group_first_block_no(sb, agno));
 	fs_end = fs_start + EXT4_C2B(sbi, len);
 
-	/*
-	 * Return relevant extents from the meta_list. We emit all extents that
-	 * partially/fully overlap with the query range
-	 */
+	/* Return relevant extents from the meta_list */
 	list_for_each_entry_safe(p, tmp, &info->gfi_meta_list, fmr_list) {
-		if (p->fmr_physical + p->fmr_length <= info->gfi_next_fsblk) {
+		if (p->fmr_physical < info->gfi_next_fsblk) {
 			list_del(&p->fmr_list);
 			kfree(p);
 			continue;
 		}
-		if (p->fmr_physical <= fs_end &&
-		    p->fmr_physical + p->fmr_length > fs_start) {
+		if (p->fmr_physical <= fs_start ||
+		    p->fmr_physical + p->fmr_length <= fs_end) {
 			/* Emit the retained free extent record if present */
 			if (info->gfi_lastfree.fmr_owner) {
 				error = ext4_getfsmap_helper(sb, info,
@@ -649,8 +645,9 @@ static bool ext4_getfsmap_is_valid_device(struct super_block *sb,
 	if (fm->fmr_device == 0 || fm->fmr_device == UINT_MAX ||
 	    fm->fmr_device == new_encode_dev(sb->s_bdev->bd_dev))
 		return true;
-	if (EXT4_SB(sb)->s_journal_bdev &&
-	    fm->fmr_device == new_encode_dev(EXT4_SB(sb)->s_journal_bdev->bd_dev))
+	if (EXT4_SB(sb)->s_journal_bdev_file &&
+	    fm->fmr_device ==
+	    new_encode_dev(file_bdev(EXT4_SB(sb)->s_journal_bdev_file)->bd_dev))
 		return true;
 	return false;
 }
@@ -720,9 +717,9 @@ int ext4_getfsmap(struct super_block *sb, struct ext4_fsmap_head *head,
 	memset(handlers, 0, sizeof(handlers));
 	handlers[0].gfd_dev = new_encode_dev(sb->s_bdev->bd_dev);
 	handlers[0].gfd_fn = ext4_getfsmap_datadev;
-	if (EXT4_SB(sb)->s_journal_bdev) {
+	if (EXT4_SB(sb)->s_journal_bdev_file) {
 		handlers[1].gfd_dev = new_encode_dev(
-				EXT4_SB(sb)->s_journal_bdev->bd_dev);
+			file_bdev(EXT4_SB(sb)->s_journal_bdev_file)->bd_dev);
 		handlers[1].gfd_fn = ext4_getfsmap_logdev;
 	}
 

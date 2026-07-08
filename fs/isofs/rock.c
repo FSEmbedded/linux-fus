@@ -101,15 +101,6 @@ static int rock_continue(struct rock_state *rs)
 		goto out;
 	}
 
-	if ((unsigned)rs->cont_extent >= ISOFS_SB(rs->inode->i_sb)->s_nzones) {
-		printk(KERN_NOTICE "rock: corrupted directory entry. "
-			"extent=%u out of volume (nzones=%lu)\n",
-			(unsigned)rs->cont_extent,
-			ISOFS_SB(rs->inode->i_sb)->s_nzones);
-		ret = -EIO;
-		goto out;
-	}
-
 	if (rs->cont_extent) {
 		struct buffer_head *bh;
 
@@ -421,7 +412,12 @@ repeat:
 				}
 			}
 			break;
-		case SIG('T', 'F'):
+		case SIG('T', 'F'): {
+			int flags, size, slen;
+
+			flags = rr->u.TF.flags & TF_LONG_FORM ? ISO_DATE_LONG_FORM : 0;
+			size = rr->u.TF.flags & TF_LONG_FORM ? 17 : 7;
+			slen = rr->len - 5;
 			/*
 			 * Some RRIP writers incorrectly place ctime in the
 			 * TF_CREATE field. Try to handle this correctly for
@@ -429,29 +425,28 @@ repeat:
 			 */
 			/* Rock ridge never appears on a High Sierra disk */
 			cnt = 0;
-			if (rr->u.TF.flags & TF_CREATE) {
-				inode_set_ctime(inode,
-						iso_date(rr->u.TF.times[cnt++].time, 0),
-						0);
+			if ((rr->u.TF.flags & TF_CREATE) && size <= slen) {
+				inode_set_ctime_to_ts(inode,
+						iso_date(rr->u.TF.data + size * cnt++, flags));
+				slen -= size;
 			}
-			if (rr->u.TF.flags & TF_MODIFY) {
-				inode->i_mtime.tv_sec =
-				    iso_date(rr->u.TF.times[cnt++].time,
-					     0);
-				inode->i_mtime.tv_nsec = 0;
+			if ((rr->u.TF.flags & TF_MODIFY) && size <= slen) {
+				inode_set_mtime_to_ts(inode,
+						iso_date(rr->u.TF.data + size * cnt++, flags));
+				slen -= size;
 			}
-			if (rr->u.TF.flags & TF_ACCESS) {
-				inode->i_atime.tv_sec =
-				    iso_date(rr->u.TF.times[cnt++].time,
-					     0);
-				inode->i_atime.tv_nsec = 0;
+			if ((rr->u.TF.flags & TF_ACCESS) && size <= slen) {
+				inode_set_atime_to_ts(inode,
+						iso_date(rr->u.TF.data + size * cnt++, flags));
+				slen -= size;
 			}
-			if (rr->u.TF.flags & TF_ATTRIBUTES) {
-				inode_set_ctime(inode,
-						iso_date(rr->u.TF.times[cnt++].time, 0),
-						0);
+			if ((rr->u.TF.flags & TF_ATTRIBUTES) && size <= slen) {
+				inode_set_ctime_to_ts(inode,
+						iso_date(rr->u.TF.data + size * cnt++, flags));
+				slen -= size;
 			}
 			break;
+		}
 		case SIG('S', 'L'):
 			{
 				int slen;
@@ -540,9 +535,9 @@ repeat:
 			inode->i_rdev = reloc->i_rdev;
 			inode->i_size = reloc->i_size;
 			inode->i_blocks = reloc->i_blocks;
-			inode->i_atime = reloc->i_atime;
+			inode_set_atime_to_ts(inode, inode_get_atime(reloc));
 			inode_set_ctime_to_ts(inode, inode_get_ctime(reloc));
-			inode->i_mtime = reloc->i_mtime;
+			inode_set_mtime_to_ts(inode, inode_get_mtime(reloc));
 			iput(reloc);
 			break;
 #ifdef CONFIG_ZISOFS
@@ -699,11 +694,10 @@ int parse_rock_ridge_inode(struct iso_directory_record *de, struct inode *inode,
  */
 static int rock_ridge_symlink_read_folio(struct file *file, struct folio *folio)
 {
-	struct page *page = &folio->page;
-	struct inode *inode = page->mapping->host;
+	struct inode *inode = folio->mapping->host;
 	struct iso_inode_info *ei = ISOFS_I(inode);
 	struct isofs_sb_info *sbi = ISOFS_SB(inode->i_sb);
-	char *link = page_address(page);
+	char *link = folio_address(folio);
 	unsigned long bufsize = ISOFS_BUFFER_SIZE(inode);
 	struct buffer_head *bh;
 	char *rpnt = link;
@@ -790,9 +784,10 @@ repeat:
 		goto fail;
 	brelse(bh);
 	*rpnt = '\0';
-	SetPageUptodate(page);
-	unlock_page(page);
-	return 0;
+	ret = 0;
+end:
+	folio_end_read(folio, ret == 0);
+	return ret;
 
 	/* error exit from macro */
 out:
@@ -806,9 +801,8 @@ out_bad_span:
 fail:
 	brelse(bh);
 error:
-	SetPageError(page);
-	unlock_page(page);
-	return -EIO;
+	ret = -EIO;
+	goto end;
 }
 
 const struct address_space_operations isofs_symlink_aops = {

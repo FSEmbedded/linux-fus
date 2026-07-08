@@ -39,7 +39,7 @@ int max_ssid;
 
 #define MAX_CSS_IDX 0
 struct channel_subsystem *channel_subsystems[MAX_CSS_IDX + 1];
-static struct bus_type css_bus_type;
+static const struct bus_type css_bus_type;
 
 int
 for_each_subchannel(int(*fn)(struct subchannel_id, void *), void *data)
@@ -160,6 +160,7 @@ static void css_subchannel_release(struct device *dev)
 
 	sch->config.intparm = 0;
 	cio_commit_config(sch);
+	kfree(sch->driver_override);
 	kfree(sch);
 }
 
@@ -235,7 +236,7 @@ struct subchannel *css_alloc_subchannel(struct subchannel_id schid,
 	return sch;
 
 err:
-	put_device(&sch->dev);
+	kfree(sch);
 	return ERR_PTR(ret);
 }
 
@@ -323,9 +324,37 @@ static ssize_t modalias_show(struct device *dev, struct device_attribute *attr,
 
 static DEVICE_ATTR_RO(modalias);
 
+static ssize_t driver_override_store(struct device *dev,
+				     struct device_attribute *attr,
+				     const char *buf, size_t count)
+{
+	struct subchannel *sch = to_subchannel(dev);
+	int ret;
+
+	ret = driver_set_override(dev, &sch->driver_override, buf, count);
+	if (ret)
+		return ret;
+
+	return count;
+}
+
+static ssize_t driver_override_show(struct device *dev,
+				    struct device_attribute *attr, char *buf)
+{
+	struct subchannel *sch = to_subchannel(dev);
+	ssize_t len;
+
+	device_lock(dev);
+	len = sysfs_emit(buf, "%s\n", sch->driver_override);
+	device_unlock(dev);
+	return len;
+}
+static DEVICE_ATTR_RW(driver_override);
+
 static struct attribute *subch_attrs[] = {
 	&dev_attr_type.attr,
 	&dev_attr_modalias.attr,
+	&dev_attr_driver_override.attr,
 	NULL,
 };
 
@@ -1085,26 +1114,33 @@ static int cio_dma_pool_init(void)
 	return 0;
 }
 
-void *cio_gp_dma_zalloc(struct gen_pool *gp_dma, struct device *dma_dev,
-			size_t size)
+void *__cio_gp_dma_zalloc(struct gen_pool *gp_dma, struct device *dma_dev,
+			  size_t size, dma32_t *dma_handle)
 {
 	dma_addr_t dma_addr;
-	unsigned long addr;
 	size_t chunk_size;
+	void *addr;
 
 	if (!gp_dma)
 		return NULL;
-	addr = gen_pool_alloc(gp_dma, size);
+	addr = gen_pool_dma_alloc(gp_dma, size, &dma_addr);
 	while (!addr) {
 		chunk_size = round_up(size, PAGE_SIZE);
-		addr = (unsigned long) dma_alloc_coherent(dma_dev,
-					 chunk_size, &dma_addr, CIO_DMA_GFP);
+		addr = dma_alloc_coherent(dma_dev, chunk_size, &dma_addr, CIO_DMA_GFP);
 		if (!addr)
 			return NULL;
-		gen_pool_add_virt(gp_dma, addr, dma_addr, chunk_size, -1);
-		addr = gen_pool_alloc(gp_dma, size);
+		gen_pool_add_virt(gp_dma, (unsigned long)addr, dma_addr, chunk_size, -1);
+		addr = gen_pool_dma_alloc(gp_dma, size, dma_handle ? &dma_addr : NULL);
 	}
-	return (void *) addr;
+	if (dma_handle)
+		*dma_handle = (__force dma32_t)dma_addr;
+	return addr;
+}
+
+void *cio_gp_dma_zalloc(struct gen_pool *gp_dma, struct device *dma_dev,
+			size_t size)
+{
+	return __cio_gp_dma_zalloc(gp_dma, dma_dev, size, NULL);
 }
 
 void cio_gp_dma_free(struct gen_pool *gp_dma, void *cpu_addr, size_t size)
@@ -1296,7 +1332,6 @@ static ssize_t cio_settle_write(struct file *file, const char __user *buf,
 static const struct proc_ops cio_settle_proc_ops = {
 	.proc_open	= nonseekable_open,
 	.proc_write	= cio_settle_write,
-	.proc_lseek	= no_llseek,
 };
 
 static int __init cio_settle_init(void)
@@ -1318,16 +1353,14 @@ int sch_is_pseudo_sch(struct subchannel *sch)
 	return sch == to_css(sch->dev.parent)->pseudo_subchannel;
 }
 
-static int css_bus_match(struct device *dev, struct device_driver *drv)
+static int css_bus_match(struct device *dev, const struct device_driver *drv)
 {
 	struct subchannel *sch = to_subchannel(dev);
-	struct css_driver *driver = to_cssdriver(drv);
+	const struct css_driver *driver = to_cssdriver(drv);
 	struct css_device_id *id;
-	int ret;
 
 	/* When driver_override is set, only bind to the matching driver */
-	ret = device_match_driver_override(dev, drv);
-	if (ret == 0)
+	if (sch->driver_override && strcmp(sch->driver_override, drv->name))
 		return 0;
 
 	for (id = driver->subchannel_type; id->match_flags; id++) {
@@ -1382,9 +1415,8 @@ static int css_uevent(const struct device *dev, struct kobj_uevent_env *env)
 	return ret;
 }
 
-static struct bus_type css_bus_type = {
+static const struct bus_type css_bus_type = {
 	.name     = "css",
-	.driver_override = true,
 	.match    = css_bus_match,
 	.probe    = css_probe,
 	.remove   = css_remove,

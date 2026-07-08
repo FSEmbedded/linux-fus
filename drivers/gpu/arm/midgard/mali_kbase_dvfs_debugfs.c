@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note
 /*
  *
- * (C) COPYRIGHT 2020-2023 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2020-2024 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -38,20 +38,27 @@ static int kbasep_dvfs_utilization_debugfs_show(struct seq_file *file, void *dat
 	struct kbase_device *kbdev = file->private;
 
 	CSTD_UNUSED(data);
-#if MALI_USE_CSF
-	seq_printf(file, "busy_time: %llu idle_time: %llu protm_time: %llu shader_busy_time: %llu shader_frag_busy_time: %llu tiler_busy_time: %llu\n",
+	seq_printf(file, "busy_time: %llu idle_time: %llu protm_time: %llu\n",
 		   kbdev->pm.backend.metrics.values.time_busy,
 		   kbdev->pm.backend.metrics.values.time_idle,
-		   kbdev->pm.backend.metrics.values.time_in_protm,
-		   kbdev->pm.backend.metrics.values.shader_time_busy,
+		   kbdev->pm.backend.metrics.values.time_in_protm);
+
+	seq_printf(file, "shader_frag_busy_time: %llu shader_compute_busy_time: %llu tiler_busy_time: %llu\n",
 		   kbdev->pm.backend.metrics.values.shader_frag_time_busy,
+		   kbdev->pm.backend.metrics.values.shader_compute_time_busy,
 		   kbdev->pm.backend.metrics.values.tiler_time_busy);
 
-#else
-	seq_printf(file, "busy_time: %u idle_time: %u\n",
-		   kbdev->pm.backend.metrics.values.time_busy,
-		   kbdev->pm.backend.metrics.values.time_idle);
-#endif
+	seq_printf(file, "mcu_busy_time: %llu idvs_busy_time: %llu ceu_busy_time: %llu lsu_busy_time: %llu\n",
+		   kbdev->pm.backend.metrics.values.mcu_time_busy,
+		   kbdev->pm.backend.metrics.values.idvs_time_busy,
+		   kbdev->pm.backend.metrics.values.ceu_time_busy,
+		   kbdev->pm.backend.metrics.values.lsu_time_busy);
+
+	seq_printf(file, "l2_ext_read_busy_time: %llu l2_ext_write_busy_time: %llu shader_starving_busy_time: %llu\n",
+		   kbdev->pm.backend.metrics.values.l2_ext_read_time_busy,
+		   kbdev->pm.backend.metrics.values.l2_ext_write_time_busy,
+		   kbdev->pm.backend.metrics.values.shader_starving_time_busy);
+
 
 	return 0;
 }

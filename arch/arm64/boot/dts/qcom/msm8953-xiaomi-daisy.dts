@@ -157,7 +157,7 @@
 
 &pmi8950_wled {
 	qcom,current-limit-microamp = <20000>;
-	qcom,num-strings = <3>;
+	qcom,num-strings = <2>;
 
 	status = "okay";
 };
@@ -321,5 +321,6 @@
 };
 
 &usb3_dwc3 {
+	/delete-property/ usb-role-switch;
 	dr_mode = "peripheral";
 };

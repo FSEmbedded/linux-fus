@@ -51,7 +51,7 @@ DECLARE_EVENT_CLASS(smc_msg_event,
 				     __field(const void *, smc)
 				     __field(u64, net_cookie)
 				     __field(size_t, len)
-				     __string(name, smc->conn.lnk ? smc->conn.lnk->ibname : "")
+				     __string(name, smc->conn.lnk->ibname)
 		    ),
 
 		    TP_fast_assign(
@@ -60,7 +60,7 @@ DECLARE_EVENT_CLASS(smc_msg_event,
 				   __entry->smc = smc;
 				   __entry->net_cookie = sock_net(sk)->net_cookie;
 				   __entry->len = len;
-				   __assign_str(name, smc->conn.lnk->ibname);
+				   __assign_str(name);
 		    ),
 
 		    TP_printk("smc=%p net=%llu len=%zu dev=%s",
@@ -104,7 +104,7 @@ TRACE_EVENT(smcr_link_down,
 			   __entry->lgr = lgr;
 			   __entry->net_cookie = lgr->net->net_cookie;
 			   __entry->state = lnk->state;
-			   __assign_str(name, lnk->ibname);
+			   __assign_str(name);
 			   __entry->location = location;
 	    ),
 

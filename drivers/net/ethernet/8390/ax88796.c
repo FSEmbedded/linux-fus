@@ -816,7 +816,7 @@ static int ax_init_dev(struct net_device *dev)
 	return ret;
 }
 
-static int ax_remove(struct platform_device *pdev)
+static void ax_remove(struct platform_device *pdev)
 {
 	struct net_device *dev = platform_get_drvdata(pdev);
 	struct ei_device *ei_local = netdev_priv(dev);
@@ -838,8 +838,6 @@ static int ax_remove(struct platform_device *pdev)
 	platform_set_drvdata(pdev, NULL);
 	kfree(ax->plat);
 	free_netdev(dev);
-
-	return 0;
 }
 
 static int ax_probe_dt(struct ax_device *ax, struct ax_plat_data *plat,
@@ -1087,7 +1085,7 @@ static struct platform_driver axdrv = {
 		.of_match_table = of_match_ptr(ax88796_of_match),
 	},
 	.probe		= ax_probe,
-	.remove		= ax_remove,
+	.remove_new	= ax_remove,
 	.suspend	= ax_suspend,
 	.resume		= ax_resume,
 };

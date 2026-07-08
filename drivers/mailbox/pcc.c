@@ -269,24 +269,6 @@ static bool pcc_mbox_cmd_complete_check(struct pcc_chan_info *pchan)
 	return !!val;
 }
 
-static int pcc_mbox_error_check_and_clear(struct pcc_chan_info *pchan)
-{
-	u64 val;
-	int ret;
-
-	ret = pcc_chan_reg_read(&pchan->error, &val);
-	if (ret)
-		return ret;
-
-	if (val & pchan->error.status_mask) {
-		val &= pchan->error.preserve_mask;
-		pcc_chan_reg_write(&pchan->error, val);
-		return -EIO;
-	}
-
-	return 0;
-}
-
 static void check_and_ack(struct pcc_chan_info *pchan, struct mbox_chan *chan)
 {
 	struct acpi_pcct_ext_pcc_shared_memory pcc_hdr;
@@ -327,6 +309,8 @@ static irqreturn_t pcc_mbox_irq(int irq, void *p)
 {
 	struct pcc_chan_info *pchan;
 	struct mbox_chan *chan = p;
+	u64 val;
+	int ret;
 
 	pchan = chan->con_priv;
 
@@ -340,8 +324,15 @@ static irqreturn_t pcc_mbox_irq(int irq, void *p)
 	if (!pcc_mbox_cmd_complete_check(pchan))
 		return IRQ_NONE;
 
-	if (pcc_mbox_error_check_and_clear(pchan))
+	ret = pcc_chan_reg_read(&pchan->error, &val);
+	if (ret)
 		return IRQ_NONE;
+	val &= pchan->error.status_mask;
+	if (val) {
+		val &= ~pchan->error.status_mask;
+		pcc_chan_reg_write(&pchan->error, val);
+		return IRQ_NONE;
+	}
 
 	/*
 	 * Clear this flag after updating interrupt ack register and just
@@ -481,7 +472,7 @@ static int pcc_startup(struct mbox_chan *chan)
 
 	if (pchan->plat_irq > 0) {
 		irqflags = pcc_chan_plat_irq_can_be_shared(pchan) ?
-						IRQF_SHARED : 0;
+						IRQF_SHARED | IRQF_ONESHOT : 0;
 		rc = devm_request_irq(chan->mbox->dev, pchan->plat_irq, pcc_mbox_irq,
 				      irqflags, MBOX_IRQ_NAME, chan);
 		if (unlikely(rc)) {
@@ -672,8 +663,7 @@ static int pcc_parse_subspace_db_reg(struct pcc_chan_info *pchan,
 
 		ret = pcc_chan_reg_init(&pchan->error,
 					&pcct_ext->error_status_register,
-					~pcct_ext->error_status_mask, 0,
-					pcct_ext->error_status_mask,
+					0, 0, pcct_ext->error_status_mask,
 					"Error Status");
 	}
 	return ret;

@@ -703,12 +703,12 @@ int bcm_vk_send_shutdown_msg(struct bcm_vk *vk, u32 shut_type,
 	entry = kzalloc(struct_size(entry, to_v_msg, 1), GFP_KERNEL);
 	if (!entry)
 		return -ENOMEM;
+	entry->to_v_blks = 1;	/* always 1 block */
 
 	/* fill up necessary data */
 	entry->to_v_msg[0].function_id = VK_FID_SHUTDOWN;
 	set_q_num(&entry->to_v_msg[0], q_num);
 	set_msg_id(&entry->to_v_msg[0], VK_SIMPLEX_MSG_ID);
-	entry->to_v_blks = 1; /* always 1 block */
 
 	entry->to_v_msg[0].cmd = shut_type;
 	entry->to_v_msg[0].arg = pid;
@@ -1010,9 +1010,6 @@ ssize_t bcm_vk_read(struct file *p_file,
 	struct device *dev = &vk->pdev->dev;
 	struct bcm_vk_msg_chan *chan = &vk->to_h_msg_chan;
 	struct bcm_vk_wkent *entry = NULL, *iter;
-	struct vk_msg_blk tmp_msg;
-	u32 tmp_usr_msg_id;
-	u32 tmp_blks;
 	u32 q_num;
 	u32 rsp_length;
 
@@ -1037,9 +1034,6 @@ ssize_t bcm_vk_read(struct file *p_file,
 					entry = iter;
 				} else {
 					/* buffer not big enough */
-					tmp_msg = iter->to_h_msg[0];
-					tmp_usr_msg_id = iter->usr_msg_id;
-					tmp_blks = iter->to_h_blks;
 					rc = -EMSGSIZE;
 				}
 				goto read_loop_exit;
@@ -1058,12 +1052,14 @@ read_loop_exit:
 
 		bcm_vk_free_wkent(dev, entry);
 	} else if (rc == -EMSGSIZE) {
+		struct vk_msg_blk tmp_msg = entry->to_h_msg[0];
+
 		/*
 		 * in this case, return just the first block, so
 		 * that app knows what size it is looking for.
 		 */
-		set_msg_id(&tmp_msg, tmp_usr_msg_id);
-		tmp_msg.size = tmp_blks - 1;
+		set_msg_id(&tmp_msg, entry->usr_msg_id);
+		tmp_msg.size = entry->to_h_blks - 1;
 		if (copy_to_user(buf, &tmp_msg, VK_MSGQ_BLK_SIZE) != 0) {
 			dev_err(dev, "Error return 1st block in -EMSGSIZE\n");
 			rc = -EFAULT;

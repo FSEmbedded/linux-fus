@@ -425,7 +425,7 @@ static int pppoe_rcv(struct sk_buff *skb, struct net_device *dev,
 	if (skb_mac_header_len(skb) < ETH_HLEN)
 		goto drop;
 
-	if (!pskb_may_pull(skb, PPPOE_SES_HLEN))
+	if (!pskb_may_pull(skb, sizeof(struct pppoe_hdr)))
 		goto drop;
 
 	ph = pppoe_hdr(skb);
@@ -433,12 +433,6 @@ static int pppoe_rcv(struct sk_buff *skb, struct net_device *dev,
 
 	skb_pull_rcsum(skb, sizeof(*ph));
 	if (skb->len < len)
-		goto drop;
-
-	/* skb->data points to the PPP protocol header after skb_pull_rcsum.
-	 * Drop PFC frames.
-	 */
-	if (ppp_skb_is_compressed_proto(skb))
 		goto drop;
 
 	if (pskb_trim_rcsum(skb, len))
@@ -883,7 +877,7 @@ static int pppoe_sendmsg(struct socket *sock, struct msghdr *m,
 
 	skb->dev = dev;
 
-	skb->priority = sk->sk_priority;
+	skb->priority = READ_ONCE(sk->sk_priority);
 	skb->protocol = cpu_to_be16(ETH_P_PPP_SES);
 
 	ph = skb_put(skb, total_len + sizeof(struct pppoe_hdr));

@@ -5,7 +5,7 @@
  */
 #include <linux/blkdev.h>
 #include <linux/pr.h>
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 
 #include "nvme.h"
 
@@ -72,18 +72,16 @@ static int nvme_send_ns_pr_command(struct nvme_ns *ns, struct nvme_command *c,
 	return nvme_submit_sync_cmd(ns->queue, c, data, data_len);
 }
 
-static int nvme_sc_to_pr_err(int nvme_sc)
+static int nvme_status_to_pr_err(int status)
 {
-	if (nvme_is_path_error(nvme_sc))
+	if (nvme_is_path_error(status))
 		return PR_STS_PATH_FAILED;
 
-	switch (nvme_sc & 0x7ff) {
+	switch (status & NVME_SCT_SC_MASK) {
 	case NVME_SC_SUCCESS:
 		return PR_STS_SUCCESS;
 	case NVME_SC_RESERVATION_CONFLICT:
 		return PR_STS_RESERVATION_CONFLICT;
-	case NVME_SC_ONCS_NOT_SUPPORTED:
-		return -EOPNOTSUPP;
 	case NVME_SC_BAD_ATTRIBUTES:
 	case NVME_SC_INVALID_OPCODE:
 	case NVME_SC_INVALID_FIELD:
@@ -97,8 +95,7 @@ static int nvme_sc_to_pr_err(int nvme_sc)
 static int nvme_send_pr_command(struct block_device *bdev,
 		struct nvme_command *c, void *data, unsigned int data_len)
 {
-	if (IS_ENABLED(CONFIG_NVME_MULTIPATH) &&
-	    bdev->bd_disk->fops == &nvme_ns_head_ops)
+	if (nvme_disk_is_ns_head(bdev->bd_disk))
 		return nvme_send_ns_head_pr_command(bdev, c, data, data_len);
 
 	return nvme_send_ns_pr_command(bdev->bd_disk->private_data, c, data,
@@ -122,7 +119,7 @@ static int nvme_pr_command(struct block_device *bdev, u32 cdw10,
 	if (ret < 0)
 		return ret;
 
-	return nvme_sc_to_pr_err(ret);
+	return nvme_status_to_pr_err(ret);
 }
 
 static int nvme_pr_register(struct block_device *bdev, u64 old,
@@ -197,14 +194,13 @@ retry:
 	if (ret < 0)
 		return ret;
 
-	return nvme_sc_to_pr_err(ret);
+	return nvme_status_to_pr_err(ret);
 }
 
 static int nvme_pr_read_keys(struct block_device *bdev,
 		struct pr_keys *keys_info)
 {
-	size_t rse_len;
-	u32 num_keys = keys_info->num_keys;
+	u32 rse_len, num_keys = keys_info->num_keys;
 	struct nvme_reservation_status_ext *rse;
 	int ret, i;
 	bool eds;
@@ -214,10 +210,7 @@ static int nvme_pr_read_keys(struct block_device *bdev,
 	 * enough to get enough keys to fill the return keys buffer.
 	 */
 	rse_len = struct_size(rse, regctl_eds, num_keys);
-	if (rse_len > U32_MAX)
-		return -EINVAL;
-
-	rse = kvzalloc(rse_len, GFP_KERNEL);
+	rse = kzalloc(rse_len, GFP_KERNEL);
 	if (!rse)
 		return -ENOMEM;
 
@@ -242,7 +235,7 @@ static int nvme_pr_read_keys(struct block_device *bdev,
 	}
 
 free_rse:
-	kvfree(rse);
+	kfree(rse);
 	return ret;
 }
 

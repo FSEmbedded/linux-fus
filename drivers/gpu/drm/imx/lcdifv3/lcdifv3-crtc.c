@@ -159,14 +159,12 @@ static void lcdifv3_crtc_atomic_enable(struct drm_crtc *crtc,
 
 	if (imx_crtc_state->bus_flags & DRM_BUS_FLAG_DE_HIGH)
 		vm.flags |= DISPLAY_FLAGS_DE_HIGH;
-	if (imx_crtc_state->bus_flags & DRM_BUS_FLAG_DE_LOW)
+	else
 		vm.flags |= DISPLAY_FLAGS_DE_LOW;
 
-	if ((imx_crtc_state->bus_flags & DRM_BUS_FLAG_PIXDATA_SAMPLE_NEGEDGE) ||
-	    (imx_crtc_state->bus_flags & DRM_BUS_FLAG_PIXDATA_DRIVE_POSEDGE))
+	if (imx_crtc_state->bus_flags & DRM_BUS_FLAG_PIXDATA_SAMPLE_NEGEDGE)
 		vm.flags |= DISPLAY_FLAGS_PIXDATA_POSEDGE;
-	if ((imx_crtc_state->bus_flags & DRM_BUS_FLAG_PIXDATA_SAMPLE_POSEDGE) ||
-	    (imx_crtc_state->bus_flags & DRM_BUS_FLAG_PIXDATA_DRIVE_NEGEDGE))
+	else
 		vm.flags |= DISPLAY_FLAGS_PIXDATA_NEGEDGE;
 
 	pm_runtime_get_sync(lcdifv3_crtc->dev->parent);
@@ -365,11 +363,9 @@ static int lcdifv3_crtc_probe(struct platform_device *pdev)
 	return component_add(dev, &lcdifv3_crtc_ops);
 }
 
-static int lcdifv3_crtc_remove(struct platform_device *pdev)
+static void lcdifv3_crtc_remove(struct platform_device *pdev)
 {
 	component_del(&pdev->dev, &lcdifv3_crtc_ops);
-
-	return 0;
 }
 
 static struct platform_driver lcdifv3_crtc_driver = {

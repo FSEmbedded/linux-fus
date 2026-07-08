@@ -18,10 +18,10 @@ properties:
   reg:
     maxItems: 1
 
-  AVDD-supply:
+  avdd-supply:
     description: Analog power supply
 
-  DVDD-supply:
+  dvdd-supply:
     description: Digital power supply
 
   reset-gpios:
@@ -56,7 +56,7 @@ allOf:
       properties:
         dsd-path: false
 
-unevaluatedProperties: false
+additionalProperties: false
 
 examples:
   - |

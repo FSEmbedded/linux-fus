@@ -689,8 +689,6 @@ int trace_event_reg(struct trace_event_call *call,
 
 #ifdef CONFIG_PERF_EVENTS
 	case TRACE_REG_PERF_REGISTER:
-		if (!call->class->perf_probe)
-			return -ENODEV;
 		return tracepoint_probe_register(call->tp,
 						 call->class->perf_probe,
 						 call);
@@ -1142,18 +1140,18 @@ static void remove_subsystem(struct trace_subsystem_dir *dir)
 
 void event_file_get(struct trace_event_file *file)
 {
-	atomic_inc(&file->ref);
+	refcount_inc(&file->ref);
 }
 
 void event_file_put(struct trace_event_file *file)
 {
-	if (WARN_ON_ONCE(!atomic_read(&file->ref))) {
+	if (WARN_ON_ONCE(!refcount_read(&file->ref))) {
 		if (file->flags & EVENT_FILE_FL_FREED)
 			kmem_cache_free(file_cachep, file);
 		return;
 	}
 
-	if (atomic_dec_and_test(&file->ref)) {
+	if (refcount_dec_and_test(&file->ref)) {
 		/* Count should only go to zero when it is freed */
 		if (WARN_ON_ONCE(!(file->flags & EVENT_FILE_FL_FREED)))
 			return;
@@ -1169,9 +1167,6 @@ static void remove_event_file_dir(struct trace_event_file *file)
 	free_event_filter(file->filter);
 	file->flags |= EVENT_FILE_FL_FREED;
 	event_file_put(file);
-
-	/* Wake up hist poll waiters to notice the EVENT_FILE_FL_FREED flag. */
-	hist_poll_wakeup();
 }
 
 /*
@@ -1341,7 +1336,7 @@ ftrace_event_write(struct file *file, const char __user *ubuf,
 	if (!cnt)
 		return 0;
 
-	ret = tracing_update_buffers();
+	ret = tracing_update_buffers(tr);
 	if (ret < 0)
 		return ret;
 
@@ -1572,18 +1567,20 @@ event_enable_write(struct file *filp, const char __user *ubuf, size_t cnt,
 	if (ret)
 		return ret;
 
-	ret = tracing_update_buffers();
-	if (ret < 0)
-		return ret;
-
 	switch (val) {
 	case 0:
 	case 1:
 		ret = -ENODEV;
 		mutex_lock(&event_mutex);
 		file = event_file_file(filp);
-		if (likely(file))
+		if (likely(file)) {
+			ret = tracing_update_buffers(file->tr);
+			if (ret < 0) {
+				mutex_unlock(&event_mutex);
+				return ret;
+			}
 			ret = ftrace_event_enable_disable(file, val);
+		}
 		mutex_unlock(&event_mutex);
 		break;
 
@@ -1657,7 +1654,7 @@ system_enable_write(struct file *filp, const char __user *ubuf, size_t cnt,
 	if (ret)
 		return ret;
 
-	ret = tracing_update_buffers();
+	ret = tracing_update_buffers(dir->tr);
 	if (ret < 0)
 		return ret;
 
@@ -2054,9 +2051,9 @@ subsystem_filter_write(struct file *filp, const char __user *ubuf, size_t cnt,
 }
 
 static ssize_t
-show_header(struct file *filp, char __user *ubuf, size_t cnt, loff_t *ppos)
+show_header_page_file(struct file *filp, char __user *ubuf, size_t cnt, loff_t *ppos)
 {
-	int (*func)(struct trace_seq *s) = filp->private_data;
+	struct trace_array *tr = filp->private_data;
 	struct trace_seq *s;
 	int r;
 
@@ -2069,7 +2066,31 @@ show_header(struct file *filp, char __user *ubuf, size_t cnt, loff_t *ppos)
 
 	trace_seq_init(s);
 
-	func(s);
+	ring_buffer_print_page_header(tr->array_buffer.buffer, s);
+	r = simple_read_from_buffer(ubuf, cnt, ppos,
+				    s->buffer, trace_seq_used(s));
+
+	kfree(s);
+
+	return r;
+}
+
+static ssize_t
+show_header_event_file(struct file *filp, char __user *ubuf, size_t cnt, loff_t *ppos)
+{
+	struct trace_seq *s;
+	int r;
+
+	if (*ppos)
+		return 0;
+
+	s = kmalloc(sizeof(*s), GFP_KERNEL);
+	if (!s)
+		return -ENOMEM;
+
+	trace_seq_init(s);
+
+	ring_buffer_print_entry_header(s);
 	r = simple_read_from_buffer(ubuf, cnt, ppos,
 				    s->buffer, trace_seq_used(s));
 
@@ -2141,7 +2162,7 @@ event_pid_write(struct file *filp, const char __user *ubuf,
 	if (!cnt)
 		return 0;
 
-	ret = tracing_update_buffers();
+	ret = tracing_update_buffers(tr);
 	if (ret < 0)
 		return ret;
 
@@ -2328,10 +2349,18 @@ static const struct file_operations ftrace_tr_enable_fops = {
 	.release = subsystem_release,
 };
 
-static const struct file_operations ftrace_show_header_fops = {
-	.open = tracing_open_generic,
-	.read = show_header,
+static const struct file_operations ftrace_show_header_page_fops = {
+	.open = tracing_open_generic_tr,
+	.read = show_header_page_file,
 	.llseek = default_llseek,
+	.release = tracing_release_generic_tr,
+};
+
+static const struct file_operations ftrace_show_header_event_fops = {
+	.open = tracing_open_generic_tr,
+	.read = show_header_event_file,
+	.llseek = default_llseek,
+	.release = tracing_release_generic_tr,
 };
 
 static int
@@ -3139,7 +3168,7 @@ trace_create_new_event(struct trace_event_call *call,
 	atomic_set(&file->tm_ref, 0);
 	INIT_LIST_HEAD(&file->triggers);
 	list_add(&file->list, &tr->events);
-	event_file_get(file);
+	refcount_set(&file->ref, 1);
 
 	return file;
 }
@@ -3161,7 +3190,7 @@ static __init int setup_trace_triggers(char *str)
 	int i;
 
 	strscpy(bootup_trigger_buf, str, COMMAND_LINE_SIZE);
-	ring_buffer_expanded = true;
+	trace_set_ring_buffer_expanded(NULL);
 	disable_tracing_selftest("running event triggers");
 
 	buf = bootup_trigger_buf;
@@ -3578,6 +3607,11 @@ void trace_put_event_file(struct trace_event_file *file)
 EXPORT_SYMBOL_GPL(trace_put_event_file);
 
 #ifdef CONFIG_DYNAMIC_FTRACE
+
+/* Avoid typos */
+#define ENABLE_EVENT_STR	"enable_event"
+#define DISABLE_EVENT_STR	"disable_event"
+
 struct event_probe_data {
 	struct trace_event_file	*file;
 	unsigned long			count;
@@ -3966,7 +4000,7 @@ static char bootup_event_buf[COMMAND_LINE_SIZE] __initdata;
 static __init int setup_trace_event(char *str)
 {
 	strscpy(bootup_event_buf, str, COMMAND_LINE_SIZE);
-	ring_buffer_expanded = true;
+	trace_set_ring_buffer_expanded(NULL);
 	disable_tracing_selftest("running event tracing");
 
 	return 1;
@@ -3982,17 +4016,16 @@ static int events_callback(const char *name, umode_t *mode, void **data,
 		return 1;
 	}
 
-	if (strcmp(name, "header_page") == 0)
-		*data = ring_buffer_print_page_header;
+	if (strcmp(name, "header_page") == 0) {
+		*mode = TRACE_MODE_READ;
+		*fops = &ftrace_show_header_page_fops;
 
-	else if (strcmp(name, "header_event") == 0)
-		*data = ring_buffer_print_entry_header;
-
-	else
+	} else if (strcmp(name, "header_event") == 0) {
+		*mode = TRACE_MODE_READ;
+		*fops = &ftrace_show_header_event_fops;
+	} else
 		return 0;
 
-	*mode = TRACE_MODE_READ;
-	*fops = &ftrace_show_header_fops;
 	return 1;
 }
 
@@ -4140,54 +4173,32 @@ static __init int event_trace_memsetup(void)
 	return 0;
 }
 
-/*
- * Helper function to enable or disable a comma-separated list of events
- * from the bootup buffer.
- */
-static __init void __early_set_events(struct trace_array *tr, char *buf, bool enable)
+__init void
+early_enable_events(struct trace_array *tr, char *buf, bool disable_first)
 {
 	char *token;
+	int ret;
 
-	while ((token = strsep(&buf, ","))) {
+	while (true) {
+		token = strsep(&buf, ",");
+
+		if (!token)
+			break;
+
 		if (*token) {
-			if (enable) {
-				if (ftrace_set_clr_event(tr, token, 1))
-					pr_warn("Failed to enable trace event: %s\n", token);
-			} else {
+			/* Restarting syscalls requires that we stop them first */
+			if (disable_first)
 				ftrace_set_clr_event(tr, token, 0);
-			}
+
+			ret = ftrace_set_clr_event(tr, token, 1);
+			if (ret)
+				pr_warn("Failed to enable trace event: %s\n", token);
 		}
 
 		/* Put back the comma to allow this to be called again */
 		if (buf)
 			*(buf - 1) = ',';
 	}
-}
-
-/**
- * early_enable_events - enable events from the bootup buffer
- * @tr: The trace array to enable the events in
- * @buf: The buffer containing the comma separated list of events
- * @disable_first: If true, disable all events in @buf before enabling them
- *
- * This function enables events from the bootup buffer. If @disable_first
- * is true, it will first disable all events in the buffer before enabling
- * them.
- *
- * For syscall events, which rely on a global refcount to register the
- * SYSCALL_WORK_SYSCALL_TRACEPOINT flag (especially for pid 1), we must
- * ensure the refcount hits zero before re-enabling them. A simple
- * "disable then enable" per-event is not enough if multiple syscalls are
- * used, as the refcount will stay above zero. Thus, we need a two-phase
- * approach: disable all, then enable all.
- */
-__init void
-early_enable_events(struct trace_array *tr, char *buf, bool disable_first)
-{
-	if (disable_first)
-		__early_set_events(tr, buf, false);
-
-	__early_set_events(tr, buf, true);
 }
 
 static __init int event_trace_enable(void)

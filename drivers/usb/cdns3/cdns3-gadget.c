@@ -1132,6 +1132,7 @@ static int cdns3_ep_run_transfer(struct cdns3_endpoint *priv_ep,
 	u16 total_tdl = 0;
 	struct scatterlist *s = NULL;
 	bool sg_supported = !!(request->num_mapped_sgs);
+	u32 ioc = request->no_interrupt ? 0 : TRB_IOC;
 
 	num_trb_req = sg_supported ? request->num_mapped_sgs : 1;
 
@@ -1288,11 +1289,11 @@ static int cdns3_ep_run_transfer(struct cdns3_endpoint *priv_ep,
 			control |= pcs;
 
 		if (priv_ep->type == USB_ENDPOINT_XFER_ISOC  && !priv_ep->dir) {
-			control |= TRB_IOC | TRB_ISP;
+			control |= ioc | TRB_ISP;
 		} else {
 			/* for last element in TD or in SG list */
 			if (sg_iter == (num_trb - 1) && sg_iter != 0)
-				control |= pcs | TRB_IOC | TRB_ISP;
+				control |= pcs | ioc | TRB_ISP;
 		}
 
 		if (sg_iter)
@@ -1323,7 +1324,7 @@ static int cdns3_ep_run_transfer(struct cdns3_endpoint *priv_ep,
 	priv_req->num_of_trb = num_trb;
 
 	if (sg_iter == 1)
-		trb->control |= cpu_to_le32(TRB_IOC | TRB_ISP);
+		trb->control |= cpu_to_le32(ioc | TRB_ISP);
 
 	if (priv_dev->dev_ver < DEV_VER_V2 &&
 	    (priv_ep->flags & EP_TDLCHK_EN)) {
@@ -2588,9 +2589,6 @@ static int __cdns3_gadget_ep_queue(struct usb_ep *ep,
 	struct cdns3_request *priv_req;
 	int ret = 0;
 
-	if (!ep->desc)
-		return -ESHUTDOWN;
-
 	request->actual = 0;
 	request->status = -EINPROGRESS;
 	priv_req = to_cdns3_request(request);
@@ -3431,7 +3429,6 @@ static int __cdns3_gadget_init(struct cdns *cdns)
 	ret = cdns3_gadget_start(cdns);
 	if (ret) {
 		pm_runtime_put_sync(cdns->dev);
-		cdns_drd_gadget_off(cdns);
 		return ret;
 	}
 

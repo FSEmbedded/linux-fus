@@ -514,8 +514,7 @@ static ssize_t ib_umad_write(struct file *filp, const char __user *buf,
 	struct rdma_ah_attr ah_attr;
 	struct ib_ah *ah;
 	__be64 *tid;
-	int ret, hdr_len, copy_offset, rmpp_active;
-	size_t data_len;
+	int ret, data_len, hdr_len, copy_offset, rmpp_active;
 	u8 base_version;
 
 	if (count < hdr_size(file) + IB_MGMT_RMPP_HDR)
@@ -589,10 +588,7 @@ static ssize_t ib_umad_write(struct file *filp, const char __user *buf,
 	}
 
 	base_version = ((struct ib_mad_hdr *)&packet->mad.data)->base_version;
-	if (check_sub_overflow(count, hdr_size(file) + hdr_len, &data_len)) {
-		ret = -EINVAL;
-		goto err_ah;
-	}
+	data_len = count - hdr_size(file) - hdr_len;
 	packet->msg = ib_create_send_mad(agent,
 					 be32_to_cpu(packet->mad.hdr.qpn),
 					 packet->mad.hdr.pkey_index, rmpp_active,
@@ -1086,7 +1082,6 @@ static const struct file_operations umad_fops = {
 #endif
 	.open		= ib_umad_open,
 	.release	= ib_umad_close,
-	.llseek		= no_llseek,
 };
 
 static int ib_umad_sm_open(struct inode *inode, struct file *filp)
@@ -1154,7 +1149,6 @@ static const struct file_operations umad_sm_fops = {
 	.owner	 = THIS_MODULE,
 	.open	 = ib_umad_sm_open,
 	.release = ib_umad_sm_close,
-	.llseek	 = no_llseek,
 };
 
 static struct ib_umad_port *get_port(struct ib_device *ibdev,
@@ -1325,15 +1319,17 @@ static int ib_umad_init_port(struct ib_device *device, int port_num,
 	if (ret)
 		goto err_cdev;
 
-	ib_umad_init_port_dev(&port->sm_dev, port, device);
-	port->sm_dev.devt = base_issm;
-	dev_set_name(&port->sm_dev, "issm%d", port->dev_num);
-	cdev_init(&port->sm_cdev, &umad_sm_fops);
-	port->sm_cdev.owner = THIS_MODULE;
+	if (rdma_cap_ib_smi(device, port_num)) {
+		ib_umad_init_port_dev(&port->sm_dev, port, device);
+		port->sm_dev.devt = base_issm;
+		dev_set_name(&port->sm_dev, "issm%d", port->dev_num);
+		cdev_init(&port->sm_cdev, &umad_sm_fops);
+		port->sm_cdev.owner = THIS_MODULE;
 
-	ret = cdev_device_add(&port->sm_cdev, &port->sm_dev);
-	if (ret)
-		goto err_dev;
+		ret = cdev_device_add(&port->sm_cdev, &port->sm_dev);
+		if (ret)
+			goto err_dev;
+	}
 
 	return 0;
 
@@ -1349,9 +1345,13 @@ err_cdev:
 static void ib_umad_kill_port(struct ib_umad_port *port)
 {
 	struct ib_umad_file *file;
+	bool has_smi = false;
 	int id;
 
-	cdev_device_del(&port->sm_cdev, &port->sm_dev);
+	if (rdma_cap_ib_smi(port->ib_dev, port->port_num)) {
+		cdev_device_del(&port->sm_cdev, &port->sm_dev);
+		has_smi = true;
+	}
 	cdev_device_del(&port->cdev, &port->dev);
 
 	mutex_lock(&port->file_mutex);
@@ -1377,7 +1377,8 @@ static void ib_umad_kill_port(struct ib_umad_port *port)
 	ida_free(&umad_ida, port->dev_num);
 
 	/* balances device_initialize() */
-	put_device(&port->sm_dev);
+	if (has_smi)
+		put_device(&port->sm_dev);
 	put_device(&port->dev);
 }
 

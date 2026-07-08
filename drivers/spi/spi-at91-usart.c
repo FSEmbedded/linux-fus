@@ -132,28 +132,14 @@ static int at91_usart_spi_configure_dma(struct spi_controller *ctlr,
 	dma_cap_set(DMA_SLAVE, mask);
 
 	ctlr->dma_tx = dma_request_chan(dev, "tx");
-	if (IS_ERR_OR_NULL(ctlr->dma_tx)) {
-		if (IS_ERR(ctlr->dma_tx)) {
-			err = PTR_ERR(ctlr->dma_tx);
-			goto at91_usart_spi_error_clear;
-		}
-
-		dev_dbg(dev,
-			"DMA TX channel not available, SPI unable to use DMA\n");
-		err = -EBUSY;
+	if (IS_ERR(ctlr->dma_tx)) {
+		err = PTR_ERR(ctlr->dma_tx);
 		goto at91_usart_spi_error_clear;
 	}
 
 	ctlr->dma_rx = dma_request_chan(dev, "rx");
-	if (IS_ERR_OR_NULL(ctlr->dma_rx)) {
-		if (IS_ERR(ctlr->dma_rx)) {
-			err = PTR_ERR(ctlr->dma_rx);
-			goto at91_usart_spi_error;
-		}
-
-		dev_dbg(dev,
-			"DMA RX channel not available, SPI unable to use DMA\n");
-		err = -EBUSY;
+	if (IS_ERR(ctlr->dma_rx)) {
+		err = PTR_ERR(ctlr->dma_rx);
 		goto at91_usart_spi_error;
 	}
 
@@ -570,7 +556,7 @@ static int at91_usart_spi_probe(struct platform_device *pdev)
 	spin_lock_init(&aus->lock);
 	init_completion(&aus->xfer_completion);
 
-	ret = spi_register_controller(controller);
+	ret = devm_spi_register_controller(&pdev->dev, controller);
 	if (ret)
 		goto at91_usart_fail_register_controller;
 
@@ -648,14 +634,8 @@ static void at91_usart_spi_remove(struct platform_device *pdev)
 	struct spi_controller *ctlr = platform_get_drvdata(pdev);
 	struct at91_usart_spi *aus = spi_controller_get_devdata(ctlr);
 
-	spi_controller_get(ctlr);
-
-	spi_unregister_controller(ctlr);
-
 	at91_usart_spi_release_dma(ctlr);
 	clk_disable_unprepare(aus->clk);
-
-	spi_controller_put(ctlr);
 }
 
 static const struct dev_pm_ops at91_usart_spi_pm_ops = {

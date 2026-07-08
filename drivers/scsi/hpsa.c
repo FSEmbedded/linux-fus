@@ -51,7 +51,7 @@
 #include <linux/jiffies.h>
 #include <linux/percpu-defs.h>
 #include <linux/percpu.h>
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 #include <asm/div64.h>
 #include "hpsa_cmd.h"
 #include "hpsa.h"
@@ -6528,21 +6528,18 @@ static int hpsa_big_passthru_ioctl(struct ctlr_info *h,
 	while (left) {
 		sz = (left > ioc->malloc_size) ? ioc->malloc_size : left;
 		buff_size[sg_used] = sz;
-
-		if (ioc->Request.Type.Direction & XFER_WRITE) {
-			buff[sg_used] = memdup_user(data_ptr, sz);
-			if (IS_ERR(buff[sg_used])) {
-				status = PTR_ERR(buff[sg_used]);
-				goto cleanup1;
-			}
-		} else {
-			buff[sg_used] = kzalloc(sz, GFP_KERNEL);
-			if (!buff[sg_used]) {
-				status = -ENOMEM;
-				goto cleanup1;
-			}
+		buff[sg_used] = kmalloc(sz, GFP_KERNEL);
+		if (buff[sg_used] == NULL) {
+			status = -ENOMEM;
+			goto cleanup1;
 		}
-
+		if (ioc->Request.Type.Direction & XFER_WRITE) {
+			if (copy_from_user(buff[sg_used], data_ptr, sz)) {
+				status = -EFAULT;
+				goto cleanup1;
+			}
+		} else
+			memset(buff[sg_used], 0, sz);
 		left -= sz;
 		data_ptr += sz;
 		sg_used++;
@@ -7512,7 +7509,7 @@ fallback:
  */
 static int hpsa_interrupt_mode(struct ctlr_info *h)
 {
-	unsigned int flags = PCI_IRQ_LEGACY;
+	unsigned int flags = PCI_IRQ_INTX;
 	int ret;
 
 	/* Some boards advertise MSI but don't really support it */

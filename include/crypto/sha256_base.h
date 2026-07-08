@@ -9,7 +9,7 @@
 #define _CRYPTO_SHA256_BASE_H
 
 #include <asm/byteorder.h>
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 #include <crypto/internal/hash.h>
 #include <crypto/sha2.h>
 #include <linux/string.h>
@@ -44,7 +44,7 @@ static inline int lib_sha256_base_do_update(struct sha256_state *sctx,
 	sctx->count += len;
 
 	if (unlikely((partial + len) >= SHA256_BLOCK_SIZE)) {
-		unsigned int blocks;
+		int blocks;
 
 		if (partial) {
 			int p = SHA256_BLOCK_SIZE - partial;

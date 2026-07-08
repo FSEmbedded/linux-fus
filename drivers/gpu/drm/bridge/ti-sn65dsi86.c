@@ -21,7 +21,7 @@
 #include <linux/regmap.h>
 #include <linux/regulator/consumer.h>
 
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 
 #include <drm/display/drm_dp_aux_bus.h>
 #include <drm/display/drm_dp_helper.h>
@@ -106,21 +106,10 @@
 #define SN_PWM_EN_INV_REG			0xA5
 #define  SN_PWM_INV_MASK			BIT(0)
 #define  SN_PWM_EN_MASK				BIT(1)
-
-#define SN_IRQ_EN_REG				0xE0
-#define  IRQ_EN					BIT(0)
-
-#define SN_IRQ_EVENTS_EN_REG			0xE6
-#define  HPD_INSERTION_EN			BIT(1)
-#define  HPD_REMOVAL_EN				BIT(2)
-
 #define SN_AUX_CMD_STATUS_REG			0xF4
 #define  AUX_IRQ_STATUS_AUX_RPLY_TOUT		BIT(3)
 #define  AUX_IRQ_STATUS_AUX_SHORT		BIT(5)
 #define  AUX_IRQ_STATUS_NAT_I2C_FAIL		BIT(6)
-#define SN_IRQ_STATUS_REG			0xF5
-#define  HPD_REMOVAL_STATUS			BIT(2)
-#define  HPD_INSERTION_STATUS			BIT(1)
 
 #define MIN_DSI_CLK_FREQ_MHZ	40
 
@@ -163,9 +152,7 @@
  * @ln_assign:    Value to program to the LN_ASSIGN register.
  * @ln_polrs:     Value for the 4-bit LN_POLRS field of SN_ENH_FRAME_REG.
  * @comms_enabled: If true then communication over the aux channel is enabled.
- * @hpd_enabled:   If true then HPD events are enabled.
  * @comms_mutex:   Protects modification of comms_enabled.
- * @hpd_mutex:     Protects modification of hpd_enabled.
  *
  * @gchip:        If we expose our GPIOs, this is used.
  * @gchip_output: A cache of whether we've set GPIOs to output.  This
@@ -203,16 +190,14 @@ struct ti_sn65dsi86 {
 	u8				ln_assign;
 	u8				ln_polrs;
 	bool				comms_enabled;
-	bool				hpd_enabled;
 	struct mutex			comms_mutex;
-	struct mutex			hpd_mutex;
 
 #if defined(CONFIG_OF_GPIO)
 	struct gpio_chip		gchip;
 	DECLARE_BITMAP(gchip_output, SN_NUM_GPIOS);
 #endif
 #if defined(CONFIG_PWM)
-	struct pwm_chip			pchip;
+	struct pwm_chip			*pchip;
 	bool				pwm_enabled;
 	atomic_t			pwm_pin_busy;
 #endif
@@ -235,23 +220,6 @@ static const struct regmap_config ti_sn65dsi86_regmap_config = {
 	.cache_type = REGCACHE_NONE,
 	.max_register = 0xFF,
 };
-
-static int ti_sn65dsi86_read_u8(struct ti_sn65dsi86 *pdata, unsigned int reg,
-				u8 *val)
-{
-	int ret;
-	unsigned int reg_val;
-
-	ret = regmap_read(pdata->regmap, reg, &reg_val);
-	if (ret) {
-		dev_err(pdata->dev, "fail to read raw reg %#x: %d\n",
-			reg, ret);
-		return ret;
-	}
-	*val = (u8)reg_val;
-
-	return 0;
-}
 
 static int __maybe_unused ti_sn65dsi86_read_u16(struct ti_sn65dsi86 *pdata,
 						unsigned int reg, u16 *val)
@@ -394,7 +362,6 @@ static void ti_sn65dsi86_disable_comms(struct ti_sn65dsi86 *pdata)
 static int __maybe_unused ti_sn65dsi86_resume(struct device *dev)
 {
 	struct ti_sn65dsi86 *pdata = dev_get_drvdata(dev);
-	const struct i2c_client *client = to_i2c_client(pdata->dev);
 	int ret;
 
 	ret = regulator_bulk_enable(SN_REGULATOR_SUPPLY_NUM, pdata->supplies);
@@ -428,13 +395,6 @@ static int __maybe_unused ti_sn65dsi86_resume(struct device *dev)
 	 */
 	if (pdata->refclk)
 		ti_sn65dsi86_enable_comms(pdata);
-
-	if (client->irq) {
-		ret = regmap_update_bits(pdata->regmap, SN_IRQ_EN_REG, IRQ_EN,
-					 IRQ_EN);
-		if (ret)
-			dev_err(pdata->dev, "Failed to enable IRQ events: %d\n", ret);
-	}
 
 	return ret;
 }
@@ -1243,12 +1203,12 @@ static enum drm_connector_status ti_sn_bridge_detect(struct drm_bridge *bridge)
 					 : connector_status_disconnected;
 }
 
-static struct edid *ti_sn_bridge_get_edid(struct drm_bridge *bridge,
-					  struct drm_connector *connector)
+static const struct drm_edid *ti_sn_bridge_edid_read(struct drm_bridge *bridge,
+						     struct drm_connector *connector)
 {
 	struct ti_sn65dsi86 *pdata = bridge_to_ti_sn65dsi86(bridge);
 
-	return drm_get_edid(connector, &pdata->aux.ddc);
+	return drm_edid_read_ddc(connector, &pdata->aux.ddc);
 }
 
 static void ti_sn65dsi86_debugfs_init(struct drm_bridge *bridge, struct dentry *root)
@@ -1263,8 +1223,6 @@ static void ti_sn65dsi86_debugfs_init(struct drm_bridge *bridge, struct dentry *
 static void ti_sn_bridge_hpd_enable(struct drm_bridge *bridge)
 {
 	struct ti_sn65dsi86 *pdata = bridge_to_ti_sn65dsi86(bridge);
-	const struct i2c_client *client = to_i2c_client(pdata->dev);
-	int ret;
 
 	/*
 	 * Device needs to be powered on before reading the HPD state
@@ -1273,35 +1231,11 @@ static void ti_sn_bridge_hpd_enable(struct drm_bridge *bridge)
 	 */
 
 	pm_runtime_get_sync(pdata->dev);
-
-	mutex_lock(&pdata->hpd_mutex);
-	pdata->hpd_enabled = true;
-	mutex_unlock(&pdata->hpd_mutex);
-
-	if (client->irq) {
-		ret = regmap_set_bits(pdata->regmap, SN_IRQ_EVENTS_EN_REG,
-				      HPD_REMOVAL_EN | HPD_INSERTION_EN);
-		if (ret)
-			dev_err(pdata->dev, "Failed to enable HPD events: %d\n", ret);
-	}
 }
 
 static void ti_sn_bridge_hpd_disable(struct drm_bridge *bridge)
 {
 	struct ti_sn65dsi86 *pdata = bridge_to_ti_sn65dsi86(bridge);
-	const struct i2c_client *client = to_i2c_client(pdata->dev);
-	int ret;
-
-	if (client->irq) {
-		ret = regmap_clear_bits(pdata->regmap, SN_IRQ_EVENTS_EN_REG,
-					HPD_REMOVAL_EN | HPD_INSERTION_EN);
-		if (ret)
-			dev_err(pdata->dev, "Failed to disable HPD events: %d\n", ret);
-	}
-
-	mutex_lock(&pdata->hpd_mutex);
-	pdata->hpd_enabled = false;
-	mutex_unlock(&pdata->hpd_mutex);
 
 	pm_runtime_put_autosuspend(pdata->dev);
 }
@@ -1310,7 +1244,7 @@ static const struct drm_bridge_funcs ti_sn_bridge_funcs = {
 	.attach = ti_sn_bridge_attach,
 	.detach = ti_sn_bridge_detach,
 	.mode_valid = ti_sn_bridge_mode_valid,
-	.get_edid = ti_sn_bridge_get_edid,
+	.edid_read = ti_sn_bridge_edid_read,
 	.detect = ti_sn_bridge_detect,
 	.atomic_pre_enable = ti_sn_bridge_atomic_pre_enable,
 	.atomic_enable = ti_sn_bridge_atomic_enable,
@@ -1387,47 +1321,11 @@ static int ti_sn_bridge_parse_dsi_host(struct ti_sn65dsi86 *pdata)
 	return 0;
 }
 
-static irqreturn_t ti_sn_bridge_interrupt(int irq, void *private)
-{
-	struct ti_sn65dsi86 *pdata = private;
-	struct drm_device *dev = pdata->bridge.dev;
-	u8 status;
-	int ret;
-	bool hpd_event;
-
-	ret = ti_sn65dsi86_read_u8(pdata, SN_IRQ_STATUS_REG, &status);
-	if (ret) {
-		dev_err(pdata->dev, "Failed to read IRQ status: %d\n", ret);
-		return IRQ_NONE;
-	}
-
-	hpd_event = status & (HPD_REMOVAL_STATUS | HPD_INSERTION_STATUS);
-
-	dev_dbg(pdata->dev, "(SN_IRQ_STATUS_REG = %#x)\n", status);
-	if (!status)
-		return IRQ_NONE;
-
-	ret = regmap_write(pdata->regmap, SN_IRQ_STATUS_REG, status);
-	if (ret) {
-		dev_err(pdata->dev, "Failed to clear IRQ status: %d\n", ret);
-		return IRQ_NONE;
-	}
-
-	/* Only send the HPD event if we are bound with a device. */
-	mutex_lock(&pdata->hpd_mutex);
-	if (pdata->hpd_enabled && hpd_event)
-		drm_kms_helper_hotplug_event(dev);
-	mutex_unlock(&pdata->hpd_mutex);
-
-	return IRQ_HANDLED;
-}
-
 static int ti_sn_bridge_probe(struct auxiliary_device *adev,
 			      const struct auxiliary_device_id *id)
 {
 	struct ti_sn65dsi86 *pdata = dev_get_drvdata(adev->dev.parent);
 	struct device_node *np = pdata->dev->of_node;
-	const struct i2c_client *client = to_i2c_client(pdata->dev);
 	int ret;
 
 	pdata->next_bridge = devm_drm_of_get_bridge(&adev->dev, np, 1, 0);
@@ -1447,9 +1345,8 @@ static int ti_sn_bridge_probe(struct auxiliary_device *adev,
 			   ? DRM_MODE_CONNECTOR_DisplayPort : DRM_MODE_CONNECTOR_eDP;
 
 	if (pdata->bridge.type == DRM_MODE_CONNECTOR_DisplayPort) {
-		pdata->bridge.ops = DRM_BRIDGE_OP_EDID | DRM_BRIDGE_OP_DETECT;
-		if (client->irq)
-			pdata->bridge.ops |= DRM_BRIDGE_OP_HPD;
+		pdata->bridge.ops = DRM_BRIDGE_OP_EDID | DRM_BRIDGE_OP_DETECT |
+				    DRM_BRIDGE_OP_HPD;
 		/*
 		 * If comms were already enabled they would have been enabled
 		 * with the wrong value of HPD_DISABLE. Update it now. Comms
@@ -1523,7 +1420,7 @@ static void ti_sn_pwm_pin_release(struct ti_sn65dsi86 *pdata)
 
 static struct ti_sn65dsi86 *pwm_chip_to_ti_sn_bridge(struct pwm_chip *chip)
 {
-	return container_of(chip, struct ti_sn65dsi86, pchip);
+	return pwmchip_get_drvdata(chip);
 }
 
 static int ti_sn_pwm_request(struct pwm_chip *chip, struct pwm_device *pwm)
@@ -1564,11 +1461,9 @@ static int ti_sn_pwm_apply(struct pwm_chip *chip, struct pwm_device *pwm,
 	int ret;
 
 	if (!pdata->pwm_enabled) {
-		ret = pm_runtime_get_sync(pdata->dev);
-		if (ret < 0) {
-			pm_runtime_put_sync(pdata->dev);
+		ret = pm_runtime_resume_and_get(pwmchip_parent(chip));
+		if (ret < 0)
 			return ret;
-		}
 	}
 
 	if (state->enabled) {
@@ -1582,7 +1477,7 @@ static int ti_sn_pwm_apply(struct pwm_chip *chip, struct pwm_device *pwm,
 						 SN_GPIO_MUX_MASK << (2 * SN_PWM_GPIO_IDX),
 						 SN_GPIO_MUX_SPECIAL << (2 * SN_PWM_GPIO_IDX));
 			if (ret) {
-				dev_err(pdata->dev, "failed to mux in PWM function\n");
+				dev_err(pwmchip_parent(chip), "failed to mux in PWM function\n");
 				goto out;
 			}
 		}
@@ -1658,7 +1553,7 @@ static int ti_sn_pwm_apply(struct pwm_chip *chip, struct pwm_device *pwm,
 
 		ret = regmap_write(pdata->regmap, SN_PWM_PRE_DIV_REG, pre_div);
 		if (ret) {
-			dev_err(pdata->dev, "failed to update PWM_PRE_DIV\n");
+			dev_err(pwmchip_parent(chip), "failed to update PWM_PRE_DIV\n");
 			goto out;
 		}
 
@@ -1670,7 +1565,7 @@ static int ti_sn_pwm_apply(struct pwm_chip *chip, struct pwm_device *pwm,
 		     FIELD_PREP(SN_PWM_INV_MASK, state->polarity == PWM_POLARITY_INVERSED);
 	ret = regmap_write(pdata->regmap, SN_PWM_EN_INV_REG, pwm_en_inv);
 	if (ret) {
-		dev_err(pdata->dev, "failed to update PWM_EN/PWM_INV\n");
+		dev_err(pwmchip_parent(chip), "failed to update PWM_EN/PWM_INV\n");
 		goto out;
 	}
 
@@ -1678,7 +1573,7 @@ static int ti_sn_pwm_apply(struct pwm_chip *chip, struct pwm_device *pwm,
 out:
 
 	if (!pdata->pwm_enabled)
-		pm_runtime_put_sync(pdata->dev);
+		pm_runtime_put_sync(pwmchip_parent(chip));
 
 	return ret;
 }
@@ -1731,31 +1626,36 @@ static const struct pwm_ops ti_sn_pwm_ops = {
 	.free = ti_sn_pwm_free,
 	.apply = ti_sn_pwm_apply,
 	.get_state = ti_sn_pwm_get_state,
-	.owner = THIS_MODULE,
 };
 
 static int ti_sn_pwm_probe(struct auxiliary_device *adev,
 			   const struct auxiliary_device_id *id)
 {
+	struct pwm_chip *chip;
 	struct ti_sn65dsi86 *pdata = dev_get_drvdata(adev->dev.parent);
 
-	pdata->pchip.dev = pdata->dev;
-	pdata->pchip.ops = &ti_sn_pwm_ops;
-	pdata->pchip.npwm = 1;
-	pdata->pchip.of_xlate = of_pwm_single_xlate;
-	pdata->pchip.of_pwm_n_cells = 1;
+	pdata->pchip = chip = devm_pwmchip_alloc(&adev->dev, 1, 0);
+	if (IS_ERR(chip))
+		return PTR_ERR(chip);
 
-	return pwmchip_add(&pdata->pchip);
+	pwmchip_set_drvdata(chip, pdata);
+
+	chip->ops = &ti_sn_pwm_ops;
+	chip->of_xlate = of_pwm_single_xlate;
+
+	devm_pm_runtime_enable(&adev->dev);
+
+	return pwmchip_add(chip);
 }
 
 static void ti_sn_pwm_remove(struct auxiliary_device *adev)
 {
 	struct ti_sn65dsi86 *pdata = dev_get_drvdata(adev->dev.parent);
 
-	pwmchip_remove(&pdata->pchip);
+	pwmchip_remove(pdata->pchip);
 
 	if (pdata->pwm_enabled)
-		pm_runtime_put_sync(pdata->dev);
+		pm_runtime_put_sync(&adev->dev);
 }
 
 static const struct auxiliary_device_id ti_sn_pwm_id_table[] = {
@@ -2052,7 +1952,6 @@ static int ti_sn65dsi86_probe(struct i2c_client *client)
 	dev_set_drvdata(dev, pdata);
 	pdata->dev = dev;
 
-	mutex_init(&pdata->hpd_mutex);
 	mutex_init(&pdata->comms_mutex);
 
 	pdata->regmap = devm_regmap_init_i2c(client,
@@ -2082,16 +1981,6 @@ static int ti_sn65dsi86_probe(struct i2c_client *client)
 	ret = devm_add_action_or_reset(dev, ti_sn65dsi86_runtime_disable, dev);
 	if (ret)
 		return ret;
-
-	if (client->irq) {
-		ret = devm_request_threaded_irq(pdata->dev, client->irq, NULL,
-						ti_sn_bridge_interrupt,
-						IRQF_ONESHOT,
-						dev_name(pdata->dev), pdata);
-
-		if (ret)
-			return dev_err_probe(dev, ret, "failed to request interrupt\n");
-	}
 
 	/*
 	 * Break ourselves up into a collection of aux devices. The only real

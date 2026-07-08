@@ -3,52 +3,22 @@
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
 #include <net/wext.h>
+#include <net/hotdata.h>
 
 #include "dev.h"
 
-#define BUCKET_SPACE (32 - NETDEV_HASHBITS - 1)
-
-#define get_bucket(x) ((x) >> BUCKET_SPACE)
-#define get_offset(x) ((x) & ((1 << BUCKET_SPACE) - 1))
-#define set_bucket_offset(b, o) ((b) << BUCKET_SPACE | (o))
-
-static inline struct net_device *dev_from_same_bucket(struct seq_file *seq, loff_t *pos)
+static void *dev_seq_from_index(struct seq_file *seq, loff_t *pos)
 {
-	struct net *net = seq_file_net(seq);
+	unsigned long ifindex = *pos;
 	struct net_device *dev;
-	struct hlist_head *h;
-	unsigned int count = 0, offset = get_offset(*pos);
 
-	h = &net->dev_index_head[get_bucket(*pos)];
-	hlist_for_each_entry_rcu(dev, h, index_hlist) {
-		if (++count == offset)
-			return dev;
+	for_each_netdev_dump(seq_file_net(seq), dev, ifindex) {
+		*pos = dev->ifindex;
+		return dev;
 	}
-
 	return NULL;
 }
 
-static inline struct net_device *dev_from_bucket(struct seq_file *seq, loff_t *pos)
-{
-	struct net_device *dev;
-	unsigned int bucket;
-
-	do {
-		dev = dev_from_same_bucket(seq, pos);
-		if (dev)
-			return dev;
-
-		bucket = get_bucket(*pos) + 1;
-		*pos = set_bucket_offset(bucket, 1);
-	} while (bucket < NETDEV_HASHENTRIES);
-
-	return NULL;
-}
-
-/*
- *	This is invoked by the /proc filesystem handler to display a device
- *	in detail.
- */
 static void *dev_seq_start(struct seq_file *seq, loff_t *pos)
 	__acquires(RCU)
 {
@@ -56,16 +26,13 @@ static void *dev_seq_start(struct seq_file *seq, loff_t *pos)
 	if (!*pos)
 		return SEQ_START_TOKEN;
 
-	if (get_bucket(*pos) >= NETDEV_HASHENTRIES)
-		return NULL;
-
-	return dev_from_bucket(seq, pos);
+	return dev_seq_from_index(seq, pos);
 }
 
 static void *dev_seq_next(struct seq_file *seq, void *v, loff_t *pos)
 {
 	++*pos;
-	return dev_from_bucket(seq, pos);
+	return dev_seq_from_index(seq, pos);
 }
 
 static void dev_seq_stop(struct seq_file *seq, void *v)
@@ -177,7 +144,8 @@ static int softnet_seq_show(struct seq_file *seq, void *v)
 	seq_printf(seq,
 		   "%08x %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x %08x "
 		   "%08x %08x\n",
-		   sd->processed, sd->dropped, sd->time_squeeze, 0,
+		   sd->processed, atomic_read(&sd->dropped),
+		   sd->time_squeeze, 0,
 		   0, 0, 0, 0, /* was fastroute */
 		   0,	/* was cpu_collision */
 		   sd->received_rps, flow_limit_count,
@@ -200,14 +168,8 @@ static const struct seq_operations softnet_seq_ops = {
 	.show  = softnet_seq_show,
 };
 
-struct ptype_iter_state {
-	struct seq_net_private	p;
-	struct net_device	*dev;
-};
-
 static void *ptype_get_idx(struct seq_file *seq, loff_t pos)
 {
-	struct ptype_iter_state *iter = seq->private;
 	struct list_head *ptype_list = NULL;
 	struct packet_type *pt = NULL;
 	struct net_device *dev;
@@ -217,17 +179,13 @@ static void *ptype_get_idx(struct seq_file *seq, loff_t pos)
 	for_each_netdev_rcu(seq_file_net(seq), dev) {
 		ptype_list = &dev->ptype_all;
 		list_for_each_entry_rcu(pt, ptype_list, list) {
-			if (i == pos) {
-				iter->dev = dev;
+			if (i == pos)
 				return pt;
-			}
 			++i;
 		}
 	}
 
-	iter->dev = NULL;
-
-	list_for_each_entry_rcu(pt, &ptype_all, list) {
+	list_for_each_entry_rcu(pt, &net_hotdata.ptype_all, list) {
 		if (i == pos)
 			return pt;
 		++i;
@@ -252,7 +210,6 @@ static void *ptype_seq_start(struct seq_file *seq, loff_t *pos)
 
 static void *ptype_seq_next(struct seq_file *seq, void *v, loff_t *pos)
 {
-	struct ptype_iter_state *iter = seq->private;
 	struct net_device *dev;
 	struct packet_type *pt;
 	struct list_head *nxt;
@@ -263,37 +220,36 @@ static void *ptype_seq_next(struct seq_file *seq, void *v, loff_t *pos)
 		return ptype_get_idx(seq, 0);
 
 	pt = v;
-	nxt = READ_ONCE(pt->list.next);
-	dev = iter->dev;
-	if (dev) {
-		if (nxt != &dev->ptype_all)
+	nxt = pt->list.next;
+	if (pt->dev) {
+		if (nxt != &pt->dev->ptype_all)
 			goto found;
 
+		dev = pt->dev;
 		for_each_netdev_continue_rcu(seq_file_net(seq), dev) {
-			nxt = READ_ONCE(dev->ptype_all.next);
-			if (nxt != &dev->ptype_all) {
-				iter->dev = dev;
+			if (!list_empty(&dev->ptype_all)) {
+				nxt = dev->ptype_all.next;
 				goto found;
 			}
 		}
-		iter->dev = NULL;
-		nxt = READ_ONCE(ptype_all.next);
+
+		nxt = net_hotdata.ptype_all.next;
 		goto ptype_all;
 	}
 
 	if (pt->type == htons(ETH_P_ALL)) {
 ptype_all:
-		if (nxt != &ptype_all)
+		if (nxt != &net_hotdata.ptype_all)
 			goto found;
 		hash = 0;
-		nxt = READ_ONCE(ptype_base[0].next);
+		nxt = ptype_base[0].next;
 	} else
 		hash = ntohs(pt->type) & PTYPE_HASH_MASK;
 
 	while (nxt == &ptype_base[hash]) {
 		if (++hash >= PTYPE_HASH_SIZE)
 			return NULL;
-		nxt = READ_ONCE(ptype_base[hash].next);
+		nxt = ptype_base[hash].next;
 	}
 found:
 	return list_entry(nxt, struct packet_type, list);
@@ -307,24 +263,19 @@ static void ptype_seq_stop(struct seq_file *seq, void *v)
 
 static int ptype_seq_show(struct seq_file *seq, void *v)
 {
-	struct ptype_iter_state *iter = seq->private;
 	struct packet_type *pt = v;
-	struct net_device *dev;
 
-	if (v == SEQ_START_TOKEN) {
+	if (v == SEQ_START_TOKEN)
 		seq_puts(seq, "Type Device      Function\n");
-		return 0;
-	}
-	dev = iter->dev;
-	if ((!pt->af_packet_net || net_eq(pt->af_packet_net, seq_file_net(seq))) &&
-		 (!dev || net_eq(dev_net(dev), seq_file_net(seq)))) {
+	else if ((!pt->af_packet_net || net_eq(pt->af_packet_net, seq_file_net(seq))) &&
+		 (!pt->dev || net_eq(dev_net(pt->dev), seq_file_net(seq)))) {
 		if (pt->type == htons(ETH_P_ALL))
 			seq_puts(seq, "ALL ");
 		else
 			seq_printf(seq, "%04x", ntohs(pt->type));
 
 		seq_printf(seq, " %-8s %ps\n",
-			   dev ? dev->name : "", pt->func);
+			   pt->dev ? pt->dev->name : "", pt->func);
 	}
 
 	return 0;
@@ -348,7 +299,7 @@ static int __net_init dev_proc_net_init(struct net *net)
 			 &softnet_seq_ops))
 		goto out_dev;
 	if (!proc_create_net("ptype", 0444, net->proc_net, &ptype_seq_ops,
-			sizeof(struct ptype_iter_state)))
+			sizeof(struct seq_net_private)))
 		goto out_softnet;
 
 	if (wext_proc_init(net))

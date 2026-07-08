@@ -950,9 +950,9 @@ wavefront_send_sample (snd_wavefront_t *dev,
 	if (header->size) {
 		dev->freemem = wavefront_freemem (dev);
 
-		if (dev->freemem < 0 || dev->freemem < header->size) {
+		if (dev->freemem < (int)header->size) {
 			dev_err(dev->card->dev,
-				"insufficient memory to load %u byte sample.\n",
+				"insufficient memory to load %d byte sample.\n",
 				header->size);
 			return -ENOMEM;
 		}
@@ -1741,10 +1741,10 @@ snd_wavefront_internal_interrupt (snd_wavefront_card_t *card)
 		return;
 	}
 
-	scoped_guard(spinlock, &dev->irq_lock) {
-		dev->irq_ok = 1;
-		dev->irq_cnt++;
-	}
+	spin_lock(&dev->irq_lock);
+	dev->irq_ok = 1;
+	dev->irq_cnt++;
+	spin_unlock(&dev->irq_lock);
 	wake_up(&dev->interrupt_sleeper);
 }
 
@@ -1796,11 +1796,11 @@ wavefront_should_cause_interrupt (snd_wavefront_t *dev,
 	wait_queue_entry_t wait;
 
 	init_waitqueue_entry(&wait, current);
-	scoped_guard(spinlock_irq, &dev->irq_lock) {
-		add_wait_queue(&dev->interrupt_sleeper, &wait);
-		dev->irq_ok = 0;
-		outb(val, port);
-	}
+	spin_lock_irq(&dev->irq_lock);
+	add_wait_queue(&dev->interrupt_sleeper, &wait);
+	dev->irq_ok = 0;
+	outb (val,port);
+	spin_unlock_irq(&dev->irq_lock);
 	while (!dev->irq_ok && time_before(jiffies, timeout)) {
 		schedule_timeout_uninterruptible(1);
 		barrier();

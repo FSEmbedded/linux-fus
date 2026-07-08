@@ -28,23 +28,25 @@
 /**
  * ks8851_lock - register access lock
  * @ks: The chip state
+ * @flags: Spinlock flags
  *
  * Claim chip register access lock
  */
-static void ks8851_lock(struct ks8851_net *ks)
+static void ks8851_lock(struct ks8851_net *ks, unsigned long *flags)
 {
-	ks->lock(ks);
+	ks->lock(ks, flags);
 }
 
 /**
  * ks8851_unlock - register access unlock
  * @ks: The chip state
+ * @flags: Spinlock flags
  *
  * Release chip register access lock
  */
-static void ks8851_unlock(struct ks8851_net *ks)
+static void ks8851_unlock(struct ks8851_net *ks, unsigned long *flags)
 {
-	ks->unlock(ks);
+	ks->unlock(ks, flags);
 }
 
 /**
@@ -127,10 +129,11 @@ static void ks8851_set_powermode(struct ks8851_net *ks, unsigned pwrmode)
 static int ks8851_write_mac_addr(struct net_device *dev)
 {
 	struct ks8851_net *ks = netdev_priv(dev);
+	unsigned long flags;
 	u16 val;
 	int i;
 
-	ks8851_lock(ks);
+	ks8851_lock(ks, &flags);
 
 	/*
 	 * Wake up chip in case it was powered off when stopped; otherwise,
@@ -146,7 +149,7 @@ static int ks8851_write_mac_addr(struct net_device *dev)
 	if (!netif_running(dev))
 		ks8851_set_powermode(ks, PMECR_PM_SOFTDOWN);
 
-	ks8851_unlock(ks);
+	ks8851_unlock(ks, &flags);
 
 	return 0;
 }
@@ -160,11 +163,12 @@ static int ks8851_write_mac_addr(struct net_device *dev)
 static void ks8851_read_mac_addr(struct net_device *dev)
 {
 	struct ks8851_net *ks = netdev_priv(dev);
+	unsigned long flags;
 	u8 addr[ETH_ALEN];
 	u16 reg;
 	int i;
 
-	ks8851_lock(ks);
+	ks8851_lock(ks, &flags);
 
 	for (i = 0; i < ETH_ALEN; i += 2) {
 		reg = ks8851_rdreg16(ks, KS_MAR(i));
@@ -173,7 +177,7 @@ static void ks8851_read_mac_addr(struct net_device *dev)
 	}
 	eth_hw_addr_set(dev, addr);
 
-	ks8851_unlock(ks);
+	ks8851_unlock(ks, &flags);
 }
 
 /**
@@ -324,10 +328,11 @@ static irqreturn_t ks8851_irq(int irq, void *_ks)
 {
 	struct ks8851_net *ks = _ks;
 	struct sk_buff_head rxq;
+	unsigned long flags;
 	unsigned int status;
 	struct sk_buff *skb;
 
-	ks8851_lock(ks);
+	ks8851_lock(ks, &flags);
 
 	status = ks8851_rdreg16(ks, KS_ISR);
 	ks8851_wrreg16(ks, KS_ISR, status);
@@ -384,17 +389,14 @@ static irqreturn_t ks8851_irq(int irq, void *_ks)
 		ks8851_wrreg16(ks, KS_RXCR1, rxc->rxcr1);
 	}
 
-	ks8851_unlock(ks);
+	ks8851_unlock(ks, &flags);
 
 	if (status & IRQ_LCI)
 		mii_check_link(&ks->mii);
 
-	if (status & IRQ_RXI) {
-		local_bh_disable();
+	if (status & IRQ_RXI)
 		while ((skb = __skb_dequeue(&rxq)))
 			netif_rx(skb);
-		local_bh_enable();
-	}
 
 	return IRQ_HANDLED;
 }
@@ -419,6 +421,7 @@ static void ks8851_flush_tx_work(struct ks8851_net *ks)
 static int ks8851_net_open(struct net_device *dev)
 {
 	struct ks8851_net *ks = netdev_priv(dev);
+	unsigned long flags;
 	int ret;
 
 	ret = request_threaded_irq(dev->irq, NULL, ks8851_irq,
@@ -431,7 +434,7 @@ static int ks8851_net_open(struct net_device *dev)
 
 	/* lock the card, even if we may not actually be doing anything
 	 * else at the moment */
-	ks8851_lock(ks);
+	ks8851_lock(ks, &flags);
 
 	netif_dbg(ks, ifup, ks->netdev, "opening\n");
 
@@ -484,7 +487,7 @@ static int ks8851_net_open(struct net_device *dev)
 
 	netif_dbg(ks, ifup, ks->netdev, "network device up\n");
 
-	ks8851_unlock(ks);
+	ks8851_unlock(ks, &flags);
 	mii_check_link(&ks->mii);
 	return 0;
 }
@@ -500,22 +503,23 @@ static int ks8851_net_open(struct net_device *dev)
 static int ks8851_net_stop(struct net_device *dev)
 {
 	struct ks8851_net *ks = netdev_priv(dev);
+	unsigned long flags;
 
 	netif_info(ks, ifdown, dev, "shutting down\n");
 
 	netif_stop_queue(dev);
 
-	ks8851_lock(ks);
+	ks8851_lock(ks, &flags);
 	/* turn off the IRQs and ack any outstanding */
 	ks8851_wrreg16(ks, KS_IER, 0x0000);
 	ks8851_wrreg16(ks, KS_ISR, 0xffff);
-	ks8851_unlock(ks);
+	ks8851_unlock(ks, &flags);
 
 	/* stop any outstanding work */
 	ks8851_flush_tx_work(ks);
 	flush_work(&ks->rxctrl_work);
 
-	ks8851_lock(ks);
+	ks8851_lock(ks, &flags);
 	/* shutdown RX process */
 	ks8851_wrreg16(ks, KS_RXCR1, 0x0000);
 
@@ -524,7 +528,7 @@ static int ks8851_net_stop(struct net_device *dev)
 
 	/* set powermode to soft power down to save power */
 	ks8851_set_powermode(ks, PMECR_PM_SOFTDOWN);
-	ks8851_unlock(ks);
+	ks8851_unlock(ks, &flags);
 
 	/* ensure any queued tx buffers are dumped */
 	while (!skb_queue_empty(&ks->txq)) {
@@ -578,13 +582,14 @@ static netdev_tx_t ks8851_start_xmit(struct sk_buff *skb,
 static void ks8851_rxctrl_work(struct work_struct *work)
 {
 	struct ks8851_net *ks = container_of(work, struct ks8851_net, rxctrl_work);
+	unsigned long flags;
 
-	ks8851_lock(ks);
+	ks8851_lock(ks, &flags);
 
 	/* need to shutdown RXQ before modifying filter parameters */
 	ks8851_wrreg16(ks, KS_RXCR1, 0x00);
 
-	ks8851_unlock(ks);
+	ks8851_unlock(ks, &flags);
 }
 
 static void ks8851_set_rx_mode(struct net_device *dev)
@@ -791,6 +796,7 @@ static int ks8851_set_eeprom(struct net_device *dev,
 {
 	struct ks8851_net *ks = netdev_priv(dev);
 	int offset = ee->offset;
+	unsigned long flags;
 	int len = ee->len;
 	u16 tmp;
 
@@ -804,7 +810,7 @@ static int ks8851_set_eeprom(struct net_device *dev,
 	if (!(ks->rc_ccr & CCR_EEPROM))
 		return -ENOENT;
 
-	ks8851_lock(ks);
+	ks8851_lock(ks, &flags);
 
 	ks8851_eeprom_claim(ks);
 
@@ -827,7 +833,7 @@ static int ks8851_set_eeprom(struct net_device *dev,
 	eeprom_93cx6_wren(&ks->eeprom, false);
 
 	ks8851_eeprom_release(ks);
-	ks8851_unlock(ks);
+	ks8851_unlock(ks, &flags);
 
 	return 0;
 }
@@ -837,6 +843,7 @@ static int ks8851_get_eeprom(struct net_device *dev,
 {
 	struct ks8851_net *ks = netdev_priv(dev);
 	int offset = ee->offset;
+	unsigned long flags;
 	int len = ee->len;
 
 	/* must be 2 byte aligned */
@@ -846,7 +853,7 @@ static int ks8851_get_eeprom(struct net_device *dev,
 	if (!(ks->rc_ccr & CCR_EEPROM))
 		return -ENOENT;
 
-	ks8851_lock(ks);
+	ks8851_lock(ks, &flags);
 
 	ks8851_eeprom_claim(ks);
 
@@ -854,7 +861,7 @@ static int ks8851_get_eeprom(struct net_device *dev,
 
 	eeprom_93cx6_multiread(&ks->eeprom, offset/2, (__le16 *)data, len/2);
 	ks8851_eeprom_release(ks);
-	ks8851_unlock(ks);
+	ks8851_unlock(ks, &flags);
 
 	return 0;
 }
@@ -913,6 +920,7 @@ static int ks8851_phy_reg(int reg)
 static int ks8851_phy_read_common(struct net_device *dev, int phy_addr, int reg)
 {
 	struct ks8851_net *ks = netdev_priv(dev);
+	unsigned long flags;
 	int result;
 	int ksreg;
 
@@ -920,9 +928,9 @@ static int ks8851_phy_read_common(struct net_device *dev, int phy_addr, int reg)
 	if (ksreg < 0)
 		return ksreg;
 
-	ks8851_lock(ks);
+	ks8851_lock(ks, &flags);
 	result = ks8851_rdreg16(ks, ksreg);
-	ks8851_unlock(ks);
+	ks8851_unlock(ks, &flags);
 
 	return result;
 }
@@ -957,13 +965,14 @@ static void ks8851_phy_write(struct net_device *dev,
 			     int phy, int reg, int value)
 {
 	struct ks8851_net *ks = netdev_priv(dev);
+	unsigned long flags;
 	int ksreg;
 
 	ksreg = ks8851_phy_reg(reg);
 	if (ksreg >= 0) {
-		ks8851_lock(ks);
+		ks8851_lock(ks, &flags);
 		ks8851_wrreg16(ks, ksreg, value);
-		ks8851_unlock(ks);
+		ks8851_unlock(ks, &flags);
 	}
 }
 

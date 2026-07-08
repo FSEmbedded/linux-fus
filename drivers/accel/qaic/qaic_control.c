@@ -407,7 +407,7 @@ static int find_and_map_user_pages(struct qaic_device *qdev,
 		return -EINVAL;
 	remaining = in_trans->size - resources->xferred_dma_size;
 	if (remaining == 0)
-		return -EINVAL;
+		return 0;
 
 	if (check_add_overflow(xfer_start_addr, remaining, &end))
 		return -EINVAL;
@@ -910,7 +910,7 @@ static int decode_deactivate(struct qaic_device *qdev, void *trans, u32 *msg_len
 		 */
 		return -ENODEV;
 
-	if (usr && status) {
+	if (status) {
 		/*
 		 * Releasing resources failed on the device side, which puts
 		 * us in a bind since they may still be in use, so enable the
@@ -1022,7 +1022,8 @@ static void *msg_xfer(struct qaic_device *qdev, struct wrapper_list *wrappers, u
 	int xfer_count = 0;
 	int retry_count;
 
-	if (qdev->in_reset) {
+	/* Allow QAIC_BOOT state since we need to check control protocol version */
+	if (qdev->dev_state == QAIC_OFFLINE) {
 		mutex_unlock(&qdev->cntl_mutex);
 		return ERR_PTR(-ENODEV);
 	}
@@ -1104,9 +1105,6 @@ static void *msg_xfer(struct qaic_device *qdev, struct wrapper_list *wrappers, u
 	mutex_lock(&qdev->cntl_mutex);
 	if (!list_empty(&elem.list))
 		list_del(&elem.list);
-	/* resp_worker() processed the response but the wait was interrupted */
-	else if (ret == -ERESTARTSYS)
-		ret = 0;
 	if (!ret && !elem.buf)
 		ret = -ETIMEDOUT;
 	else if (ret > 0 && !elem.buf)
@@ -1141,7 +1139,7 @@ static int abort_dma_cont(struct qaic_device *qdev, struct wrapper_list *wrapper
 		if (!list_is_first(&wrapper->list, &wrappers->list))
 			kref_put(&wrapper->ref_count, free_wrapper);
 
-	wrapper = add_wrapper(wrappers, offsetof(struct wrapper_msg, trans) + sizeof(*out_trans));
+	wrapper = add_wrapper(wrappers, sizeof(*wrapper));
 
 	if (!wrapper)
 		return -ENOMEM;
@@ -1309,7 +1307,7 @@ int qaic_manage_ioctl(struct drm_device *dev, void *data, struct drm_file *file_
 	qdev = usr->qddev->qdev;
 
 	qdev_rcu_id = srcu_read_lock(&qdev->dev_lock);
-	if (qdev->in_reset) {
+	if (qdev->dev_state != QAIC_ONLINE) {
 		srcu_read_unlock(&qdev->dev_lock, qdev_rcu_id);
 		srcu_read_unlock(&usr->qddev_lock, usr_rcu_id);
 		return -ENODEV;
@@ -1417,49 +1415,9 @@ static void resp_worker(struct work_struct *work)
 	}
 	mutex_unlock(&qdev->cntl_mutex);
 
-	if (!found) {
-		/*
-		 * The user might have gone away at this point without waiting
-		 * for QAIC_TRANS_DEACTIVATE_FROM_DEV transaction coming from
-		 * the device. If this is not handled correctly, the host will
-		 * not know that the DBC[n] has been freed on the device.
-		 * Due to this failure in synchronization between the device and
-		 * the host, if another user requests to activate a network, and
-		 * the device assigns DBC[n] again, save_dbc_buf() will hang,
-		 * waiting for dbc[n]->in_use to be set to false, which will not
-		 * happen unless the qaic_dev_reset_clean_local_state() gets
-		 * called by resetting the device (or re-inserting the module).
-		 *
-		 * As a solution, we look for QAIC_TRANS_DEACTIVATE_FROM_DEV
-		 * transactions in the message before disposing of it, then
-		 * handle releasing the DBC resources.
-		 *
-		 * Since the user has gone away, if the device could not
-		 * deactivate the network (status != 0), there is no way to
-		 * enable and reassign the DBC to the user. We can put trust in
-		 * the device that it will release all the active DBCs in
-		 * response to the QAIC_TRANS_TERMINATE_TO_DEV transaction,
-		 * otherwise, the user can issue an soc_reset to the device.
-		 */
-		u32 msg_count = le32_to_cpu(msg->hdr.count);
-		u32 msg_len = le32_to_cpu(msg->hdr.len);
-		u32 len = 0;
-		int j;
-
-		for (j = 0; j < msg_count && len < msg_len; ++j) {
-			struct wire_trans_hdr *trans_hdr;
-
-			trans_hdr = (struct wire_trans_hdr *)(msg->data + len);
-			if (le32_to_cpu(trans_hdr->type) == QAIC_TRANS_DEACTIVATE_FROM_DEV) {
-				if (decode_deactivate(qdev, trans_hdr, &len, NULL))
-					len += le32_to_cpu(trans_hdr->len);
-			} else {
-				len += le32_to_cpu(trans_hdr->len);
-			}
-		}
+	if (!found)
 		/* request must have timed out, drop packet */
 		kfree(msg);
-	}
 
 	kfree(resp);
 }

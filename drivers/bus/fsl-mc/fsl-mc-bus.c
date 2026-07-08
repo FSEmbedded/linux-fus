@@ -80,11 +80,11 @@ static phys_addr_t mc_portal_base_phys_addr;
  *
  * Returns 1 on success, 0 otherwise.
  */
-static int fsl_mc_bus_match(struct device *dev, struct device_driver *drv)
+static int fsl_mc_bus_match(struct device *dev, const struct device_driver *drv)
 {
 	const struct fsl_mc_device_id *id;
 	struct fsl_mc_device *mc_dev = to_fsl_mc_device(dev);
-	struct fsl_mc_driver *mc_drv = to_fsl_mc_driver(drv);
+	const struct fsl_mc_driver *mc_drv = to_fsl_mc_driver(drv);
 	bool found = false;
 
 	/* When driver_override is set, only bind to the matching driver */
@@ -175,8 +175,8 @@ static ssize_t modalias_show(struct device *dev, struct device_attribute *attr,
 {
 	struct fsl_mc_device *mc_dev = to_fsl_mc_device(dev);
 
-	return sysfs_emit(buf, "fsl-mc:v%08Xd%s\n", mc_dev->obj_desc.vendor,
-			mc_dev->obj_desc.type);
+	return sprintf(buf, "fsl-mc:v%08Xd%s\n", mc_dev->obj_desc.vendor,
+		       mc_dev->obj_desc.type);
 }
 static DEVICE_ATTR_RO(modalias);
 
@@ -201,12 +201,8 @@ static ssize_t driver_override_show(struct device *dev,
 				    struct device_attribute *attr, char *buf)
 {
 	struct fsl_mc_device *mc_dev = to_fsl_mc_device(dev);
-	ssize_t len;
 
-	device_lock(dev);
-	len = sysfs_emit(buf, "%s\n", mc_dev->driver_override);
-	device_unlock(dev);
-	return len;
+	return snprintf(buf, PAGE_SIZE, "%s\n", mc_dev->driver_override);
 }
 static DEVICE_ATTR_RW(driver_override);
 
@@ -313,7 +309,7 @@ static struct attribute *fsl_mc_bus_attrs[] = {
 
 ATTRIBUTE_GROUPS(fsl_mc_bus);
 
-struct bus_type fsl_mc_bus_type = {
+const struct bus_type fsl_mc_bus_type = {
 	.name = "fsl-mc",
 	.match = fsl_mc_bus_match,
 	.uevent = fsl_mc_bus_uevent,
@@ -915,7 +911,11 @@ int fsl_mc_device_add(struct fsl_mc_obj_desc *obj_desc,
 	return 0;
 
 error_cleanup_dev:
-	put_device(&mc_dev->dev);
+	kfree(mc_dev->regions);
+	if (mc_bus)
+		kfree(mc_bus);
+	else
+		kfree(mc_dev);
 
 	return error;
 }
@@ -1110,9 +1110,6 @@ static int fsl_mc_bus_probe(struct platform_device *pdev)
 	 * Get physical address of MC portal for the root DPRC:
 	 */
 	plat_res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!plat_res)
-		return -EINVAL;
-
 	mc_portal_phys_addr = plat_res->start;
 	mc_portal_size = resource_size(plat_res);
 	mc_portal_base_phys_addr = mc_portal_phys_addr & ~0x3ffffff;
@@ -1206,18 +1203,16 @@ static void fsl_mc_bus_shutdown(struct platform_device *pdev)
  * fsl_mc_bus_remove - callback invoked when the root MC bus is being
  * removed
  */
-static int fsl_mc_bus_remove(struct platform_device *pdev)
+static void fsl_mc_bus_remove(struct platform_device *pdev)
 {
 	struct fsl_mc *mc = platform_get_drvdata(pdev);
 
 	if (!fsl_mc_is_root_dprc(&mc->root_mc_bus_dev->dev))
-		return -EINVAL;
+		return;
 
 	fsl_mc_device_remove(mc->root_mc_bus_dev);
 
 	fsl_mc_bus_shutdown(pdev);
-
-	return 0;
 }
 
 static const struct of_device_id fsl_mc_bus_match_table[] = {
@@ -1241,7 +1236,7 @@ static struct platform_driver fsl_mc_bus_driver = {
 		   .acpi_match_table = fsl_mc_bus_acpi_match_table,
 		   },
 	.probe = fsl_mc_bus_probe,
-	.remove = fsl_mc_bus_remove,
+	.remove_new = fsl_mc_bus_remove,
 	.shutdown = fsl_mc_bus_shutdown,
 };
 

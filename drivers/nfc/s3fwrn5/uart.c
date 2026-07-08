@@ -51,20 +51,13 @@ static const struct s3fwrn5_phy_ops uart_phy_ops = {
 	.write = s3fwrn82_uart_write,
 };
 
-static int s3fwrn82_uart_read(struct serdev_device *serdev,
-			      const unsigned char *data,
-			      size_t count)
+static size_t s3fwrn82_uart_read(struct serdev_device *serdev,
+				 const u8 *data, size_t count)
 {
 	struct s3fwrn82_uart_phy *phy = serdev_device_get_drvdata(serdev);
 	size_t i;
 
 	for (i = 0; i < count; i++) {
-		if (!phy->recv_skb) {
-			phy->recv_skb = alloc_skb(NCI_SKB_BUFF_LEN, GFP_KERNEL);
-			if (!phy->recv_skb)
-				return i;
-		}
-
 		skb_put_u8(phy->recv_skb, *data++);
 
 		if (phy->recv_skb->len < S3FWRN82_NCI_HEADER)
@@ -76,7 +69,9 @@ static int s3fwrn82_uart_read(struct serdev_device *serdev,
 
 		s3fwrn5_recv_frame(phy->common.ndev, phy->recv_skb,
 				   phy->common.mode);
-		phy->recv_skb = NULL;
+		phy->recv_skb = alloc_skb(NCI_SKB_BUFF_LEN, GFP_KERNEL);
+		if (!phy->recv_skb)
+			return 0;
 	}
 
 	return i;

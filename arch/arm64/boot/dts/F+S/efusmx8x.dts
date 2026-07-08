@@ -446,19 +446,7 @@
 };
 #endif
 
-&isi_0 {
-	status = "okay";
-};
-
-&isi_1 {
-	status = "okay";
-};
-
-&isi_2 {
-	status = "okay";
-};
-
-&isi_3 {
+&isi {
 	status = "okay";
 };
 

@@ -17,7 +17,7 @@
 #include <linux/delay.h>
 #include <linux/log2.h>
 #include <linux/hwspinlock.h>
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 
 #define CREATE_TRACE_POINTS
 #include "trace.h"
@@ -89,7 +89,7 @@ EXPORT_SYMBOL_GPL(regmap_check_range_table);
 
 bool regmap_writeable(struct regmap *map, unsigned int reg)
 {
-	if (map->max_register && reg > map->max_register)
+	if (map->max_register_is_set && reg > map->max_register)
 		return false;
 
 	if (map->writeable_reg)
@@ -112,7 +112,7 @@ bool regmap_cached(struct regmap *map, unsigned int reg)
 	if (!map->cache_ops)
 		return false;
 
-	if (map->max_register && reg > map->max_register)
+	if (map->max_register_is_set && reg > map->max_register)
 		return false;
 
 	map->lock(map->lock_arg);
@@ -129,7 +129,7 @@ bool regmap_readable(struct regmap *map, unsigned int reg)
 	if (!map->reg_read)
 		return false;
 
-	if (map->max_register && reg > map->max_register)
+	if (map->max_register_is_set && reg > map->max_register)
 		return false;
 
 	if (map->format.format_write)
@@ -408,11 +408,9 @@ static void regmap_lock_hwlock_irq(void *__map)
 static void regmap_lock_hwlock_irqsave(void *__map)
 {
 	struct regmap *map = __map;
-	unsigned long flags = 0;
 
 	hwspin_lock_timeout_irqsave(map->hwlock, UINT_MAX,
-				    &flags);
-	map->spinlock_flags = flags;
+				    &map->spinlock_flags);
 }
 
 static void regmap_unlock_hwlock(void *__map)
@@ -804,6 +802,7 @@ struct regmap *__regmap_init(struct device *dev,
 	map->bus = bus;
 	map->bus_context = bus_context;
 	map->max_register = config->max_register;
+	map->max_register_is_set = map->max_register ?: config->max_register_is_0;
 	map->wr_table = config->wr_table;
 	map->rd_table = config->rd_table;
 	map->volatile_table = config->volatile_table;
@@ -832,7 +831,7 @@ struct regmap *__regmap_init(struct device *dev,
 		map->read_flag_mask = bus->read_flag_mask;
 	}
 
-	if (config->read && config->write) {
+	if (config && config->read && config->write) {
 		map->reg_read  = _regmap_bus_read;
 		if (config->reg_update_bits)
 			map->reg_update_bits = config->reg_update_bits;
@@ -1429,6 +1428,7 @@ int regmap_reinit_cache(struct regmap *map, const struct regmap_config *config)
 	regmap_debugfs_exit(map);
 
 	map->max_register = config->max_register;
+	map->max_register_is_set = map->max_register ?: config->max_register_is_0;
 	map->writeable_reg = config->writeable_reg;
 	map->readable_reg = config->readable_reg;
 	map->volatile_reg = config->volatile_reg;
@@ -1461,6 +1461,7 @@ void regmap_exit(struct regmap *map)
 
 	regmap_detach_dev(map->dev, map);
 	regcache_exit(map);
+
 	regmap_debugfs_exit(map);
 	regmap_range_exit(map);
 	if (map->bus && map->bus->free_context)
@@ -1542,7 +1543,6 @@ static int _regmap_select_page(struct regmap *map, unsigned int *reg,
 			       unsigned int val_num)
 {
 	void *orig_work_buf;
-	unsigned int selector_reg;
 	unsigned int win_offset;
 	unsigned int win_page;
 	bool page_chg;
@@ -1561,31 +1561,10 @@ static int _regmap_select_page(struct regmap *map, unsigned int *reg,
 			return -EINVAL;
 	}
 
-	/*
-	 * Calculate the address of the selector register in the corresponding
-	 * data window if it is located on every page.
-	 */
-	page_chg = in_range(range->selector_reg, range->window_start, range->window_len);
-	if (page_chg)
-		selector_reg = range->range_min + win_page * range->window_len +
-			       range->selector_reg - range->window_start;
-
-	/*
-	 * It is possible to have selector register inside data window.
-	 * In that case, selector register is located on every page and it
-	 * needs no page switching, when accessed alone.
-	 *
-	 * Nevertheless we should synchronize the cache values for it.
-	 * This can't be properly achieved if the selector register is
-	 * the first and the only one to be read inside the data window.
-	 * That's why we update it in that case as well.
-	 *
-	 * However, we specifically avoid updating it for the default page,
-	 * when it's overlapped with the real data window, to prevent from
-	 * infinite looping.
-	 */
+	/* It is possible to have selector register inside data window.
+	   In that case, selector register is located on every page and
+	   it needs no page switching, when accessed alone. */
 	if (val_num > 1 ||
-	    (page_chg && selector_reg != range->selector_reg) ||
 	    range->window_start + win_offset != range->selector_reg) {
 		/* Use separate work_buf during page switching */
 		orig_work_buf = map->work_buf;
@@ -1594,7 +1573,7 @@ static int _regmap_select_page(struct regmap *map, unsigned int *reg,
 		ret = _regmap_update_bits(map, range->selector_reg,
 					  range->selector_mask,
 					  win_page << range->selector_shift,
-					  NULL, false);
+					  &page_chg, false);
 
 		map->work_buf = orig_work_buf;
 
@@ -2176,7 +2155,7 @@ static int regmap_noinc_readwrite(struct regmap *map, unsigned int reg,
 }
 
 /**
- * regmap_noinc_write(): Write data from a register without incrementing the
+ * regmap_noinc_write(): Write data to a register without incrementing the
  *			register number
  *
  * @map: Register map to write to
@@ -2385,7 +2364,7 @@ out:
 	} else {
 		void *wval;
 
-		wval = kmemdup(val, val_count * val_bytes, map->alloc_flags);
+		wval = kmemdup_array(val, val_count, val_bytes, map->alloc_flags);
 		if (!wval)
 			return -ENOMEM;
 
@@ -3139,8 +3118,53 @@ int regmap_fields_read(struct regmap_field *field, unsigned int id,
 }
 EXPORT_SYMBOL_GPL(regmap_fields_read);
 
+static int _regmap_bulk_read(struct regmap *map, unsigned int reg,
+			     unsigned int *regs, void *val, size_t val_count)
+{
+	u32 *u32 = val;
+	u16 *u16 = val;
+	u8 *u8 = val;
+	int ret, i;
+
+	map->lock(map->lock_arg);
+
+	for (i = 0; i < val_count; i++) {
+		unsigned int ival;
+
+		if (regs) {
+			if (!IS_ALIGNED(regs[i], map->reg_stride)) {
+				ret = -EINVAL;
+				goto out;
+			}
+			ret = _regmap_read(map, regs[i], &ival);
+		} else {
+			ret = _regmap_read(map, reg + regmap_get_offset(map, i), &ival);
+		}
+		if (ret != 0)
+			goto out;
+
+		switch (map->format.val_bytes) {
+		case 4:
+			u32[i] = ival;
+			break;
+		case 2:
+			u16[i] = ival;
+			break;
+		case 1:
+			u8[i] = ival;
+			break;
+		default:
+			ret = -EINVAL;
+			goto out;
+		}
+	}
+out:
+	map->unlock(map->lock_arg);
+	return ret;
+}
+
 /**
- * regmap_bulk_read() - Read multiple registers from the device
+ * regmap_bulk_read() - Read multiple sequential registers from the device
  *
  * @map: Register map to read from
  * @reg: First register to be read from
@@ -3170,46 +3194,34 @@ int regmap_bulk_read(struct regmap *map, unsigned int reg, void *val,
 		for (i = 0; i < val_count * val_bytes; i += val_bytes)
 			map->format.parse_inplace(val + i);
 	} else {
-		u32 *u32 = val;
-		u16 *u16 = val;
-		u8 *u8 = val;
-
-		map->lock(map->lock_arg);
-
-		for (i = 0; i < val_count; i++) {
-			unsigned int ival;
-
-			ret = _regmap_read(map, reg + regmap_get_offset(map, i),
-					   &ival);
-			if (ret != 0)
-				goto out;
-
-			switch (map->format.val_bytes) {
-			case 4:
-				u32[i] = ival;
-				break;
-			case 2:
-				u16[i] = ival;
-				break;
-			case 1:
-				u8[i] = ival;
-				break;
-			default:
-				ret = -EINVAL;
-				goto out;
-			}
-		}
-
-out:
-		map->unlock(map->lock_arg);
+		ret = _regmap_bulk_read(map, reg, NULL, val, val_count);
 	}
-
 	if (!ret)
 		trace_regmap_bulk_read(map, reg, val, val_bytes * val_count);
-
 	return ret;
 }
 EXPORT_SYMBOL_GPL(regmap_bulk_read);
+
+/**
+ * regmap_multi_reg_read() - Read multiple non-sequential registers from the device
+ *
+ * @map: Register map to read from
+ * @regs: Array of registers to read from
+ * @val: Pointer to store read value, in native register size for device
+ * @val_count: Number of registers to read
+ *
+ * A value of zero will be returned on success, a negative errno will
+ * be returned in error cases.
+ */
+int regmap_multi_reg_read(struct regmap *map, unsigned int *regs, void *val,
+			  size_t val_count)
+{
+	if (val_count == 0)
+		return -EINVAL;
+
+	return _regmap_bulk_read(map, 0, regs, val, val_count);
+}
+EXPORT_SYMBOL_GPL(regmap_multi_reg_read);
 
 static int _regmap_update_bits(struct regmap *map, unsigned int reg,
 			       unsigned int mask, unsigned int val,
@@ -3460,7 +3472,7 @@ EXPORT_SYMBOL_GPL(regmap_get_val_bytes);
  */
 int regmap_get_max_register(struct regmap *map)
 {
-	return map->max_register ? map->max_register : -EINVAL;
+	return map->max_register_is_set ? map->max_register : -EINVAL;
 }
 EXPORT_SYMBOL_GPL(regmap_get_max_register);
 

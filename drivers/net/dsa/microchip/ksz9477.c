@@ -246,6 +246,73 @@ void ksz9477_freeze_mib(struct ksz_device *dev, int port, bool freeze)
 	mutex_unlock(&p->mib.cnt_mutex);
 }
 
+static int ksz9477_half_duplex_monitor(struct ksz_device *dev, int port,
+				       u64 tx_late_col)
+{
+	u8 lue_ctrl;
+	u32 pmavbc;
+	u16 pqm;
+	int ret;
+
+	/* Errata DS80000754 recommends monitoring potential faults in
+	 * half-duplex mode. The switch might not be able to communicate anymore
+	 * in these states. If you see this message, please read the
+	 * errata-sheet for more information:
+	 * https://ww1.microchip.com/downloads/aemDocuments/documents/UNG/ProductDocuments/Errata/KSZ9477S-Errata-DS80000754.pdf
+	 * To workaround this issue, half-duplex mode should be avoided.
+	 * A software reset could be implemented to recover from this state.
+	 */
+	dev_warn_once(dev->dev,
+		      "Half-duplex detected on port %d, transmission halt may occur\n",
+		      port);
+	if (tx_late_col != 0) {
+		/* Transmission halt with late collisions */
+		dev_crit_once(dev->dev,
+			      "TX late collisions detected, transmission may be halted on port %d\n",
+			      port);
+	}
+	ret = ksz_read8(dev, REG_SW_LUE_CTRL_0, &lue_ctrl);
+	if (ret)
+		return ret;
+	if (lue_ctrl & SW_VLAN_ENABLE) {
+		ret = ksz_pread16(dev, port, REG_PORT_QM_TX_CNT_0__4, &pqm);
+		if (ret)
+			return ret;
+
+		ret = ksz_read32(dev, REG_PMAVBC, &pmavbc);
+		if (ret)
+			return ret;
+
+		if ((FIELD_GET(PMAVBC_MASK, pmavbc) <= PMAVBC_MIN) ||
+		    (FIELD_GET(PORT_QM_TX_CNT_M, pqm) >= PORT_QM_TX_CNT_MAX)) {
+			/* Transmission halt with Half-Duplex and VLAN */
+			dev_crit_once(dev->dev,
+				      "resources out of limits, transmission may be halted\n");
+		}
+	}
+
+	return ret;
+}
+
+int ksz9477_errata_monitor(struct ksz_device *dev, int port,
+			   u64 tx_late_col)
+{
+	u8 status;
+	int ret;
+
+	ret = ksz_pread8(dev, port, REG_PORT_STATUS_0, &status);
+	if (ret)
+		return ret;
+
+	if (!(FIELD_GET(PORT_INTF_SPEED_MASK, status)
+	      == PORT_INTF_SPEED_NONE) &&
+	    !(status & PORT_INTF_FULL_DUPLEX)) {
+		ret = ksz9477_half_duplex_monitor(dev, port, tx_late_col);
+	}
+
+	return ret;
+}
+
 void ksz9477_port_init_cnt(struct ksz_device *dev, int port)
 {
 	struct ksz_port_mib *mib = &dev->ports[port].mib;
@@ -981,6 +1048,7 @@ void ksz9477_port_queue_split(struct ksz_device *dev, int port)
 
 void ksz9477_port_setup(struct ksz_device *dev, int port, bool cpu_port)
 {
+	const u16 *regs = dev->info->regs;
 	struct dsa_switch *ds = dev->ds;
 	u16 data16;
 	u8 member;
@@ -1000,17 +1068,11 @@ void ksz9477_port_setup(struct ksz_device *dev, int port, bool cpu_port)
 	/* enable broadcast storm limit */
 	ksz_port_cfg(dev, port, P_BCAST_STORM_CTRL, PORT_BROADCAST_STORM, true);
 
-	/* disable DiffServ priority */
-	ksz_port_cfg(dev, port, P_PRIO_CTRL, PORT_DIFFSERV_PRIO_ENABLE, false);
-
 	/* replace priority */
 	ksz_port_cfg(dev, port, REG_PORT_MRI_MAC_CTRL, PORT_USER_PRIO_CEILING,
 		     false);
 	ksz9477_port_cfg32(dev, port, REG_PORT_MTI_QUEUE_CTRL_0__4,
 			   MTI_PVID_REPLACE, false);
-
-	/* enable 802.1p priority */
-	ksz_port_cfg(dev, port, P_PRIO_CTRL, PORT_802_1P_PRIO_ENABLE, true);
 
 	/* force flow control for non-PHY ports only */
 	ksz_port_cfg(dev, port, REG_PORT_CTRL_0,
@@ -1027,6 +1089,16 @@ void ksz9477_port_setup(struct ksz_device *dev, int port, bool cpu_port)
 	/* clear pending interrupts */
 	if (dev->info->internal_phy[port])
 		ksz_pread16(dev, port, REG_PORT_PHY_INT_ENABLE, &data16);
+
+	ksz9477_port_acl_init(dev, port);
+
+	/* clear pending wake flags */
+	ksz_handle_wake_reason(dev, port);
+
+	/* Disable all WoL options by default. Otherwise
+	 * ksz_switch_macaddr_get/put logic will not work properly.
+	 */
+	ksz_pwrite8(dev, port, regs[REG_PORT_PME_CTRL], 0);
 }
 
 void ksz9477_config_cpu_port(struct dsa_switch *ds)
@@ -1087,15 +1159,9 @@ void ksz9477_config_cpu_port(struct dsa_switch *ds)
 	}
 }
 
-#define RESV_MCAST_CNT	8
-
-static u8 reserved_mcast_map[RESV_MCAST_CNT] = { 0, 1, 3, 16, 32, 33, 2, 17 };
-
 int ksz9477_enable_stp_addr(struct ksz_device *dev)
 {
-	u8 i, ports, update;
 	const u32 *masks;
-	bool override;
 	u32 data;
 	int ret;
 
@@ -1104,87 +1170,23 @@ int ksz9477_enable_stp_addr(struct ksz_device *dev)
 	/* Enable Reserved multicast table */
 	ksz_cfg(dev, REG_SW_LUE_CTRL_0, SW_RESV_MCAST_ENABLE, true);
 
-	/* The reserved multicast address table has 8 entries.  Each entry has
-	 * a default value of which port to forward.  It is assumed the host
-	 * port is the last port in most of the switches, but that is not the
-	 * case for KSZ9477 or maybe KSZ9897.  For LAN937X family the default
-	 * port is port 5, the first RGMII port.  It is okay for LAN9370, a
-	 * 5-port switch, but may not be correct for the other 8-port
-	 * versions.  It is necessary to update the whole table to forward to
-	 * the right ports.
-	 * Furthermore PTP messages can use a reserved multicast address and
-	 * the host will not receive them if this table is not correct.
-	 */
-	for (i = 0; i < RESV_MCAST_CNT; i++) {
-		data = reserved_mcast_map[i] <<
-			dev->info->shifts[ALU_STAT_INDEX];
-		data |= ALU_STAT_START |
-			masks[ALU_STAT_DIRECT] |
-			masks[ALU_RESV_MCAST_ADDR] |
-			masks[ALU_STAT_READ];
-		ret = ksz_write32(dev, REG_SW_ALU_STAT_CTRL__4, data);
-		if (ret < 0)
-			return ret;
+	/* Set the Override bit for forwarding BPDU packet to CPU */
+	ret = ksz_write32(dev, REG_SW_ALU_VAL_B,
+			  ALU_V_OVERRIDE | BIT(dev->cpu_port));
+	if (ret < 0)
+		return ret;
 
-		/* wait to be finished */
-		ret = ksz9477_wait_alu_sta_ready(dev);
-		if (ret < 0)
-			return ret;
+	data = ALU_STAT_START | ALU_RESV_MCAST_ADDR | masks[ALU_STAT_WRITE];
 
-		ret = ksz_read32(dev, REG_SW_ALU_VAL_B, &data);
-		if (ret < 0)
-			return ret;
+	ret = ksz_write32(dev, REG_SW_ALU_STAT_CTRL__4, data);
+	if (ret < 0)
+		return ret;
 
-		override = false;
-		ports = data & dev->port_mask;
-		switch (i) {
-		case 0:
-		case 6:
-			/* Change the host port. */
-			update = BIT(dev->cpu_port);
-			override = true;
-			break;
-		case 2:
-			/* Change the host port. */
-			update = BIT(dev->cpu_port);
-			break;
-		case 4:
-		case 5:
-		case 7:
-			/* Skip the host port. */
-			update = dev->port_mask & ~BIT(dev->cpu_port);
-			break;
-		default:
-			update = ports;
-			break;
-		}
-		if (update != ports || override) {
-			data &= ~dev->port_mask;
-			data |= update;
-			/* Set Override bit to receive frame even when port is
-			 * closed.
-			 */
-			if (override)
-				data |= ALU_V_OVERRIDE;
-			ret = ksz_write32(dev, REG_SW_ALU_VAL_B, data);
-			if (ret < 0)
-				return ret;
-
-			data = reserved_mcast_map[i] <<
-			       dev->info->shifts[ALU_STAT_INDEX];
-			data |= ALU_STAT_START |
-				masks[ALU_STAT_DIRECT] |
-				masks[ALU_RESV_MCAST_ADDR] |
-				masks[ALU_STAT_WRITE];
-			ret = ksz_write32(dev, REG_SW_ALU_STAT_CTRL__4, data);
-			if (ret < 0)
-				return ret;
-
-			/* wait to be finished */
-			ret = ksz9477_wait_alu_sta_ready(dev);
-			if (ret < 0)
-				return ret;
-		}
+	/* wait to be finished */
+	ret = ksz9477_wait_alu_sta_ready(dev);
+	if (ret < 0) {
+		dev_err(dev->dev, "Failed to update Reserved Multicast table\n");
+		return ret;
 	}
 
 	return 0;
@@ -1193,6 +1195,7 @@ int ksz9477_enable_stp_addr(struct ksz_device *dev)
 int ksz9477_setup(struct dsa_switch *ds)
 {
 	struct ksz_device *dev = ds->priv;
+	const u16 *regs = dev->info->regs;
 	int ret = 0;
 
 	ds->mtu_enforcement_ingress = true;
@@ -1223,7 +1226,11 @@ int ksz9477_setup(struct dsa_switch *ds)
 	/* enable global MIB counter freeze function */
 	ksz_cfg(dev, REG_SW_MAC_CTRL_6, SW_MIB_COUNTER_FREEZE, true);
 
-	return 0;
+	/* Make sure PME (WoL) is not enabled. If requested, it will
+	 * be enabled by ksz_wol_pre_shutdown(). Otherwise, some PMICs
+	 * do not like PME events changes before shutdown.
+	 */
+	return ksz_write8(dev, regs[REG_SW_PME_CTRL], 0);
 }
 
 u32 ksz9477_get_port_addr(int port, int offset)
@@ -1236,6 +1243,83 @@ int ksz9477_tc_cbs_set_cinc(struct ksz_device *dev, int port, u32 val)
 	val = val >> 8;
 
 	return ksz_pwrite16(dev, port, REG_PORT_MTI_CREDIT_INCREMENT, val);
+}
+
+/* The KSZ9477 provides following HW features to accelerate
+ * HSR frames handling:
+ *
+ * 1. TX PACKET DUPLICATION FROM HOST TO SWITCH
+ * 2. RX PACKET DUPLICATION DISCARDING
+ * 3. PREVENTING PACKET LOOP IN THE RING BY SELF-ADDRESS FILTERING
+ *
+ * Only one from point 1. has the NETIF_F* flag available.
+ *
+ * Ones from point 2 and 3 are "best effort" - i.e. those will
+ * work correctly most of the time, but it may happen that some
+ * frames will not be caught - to be more specific; there is a race
+ * condition in hardware such that, when duplicate packets are received
+ * on member ports very close in time to each other, the hardware fails
+ * to detect that they are duplicates.
+ *
+ * Hence, the SW needs to handle those special cases. However, the speed
+ * up gain is considerable when above features are used.
+ *
+ * Moreover, the NETIF_F_HW_HSR_FWD feature is also enabled, as HSR frames
+ * can be forwarded in the switch fabric between HSR ports.
+ */
+#define KSZ9477_SUPPORTED_HSR_FEATURES (NETIF_F_HW_HSR_DUP | NETIF_F_HW_HSR_FWD)
+
+void ksz9477_hsr_join(struct dsa_switch *ds, int port, struct net_device *hsr)
+{
+	struct ksz_device *dev = ds->priv;
+	struct net_device *user;
+	struct dsa_port *hsr_dp;
+	u8 data, hsr_ports = 0;
+
+	/* Program which port(s) shall support HSR */
+	ksz_rmw32(dev, REG_HSR_PORT_MAP__4, BIT(port), BIT(port));
+
+	/* Forward frames between HSR ports (i.e. bridge together HSR ports) */
+	if (dev->hsr_ports) {
+		dsa_hsr_foreach_port(hsr_dp, ds, hsr)
+			hsr_ports |= BIT(hsr_dp->index);
+
+		hsr_ports |= BIT(dsa_upstream_port(ds, port));
+		dsa_hsr_foreach_port(hsr_dp, ds, hsr)
+			ksz9477_cfg_port_member(dev, hsr_dp->index, hsr_ports);
+	}
+
+	if (!dev->hsr_ports) {
+		/* Enable discarding of received HSR frames */
+		ksz_read8(dev, REG_HSR_ALU_CTRL_0__1, &data);
+		data |= HSR_DUPLICATE_DISCARD;
+		data &= ~HSR_NODE_UNICAST;
+		ksz_write8(dev, REG_HSR_ALU_CTRL_0__1, data);
+	}
+
+	/* Enable per port self-address filtering.
+	 * The global self-address filtering has already been enabled in the
+	 * ksz9477_reset_switch() function.
+	 */
+	ksz_port_cfg(dev, port, REG_PORT_LUE_CTRL, PORT_SRC_ADDR_FILTER, true);
+
+	/* Setup HW supported features for lan HSR ports */
+	user = dsa_to_port(ds, port)->user;
+	user->features |= KSZ9477_SUPPORTED_HSR_FEATURES;
+}
+
+void ksz9477_hsr_leave(struct dsa_switch *ds, int port, struct net_device *hsr)
+{
+	struct ksz_device *dev = ds->priv;
+
+	/* Clear port HSR support */
+	ksz_rmw32(dev, REG_HSR_PORT_MAP__4, BIT(port), 0);
+
+	/* Disable forwarding frames between HSR ports */
+	ksz9477_cfg_port_member(dev, port, BIT(dsa_upstream_port(ds, port)));
+
+	/* Disable per port self-address filtering */
+	ksz_port_cfg(dev, port, REG_PORT_LUE_CTRL, PORT_SRC_ADDR_FILTER, false);
 }
 
 int ksz9477_switch_init(struct ksz_device *dev)

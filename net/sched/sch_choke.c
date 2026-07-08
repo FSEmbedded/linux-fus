@@ -229,7 +229,7 @@ static int choke_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 
 		/* Draw a packet at random from queue and compare flow */
 		if (choke_match_random(q, skb, &idx)) {
-			WRITE_ONCE(q->stats.matched, q->stats.matched + 1);
+			q->stats.matched++;
 			choke_drop_by_idx(sch, idx, to_free);
 			goto congestion_drop;
 		}
@@ -241,13 +241,11 @@ static int choke_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 			qdisc_qstats_overlimit(sch);
 			if (use_harddrop(q) || !use_ecn(q) ||
 			    !INET_ECN_set_ce(skb)) {
-				WRITE_ONCE(q->stats.forced_drop,
-					   q->stats.forced_drop + 1);
+				q->stats.forced_drop++;
 				goto congestion_drop;
 			}
 
-			WRITE_ONCE(q->stats.forced_mark,
-				   q->stats.forced_mark + 1);
+			q->stats.forced_mark++;
 		} else if (++q->vars.qcount) {
 			if (red_mark_probability(p, &q->vars, q->vars.qavg)) {
 				q->vars.qcount = 0;
@@ -255,13 +253,11 @@ static int choke_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 
 				qdisc_qstats_overlimit(sch);
 				if (!use_ecn(q) || !INET_ECN_set_ce(skb)) {
-					WRITE_ONCE(q->stats.prob_drop,
-					           q->stats.prob_drop + 1);
+					q->stats.prob_drop++;
 					goto congestion_drop;
 				}
 
-				WRITE_ONCE(q->stats.prob_mark,
-					   q->stats.prob_mark + 1);
+				q->stats.prob_mark++;
 			}
 		} else
 			q->vars.qR = red_random(p);
@@ -276,7 +272,7 @@ static int choke_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 		return NET_XMIT_SUCCESS;
 	}
 
-	WRITE_ONCE(q->stats.pdrop, q->stats.pdrop + 1);
+	q->stats.pdrop++;
 	return qdisc_drop(skb, sch, to_free);
 
 congestion_drop:
@@ -409,8 +405,8 @@ static int choke_change(struct Qdisc *sch, struct nlattr *opt,
 	} else
 		sch_tree_lock(sch);
 
-	q->flags = ctl->flags;
-	q->limit = ctl->limit;
+	WRITE_ONCE(q->flags, ctl->flags);
+	WRITE_ONCE(q->limit, ctl->limit);
 
 	red_set_parms(&q->parms, ctl->qth_min, ctl->qth_max, ctl->Wlog,
 		      ctl->Plog, ctl->Scell_log,
@@ -435,15 +431,16 @@ static int choke_init(struct Qdisc *sch, struct nlattr *opt,
 static int choke_dump(struct Qdisc *sch, struct sk_buff *skb)
 {
 	struct choke_sched_data *q = qdisc_priv(sch);
+	u8 Wlog = READ_ONCE(q->parms.Wlog);
 	struct nlattr *opts = NULL;
 	struct tc_red_qopt opt = {
-		.limit		= q->limit,
-		.flags		= q->flags,
-		.qth_min	= q->parms.qth_min >> q->parms.Wlog,
-		.qth_max	= q->parms.qth_max >> q->parms.Wlog,
-		.Wlog		= q->parms.Wlog,
-		.Plog		= q->parms.Plog,
-		.Scell_log	= q->parms.Scell_log,
+		.limit		= READ_ONCE(q->limit),
+		.flags		= READ_ONCE(q->flags),
+		.qth_min	= READ_ONCE(q->parms.qth_min) >> Wlog,
+		.qth_max	= READ_ONCE(q->parms.qth_max) >> Wlog,
+		.Wlog		= Wlog,
+		.Plog		= READ_ONCE(q->parms.Plog),
+		.Scell_log	= READ_ONCE(q->parms.Scell_log),
 	};
 
 	opts = nla_nest_start_noflag(skb, TCA_OPTIONS);
@@ -451,7 +448,7 @@ static int choke_dump(struct Qdisc *sch, struct sk_buff *skb)
 		goto nla_put_failure;
 
 	if (nla_put(skb, TCA_CHOKE_PARMS, sizeof(opt), &opt) ||
-	    nla_put_u32(skb, TCA_CHOKE_MAX_P, q->parms.max_P))
+	    nla_put_u32(skb, TCA_CHOKE_MAX_P, READ_ONCE(q->parms.max_P)))
 		goto nla_put_failure;
 	return nla_nest_end(skb, opts);
 
@@ -464,12 +461,10 @@ static int choke_dump_stats(struct Qdisc *sch, struct gnet_dump *d)
 {
 	struct choke_sched_data *q = qdisc_priv(sch);
 	struct tc_choke_xstats st = {
-		.early	= READ_ONCE(q->stats.prob_drop) +
-			  READ_ONCE(q->stats.forced_drop),
-		.marked	= READ_ONCE(q->stats.prob_mark) +
-			  READ_ONCE(q->stats.forced_mark),
-		.pdrop	= READ_ONCE(q->stats.pdrop),
-		.matched = READ_ONCE(q->stats.matched),
+		.early	= q->stats.prob_drop + q->stats.forced_drop,
+		.marked	= q->stats.prob_mark + q->stats.forced_mark,
+		.pdrop	= q->stats.pdrop,
+		.matched = q->stats.matched,
 	};
 
 	return gnet_stats_copy_app(d, &st, sizeof(st));
@@ -504,6 +499,7 @@ static struct Qdisc_ops choke_qdisc_ops __read_mostly = {
 	.dump_stats	=	choke_dump_stats,
 	.owner		=	THIS_MODULE,
 };
+MODULE_ALIAS_NET_SCH("choke");
 
 static int __init choke_module_init(void)
 {
@@ -519,3 +515,4 @@ module_init(choke_module_init)
 module_exit(choke_module_exit)
 
 MODULE_LICENSE("GPL");
+MODULE_DESCRIPTION("Choose and keep responsive flows scheduler");

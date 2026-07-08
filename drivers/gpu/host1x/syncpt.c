@@ -345,6 +345,8 @@ static void syncpt_release(struct kref *ref)
 
 	sp->locked = false;
 
+	mutex_lock(&sp->host->syncpt_mutex);
+
 	host1x_syncpt_base_free(sp->base);
 	kfree(sp->name);
 	sp->base = NULL;
@@ -367,7 +369,7 @@ void host1x_syncpt_put(struct host1x_syncpt *sp)
 	if (!sp)
 		return;
 
-	kref_put_mutex(&sp->ref, syncpt_release, &sp->host->syncpt_mutex);
+	kref_put(&sp->ref, syncpt_release);
 }
 EXPORT_SYMBOL(host1x_syncpt_put);
 

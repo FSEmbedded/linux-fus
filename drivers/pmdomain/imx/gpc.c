@@ -71,7 +71,6 @@ static int imx6_pm_domain_power_off(struct generic_pm_domain *genpd)
 
 	if (genpd->flags & PGC_DOMAIN_FLAG_NO_PU)
 		return -EBUSY;
-
 	/* Read ISO and ISO2SW power down delays */
 	regmap_read(pd->regmap, pd->reg_offs + GPC_PGC_PDNSCR_OFFS, &val);
 	iso = val & 0x3f;
@@ -102,7 +101,6 @@ static int imx6_pm_domain_power_on(struct generic_pm_domain *genpd)
 
 	if (genpd->flags & PGC_DOMAIN_FLAG_NO_PU)
 		return -EBUSY;
-
 	if (pd->supply) {
 		ret = regulator_enable(pd->supply);
 		if (ret) {
@@ -230,7 +228,7 @@ genpd_err:
 	return ret;
 }
 
-static int imx_pgc_power_domain_remove(struct platform_device *pdev)
+static void imx_pgc_power_domain_remove(struct platform_device *pdev)
 {
 	struct imx_pm_domain *domain = pdev->dev.platform_data;
 
@@ -240,7 +238,6 @@ static int imx_pgc_power_domain_remove(struct platform_device *pdev)
 		imx_pgc_put_clocks(domain);
 	}
 
-	return 0;
 }
 
 static const struct platform_device_id imx_pgc_power_domain_id[] = {
@@ -253,7 +250,7 @@ static struct platform_driver imx_pgc_power_domain_driver = {
 		.name = "imx-pgc-pd",
 	},
 	.probe = imx_pgc_power_domain_probe,
-	.remove = imx_pgc_power_domain_remove,
+	.remove_new = imx_pgc_power_domain_remove,
 	.id_table = imx_pgc_power_domain_id,
 };
 builtin_platform_driver(imx_pgc_power_domain_driver)
@@ -434,14 +431,15 @@ static void imx_gpc_handle_ldobypass(struct platform_device *pdev)
 static int imx_gpc_probe(struct platform_device *pdev)
 {
 	const struct imx_gpc_dt_data *of_id_data = device_get_match_data(&pdev->dev);
-	struct device_node *pgc_node __free(device_node)
-		= of_get_child_by_name(pdev->dev.of_node, "pgc");
+	struct device_node *pgc_node;
 	struct regmap *regmap;
 	void __iomem *base;
 	bool no_gpu;
 	int ret;
 
 	no_gpu = of_property_read_bool(pdev->dev.of_node, "no-gpu");
+
+	pgc_node = of_get_child_by_name(pdev->dev.of_node, "pgc");
 
 	/* bail out if DT too old and doesn't provide the necessary info */
 	if (!of_property_read_bool(pdev->dev.of_node, "#power-domain-cells") &&
@@ -484,7 +482,6 @@ static int imx_gpc_probe(struct platform_device *pdev)
 	if (no_gpu)
 		imx_gpc_domains[GPC_PGC_DOMAIN_PU].base.flags |=
 				PGC_DOMAIN_FLAG_NO_PU;
-
 	if (!pgc_node) {
 		ret = imx_gpc_old_dt_init(&pdev->dev, regmap,
 					  of_id_data->num_domains);
@@ -495,7 +492,6 @@ static int imx_gpc_probe(struct platform_device *pdev)
 	} else {
 		struct imx_pm_domain *domain;
 		struct platform_device *pd_pdev;
-		struct device_node *np;
 		struct clk *ipg_clk;
 		unsigned int ipg_rate_mhz;
 		int domain_index;
@@ -505,28 +501,23 @@ static int imx_gpc_probe(struct platform_device *pdev)
 			return PTR_ERR(ipg_clk);
 		ipg_rate_mhz = clk_get_rate(ipg_clk) / 1000000;
 
-		for_each_child_of_node(pgc_node, np) {
+		for_each_child_of_node_scoped(pgc_node, np) {
 			ret = of_property_read_u32(np, "reg", &domain_index);
-			if (ret) {
-				of_node_put(np);
+			if (ret)
 				return ret;
-			}
 			if (domain_index >= of_id_data->num_domains)
 				continue;
 
 			pd_pdev = platform_device_alloc("imx-pgc-power-domain",
 							domain_index);
-			if (!pd_pdev) {
-				of_node_put(np);
+			if (!pd_pdev)
 				return -ENOMEM;
-			}
 
 			ret = platform_device_add_data(pd_pdev,
 						       &imx_gpc_domains[domain_index],
 						       sizeof(imx_gpc_domains[domain_index]));
 			if (ret) {
 				platform_device_put(pd_pdev);
-				of_node_put(np);
 				return ret;
 			}
 			domain = pd_pdev->dev.platform_data;
@@ -541,7 +532,6 @@ static int imx_gpc_probe(struct platform_device *pdev)
 			ret = platform_device_add(pd_pdev);
 			if (ret) {
 				platform_device_put(pd_pdev);
-				of_node_put(np);
 				return ret;
 			}
 		}
@@ -585,7 +575,6 @@ static void imx_gpc_remove(struct platform_device *pdev)
 		}
 	}
 
-	of_node_put(pgc_node);
 }
 
 static struct platform_driver imx_gpc_driver = {

@@ -345,24 +345,26 @@ int rxe_prepare(struct rxe_av *av, struct rxe_pkt_info *pkt,
 
 static void rxe_skb_tx_dtor(struct sk_buff *skb)
 {
-	struct sock *sk = skb->sk;
-	struct rxe_qp *qp = sk->sk_user_data;
-	int skb_out = atomic_dec_return(&qp->skb_out);
+	struct rxe_qp *qp = skb->sk->sk_user_data;
+	int skb_out;
 
+	skb_out = atomic_dec_return(&qp->skb_out);
 	if (unlikely(qp->need_req_skb &&
-		     skb_out < RXE_INFLIGHT_SKBS_PER_QP_LOW))
-		rxe_sched_task(&qp->req.task);
+		skb_out < RXE_INFLIGHT_SKBS_PER_QP_LOW))
+		rxe_sched_task(&qp->send_task);
 
 	rxe_put(qp);
+	sock_put(skb->sk);
 }
 
 static int rxe_send(struct sk_buff *skb, struct rxe_pkt_info *pkt)
 {
 	int err;
+	struct sock *sk = pkt->qp->sk->sk;
 
+	sock_hold(sk);
+	skb->sk = sk;
 	skb->destructor = rxe_skb_tx_dtor;
-	skb->sk = pkt->qp->sk->sk;
-
 	rxe_get(pkt->qp);
 	atomic_inc(&pkt->qp->skb_out);
 
@@ -371,12 +373,7 @@ static int rxe_send(struct sk_buff *skb, struct rxe_pkt_info *pkt)
 	else
 		err = ip6_local_out(dev_net(skb_dst(skb)->dev), skb->sk, skb);
 
-	if (unlikely(net_xmit_eval(err))) {
-		rxe_dbg_qp(pkt->qp, "error sending packet: %d\n", err);
-		return -EAGAIN;
-	}
-
-	return 0;
+	return err;
 }
 
 /* fix up a send packet to match the packets
@@ -384,7 +381,15 @@ static int rxe_send(struct sk_buff *skb, struct rxe_pkt_info *pkt)
  */
 static int rxe_loopback(struct sk_buff *skb, struct rxe_pkt_info *pkt)
 {
+	struct sock *sk = pkt->qp->sk->sk;
+
 	memcpy(SKB_TO_PKT(skb), pkt, sizeof(*pkt));
+
+	sock_hold(sk);
+	skb->sk = sk;
+	skb->destructor = rxe_skb_tx_dtor;
+	rxe_get(pkt->qp);
+	atomic_inc(&pkt->qp->skb_out);
 
 	if (skb->protocol == htons(ETH_P_IP))
 		skb_pull(skb, sizeof(struct iphdr));
@@ -432,12 +437,6 @@ int rxe_xmit_packet(struct rxe_qp *qp, struct rxe_pkt_info *pkt,
 		return err;
 	}
 
-	if ((qp_type(qp) != IB_QPT_RC) &&
-	    (pkt->mask & RXE_END_MASK)) {
-		pkt->wqe->state = wqe_state_done;
-		rxe_sched_task(&qp->comp.task);
-	}
-
 	rxe_counter_inc(rxe, RXE_CNT_SENT_PKTS);
 	goto done;
 
@@ -481,6 +480,9 @@ struct sk_buff *rxe_init_packet(struct rxe_dev *rxe, struct rxe_av *av,
 		rcu_read_unlock();
 		goto out;
 	}
+
+	/* Add time stamp to skb. */
+	skb->tstamp = ktime_get();
 
 	skb_reserve(skb, hdr_len + LL_RESERVED_SPACE(ndev));
 
@@ -529,6 +531,8 @@ int rxe_net_add(const char *ibdev_name, struct net_device *ndev)
 	rxe = ib_alloc_device(rxe_dev, ib_dev);
 	if (!rxe)
 		return -ENOMEM;
+
+	ib_mark_name_assigned_by_user(&rxe->ib_dev);
 
 	err = rxe_add(rxe, ndev->mtu, ibdev_name, ndev);
 	if (err) {

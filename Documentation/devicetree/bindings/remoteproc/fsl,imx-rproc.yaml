@@ -29,6 +29,8 @@ properties:
       - fsl,imx8ulp-cm33
       - fsl,imx93-cm33
       - fsl,imx95-cm7
+      - fsl,imx94-cm7
+      - fsl,imx94-cm33s
 
   clocks:
     maxItems: 1
@@ -60,6 +62,7 @@ properties:
     maxItems: 32
 
   power-domains:
+    minItems: 2
     maxItems: 8
 
   fsl,auto-boot:
@@ -100,6 +103,20 @@ allOf:
       properties:
         fsl,iomuxc-gpr: false
 
+  - if:
+      properties:
+        compatible:
+          contains:
+            enum:
+              - fsl,imx8qxp-cm4
+              - fsl,imx8qm-cm4
+    then:
+      required:
+        - power-domains
+    else:
+      properties:
+        power-domains: false
+
 additionalProperties: false
 
 examples:
@@ -114,10 +131,10 @@ examples:
     };
 
     imx7d-cm4 {
-      compatible	= "fsl,imx7d-cm4";
-      memory-region	= <&m4_reserved_sysmem1>, <&m4_reserved_sysmem2>;
-      syscon		= <&src>;
-      clocks		= <&clks IMX7D_ARM_M4_ROOT_CLK>;
+      compatible = "fsl,imx7d-cm4";
+      memory-region = <&m4_reserved_sysmem1>, <&m4_reserved_sysmem2>;
+      syscon = <&src>;
+      clocks = <&clks IMX7D_ARM_M4_ROOT_CLK>;
     };
 
   - |

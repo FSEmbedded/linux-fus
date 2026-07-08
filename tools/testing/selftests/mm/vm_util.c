@@ -4,6 +4,7 @@
 #include <dirent.h>
 #include <sys/ioctl.h>
 #include <linux/userfaultfd.h>
+#include <linux/fs.h>
 #include <sys/syscall.h>
 #include <unistd.h>
 #include "../kselftest.h"
@@ -11,6 +12,7 @@
 
 #define PMD_SIZE_FILE_PATH "/sys/kernel/mm/transparent_hugepage/hpage_pmd_size"
 #define SMAP_FILE_PATH "/proc/self/smaps"
+#define STATUS_FILE_PATH "/proc/self/status"
 #define MAX_LINE_LENGTH 500
 
 unsigned int __page_size;
@@ -28,19 +30,92 @@ uint64_t pagemap_get_entry(int fd, char *start)
 	return entry;
 }
 
+static uint64_t __pagemap_scan_get_categories(int fd, char *start, struct page_region *r)
+{
+	struct pm_scan_arg arg;
+
+	arg.start = (uintptr_t)start;
+	arg.end = (uintptr_t)(start + psize());
+	arg.vec = (uintptr_t)r;
+	arg.vec_len = 1;
+	arg.flags = 0;
+	arg.size = sizeof(struct pm_scan_arg);
+	arg.max_pages = 0;
+	arg.category_inverted = 0;
+	arg.category_mask = 0;
+	arg.category_anyof_mask = PAGE_IS_WPALLOWED | PAGE_IS_WRITTEN | PAGE_IS_FILE |
+				  PAGE_IS_PRESENT | PAGE_IS_SWAPPED | PAGE_IS_PFNZERO |
+				  PAGE_IS_HUGE | PAGE_IS_SOFT_DIRTY;
+	arg.return_mask = arg.category_anyof_mask;
+
+	return ioctl(fd, PAGEMAP_SCAN, &arg);
+}
+
+static uint64_t pagemap_scan_get_categories(int fd, char *start)
+{
+	struct page_region r;
+	long ret;
+
+	ret = __pagemap_scan_get_categories(fd, start, &r);
+	if (ret < 0)
+		ksft_exit_fail_msg("PAGEMAP_SCAN failed: %s\n", strerror(errno));
+	if (ret == 0)
+		return 0;
+	return r.categories;
+}
+
+/* `start` is any valid address. */
+static bool pagemap_scan_supported(int fd, char *start)
+{
+	static int supported = -1;
+	int ret;
+
+	if (supported != -1)
+		return supported;
+
+	/* Provide an invalid address in order to trigger EFAULT. */
+	ret = __pagemap_scan_get_categories(fd, start, (struct page_region *) ~0UL);
+	if (ret == 0)
+		ksft_exit_fail_msg("PAGEMAP_SCAN succeeded unexpectedly\n");
+
+	supported = errno == EFAULT;
+
+	return supported;
+}
+
+static bool page_entry_is(int fd, char *start, char *desc,
+			  uint64_t pagemap_flags, uint64_t pagescan_flags)
+{
+	bool m = pagemap_get_entry(fd, start) & pagemap_flags;
+
+	if (pagemap_scan_supported(fd, start)) {
+		bool s = pagemap_scan_get_categories(fd, start) & pagescan_flags;
+
+		if (m == s)
+			return m;
+
+		ksft_exit_fail_msg(
+			"read and ioctl return unmatched results for %s: %d %d", desc, m, s);
+	}
+	return m;
+}
+
 bool pagemap_is_softdirty(int fd, char *start)
 {
-	return pagemap_get_entry(fd, start) & PM_SOFT_DIRTY;
+	return page_entry_is(fd, start, "soft-dirty",
+				PM_SOFT_DIRTY, PAGE_IS_SOFT_DIRTY);
 }
 
 bool pagemap_is_swapped(int fd, char *start)
 {
-	return pagemap_get_entry(fd, start) & PM_SWAP;
+	return page_entry_is(fd, start, "swap", PM_SWAP, PAGE_IS_SWAPPED);
 }
 
 bool pagemap_is_populated(int fd, char *start)
 {
-	return pagemap_get_entry(fd, start) & (PM_PRESENT | PM_SWAP);
+	return page_entry_is(fd, start, "populated",
+				PM_PRESENT | PM_SWAP,
+				PAGE_IS_PRESENT | PAGE_IS_SWAPPED);
 }
 
 unsigned long pagemap_get_pfn(int fd, char *start)
@@ -97,40 +172,25 @@ uint64_t read_pmd_pagesize(void)
 	return strtoul(buf, NULL, 10);
 }
 
-char *__get_smap_entry(void *addr, const char *pattern, char *buf, size_t len)
+unsigned long rss_anon(void)
 {
-	int ret;
+	unsigned long rss_anon = 0;
 	FILE *fp;
-	char *entry = NULL;
-	char addr_pattern[MAX_LINE_LENGTH];
+	char buffer[MAX_LINE_LENGTH];
 
-	ret = snprintf(addr_pattern, MAX_LINE_LENGTH, "%08lx-",
-		       (unsigned long)addr);
-	if (ret >= MAX_LINE_LENGTH)
-		ksft_exit_fail_msg("%s: Pattern is too long\n", __func__);
-
-	fp = fopen(SMAP_FILE_PATH, "r");
+	fp = fopen(STATUS_FILE_PATH, "r");
 	if (!fp)
-		ksft_exit_fail_msg("%s: Failed to open file %s\n", __func__,
-				   SMAP_FILE_PATH);
+		ksft_exit_fail_msg("%s: Failed to open file %s\n", __func__, STATUS_FILE_PATH);
 
-	if (!check_for_pattern(fp, addr_pattern, buf, len))
+	if (!check_for_pattern(fp, "RssAnon:", buffer, sizeof(buffer)))
 		goto err_out;
 
-	/* Fetch the pattern in the same block */
-	if (!check_for_pattern(fp, pattern, buf, len))
-		goto err_out;
-
-	/* Trim trailing newline */
-	entry = strchr(buf, '\n');
-	if (entry)
-		*entry = '\0';
-
-	entry = buf + strlen(pattern);
+	if (sscanf(buffer, "RssAnon:%10lu kB", &rss_anon) != 1)
+		ksft_exit_fail_msg("Reading status error\n");
 
 err_out:
 	fclose(fp);
-	return entry;
+	return rss_anon;
 }
 
 bool __check_huge(void *addr, char *pattern, int nr_hpages,
@@ -194,17 +254,17 @@ int64_t allocate_transhuge(void *ptr, int pagemap_fd)
 	if (mmap(ptr, HPAGE_SIZE, PROT_READ | PROT_WRITE,
 		 MAP_FIXED | MAP_ANONYMOUS |
 		 MAP_NORESERVE | MAP_PRIVATE, -1, 0) != ptr)
-		errx(2, "mmap transhuge");
+		ksft_exit_fail_msg("mmap transhuge\n");
 
 	if (madvise(ptr, HPAGE_SIZE, MADV_HUGEPAGE))
-		err(2, "MADV_HUGEPAGE");
+		ksft_exit_fail_msg("MADV_HUGEPAGE\n");
 
 	/* allocate transparent huge page */
 	*(volatile void **)ptr = ptr;
 
 	if (pread(pagemap_fd, ent, sizeof(ent),
 		  (uintptr_t)ptr >> (pshift() - 3)) != sizeof(ent))
-		err(2, "read pagemap");
+		ksft_exit_fail_msg("read pagemap\n");
 
 	if (PAGEMAP_PRESENT(ent[0]) && PAGEMAP_PRESENT(ent[1]) &&
 	    PAGEMAP_PFN(ent[0]) + 1 == PAGEMAP_PFN(ent[1]) &&
@@ -306,43 +366,21 @@ int uffd_unregister(int uffd, void *addr, uint64_t len)
 	return ret;
 }
 
-static bool check_vmflag(void *addr, const char *flag)
+unsigned long get_free_hugepages(void)
 {
-	char buffer[MAX_LINE_LENGTH];
-	const char *flags;
-	size_t flaglen;
+	unsigned long fhp = 0;
+	char *line = NULL;
+	size_t linelen = 0;
+	FILE *f = fopen("/proc/meminfo", "r");
 
-	flags = __get_smap_entry(addr, "VmFlags:", buffer, sizeof(buffer));
-	if (!flags)
-		ksft_exit_fail_msg("%s: No VmFlags for %p\n", __func__, addr);
-
-	while (true) {
-		flags += strspn(flags, " ");
-
-		flaglen = strcspn(flags, " ");
-		if (!flaglen)
-			return false;
-
-		if (flaglen == strlen(flag) && !memcmp(flags, flag, flaglen))
-			return true;
-
-		flags += flaglen;
+	if (!f)
+		return fhp;
+	while (getline(&line, &linelen, f) > 0) {
+		if (sscanf(line, "HugePages_Free:      %lu", &fhp) == 1)
+			break;
 	}
-}
 
-bool softdirty_supported(void)
-{
-	char *addr;
-	bool supported = false;
-	const size_t pagesize = getpagesize();
-
-	/* New mappings are expected to be marked with VM_SOFTDIRTY (sd). */
-	addr = mmap(0, pagesize, PROT_READ | PROT_WRITE,
-		    MAP_ANONYMOUS | MAP_PRIVATE, 0, 0);
-	if (!addr)
-		ksft_exit_fail_msg("mmap failed\n");
-
-	supported = check_vmflag(addr, "sd");
-	munmap(addr, pagesize);
-	return supported;
+	free(line);
+	fclose(f);
+	return fhp;
 }

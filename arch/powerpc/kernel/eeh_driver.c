@@ -39,7 +39,7 @@ static int eeh_result_priority(enum pci_ers_result result)
 	case PCI_ERS_RESULT_NEED_RESET:
 		return 6;
 	default:
-		WARN_ONCE(1, "Unknown pci_ers_result value: %d\n", (int)result);
+		WARN_ONCE(1, "Unknown pci_ers_result value: %d\n", result);
 		return 0;
 	}
 };
@@ -60,7 +60,7 @@ static const char *pci_ers_result_name(enum pci_ers_result result)
 	case PCI_ERS_RESULT_NO_AER_DRIVER:
 		return "no AER driver";
 	default:
-		WARN_ONCE(1, "Unknown result type: %d\n", (int)result);
+		WARN_ONCE(1, "Unknown result type: %d\n", result);
 		return "unknown";
 	}
 };
@@ -334,7 +334,7 @@ static enum pci_ers_result eeh_report_error(struct eeh_dev *edev,
 	rc = driver->err_handler->error_detected(pdev, pci_channel_io_frozen);
 
 	edev->in_error = true;
-	pci_uevent_ers(pdev, rc);
+	pci_uevent_ers(pdev, PCI_ERS_RESULT_NONE);
 	return rc;
 }
 
@@ -846,7 +846,7 @@ void eeh_handle_normal_event(struct eeh_pe *pe)
 
 	pci_lock_rescan_remove();
 
-	bus = eeh_pe_bus_get_nolock(pe);
+	bus = eeh_pe_bus_get(pe);
 	if (!bus) {
 		pr_err("%s: Cannot find PCI bus for PHB#%x-PE#%x\n",
 			__func__, pe->phb->global_number, pe->addr);
@@ -869,23 +869,31 @@ void eeh_handle_normal_event(struct eeh_pe *pe)
 				devices++;
 
 	if (!devices) {
-		pr_debug("EEH: Frozen PHB#%x-PE#%x is empty!\n",
+		pr_warn("EEH: Frozen PHB#%x-PE#%x is empty!\n",
 			pe->phb->global_number, pe->addr);
-		goto out; /* nothing to recover */
+		/*
+		 * The device is removed, tear down its state, on powernv
+		 * hotplug driver would take care of it but not on pseries,
+		 * permanently disable the card as it is hot removed.
+		 *
+		 * In the case of powernv, note that the removal of device
+		 * is covered by pci rescan lock, so no problem even if hotplug
+		 * driver attempts to remove the device.
+		 */
+		goto recover_failed;
 	}
 
 	/* Log the event */
 	if (pe->type & EEH_PE_PHB) {
 		pr_err("EEH: Recovering PHB#%x, location: %s\n",
-			pe->phb->global_number, eeh_pe_loc_get_bus(bus));
+			pe->phb->global_number, eeh_pe_loc_get(pe));
 	} else {
 		struct eeh_pe *phb_pe = eeh_phb_pe_get(pe->phb);
 
 		pr_err("EEH: Recovering PHB#%x-PE#%x\n",
 		       pe->phb->global_number, pe->addr);
 		pr_err("EEH: PE location: %s, PHB location: %s\n",
-		       eeh_pe_loc_get_bus(bus),
-		       eeh_pe_loc_get_bus(eeh_pe_bus_get_nolock(phb_pe)));
+		       eeh_pe_loc_get(pe), eeh_pe_loc_get(phb_pe));
 	}
 
 #ifdef CONFIG_STACKTRACE
@@ -1090,7 +1098,7 @@ recover_failed:
 		eeh_pe_state_clear(pe, EEH_PE_PRI_BUS, true);
 		eeh_pe_dev_mode_mark(pe, EEH_DEV_REMOVED);
 
-		bus = eeh_pe_bus_get_nolock(pe);
+		bus = eeh_pe_bus_get(pe);
 		if (bus)
 			pci_hp_remove_devices(bus);
 		else
@@ -1214,7 +1222,7 @@ void eeh_handle_special_event(void)
 				    (phb_pe->state & EEH_PE_RECOVERING))
 					continue;
 
-				bus = eeh_pe_bus_get_nolock(phb_pe);
+				bus = eeh_pe_bus_get(phb_pe);
 				if (!bus) {
 					pr_err("%s: Cannot find PCI bus for "
 					       "PHB#%x-PE#%x\n",

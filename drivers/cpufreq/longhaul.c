@@ -236,8 +236,9 @@ static void do_powersaver(int cx_address, unsigned int mults_index,
 }
 
 /**
- * longhaul_set_cpu_frequency()
- * @mults_index : bitpattern of the new multiplier.
+ * longhaul_setstate()
+ * @policy: cpufreq_policy structure containing the current policy.
+ * @table_index: index of the frequency within the cpufreq_frequency_table.
  *
  * Sets a new clock ratio.
  */
@@ -952,9 +953,6 @@ static void __exit longhaul_exit(void)
 {
 	struct cpufreq_policy *policy = cpufreq_cpu_get(0);
 	int i;
-
-	if (unlikely(!policy))
-		return;
 
 	for (i = 0; i < numscales; i++) {
 		if (mults[i] == maxmult) {

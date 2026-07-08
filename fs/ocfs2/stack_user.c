@@ -744,7 +744,7 @@ static int user_plock(struct ocfs2_cluster_connection *conn,
 		return dlm_posix_cancel(conn->cc_lockspace, ino, file, fl);
 	else if (IS_GETLK(cmd))
 		return dlm_posix_get(conn->cc_lockspace, ino, file, fl);
-	else if (fl->fl_type == F_UNLCK)
+	else if (lock_is_unlock(fl))
 		return dlm_posix_unlock(conn->cc_lockspace, ino, file, fl);
 	else
 		return dlm_posix_lock(conn->cc_lockspace, ino, file, cmd, fl);
@@ -1018,7 +1018,6 @@ static int user_cluster_connect(struct ocfs2_cluster_connection *conn)
 			printk(KERN_ERR "ocfs2: Could not determine"
 					" locking version\n");
 			user_cluster_disconnect(conn);
-			lc = NULL;
 			goto out;
 		}
 		wait_event(lc->oc_wait, (atomic_read(&lc->oc_this_node) > 0));
@@ -1066,7 +1065,7 @@ static int user_cluster_this_node(struct ocfs2_cluster_connection *conn,
 	return 0;
 }
 
-static struct ocfs2_stack_operations ocfs2_user_plugin_ops = {
+static const struct ocfs2_stack_operations ocfs2_user_plugin_ops = {
 	.connect	= user_cluster_connect,
 	.disconnect	= user_cluster_disconnect,
 	.this_node	= user_cluster_this_node,

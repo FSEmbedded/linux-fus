@@ -35,10 +35,10 @@ struct seco_soc_info {
 
 int seco_fetch_soc_info(struct se_if_priv *priv, void *data);
 int imx_scu_init_fw(struct se_if_priv *priv);
-int imx_scu_sec_mem_cfg(struct file *fp, u32 offset, u32 size);
+int imx_scu_sec_mem_cfg(struct file *fp, uint32_t offset, uint32_t size);
 int imx_scu_mem_access(struct se_if_device_ctx *dev_ctx);
 int imx_scu_signed_msg(struct file *fp,
-		       u8 *msg,
-		       u32 size,
-		       u32 *error);
+		       uint8_t *msg,
+		       uint32_t size,
+		       uint32_t *error);
 #endif

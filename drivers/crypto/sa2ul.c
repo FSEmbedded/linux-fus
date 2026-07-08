@@ -1775,13 +1775,13 @@ static int sa_cra_init_aead(struct crypto_aead *tfm, const char *hash,
 static int sa_cra_init_aead_sha1(struct crypto_aead *tfm)
 {
 	return sa_cra_init_aead(tfm, "sha1",
-				"authenc(hmac(sha1),cbc(aes))");
+				"authenc(hmac(sha1-ce),cbc(aes-ce))");
 }
 
 static int sa_cra_init_aead_sha256(struct crypto_aead *tfm)
 {
 	return sa_cra_init_aead(tfm, "sha256",
-				"authenc(hmac(sha256),cbc(aes))");
+				"authenc(hmac(sha256-ce),cbc(aes-ce))");
 }
 
 static void sa_exit_tfm_aead(struct crypto_aead *tfm)
@@ -2467,7 +2467,7 @@ destroy_dma_pool:
 	return ret;
 }
 
-static int sa_ul_remove(struct platform_device *pdev)
+static void sa_ul_remove(struct platform_device *pdev)
 {
 	struct sa_crypto_data *dev_data = platform_get_drvdata(pdev);
 
@@ -2485,17 +2485,16 @@ static int sa_ul_remove(struct platform_device *pdev)
 
 	pm_runtime_put_sync(&pdev->dev);
 	pm_runtime_disable(&pdev->dev);
-
-	return 0;
 }
 
 static struct platform_driver sa_ul_driver = {
 	.probe = sa_ul_probe,
-	.remove = sa_ul_remove,
+	.remove_new = sa_ul_remove,
 	.driver = {
 		   .name = "saul-crypto",
 		   .of_match_table = of_match,
 		   },
 };
 module_platform_driver(sa_ul_driver);
+MODULE_DESCRIPTION("K3 SA2UL crypto accelerator driver");
 MODULE_LICENSE("GPL v2");

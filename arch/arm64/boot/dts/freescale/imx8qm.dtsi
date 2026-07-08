@@ -29,14 +29,6 @@
 		serial2 = &lpuart2;
 		serial3 = &lpuart3;
 		serial4 = &lpuart4;
-		isi0 = &isi_0;
-		isi1 = &isi_1;
-		isi2 = &isi_2;
-		isi3 = &isi_3;
-		isi4 = &isi_4;
-		isi5 = &isi_5;
-		isi6 = &isi_6;
-		isi7 = &isi_7;
 		csi0 = &mipi_csi_0;
 		csi1 = &mipi_csi_1;
 		mu0 = &lsio_mu0;
@@ -348,8 +340,6 @@
 		pd: power-controller {
 			compatible = "fsl,imx8qm-scu-pd", "fsl,scu-pd";
 			#power-domain-cells = <1>;
-			wakeup-irq = <235 236 237 258 262 267 271
-				      345 346 347 348>;
 		};
 
 		clk: clock-controller {
@@ -568,7 +558,6 @@
 	#include "imx8-ss-img.dtsi"
 	#include "imx8-ss-dma.dtsi"
 	#include "imx8-ss-security.dtsi"
-	#include "imx8-ss-cm40.dtsi"
 	#include "imx8-ss-cm41.dtsi"
 	#include "imx8-ss-conn.dtsi"
 	#include "imx8-ss-ddr.dtsi"

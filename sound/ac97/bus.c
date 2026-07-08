@@ -15,6 +15,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/slab.h>
 #include <linux/sysfs.h>
+#include <sound/ac97_codec.h>
 #include <sound/ac97/codec.h>
 #include <sound/ac97/controller.h>
 #include <sound/ac97/regs.h>
@@ -27,8 +28,6 @@
 static DEFINE_MUTEX(ac97_controllers_mutex);
 static DEFINE_IDR(ac97_adapter_idr);
 static LIST_HEAD(ac97_controllers);
-
-static struct bus_type ac97_bus_type;
 
 static inline struct ac97_controller*
 to_ac97_controller(struct device *ac97_adapter)
@@ -242,9 +241,10 @@ static ssize_t cold_reset_store(struct device *dev,
 {
 	struct ac97_controller *ac97_ctrl;
 
-	guard(mutex)(&ac97_controllers_mutex);
+	mutex_lock(&ac97_controllers_mutex);
 	ac97_ctrl = to_ac97_controller(dev);
 	ac97_ctrl->ops->reset(ac97_ctrl);
+	mutex_unlock(&ac97_controllers_mutex);
 	return len;
 }
 static DEVICE_ATTR_WO(cold_reset);
@@ -258,9 +258,10 @@ static ssize_t warm_reset_store(struct device *dev,
 	if (!dev)
 		return -ENODEV;
 
-	guard(mutex)(&ac97_controllers_mutex);
+	mutex_lock(&ac97_controllers_mutex);
 	ac97_ctrl = to_ac97_controller(dev);
 	ac97_ctrl->ops->warm_reset(ac97_ctrl);
+	mutex_unlock(&ac97_controllers_mutex);
 	return len;
 }
 static DEVICE_ATTR_WO(warm_reset);
@@ -283,10 +284,10 @@ static const struct attribute_group *ac97_adapter_groups[] = {
 
 static void ac97_del_adapter(struct ac97_controller *ac97_ctrl)
 {
-	scoped_guard(mutex, &ac97_controllers_mutex) {
-		ac97_ctrl_codecs_unregister(ac97_ctrl);
-		list_del(&ac97_ctrl->controllers);
-	}
+	mutex_lock(&ac97_controllers_mutex);
+	ac97_ctrl_codecs_unregister(ac97_ctrl);
+	list_del(&ac97_ctrl->controllers);
+	mutex_unlock(&ac97_controllers_mutex);
 
 	device_unregister(&ac97_ctrl->adap);
 }
@@ -299,7 +300,6 @@ static void ac97_adapter_release(struct device *dev)
 	idr_remove(&ac97_adapter_idr, ac97_ctrl->nr);
 	dev_dbg(&ac97_ctrl->adap, "adapter unregistered by %s\n",
 		dev_name(ac97_ctrl->parent));
-	kfree(ac97_ctrl);
 }
 
 static const struct device_type ac97_adapter_type = {
@@ -311,7 +311,7 @@ static int ac97_add_adapter(struct ac97_controller *ac97_ctrl)
 {
 	int ret;
 
-	guard(mutex)(&ac97_controllers_mutex);
+	mutex_lock(&ac97_controllers_mutex);
 	ret = idr_alloc(&ac97_adapter_idr, ac97_ctrl, 0, 0, GFP_KERNEL);
 	ac97_ctrl->nr = ret;
 	if (ret >= 0) {
@@ -321,14 +321,14 @@ static int ac97_add_adapter(struct ac97_controller *ac97_ctrl)
 		ret = device_register(&ac97_ctrl->adap);
 		if (ret)
 			put_device(&ac97_ctrl->adap);
-	} else
-		kfree(ac97_ctrl);
-
-	if (!ret) {
+	}
+	if (!ret)
 		list_add(&ac97_ctrl->controllers, &ac97_controllers);
+	mutex_unlock(&ac97_controllers_mutex);
+
+	if (!ret)
 		dev_dbg(&ac97_ctrl->adap, "adapter registered by %s\n",
 			dev_name(ac97_ctrl->parent));
-	}
 	return ret;
 }
 
@@ -364,11 +364,14 @@ struct ac97_controller *snd_ac97_controller_register(
 	ret = ac97_add_adapter(ac97_ctrl);
 
 	if (ret)
-		return ERR_PTR(ret);
+		goto err;
 	ac97_bus_reset(ac97_ctrl);
 	ac97_bus_scan(ac97_ctrl);
 
 	return ac97_ctrl;
+err:
+	kfree(ac97_ctrl);
+	return ERR_PTR(ret);
 }
 EXPORT_SYMBOL_GPL(snd_ac97_controller_register);
 
@@ -466,10 +469,10 @@ static struct attribute *ac97_dev_attrs[] = {
 };
 ATTRIBUTE_GROUPS(ac97_dev);
 
-static int ac97_bus_match(struct device *dev, struct device_driver *drv)
+static int ac97_bus_match(struct device *dev, const struct device_driver *drv)
 {
 	struct ac97_codec_device *adev = to_ac97_device(dev);
-	struct ac97_codec_driver *adrv = to_ac97_driver(drv);
+	const struct ac97_codec_driver *adrv = to_ac97_driver(drv);
 	const struct ac97_id *id = adrv->id_table;
 	int i = 0;
 
@@ -527,7 +530,7 @@ static void ac97_bus_remove(struct device *dev)
 	pm_runtime_disable(dev);
 }
 
-static struct bus_type ac97_bus_type = {
+const struct bus_type ac97_bus_type = {
 	.name		= "ac97bus",
 	.dev_groups	= ac97_dev_groups,
 	.match		= ac97_bus_match,
@@ -548,5 +551,6 @@ static void __exit ac97_bus_exit(void)
 }
 module_exit(ac97_bus_exit);
 
+MODULE_DESCRIPTION("AC97 bus interface");
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Robert Jarzmik <robert.jarzmik@free.fr>");

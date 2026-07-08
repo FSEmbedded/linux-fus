@@ -27,6 +27,8 @@
 
 #include <linux/spi/spi.h>
 
+#include "internals.h"
+
 #include <linux/platform_data/spi-omap2-mcspi.h>
 
 #define OMAP2_MCSPI_MAX_FREQ		48000000
@@ -131,6 +133,8 @@ struct omap2_mcspi {
 	unsigned int		pin_dir:1;
 	size_t			max_xfer_len;
 	u32			ref_clk_hz;
+	bool			use_multi_mode;
+	bool			last_msg_kept_cs;
 };
 
 struct omap2_mcspi_cs {
@@ -256,10 +260,15 @@ static void omap2_mcspi_set_cs(struct spi_device *spi, bool enable)
 
 		l = mcspi_cached_chconf0(spi);
 
-		if (enable)
+		/* Only enable chip select manually if single mode is used */
+		if (mcspi->use_multi_mode) {
 			l &= ~OMAP2_MCSPI_CHCONF_FORCE;
-		else
-			l |= OMAP2_MCSPI_CHCONF_FORCE;
+		} else {
+			if (enable)
+				l &= ~OMAP2_MCSPI_CHCONF_FORCE;
+			else
+				l |= OMAP2_MCSPI_CHCONF_FORCE;
+		}
 
 		mcspi_write_chconf0(spi, l);
 
@@ -283,7 +292,12 @@ static void omap2_mcspi_set_mode(struct spi_controller *ctlr)
 		l |= (OMAP2_MCSPI_MODULCTRL_MS);
 	} else {
 		l &= ~(OMAP2_MCSPI_MODULCTRL_MS);
-		l |= OMAP2_MCSPI_MODULCTRL_SINGLE;
+
+		/* Enable single mode if needed */
+		if (mcspi->use_multi_mode)
+			l &= ~OMAP2_MCSPI_MODULCTRL_SINGLE;
+		else
+			l |= OMAP2_MCSPI_MODULCTRL_SINGLE;
 	}
 	mcspi_write_reg(ctlr, OMAP2_MCSPI_MODULCTRL, l);
 
@@ -1175,13 +1189,6 @@ static int omap2_mcspi_transfer_one(struct spi_controller *ctlr,
 		    t->bits_per_word == spi->bits_per_word)
 			par_override = 0;
 	}
-	if (cd && cd->cs_per_word) {
-		chconf = mcspi->ctx.modulctrl;
-		chconf &= ~OMAP2_MCSPI_MODULCTRL_SINGLE;
-		mcspi_write_reg(ctlr, OMAP2_MCSPI_MODULCTRL, chconf);
-		mcspi->ctx.modulctrl =
-			mcspi_read_cs_reg(spi, OMAP2_MCSPI_MODULCTRL);
-	}
 
 	chconf = mcspi_cached_chconf0(spi);
 	chconf &= ~OMAP2_MCSPI_CHCONF_TRM_MASK;
@@ -1204,8 +1211,7 @@ static int omap2_mcspi_transfer_one(struct spi_controller *ctlr,
 		unsigned	count;
 
 		if ((mcspi_dma->dma_rx && mcspi_dma->dma_tx) &&
-		    ctlr->cur_msg_mapped &&
-		    ctlr->can_dma(ctlr, spi, t))
+		    spi_xfer_is_dma_mapped(ctlr, spi, t))
 			omap2_mcspi_set_fifo(spi, t, 1);
 
 		omap2_mcspi_set_enable(spi, 1);
@@ -1216,8 +1222,7 @@ static int omap2_mcspi_transfer_one(struct spi_controller *ctlr,
 					+ OMAP2_MCSPI_TX0);
 
 		if ((mcspi_dma->dma_rx && mcspi_dma->dma_tx) &&
-		    ctlr->cur_msg_mapped &&
-		    ctlr->can_dma(ctlr, spi, t))
+		    spi_xfer_is_dma_mapped(ctlr, spi, t))
 			count = omap2_mcspi_txrx_dma(spi, t);
 		else
 			count = omap2_mcspi_txrx_pio(spi, t);
@@ -1240,14 +1245,6 @@ out:
 		status = omap2_mcspi_setup_transfer(spi, NULL);
 	}
 
-	if (cd && cd->cs_per_word) {
-		chconf = mcspi->ctx.modulctrl;
-		chconf |= OMAP2_MCSPI_MODULCTRL_SINGLE;
-		mcspi_write_reg(ctlr, OMAP2_MCSPI_MODULCTRL, chconf);
-		mcspi->ctx.modulctrl =
-			mcspi_read_cs_reg(spi, OMAP2_MCSPI_MODULCTRL);
-	}
-
 	omap2_mcspi_set_enable(spi, 0);
 
 	if (spi_get_csgpiod(spi, 0))
@@ -1265,15 +1262,64 @@ static int omap2_mcspi_prepare_message(struct spi_controller *ctlr,
 	struct omap2_mcspi	*mcspi = spi_controller_get_devdata(ctlr);
 	struct omap2_mcspi_regs	*ctx = &mcspi->ctx;
 	struct omap2_mcspi_cs	*cs;
+	struct spi_transfer	*tr;
+	u8 bits_per_word;
 
-	/* Only a single channel can have the FORCE bit enabled
+	/*
+	 * The conditions are strict, it is mandatory to check each transfer of the list to see if
+	 * multi-mode is applicable.
+	 */
+	mcspi->use_multi_mode = true;
+
+	if (mcspi->last_msg_kept_cs)
+		mcspi->use_multi_mode = false;
+
+	list_for_each_entry(tr, &msg->transfers, transfer_list) {
+		if (!tr->bits_per_word)
+			bits_per_word = msg->spi->bits_per_word;
+		else
+			bits_per_word = tr->bits_per_word;
+
+		/*
+		 * Check if this transfer contains only one word;
+		 */
+		if (bits_per_word < 8 && tr->len == 1) {
+			/* multi-mode is applicable, only one word (1..7 bits) */
+		} else if (bits_per_word >= 8 && tr->len == bits_per_word / 8) {
+			/* multi-mode is applicable, only one word (8..32 bits) */
+		} else {
+			/* multi-mode is not applicable: more than one word in the transfer */
+			mcspi->use_multi_mode = false;
+		}
+
+		if (list_is_last(&tr->transfer_list, &msg->transfers)) {
+			/* Check if transfer asks to keep the CS status after the whole message */
+			if (tr->cs_change) {
+				mcspi->use_multi_mode = false;
+				mcspi->last_msg_kept_cs = true;
+			} else {
+				mcspi->last_msg_kept_cs = false;
+			}
+		} else {
+			/* Check if transfer asks to change the CS status after the transfer */
+			if (!tr->cs_change)
+				mcspi->use_multi_mode = false;
+		}
+	}
+
+	omap2_mcspi_set_mode(ctlr);
+
+	/* In single mode only a single channel can have the FORCE bit enabled
 	 * in its chconf0 register.
 	 * Scan all channels and disable them except the current one.
 	 * A FORCE can remain from a last transfer having cs_change enabled
+	 *
+	 * In multi mode all FORCE bits must be disabled.
 	 */
 	list_for_each_entry(cs, &ctx->cs, node) {
-		if (msg->spi->controller_state == cs)
+		if (msg->spi->controller_state == cs && !mcspi->use_multi_mode) {
 			continue;
+		}
 
 		if ((cs->chconf0 & OMAP2_MCSPI_CHCONF_FORCE)) {
 			cs->chconf0 &= ~OMAP2_MCSPI_CHCONF_FORCE;
@@ -1541,7 +1587,7 @@ static int omap2_mcspi_probe(struct platform_device *pdev)
 	if (status < 0)
 		goto disable_pm;
 
-	status = spi_register_controller(ctlr);
+	status = devm_spi_register_controller(&pdev->dev, ctlr);
 	if (status < 0)
 		goto disable_pm;
 
@@ -1562,17 +1608,11 @@ static void omap2_mcspi_remove(struct platform_device *pdev)
 	struct spi_controller *ctlr = platform_get_drvdata(pdev);
 	struct omap2_mcspi *mcspi = spi_controller_get_devdata(ctlr);
 
-	spi_controller_get(ctlr);
-
-	spi_unregister_controller(ctlr);
-
 	omap2_mcspi_release_dma(ctlr);
 
 	pm_runtime_dont_use_autosuspend(mcspi->dev);
 	pm_runtime_put_sync(mcspi->dev);
 	pm_runtime_disable(&pdev->dev);
-
-	spi_controller_put(ctlr);
 }
 
 /* work with hotplug and coldplug */
@@ -1629,4 +1669,5 @@ static struct platform_driver omap2_mcspi_driver = {
 };
 
 module_platform_driver(omap2_mcspi_driver);
+MODULE_DESCRIPTION("OMAP2 McSPI controller driver");
 MODULE_LICENSE("GPL");

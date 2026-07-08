@@ -671,23 +671,8 @@ static int pep_do_rcv(struct sock *sk, struct sk_buff *skb)
 
 	/* Look for an existing pipe handle */
 	sknode = pep_find_pipe(&pn->hlist, &dst, pipe_handle);
-	if (sknode) {
-		int rc;
-
-		/* pep_do_rcv() runs from two contexts: from softirq via
-		 * phonet_rcv() -> __sk_receive_skb() with BH disabled,
-		 * and from process context via
-		 * release_sock() -> __release_sock(), which drops
-		 * the listener slock with spin_unlock_bh() before draining
-		 * the backlog.  The child pipe slock is taken below via
-		 * bh_lock_sock_nested(), which does not itself disable BH, so
-		 * disable BH here to keep both acquire contexts consistent.
-		 */
-		local_bh_disable();
-		rc = sk_receive_skb(sknode, skb, 1);
-		local_bh_enable();
-		return rc;
-	}
+	if (sknode)
+		return sk_receive_skb(sknode, skb, 1);
 
 	switch (hdr->message_id) {
 	case PNS_PEP_CONNECT_REQ:
@@ -774,8 +759,8 @@ static void pep_sock_close(struct sock *sk, long timeout)
 	sock_put(sk);
 }
 
-static struct sock *pep_sock_accept(struct sock *sk, int flags, int *errp,
-				    bool kern)
+static struct sock *pep_sock_accept(struct sock *sk,
+				    struct proto_accept_arg *arg)
 {
 	struct pep_sock *pn = pep_sk(sk), *newpn;
 	struct sock *newsk = NULL;
@@ -787,8 +772,8 @@ static struct sock *pep_sock_accept(struct sock *sk, int flags, int *errp,
 	u8 pipe_handle, enabled, n_sb;
 	u8 aligned = 0;
 
-	skb = skb_recv_datagram(sk, (flags & O_NONBLOCK) ? MSG_DONTWAIT : 0,
-				errp);
+	skb = skb_recv_datagram(sk, (arg->flags & O_NONBLOCK) ? MSG_DONTWAIT : 0,
+				&arg->err);
 	if (!skb)
 		return NULL;
 
@@ -852,7 +837,7 @@ static struct sock *pep_sock_accept(struct sock *sk, int flags, int *errp,
 
 	/* Create a new to-be-accepted sock */
 	newsk = sk_alloc(sock_net(sk), PF_PHONET, GFP_KERNEL, sk->sk_prot,
-			 kern);
+			 arg->kern);
 	if (!newsk) {
 		pep_reject_conn(sk, skb, PN_PIPE_ERR_OVERLOAD, GFP_KERNEL);
 		err = -ENOBUFS;
@@ -893,7 +878,7 @@ static struct sock *pep_sock_accept(struct sock *sk, int flags, int *errp,
 drop:
 	release_sock(sk);
 	kfree_skb(skb);
-	*errp = err;
+	arg->err = err;
 	return newsk;
 }
 

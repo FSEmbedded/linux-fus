@@ -77,7 +77,6 @@ static inline struct hlist_head *ping_hashslot(struct ping_table *table,
 
 int ping_get_port(struct sock *sk, unsigned short ident)
 {
-	struct net *net = sock_net(sk);
 	struct inet_sock *isk, *isk2;
 	struct hlist_head *hlist;
 	struct sock *sk2 = NULL;
@@ -91,10 +90,9 @@ int ping_get_port(struct sock *sk, unsigned short ident)
 		for (i = 0; i < (1L << 16); i++, result++) {
 			if (!result)
 				result++; /* avoid zero */
-			hlist = ping_hashslot(&ping_table, net, result);
+			hlist = ping_hashslot(&ping_table, sock_net(sk),
+					    result);
 			sk_for_each(sk2, hlist) {
-				if (!net_eq(sock_net(sk2), net))
-					continue;
 				isk2 = inet_sk(sk2);
 
 				if (isk2->inet_num == result)
@@ -110,10 +108,8 @@ next_port:
 		if (i >= (1L << 16))
 			goto fail;
 	} else {
-		hlist = ping_hashslot(&ping_table, net, ident);
+		hlist = ping_hashslot(&ping_table, sock_net(sk), ident);
 		sk_for_each(sk2, hlist) {
-			if (!net_eq(sock_net(sk2), net))
-				continue;
 			isk2 = inet_sk(sk2);
 
 			/* BUG? Why is this reuse and not reuseaddr? ping.c
@@ -133,7 +129,7 @@ next_port:
 		pr_debug("was not hashed\n");
 		sk_add_node_rcu(sk, hlist);
 		sock_set_flag(sk, SOCK_RCU_FREE);
-		sock_prot_inuse_add(net, sk->sk_prot, 1);
+		sock_prot_inuse_add(sock_net(sk), sk->sk_prot, 1);
 	}
 	spin_unlock(&ping_table.lock);
 	return 0;
@@ -159,7 +155,7 @@ void ping_unhash(struct sock *sk)
 	pr_debug("ping_unhash(isk=%p,isk->num=%u)\n", isk, isk->inet_num);
 	spin_lock(&ping_table.lock);
 	if (sk_del_node_init_rcu(sk)) {
-		WRITE_ONCE(isk->inet_num, 0);
+		isk->inet_num = 0;
 		isk->inet_sport = 0;
 		sock_prot_inuse_add(sock_net(sk), sk->sk_prot, -1);
 	}
@@ -192,35 +188,29 @@ static struct sock *ping_lookup(struct net *net, struct sk_buff *skb, u16 ident)
 	}
 
 	sk_for_each_rcu(sk, hslot) {
-		int bound_dev_if;
-
-		if (!net_eq(sock_net(sk), net))
-			continue;
 		isk = inet_sk(sk);
 
 		pr_debug("iterate\n");
-		if (READ_ONCE(isk->inet_num) != ident)
+		if (isk->inet_num != ident)
 			continue;
 
-		bound_dev_if = READ_ONCE(sk->sk_bound_dev_if);
 		if (skb->protocol == htons(ETH_P_IP) &&
 		    sk->sk_family == AF_INET) {
-			__be32 rcv_saddr = READ_ONCE(isk->inet_rcv_saddr);
-
 			pr_debug("found: %p: num=%d, daddr=%pI4, dif=%d\n", sk,
-				 ident, &rcv_saddr,
-				 bound_dev_if);
+				 (int) isk->inet_num, &isk->inet_rcv_saddr,
+				 sk->sk_bound_dev_if);
 
-			if (rcv_saddr && rcv_saddr != ip_hdr(skb)->daddr)
+			if (isk->inet_rcv_saddr &&
+			    isk->inet_rcv_saddr != ip_hdr(skb)->daddr)
 				continue;
 #if IS_ENABLED(CONFIG_IPV6)
 		} else if (skb->protocol == htons(ETH_P_IPV6) &&
 			   sk->sk_family == AF_INET6) {
 
 			pr_debug("found: %p: num=%d, daddr=%pI6c, dif=%d\n", sk,
-				 ident,
+				 (int) isk->inet_num,
 				 &sk->sk_v6_rcv_saddr,
-				 bound_dev_if);
+				 sk->sk_bound_dev_if);
 
 			if (!ipv6_addr_any(&sk->sk_v6_rcv_saddr) &&
 			    !ipv6_addr_equal(&sk->sk_v6_rcv_saddr,
@@ -231,8 +221,8 @@ static struct sock *ping_lookup(struct net *net, struct sk_buff *skb, u16 ident)
 			continue;
 		}
 
-		if (bound_dev_if && bound_dev_if != dif &&
-		    bound_dev_if != sdif)
+		if (sk->sk_bound_dev_if && sk->sk_bound_dev_if != dif &&
+		    sk->sk_bound_dev_if != sdif)
 			continue;
 
 		goto exit;
@@ -407,9 +397,7 @@ static void ping_set_saddr(struct sock *sk, struct sockaddr *saddr)
 	if (saddr->sa_family == AF_INET) {
 		struct inet_sock *isk = inet_sk(sk);
 		struct sockaddr_in *addr = (struct sockaddr_in *) saddr;
-
-		isk->inet_saddr = addr->sin_addr.s_addr;
-		WRITE_ONCE(isk->inet_rcv_saddr, addr->sin_addr.s_addr);
+		isk->inet_rcv_saddr = isk->inet_saddr = addr->sin_addr.s_addr;
 #if IS_ENABLED(CONFIG_IPV6)
 	} else if (saddr->sa_family == AF_INET6) {
 		struct sockaddr_in6 *addr = (struct sockaddr_in6 *) saddr;
@@ -563,7 +551,7 @@ void ping_err(struct sk_buff *skb, int offset, u32 info)
 		case ICMP_DEST_UNREACH:
 			if (code == ICMP_FRAG_NEEDED) { /* Path MTU discovery */
 				ipv4_sk_update_pmtu(skb, sk, info);
-				if (inet_sock->pmtudisc != IP_PMTUDISC_DONT) {
+				if (READ_ONCE(inet_sock->pmtudisc) != IP_PMTUDISC_DONT) {
 					err = EMSGSIZE;
 					harderr = 1;
 					break;
@@ -593,7 +581,7 @@ void ping_err(struct sk_buff *skb, int offset, u32 info)
 	 *	4.1.3.3.
 	 */
 	if ((family == AF_INET && !inet_test_bit(RECVERR, sk)) ||
-	    (family == AF_INET6 && !inet6_sk(sk)->recverr)) {
+	    (family == AF_INET6 && !inet6_test_bit(RECVERR6, sk))) {
 		if (!harderr || sk->sk_state != TCP_ESTABLISHED)
 			goto out;
 	} else {
@@ -785,11 +773,11 @@ static int ping_v4_sendmsg(struct sock *sk, struct msghdr *msg, size_t len)
 
 	if (ipv4_is_multicast(daddr)) {
 		if (!ipc.oif || netif_index_is_l3_master(sock_net(sk), ipc.oif))
-			ipc.oif = inet->mc_index;
+			ipc.oif = READ_ONCE(inet->mc_index);
 		if (!saddr)
-			saddr = inet->mc_addr;
+			saddr = READ_ONCE(inet->mc_addr);
 	} else if (!ipc.oif)
-		ipc.oif = inet->uc_index;
+		ipc.oif = READ_ONCE(inet->uc_index);
 
 	flowi4_init_output(&fl4, ipc.oif, ipc.sockc.mark, tos, scope,
 			   sk->sk_protocol, inet_sk_flowi_flags(sk), faddr,
@@ -845,8 +833,10 @@ out:
 out_free:
 	if (free)
 		kfree(ipc.opt);
-	if (!err)
+	if (!err) {
+		icmp_out_count(sock_net(sk), user_icmph.type);
 		return len;
+	}
 	return err;
 
 do_confirm:
@@ -866,8 +856,7 @@ int ping_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int flags,
 	struct sk_buff *skb;
 	int copied, err;
 
-	pr_debug("ping_recvmsg(sk=%p,sk->num=%u)\n", isk,
-		 READ_ONCE(isk->inet_num));
+	pr_debug("ping_recvmsg(sk=%p,sk->num=%u)\n", isk, isk->inet_num);
 
 	err = -EOPNOTSUPP;
 	if (flags & MSG_OOB)
@@ -910,7 +899,6 @@ int ping_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int flags,
 
 #if IS_ENABLED(CONFIG_IPV6)
 	} else if (family == AF_INET6) {
-		struct ipv6_pinfo *np = inet6_sk(sk);
 		struct ipv6hdr *ip6 = ipv6_hdr(skb);
 		DECLARE_SOCKADDR(struct sockaddr_in6 *, sin6, msg->msg_name);
 
@@ -919,7 +907,7 @@ int ping_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int flags,
 			sin6->sin6_port = 0;
 			sin6->sin6_addr = ip6->saddr;
 			sin6->sin6_flowinfo = 0;
-			if (np->sndflow)
+			if (inet6_test_bit(SNDFLOW, sk))
 				sin6->sin6_flowinfo = ip6_flowinfo(ip6);
 			sin6->sin6_scope_id =
 				ipv6_iface_scope_id(&sin6->sin6_addr,
@@ -958,7 +946,7 @@ static enum skb_drop_reason __ping_queue_rcv_skb(struct sock *sk,
 	pr_debug("ping_queue_rcv_skb(sk=%p,sk->num=%d,skb=%p)\n",
 		 inet_sk(sk), inet_sk(sk)->inet_num, skb);
 	if (sock_queue_rcv_skb_reason(sk, skb, &reason) < 0) {
-		kfree_skb_reason(skb, reason);
+		sk_skb_reason_drop(sk, skb, reason);
 		pr_debug("ping_queue_rcv_skb -> failed\n");
 		return reason;
 	}

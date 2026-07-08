@@ -483,19 +483,37 @@ void drbd_al_begin_io(struct drbd_device *device, struct drbd_interval *i)
 
 int drbd_al_begin_io_nonblock(struct drbd_device *device, struct drbd_interval *i)
 {
+	struct lru_cache *al = device->act_log;
 	/* for bios crossing activity log extent boundaries,
 	 * we may need to activate two extents in one go */
 	unsigned first = i->sector >> (AL_EXTENT_SHIFT-9);
 	unsigned last = i->size == 0 ? first : (i->sector + (i->size >> 9) - 1) >> (AL_EXTENT_SHIFT-9);
+	unsigned nr_al_extents;
+	unsigned available_update_slots;
 	unsigned enr;
 
-	if (i->partially_in_al_next_enr) {
-		D_ASSERT(device, first < i->partially_in_al_next_enr);
-		D_ASSERT(device, last >= i->partially_in_al_next_enr);
-		first = i->partially_in_al_next_enr;
-	}
-
 	D_ASSERT(device, first <= last);
+
+	nr_al_extents = 1 + last - first; /* worst case: all touched extends are cold. */
+	available_update_slots = min(al->nr_elements - al->used,
+				al->max_pending_changes - al->pending_changes);
+
+	/* We want all necessary updates for a given request within the same transaction
+	 * We could first check how many updates are *actually* needed,
+	 * and use that instead of the worst-case nr_al_extents */
+	if (available_update_slots < nr_al_extents) {
+		/* Too many activity log extents are currently "hot".
+		 *
+		 * If we have accumulated pending changes already,
+		 * we made progress.
+		 *
+		 * If we cannot get even a single pending change through,
+		 * stop the fast path until we made some progress,
+		 * or requests to "cold" extents could be starved. */
+		if (!al->pending_changes)
+			__set_bit(__LC_STARVING, &device->act_log->flags);
+		return -ENOBUFS;
+	}
 
 	/* Is resync active in this area? */
 	for (enr = first; enr <= last; enr++) {
@@ -511,21 +529,14 @@ int drbd_al_begin_io_nonblock(struct drbd_device *device, struct drbd_interval *
 		}
 	}
 
-	/* Try to checkout the refcounts. */
+	/* Checkout the refcounts.
+	 * Given that we checked for available elements and update slots above,
+	 * this has to be successful. */
 	for (enr = first; enr <= last; enr++) {
 		struct lc_element *al_ext;
 		al_ext = lc_get_cumulative(device->act_log, enr);
-
-		if (!al_ext) {
-			/* Did not work. We may have exhausted the possible
-			 * changes per transaction. Or raced with someone
-			 * "locking" it against changes.
-			 * Remember where to continue from.
-			 */
-			if (enr > first)
-				i->partially_in_al_next_enr = enr;
-			return -ENOBUFS;
-		}
+		if (!al_ext)
+			drbd_info(device, "LOGIC BUG for enr=%u\n", enr);
 	}
 	return 0;
 }
@@ -545,11 +556,7 @@ void drbd_al_complete_io(struct drbd_device *device, struct drbd_interval *i)
 
 	for (enr = first; enr <= last; enr++) {
 		extent = lc_find(device->act_log, enr);
-		/* Yes, this masks a bug elsewhere.  However, during normal
-		 * operation this is harmless, so no need to crash the kernel
-		 * by the BUG_ON(refcount == 0) in lc_put().
-		 */
-		if (!extent || extent->refcnt == 0) {
+		if (!extent) {
 			drbd_err(device, "al_complete_io() called on inactive extent %u\n", enr);
 			continue;
 		}
@@ -831,8 +838,8 @@ static bool plausible_request_size(int size)
 }
 
 /* clear the bit corresponding to the piece of storage in question:
- * size byte of data starting from sector.  Only clear a bits of the affected
- * one ore more _aligned_ BM_BLOCK_SIZE blocks.
+ * size byte of data starting from sector.  Only clear bits of the affected
+ * one or more _aligned_ BM_BLOCK_SIZE blocks.
  *
  * called by worker on C_SYNC_TARGET and receiver on SyncSource.
  *
@@ -950,7 +957,9 @@ static int _is_in_al(struct drbd_device *device, unsigned int enr)
  * @device:	DRBD device.
  * @sector:	The sector number.
  *
- * This functions sleeps on al_wait. Returns 0 on success, -EINTR if interrupted.
+ * This functions sleeps on al_wait.
+ *
+ * Returns: %0 on success, -EINTR if interrupted.
  */
 int drbd_rs_begin_io(struct drbd_device *device, sector_t sector)
 {
@@ -997,11 +1006,13 @@ retry:
 
 /**
  * drbd_try_rs_begin_io() - Gets an extent in the resync LRU cache, does not sleep
- * @device:	DRBD device.
+ * @peer_device: DRBD device.
  * @sector:	The sector number.
  *
  * Gets an extent in the resync LRU cache, sets it to BME_NO_WRITES, then
- * tries to set it to BME_LOCKED. Returns 0 upon success, and -EAGAIN
+ * tries to set it to BME_LOCKED.
+ *
+ * Returns: %0 upon success, and -EAGAIN
  * if there is still application IO going on in this area.
  */
 int drbd_try_rs_begin_io(struct drbd_peer_device *peer_device, sector_t sector)
@@ -1183,7 +1194,7 @@ void drbd_rs_cancel_all(struct drbd_device *device)
  * drbd_rs_del_all() - Gracefully remove all extents from the resync LRU
  * @device:	DRBD device.
  *
- * Returns 0 upon success, -EAGAIN if at least one reference count was
+ * Returns: %0 upon success, -EAGAIN if at least one reference count was
  * not zero.
  */
 int drbd_rs_del_all(struct drbd_device *device)

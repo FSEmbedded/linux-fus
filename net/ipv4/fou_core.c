@@ -215,9 +215,6 @@ static int gue_udp_recv(struct sock *sk, struct sk_buff *skb)
 		return gue_control_message(skb, guehdr);
 
 	proto_ctype = guehdr->proto_ctype;
-	if (unlikely(!proto_ctype))
-		goto drop;
-
 	__skb_pull(skb, sizeof(struct udphdr) + hdrlen);
 	skb_reset_transport_header(skb);
 
@@ -373,7 +370,7 @@ static struct sk_buff *gue_gro_receive(struct sock *sk,
 	optlen = guehdr->hlen << 2;
 	len += optlen;
 
-	if (skb_gro_header_hard(skb, len)) {
+	if (!skb_gro_may_pull(skb, len)) {
 		guehdr = skb_gro_header_slow(skb, len, off);
 		if (unlikely(!guehdr))
 			goto out;

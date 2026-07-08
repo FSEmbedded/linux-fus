@@ -11,7 +11,7 @@
  * https://www.sensirion.com/file/datasheet_scd4x
  */
 
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 #include <linux/crc8.h>
 #include <linux/delay.h>
 #include <linux/device.h>
@@ -585,7 +585,7 @@ static const struct iio_chan_spec scd4x_channels[] = {
 			.sign = 'u',
 			.realbits = 16,
 			.storagebits = 16,
-			.endianness = IIO_CPU,
+			.endianness = IIO_BE,
 		},
 	},
 	{
@@ -600,7 +600,7 @@ static const struct iio_chan_spec scd4x_channels[] = {
 			.sign = 'u',
 			.realbits = 16,
 			.storagebits = 16,
-			.endianness = IIO_CPU,
+			.endianness = IIO_BE,
 		},
 	},
 	{
@@ -613,7 +613,7 @@ static const struct iio_chan_spec scd4x_channels[] = {
 			.sign = 'u',
 			.realbits = 16,
 			.storagebits = 16,
-			.endianness = IIO_CPU,
+			.endianness = IIO_BE,
 		},
 	},
 };

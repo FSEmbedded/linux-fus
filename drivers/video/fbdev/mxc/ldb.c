@@ -336,7 +336,6 @@ static int ldb_init(struct mxc_dispdrv_handle *mddh,
 			dev_err(dev, "ldb regulator enable failed: %d\n", ret);
 	}
 	ldb->enabled = 1;
-
 	return 0;
 }
 
@@ -351,7 +350,6 @@ static void ldb_deinit(struct mxc_dispdrv_handle *mddh)
 		chan = &ldb->chan[i];
 		chan->is_used = false;
 	}
-
 	if (ldb->enabled == 1) {
 		if (ldb->reg_ldb) {
 			ret = regulator_disable(ldb->reg_ldb);
@@ -577,6 +575,7 @@ static int ldb_enable(struct mxc_dispdrv_handle *mddh,
 			ldb->ctrl |= chno ? LDB_CH1_MODE_EN_TO_DI1 :
 					    LDB_CH0_MODE_EN_TO_DI0;
 	}
+
 	regmap_write(ldb->regmap, ldb->ctrl_reg, ldb->ctrl);
 	return 0;
 }
@@ -794,7 +793,6 @@ static int ldb_probe(struct platform_device *pdev)
 	if (IS_ERR(ldb->reg_ldb)) {
 		ldb->reg_ldb = NULL;
 	}
-
 	for_each_child_of_node(np, child) {
 		struct ldb_chan *chan;
 		enum crtc crtc;
@@ -924,20 +922,18 @@ static int ldb_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int ldb_remove(struct platform_device *pdev)
+static void ldb_remove(struct platform_device *pdev)
 {
 	struct ldb_data *ldb = dev_get_drvdata(&pdev->dev);
 
 	mxc_dispdrv_puthandle(ldb->mddh);
 	mxc_dispdrv_unregister(ldb->mddh);
-
 	if (ldb->enabled) {
 		int chno = ldb->chan[ldb->primary_chno].is_used ?
 		!ldb->primary_chno : ldb->primary_chno;
 
 		ldb_disable(ldb->mddh,ldb->chan[chno].fbi);
 	}
-	return 0;
 }
 
 static struct platform_driver ldb_driver = {

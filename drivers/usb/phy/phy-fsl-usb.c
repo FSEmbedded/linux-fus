@@ -27,7 +27,7 @@
 #include <linux/platform_device.h>
 #include <linux/uaccess.h>
 
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 
 #include "phy-fsl-usb.h"
 
@@ -987,7 +987,6 @@ static void fsl_otg_remove(struct platform_device *pdev)
 {
 	struct fsl_usb2_platform_data *pdata = dev_get_platdata(&pdev->dev);
 
-	disable_delayed_work_sync(&fsl_otg_dev->otg_event);
 	usb_remove_phy(&fsl_otg_dev->phy);
 	free_irq(fsl_otg_dev->irq, fsl_otg_dev);
 
@@ -1006,7 +1005,6 @@ struct platform_driver fsl_otg_driver = {
 	.remove_new = fsl_otg_remove,
 	.driver = {
 		.name = driver_name,
-		.owner = THIS_MODULE,
 	},
 };
 

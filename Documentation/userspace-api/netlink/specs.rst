@@ -15,7 +15,7 @@ kernel headers directly.
 Internally kernel uses the YAML specs to generate:
 
  - the C uAPI header
- - documentation of the protocol as a ReST file
+ - documentation of the protocol as a ReST file - see :ref:`Documentation/networking/netlink_spec/index.rst <specs>`
  - policy tables for input attribute validation
  - operation tables
 
@@ -85,11 +85,6 @@ name
 
 Name of the family. Name identifies the family in a unique way, since
 the Family IDs are allocated dynamically.
-
-version
-~~~~~~~
-
-Generic Netlink family version, default is 1.
 
 protocol
 ~~~~~~~~

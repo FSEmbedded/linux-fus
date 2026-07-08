@@ -17,6 +17,7 @@
 /* Registers */
 #define DP83848_MICR			0x11 /* MII Interrupt Control Register */
 #define DP83848_MISR			0x12 /* MII Interrupt Status Register */
+#define DP83848_RBR			0x17 /* RMII and Bypass Register */
 #define DP83848_PHYCR			0x19 /* PHY Control Register */
 
 /* MICR Register Fields */
@@ -32,10 +33,15 @@
 #define DP83848_MISR_LINK_INT_EN	BIT(5) /* Link status */
 #define DP83848_MISR_ED_INT_EN		BIT(6) /* Energy detect */
 #define DP83848_MISR_LQM_INT_EN		BIT(7) /* Link Quality Monitor */
+/* MISR Register Fields */
+#define DP83848_RMII_REV1_0		BIT(4)  /* Reduced MII Revision 1.0 */
+#define DP83848_RMII_MODE		BIT(5)  /* Reduced MII Mode */
+#define DP83848_DIS_TX_OPT		BIT(13) /* Disable RMII TX Latency Optimization */
 
 /* PHYCR Register Fields */
 #define DP83848_PHYCR_LED_CNFG		BIT(5) /* LED Configuration (0: Link+Activity, 1: Link) */
 #define DP83848_PHYCR_MDIX_EN		BIT(15) /* Auto-MDIX (0: Disabled, 1: Enabled) */
+
 
 #define DP83848_INT_EN_MASK		\
 	(DP83848_MISR_ANC_INT_EN |	\
@@ -80,7 +86,6 @@ static int dp83848_probe(struct phy_device *phydev)
 
 	return 0;
 }
-
 static int dp83848_ack_interrupt(struct phy_device *phydev)
 {
 	int err = phy_read(phydev, DP83848_MISR);
@@ -176,6 +181,20 @@ static int dp83620_config_init(struct phy_device *phydev)
 	return 0;
 }
 
+static int dp83848c_config_init(struct phy_device *phydev)
+{
+	int rbr, ret = 0;
+
+	if (phydev->interface == PHY_INTERFACE_MODE_RMII) {
+		rbr = phy_read(phydev, DP83848_MISR);
+		if (rbr & DP83848_RMII_MODE)
+			return 0;
+		rbr |= DP83848_RMII_MODE;
+		ret = phy_write(phydev, DP83848_RBR, rbr);
+	}
+
+	return ret;
+}
 static struct mdio_device_id __maybe_unused dp83848_tbl[] = {
 	{ TI_DP83848C_PHY_ID, 0xfffffff0 },
 	{ NS_DP83848C_PHY_ID, 0xfffffff0 },
@@ -207,7 +226,7 @@ MODULE_DEVICE_TABLE(mdio, dp83848_tbl);
 
 static struct phy_driver dp83848_driver[] = {
 	DP83848_PHY_DRIVER(TI_DP83848C_PHY_ID, "TI DP83848C 10/100 Mbps PHY",
-			   NULL, NULL),
+			   dp83848c_config_init,NULL),
 	DP83848_PHY_DRIVER(NS_DP83848C_PHY_ID, "NS DP83848C 10/100 Mbps PHY",
 			   dp83848_config_init, dp83848_probe),
 	DP83848_PHY_DRIVER(TI_DP83620_PHY_ID, "TI DP83620 10/100 Mbps PHY",

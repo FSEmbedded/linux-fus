@@ -52,9 +52,7 @@ static void update_enumeration_value(int instance_id, char *attr_value)
 {
 	struct enumeration_data *enum_data = &bioscfg_drv.enumeration_data[instance_id];
 
-	strscpy(enum_data->current_value,
-		attr_value,
-		sizeof(enum_data->current_value));
+	strscpy(enum_data->current_value, attr_value);
 }
 
 ATTRIBUTE_S_COMMON_PROPERTY_SHOW(display_name, enumeration);
@@ -96,11 +94,8 @@ int hp_alloc_enumeration_data(void)
 	bioscfg_drv.enumeration_instances_count =
 		hp_get_instance_count(HP_WMI_BIOS_ENUMERATION_GUID);
 
-	if (!bioscfg_drv.enumeration_instances_count)
-		return -EINVAL;
-	bioscfg_drv.enumeration_data = kvcalloc(bioscfg_drv.enumeration_instances_count,
-						sizeof(*bioscfg_drv.enumeration_data), GFP_KERNEL);
-
+	bioscfg_drv.enumeration_data = kcalloc(bioscfg_drv.enumeration_instances_count,
+					       sizeof(*bioscfg_drv.enumeration_data), GFP_KERNEL);
 	if (!bioscfg_drv.enumeration_data) {
 		bioscfg_drv.enumeration_instances_count = 0;
 		return -ENOMEM;
@@ -177,8 +172,7 @@ static int hp_populate_enumeration_elements_from_package(union acpi_object *enum
 		case VALUE:
 			break;
 		case PATH:
-			strscpy(enum_data->common.path, str_value,
-				sizeof(enum_data->common.path));
+			strscpy(enum_data->common.path, str_value);
 			break;
 		case IS_READONLY:
 			enum_data->common.is_readonly = int_value;
@@ -213,7 +207,7 @@ static int hp_populate_enumeration_elements_from_package(union acpi_object *enum
 		case PREREQUISITES:
 			size = min_t(u32, enum_data->common.prerequisites_size, MAX_PREREQUISITES_SIZE);
 			for (reqs = 0; reqs < size; reqs++) {
-				if (elem + reqs >= enum_obj_count) {
+				if (elem >= enum_obj_count) {
 					pr_err("Error enum-objects package is too small\n");
 					return -EINVAL;
 				}
@@ -225,9 +219,7 @@ static int hp_populate_enumeration_elements_from_package(union acpi_object *enum
 				if (ret)
 					return -EINVAL;
 
-				strscpy(enum_data->common.prerequisites[reqs],
-					str_value,
-					sizeof(enum_data->common.prerequisites[reqs]));
+				strscpy(enum_data->common.prerequisites[reqs], str_value);
 
 				kfree(str_value);
 				str_value = NULL;
@@ -239,8 +231,7 @@ static int hp_populate_enumeration_elements_from_package(union acpi_object *enum
 			break;
 
 		case ENUM_CURRENT_VALUE:
-			strscpy(enum_data->current_value,
-				str_value, sizeof(enum_data->current_value));
+			strscpy(enum_data->current_value, str_value);
 			break;
 		case ENUM_SIZE:
 			if (int_value > MAX_VALUES_SIZE) {
@@ -264,7 +255,7 @@ static int hp_populate_enumeration_elements_from_package(union acpi_object *enum
 
 			for (pos_values = 0; pos_values < size && pos_values < MAX_VALUES_SIZE;
 			     pos_values++) {
-				if (elem + pos_values >= enum_obj_count) {
+				if (elem >= enum_obj_count) {
 					pr_err("Error enum-objects package is too small\n");
 					return -EINVAL;
 				}
@@ -281,9 +272,7 @@ static int hp_populate_enumeration_elements_from_package(union acpi_object *enum
 				 * is greater than MAX_VALUES_SIZE
 				 */
 				if (size < MAX_VALUES_SIZE)
-					strscpy(enum_data->possible_values[pos_values],
-						str_value,
-						sizeof(enum_data->possible_values[pos_values]));
+					strscpy(enum_data->possible_values[pos_values], str_value);
 
 				kfree(str_value);
 				str_value = NULL;
@@ -455,6 +444,6 @@ void hp_exit_enumeration_attributes(void)
 	}
 	bioscfg_drv.enumeration_instances_count = 0;
 
-	kvfree(bioscfg_drv.enumeration_data);
+	kfree(bioscfg_drv.enumeration_data);
 	bioscfg_drv.enumeration_data = NULL;
 }

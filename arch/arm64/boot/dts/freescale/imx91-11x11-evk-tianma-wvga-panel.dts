@@ -31,7 +31,7 @@
 	};
 };
 
-&adp5585gpio {
+&adp5585 {
 	/* EXP_SEL RPi */
 	exp-sel-hog {
 		/delete-property/ output-low;
@@ -131,7 +131,7 @@
 };
 
 &lcdif {
-	assigned-clock-rates = <300000000>, <30000000>, <333333334>, <133333333>;
+	assigned-clock-rates = <300000000>, <30000000>, <333333334>, <125000000>;
 	status = "okay";
 };
 

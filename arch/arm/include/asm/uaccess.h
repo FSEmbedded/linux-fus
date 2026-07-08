@@ -8,11 +8,14 @@
 /*
  * User space memory access functions
  */
+#include <linux/kernel.h>
 #include <linux/string.h>
 #include <asm/page.h>
 #include <asm/domain.h>
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 #include <asm/unified.h>
+#include <asm/pgtable.h>
+#include <asm/proc-fns.h>
 #include <asm/compiler.h>
 
 #include <asm/extable.h>
@@ -23,9 +26,10 @@
  * perform such accesses (eg, via list poison values) which could then
  * be exploited for priviledge escalation.
  */
+#if defined(CONFIG_CPU_SW_DOMAIN_PAN)
+
 static __always_inline unsigned int uaccess_save_and_enable(void)
 {
-#ifdef CONFIG_CPU_SW_DOMAIN_PAN
 	unsigned int old_domain = get_domain();
 
 	/* Set the current domain access to permit user accesses */
@@ -33,18 +37,48 @@ static __always_inline unsigned int uaccess_save_and_enable(void)
 		   domain_val(DOMAIN_USER, DOMAIN_CLIENT));
 
 	return old_domain;
-#else
-	return 0;
-#endif
 }
 
 static __always_inline void uaccess_restore(unsigned int flags)
 {
-#ifdef CONFIG_CPU_SW_DOMAIN_PAN
 	/* Restore the user access mask */
 	set_domain(flags);
-#endif
 }
+
+#elif defined(CONFIG_CPU_TTBR0_PAN)
+
+static __always_inline unsigned int uaccess_save_and_enable(void)
+{
+	unsigned int old_ttbcr = cpu_get_ttbcr();
+
+	/*
+	 * Enable TTBR0 page table walks (T0SZ = 0, EDP0 = 0) and ASID from
+	 * TTBR0 (A1 = 0).
+	 */
+	cpu_set_ttbcr(old_ttbcr & ~(TTBCR_A1 | TTBCR_EPD0 | TTBCR_T0SZ_MASK));
+	isb();
+
+	return old_ttbcr;
+}
+
+static inline void uaccess_restore(unsigned int flags)
+{
+	cpu_set_ttbcr(flags);
+	isb();
+}
+
+#else
+
+static inline unsigned int uaccess_save_and_enable(void)
+{
+	return 0;
+}
+
+static inline void uaccess_restore(unsigned int flags)
+{
+}
+
+#endif
 
 /*
  * These two are intentionally not defined anywhere - if the kernel
@@ -53,31 +87,7 @@ static __always_inline void uaccess_restore(unsigned int flags)
 extern int __get_user_bad(void);
 extern int __put_user_bad(void);
 
-/*
- * Note that this is actually 0x1,0000,0000
- */
-#define KERNEL_DS	0x00000000
-
 #ifdef CONFIG_MMU
-
-#define USER_DS		TASK_SIZE
-#define get_fs()	(current_thread_info()->addr_limit)
-
-static inline void set_fs(mm_segment_t fs)
-{
-	current_thread_info()->addr_limit = fs;
-
-	/*
-	 * Prevent a mispredicted conditional call to set_fs from forwarding
-	 * the wrong address limit to access_ok under speculation.
-	 */
-	dsb(nsh);
-	isb();
-
-	modify_domain(DOMAIN_KERNEL, fs ? DOMAIN_CLIENT : DOMAIN_MANAGER);
-}
-
-#define uaccess_kernel()	(get_fs() == KERNEL_DS)
 
 /*
  * This is a type: either unsigned long, if the argument fits into
@@ -106,7 +116,7 @@ static inline void __user *__uaccess_mask_range_ptr(const void __user *ptr,
 	"	subshs	%1, %1, %2\n"
 	"	movlo	%0, #0\n"
 	: "+r" (safe_ptr), "=&r" (tmp)
-	: "r" (size), "r" (current_thread_info()->addr_limit)
+	: "r" (size), "r" (TASK_SIZE)
 	: "cc");
 
 	csdb();
@@ -170,7 +180,7 @@ extern int __get_user_64t_4(void *);
 
 #define __get_user_check(x, p)						\
 	({								\
-		unsigned long __limit = current_thread_info()->addr_limit - 1; \
+		unsigned long __limit = TASK_SIZE - 1; \
 		register typeof(*(p)) __user *__p asm("r0") = (p);	\
 		register __inttype(x) __r2 asm("r2");			\
 		register unsigned long __l asm("r1") = __limit;		\
@@ -223,7 +233,7 @@ extern int __put_user_8(void *, unsigned long long);
 
 #define __put_user_check(__pu_val, __ptr, __err, __s)			\
 	({								\
-		unsigned long __limit = current_thread_info()->addr_limit - 1; \
+		unsigned long __limit = TASK_SIZE - 1; \
 		register typeof(__pu_val) __r2 asm("r2") = __pu_val;	\
 		register const void __user *__p asm("r0") = __ptr;	\
 		register unsigned long __l asm("r1") = __limit;		\
@@ -240,27 +250,12 @@ extern int __put_user_8(void *, unsigned long long);
 
 #else /* CONFIG_MMU */
 
-/*
- * uClinux has only one addr space, so has simplified address limits.
- */
-#define USER_DS			KERNEL_DS
-
-#define uaccess_kernel()	(true)
-#define get_fs()		(KERNEL_DS)
-
-static inline void set_fs(mm_segment_t fs)
-{
-}
-
 #define get_user(x, p)	__get_user(x, p)
 #define __put_user_check __put_user_nocheck
 
 #endif /* CONFIG_MMU */
 
 #include <asm-generic/access_ok.h>
-
-#define user_addr_max() \
-	(uaccess_kernel() ? ~0UL : get_fs())
 
 #ifdef CONFIG_CPU_SPECTRE
 /*

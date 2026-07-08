@@ -8,16 +8,17 @@
  * The datastructure uses the iopt_pages to optimize the storage of the PFNs
  * between the domains and xarray.
  */
+#include <linux/err.h>
+#include <linux/errno.h>
+#include <linux/iommu.h>
 #include <linux/iommufd.h>
 #include <linux/lockdep.h>
-#include <linux/iommu.h>
 #include <linux/sched/mm.h>
-#include <linux/err.h>
 #include <linux/slab.h>
-#include <linux/errno.h>
+#include <uapi/linux/iommufd.h>
 
-#include "io_pagetable.h"
 #include "double_span.h"
+#include "io_pagetable.h"
 
 struct iopt_pages_list {
 	struct iopt_pages *pages;
@@ -441,6 +442,177 @@ int iopt_map_user_pages(struct iommufd_ctx *ictx, struct io_pagetable *iopt,
 	return 0;
 }
 
+struct iova_bitmap_fn_arg {
+	unsigned long flags;
+	struct io_pagetable *iopt;
+	struct iommu_domain *domain;
+	struct iommu_dirty_bitmap *dirty;
+};
+
+static int __iommu_read_and_clear_dirty(struct iova_bitmap *bitmap,
+					unsigned long iova, size_t length,
+					void *opaque)
+{
+	struct iopt_area *area;
+	struct iopt_area_contig_iter iter;
+	struct iova_bitmap_fn_arg *arg = opaque;
+	struct iommu_domain *domain = arg->domain;
+	struct iommu_dirty_bitmap *dirty = arg->dirty;
+	const struct iommu_dirty_ops *ops = domain->dirty_ops;
+	unsigned long last_iova = iova + length - 1;
+	unsigned long flags = arg->flags;
+	int ret;
+
+	iopt_for_each_contig_area(&iter, area, arg->iopt, iova, last_iova) {
+		unsigned long last = min(last_iova, iopt_area_last_iova(area));
+
+		ret = ops->read_and_clear_dirty(domain, iter.cur_iova,
+						last - iter.cur_iova + 1, flags,
+						dirty);
+		if (ret)
+			return ret;
+	}
+
+	if (!iopt_area_contig_done(&iter))
+		return -EINVAL;
+	return 0;
+}
+
+static int
+iommu_read_and_clear_dirty(struct iommu_domain *domain,
+			   struct io_pagetable *iopt, unsigned long flags,
+			   struct iommu_hwpt_get_dirty_bitmap *bitmap)
+{
+	const struct iommu_dirty_ops *ops = domain->dirty_ops;
+	struct iommu_iotlb_gather gather;
+	struct iommu_dirty_bitmap dirty;
+	struct iova_bitmap_fn_arg arg;
+	struct iova_bitmap *iter;
+	int ret = 0;
+
+	if (!ops || !ops->read_and_clear_dirty)
+		return -EOPNOTSUPP;
+
+	iter = iova_bitmap_alloc(bitmap->iova, bitmap->length,
+				 bitmap->page_size,
+				 u64_to_user_ptr(bitmap->data));
+	if (IS_ERR(iter))
+		return -ENOMEM;
+
+	iommu_dirty_bitmap_init(&dirty, iter, &gather);
+
+	arg.flags = flags;
+	arg.iopt = iopt;
+	arg.domain = domain;
+	arg.dirty = &dirty;
+	iova_bitmap_for_each(iter, &arg, __iommu_read_and_clear_dirty);
+
+	if (!(flags & IOMMU_DIRTY_NO_CLEAR))
+		iommu_iotlb_sync(domain, &gather);
+
+	iova_bitmap_free(iter);
+
+	return ret;
+}
+
+int iommufd_check_iova_range(struct io_pagetable *iopt,
+			     struct iommu_hwpt_get_dirty_bitmap *bitmap)
+{
+	size_t iommu_pgsize = iopt->iova_alignment;
+	u64 last_iova;
+
+	if (check_add_overflow(bitmap->iova, bitmap->length - 1, &last_iova))
+		return -EOVERFLOW;
+
+	if (bitmap->iova > ULONG_MAX || last_iova > ULONG_MAX)
+		return -EOVERFLOW;
+
+	if ((bitmap->iova & (iommu_pgsize - 1)) ||
+	    ((last_iova + 1) & (iommu_pgsize - 1)))
+		return -EINVAL;
+
+	if (!bitmap->page_size)
+		return -EINVAL;
+
+	if ((bitmap->iova & (bitmap->page_size - 1)) ||
+	    ((last_iova + 1) & (bitmap->page_size - 1)))
+		return -EINVAL;
+
+	return 0;
+}
+
+int iopt_read_and_clear_dirty_data(struct io_pagetable *iopt,
+				   struct iommu_domain *domain,
+				   unsigned long flags,
+				   struct iommu_hwpt_get_dirty_bitmap *bitmap)
+{
+	int ret;
+
+	ret = iommufd_check_iova_range(iopt, bitmap);
+	if (ret)
+		return ret;
+
+	down_read(&iopt->iova_rwsem);
+	ret = iommu_read_and_clear_dirty(domain, iopt, flags, bitmap);
+	up_read(&iopt->iova_rwsem);
+
+	return ret;
+}
+
+static int iopt_clear_dirty_data(struct io_pagetable *iopt,
+				 struct iommu_domain *domain)
+{
+	const struct iommu_dirty_ops *ops = domain->dirty_ops;
+	struct iommu_iotlb_gather gather;
+	struct iommu_dirty_bitmap dirty;
+	struct iopt_area *area;
+	int ret = 0;
+
+	lockdep_assert_held_read(&iopt->iova_rwsem);
+
+	iommu_dirty_bitmap_init(&dirty, NULL, &gather);
+
+	for (area = iopt_area_iter_first(iopt, 0, ULONG_MAX); area;
+	     area = iopt_area_iter_next(area, 0, ULONG_MAX)) {
+		if (!area->pages)
+			continue;
+
+		ret = ops->read_and_clear_dirty(domain, iopt_area_iova(area),
+						iopt_area_length(area), 0,
+						&dirty);
+		if (ret)
+			break;
+	}
+
+	iommu_iotlb_sync(domain, &gather);
+	return ret;
+}
+
+int iopt_set_dirty_tracking(struct io_pagetable *iopt,
+			    struct iommu_domain *domain, bool enable)
+{
+	const struct iommu_dirty_ops *ops = domain->dirty_ops;
+	int ret = 0;
+
+	if (!ops)
+		return -EOPNOTSUPP;
+
+	down_read(&iopt->iova_rwsem);
+
+	/* Clear dirty bits from PTEs to ensure a clean snapshot */
+	if (enable) {
+		ret = iopt_clear_dirty_data(iopt, domain);
+		if (ret)
+			goto out_unlock;
+	}
+
+	ret = ops->set_dirty_tracking(domain, enable);
+
+out_unlock:
+	up_read(&iopt->iova_rwsem);
+	return ret;
+}
+
 int iopt_get_pages(struct io_pagetable *iopt, unsigned long iova,
 		   unsigned long length, struct list_head *pages_list)
 {
@@ -488,8 +660,7 @@ static int iopt_unmap_iova_range(struct io_pagetable *iopt, unsigned long start,
 	struct iopt_area *area;
 	unsigned long unmapped_bytes = 0;
 	unsigned int tries = 0;
-	/* If there are no mapped entries then success */
-	int rc = 0;
+	int rc = -ENOENT;
 
 	/*
 	 * The domains_rwsem must be held in read mode any time any area->pages
@@ -552,17 +723,9 @@ again:
 		unmapped_bytes += area_last - area_first + 1;
 
 		down_write(&iopt->iova_rwsem);
-
-		/*
-		 * After releasing the iova_rwsem concurrent allocation could
-		 * place new areas at IOVAs we have already unmapped. Keep
-		 * moving the start of the search forward to ignore the area
-		 * already unmapped.
-		 */
-		if (area_last >= last)
-			break;
-		start = area_last + 1;
 	}
+	if (unmapped_bytes)
+		rc = 0;
 
 out_unlock_iova:
 	up_write(&iopt->iova_rwsem);
@@ -599,8 +762,13 @@ int iopt_unmap_iova(struct io_pagetable *iopt, unsigned long iova,
 
 int iopt_unmap_all(struct io_pagetable *iopt, unsigned long *unmapped)
 {
+	int rc;
+
+	rc = iopt_unmap_iova_range(iopt, 0, ULONG_MAX, unmapped);
 	/* If the IOVAs are empty then unmap all succeeds */
-	return iopt_unmap_iova_range(iopt, 0, ULONG_MAX, unmapped);
+	if (rc == -ENOENT)
+		return 0;
+	return rc;
 }
 
 /* The caller must always free all the nodes in the allowed_iova rb_root. */

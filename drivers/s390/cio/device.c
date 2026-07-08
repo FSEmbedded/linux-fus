@@ -49,7 +49,7 @@ static const unsigned long recovery_delay[] = { 3, 30, 300 };
 
 static atomic_t ccw_device_init_count = ATOMIC_INIT(0);
 static DECLARE_WAIT_QUEUE_HEAD(ccw_device_init_wq);
-static struct bus_type ccw_bus_type;
+static const struct bus_type ccw_bus_type;
 
 /******************* bus type handling ***********************/
 
@@ -58,10 +58,10 @@ static struct bus_type ccw_bus_type;
  * subsystem driver and one channel system per machine, but
  * we still use the abstraction. T.R. says it's a good idea. */
 static int
-ccw_bus_match (struct device * dev, struct device_driver * drv)
+ccw_bus_match (struct device * dev, const struct device_driver * drv)
 {
 	struct ccw_device *cdev = to_ccwdev(dev);
-	struct ccw_driver *cdrv = to_ccwdrv(drv);
+	const struct ccw_driver *cdrv = to_ccwdrv(drv);
 	const struct ccw_device_id *ids = cdrv->ids, *found;
 
 	if (!ids)
@@ -1795,7 +1795,7 @@ static void ccw_device_shutdown(struct device *dev)
 	__disable_cmf(cdev);
 }
 
-static struct bus_type ccw_bus_type = {
+static const struct bus_type ccw_bus_type = {
 	.name   = "ccw",
 	.match  = ccw_bus_match,
 	.uevent = ccw_uevent,

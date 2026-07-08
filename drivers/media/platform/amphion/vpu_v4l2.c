@@ -24,11 +24,6 @@
 #include "vpu_msgs.h"
 #include "vpu_helpers.h"
 
-static char *vpu_type_name(u32 type)
-{
-	return V4L2_TYPE_IS_OUTPUT(type) ? "output" : "capture";
-}
-
 void vpu_inst_lock(struct vpu_inst *inst)
 {
 	mutex_lock(&inst->lock);
@@ -47,7 +42,7 @@ dma_addr_t vpu_get_vb_phy_addr(struct vb2_buffer *vb, u32 plane_no)
 			vb->planes[plane_no].data_offset;
 }
 
-static unsigned int vpu_get_vb_length(struct vb2_buffer *vb, u32 plane_no)
+unsigned int vpu_get_vb_length(struct vb2_buffer *vb, u32 plane_no)
 {
 	if (plane_no >= vb->num_planes)
 		return 0;
@@ -86,7 +81,7 @@ void vpu_v4l2_set_error(struct vpu_inst *inst)
 	vpu_inst_unlock(inst);
 }
 
-static int vpu_notify_eos(struct vpu_inst *inst)
+int vpu_notify_eos(struct vpu_inst *inst)
 {
 	static const struct v4l2_event ev = {
 		.id = 0,
@@ -101,13 +96,12 @@ static int vpu_notify_eos(struct vpu_inst *inst)
 
 int vpu_notify_source_change(struct vpu_inst *inst)
 {
-	static const struct v4l2_event ev = {
-		.id = 0,
+	const struct v4l2_event ev = {
 		.type = V4L2_EVENT_SOURCE_CHANGE,
-		.u.src_change.changes = V4L2_EVENT_SRC_CH_RESOLUTION
+		.u.src_change.changes = inst->changes
 	};
 
-	vpu_trace(inst->dev, "[%d]\n", inst->id);
+	vpu_trace(inst->dev, "[%d] source change 0x%x\n", inst->id, inst->changes);
 	v4l2_event_queue_fh(&inst->fh, &ev);
 	return 0;
 }
@@ -349,6 +343,16 @@ struct vb2_v4l2_buffer *vpu_next_src_buf(struct vpu_inst *inst)
 	if (!src_buf || vpu_get_buffer_state(src_buf) == VPU_BUF_STATE_IDLE)
 		return NULL;
 
+	while (vpu_vb_is_codecconfig(src_buf)) {
+		v4l2_m2m_src_buf_remove(inst->fh.m2m_ctx);
+		vpu_set_buffer_state(src_buf, VPU_BUF_STATE_IDLE);
+		v4l2_m2m_buf_done(src_buf, VB2_BUF_STATE_DONE);
+
+		src_buf = v4l2_m2m_next_src_buf(inst->fh.m2m_ctx);
+		if (!src_buf || vpu_get_buffer_state(src_buf) == VPU_BUF_STATE_IDLE)
+			return NULL;
+	}
+
 	return src_buf;
 }
 
@@ -441,21 +445,24 @@ int vpu_get_num_buffers(struct vpu_inst *inst, u32 type)
 	else
 		q = v4l2_m2m_get_dst_vq(inst->fh.m2m_ctx);
 
-	return q->num_buffers;
+	return vb2_get_num_buffers(q);
 }
 
 static void vpu_m2m_device_run(void *priv)
 {
 }
 
-static int vpu_m2m_job_ready(void *priv)
+static void vpu_m2m_job_abort(void *priv)
 {
-	return 0;
+	struct vpu_inst *inst = priv;
+	struct v4l2_m2m_ctx *m2m_ctx = inst->fh.m2m_ctx;
+
+	v4l2_m2m_job_finish(m2m_ctx->m2m_dev, m2m_ctx);
 }
 
 static const struct v4l2_m2m_ops vpu_m2m_ops = {
 	.device_run = vpu_m2m_device_run,
-	.job_ready = vpu_m2m_job_ready,
+	.job_abort = vpu_m2m_job_abort
 };
 
 static int vpu_vb2_queue_setup(struct vb2_queue *vq,
@@ -493,15 +500,44 @@ static int vpu_vb2_queue_setup(struct vb2_queue *vq,
 		call_void_vop(inst, release);
 	}
 
+	if (V4L2_TYPE_IS_CAPTURE(vq->type))
+		call_void_vop(inst, reset_frame_store);
+
 	return 0;
 }
 
 static int vpu_vb2_buf_init(struct vb2_buffer *vb)
 {
 	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(vb);
+	struct vpu_vb2_buffer *vpu_buf = to_vpu_vb2_buffer(vbuf);
+	struct vpu_inst *inst = vb2_get_drv_priv(vb->vb2_queue);
 
+	if (vb->memory == VB2_MEMORY_MMAP) {
+		for (int i = 0; i < vb->num_planes; i++)
+			imx_mur_long_new_and_add(inst->recorder,
+						 vb->planes[i].length,
+						 vpu_type_name(vb->type));
+	}
+
+	vpu_buf->fs_id = -1;
 	vpu_set_buffer_state(vbuf, VPU_BUF_STATE_IDLE);
+
+	if (!inst->ops->attach_frame_store || V4L2_TYPE_IS_OUTPUT(vb->type))
+		return 0;
+
+	call_void_vop(inst, attach_frame_store, vb);
 	return 0;
+}
+
+static void vpu_vb2_buf_cleanup(struct vb2_buffer *vb)
+{
+	struct vpu_inst *inst = vb2_get_drv_priv(vb->vb2_queue);
+
+	if (vb->memory != VB2_MEMORY_MMAP)
+		return;
+
+	for (int i = 0; i < vb->num_planes; i++)
+		imx_mur_long_sub_and_del(inst->recorder, vb->planes[i].length);
 }
 
 static int vpu_vb2_buf_out_validate(struct vb2_buffer *vb)
@@ -554,8 +590,7 @@ static void vpu_vb2_buf_finish(struct vb2_buffer *vb)
 		call_void_vop(inst, on_queue_empty, q->type);
 }
 
-static void vpu_vb2_buffers_return(struct vpu_inst *inst, unsigned int type,
-				   enum vb2_buffer_state state)
+void vpu_vb2_buffers_return(struct vpu_inst *inst, unsigned int type, enum vb2_buffer_state state)
 {
 	struct vb2_v4l2_buffer *buf;
 
@@ -596,7 +631,7 @@ static int vpu_vb2_start_streaming(struct vb2_queue *q, unsigned int count)
 		  fmt->sizeimage[0], fmt->bytesperline[0],
 		  fmt->sizeimage[1], fmt->bytesperline[1],
 		  fmt->sizeimage[2], fmt->bytesperline[2],
-		  q->num_buffers);
+		  vb2_get_num_buffers(q));
 	vb2_clear_last_buffer_dequeued(q);
 	ret = call_vop(inst, start, q->type);
 	if (ret)
@@ -633,6 +668,7 @@ static void vpu_vb2_buf_queue(struct vb2_buffer *vb)
 static const struct vb2_ops vpu_vb2_ops = {
 	.queue_setup        = vpu_vb2_queue_setup,
 	.buf_init           = vpu_vb2_buf_init,
+	.buf_cleanup        = vpu_vb2_buf_cleanup,
 	.buf_out_validate   = vpu_vb2_buf_out_validate,
 	.buf_prepare        = vpu_vb2_buf_prepare,
 	.buf_finish         = vpu_vb2_buf_finish,
@@ -656,9 +692,11 @@ static int vpu_m2m_queue_init(void *priv, struct vb2_queue *src_vq, struct vb2_q
 	src_vq->mem_ops = &vb2_dma_contig_memops;
 	if (inst->type == VPU_CORE_TYPE_DEC && inst->use_stream_buffer)
 		src_vq->mem_ops = &vb2_vmalloc_memops;
+	else
+		src_vq->allow_cache_hints = 1;
 	src_vq->drv_priv = inst;
 	src_vq->buf_struct_size = sizeof(struct vpu_vb2_buffer);
-	src_vq->min_buffers_needed = 1;
+	src_vq->min_queued_buffers = 1;
 	src_vq->dev = inst->vpu->dev;
 	src_vq->lock = &inst->lock;
 	ret = vb2_queue_init(src_vq);
@@ -673,9 +711,11 @@ static int vpu_m2m_queue_init(void *priv, struct vb2_queue *src_vq, struct vb2_q
 	dst_vq->mem_ops = &vb2_dma_contig_memops;
 	if (inst->type == VPU_CORE_TYPE_ENC && inst->use_stream_buffer)
 		dst_vq->mem_ops = &vb2_vmalloc_memops;
+	else
+		dst_vq->allow_cache_hints = 1;
 	dst_vq->drv_priv = inst;
 	dst_vq->buf_struct_size = sizeof(struct vpu_vb2_buffer);
-	dst_vq->min_buffers_needed = 1;
+	dst_vq->min_queued_buffers = 1;
 	dst_vq->dev = inst->vpu->dev;
 	dst_vq->lock = &inst->lock;
 	ret = vb2_queue_init(dst_vq);
@@ -691,17 +731,21 @@ static int vpu_v4l2_release(struct vpu_inst *inst)
 {
 	vpu_trace(inst->vpu->dev, "%p\n", inst);
 
+	vpu_release_core(inst->core);
+	put_device(inst->dev);
+
 	if (inst->workqueue) {
 		cancel_work_sync(&inst->msg_work);
 		destroy_workqueue(inst->workqueue);
 		inst->workqueue = NULL;
 	}
 
-	vpu_release_core(inst->core);
-	put_device(inst->dev);
-
+	imx_mur_release_v4l2_ctrl(inst->recorder);
+	imx_mur_destroy_node(inst->recorder);
 	v4l2_ctrl_handler_free(&inst->ctrl_handler);
 	mutex_destroy(&inst->lock);
+	v4l2_fh_del(&inst->fh);
+	v4l2_fh_exit(&inst->fh);
 
 	call_void_vop(inst, cleanup);
 
@@ -739,6 +783,7 @@ int vpu_v4l2_open(struct file *file, struct vpu_inst *inst)
 	inst->min_buffer_out = 2;
 	v4l2_fh_init(&inst->fh, func->vfd);
 	v4l2_fh_add(&inst->fh);
+	inst->recorder = imx_mur_create_node(inst->vpu->recorder, "instance");
 
 	ret = call_vop(inst, ctrl_init);
 	if (ret)
@@ -770,8 +815,6 @@ int vpu_v4l2_open(struct file *file, struct vpu_inst *inst)
 
 	return 0;
 error:
-	v4l2_fh_del(&inst->fh);
-	v4l2_fh_exit(&inst->fh);
 	vpu_inst_put(inst);
 	return ret;
 }
@@ -790,9 +833,6 @@ int vpu_v4l2_close(struct file *file)
 	}
 	call_void_vop(inst, release);
 	vpu_inst_unlock(inst);
-
-	v4l2_fh_del(&inst->fh);
-	v4l2_fh_exit(&inst->fh);
 
 	vpu_inst_unregister(inst);
 	vpu_inst_put(inst);

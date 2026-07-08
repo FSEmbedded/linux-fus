@@ -91,7 +91,7 @@ static int tidss_crtc_atomic_check(struct drm_crtc *crtc,
 	struct dispc_device *dispc = tidss->dispc;
 	struct tidss_crtc *tcrtc = to_tidss_crtc(crtc);
 	u32 hw_videoport = tcrtc->hw_videoport;
-	struct drm_display_mode *mode;
+	const struct drm_display_mode *mode;
 	enum drm_mode_status ok;
 
 	dev_dbg(ddev->dev, "%s\n", __func__);
@@ -107,9 +107,6 @@ static int tidss_crtc_atomic_check(struct drm_crtc *crtc,
 			__func__, mode->hdisplay, mode->vdisplay, mode->clock);
 		return -EINVAL;
 	}
-
-	if (drm_atomic_crtc_needs_modeset(crtc_state))
-		drm_mode_set_crtcinfo(mode, 0);
 
 	return dispc_vp_bus_check(dispc, hw_videoport, crtc_state);
 }
@@ -177,10 +174,6 @@ static void tidss_crtc_atomic_flush(struct drm_crtc *crtc,
 		drm_atomic_crtc_needs_modeset(crtc->state) ? "needs" : "doesn't need",
 		crtc->state->event);
 
-	/* There is nothing to do if CRTC is not going to be enabled. */
-	if (!crtc->state->active)
-		return;
-
 	/*
 	 * Flush CRTC changes with go bit only if new modeset is not
 	 * coming, so CRTC is enabled trough out the commit.
@@ -232,7 +225,7 @@ static void tidss_crtc_atomic_enable(struct drm_crtc *crtc,
 	tidss_runtime_get(tidss);
 
 	r = dispc_vp_set_clk_rate(tidss->dispc, tcrtc->hw_videoport,
-				  mode->crtc_clock * 1000);
+				  mode->clock * 1000);
 	if (r != 0)
 		return;
 

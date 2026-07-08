@@ -2125,7 +2125,7 @@ static int idt_init_isr(struct idt_ntb_dev *ndev)
 	int ret;
 
 	/* Allocate just one interrupt vector for the ISR */
-	ret = pci_alloc_irq_vectors(pdev, 1, 1, PCI_IRQ_MSI | PCI_IRQ_LEGACY);
+	ret = pci_alloc_irq_vectors(pdev, 1, 1, PCI_IRQ_MSI | PCI_IRQ_INTX);
 	if (ret != 1) {
 		dev_err(&pdev->dev, "Failed to allocate IRQ vector");
 		return ret;
@@ -2543,7 +2543,7 @@ static void idt_deinit_dbgfs(struct idt_ntb_dev *ndev)
  */
 
 /*
- * idt_check_setup() - Check whether the IDT PCIe-swtich is properly
+ * idt_check_setup() - Check whether the IDT PCIe-switch is properly
  *		       pre-initialized
  * @pdev:	Pointer to the PCI device descriptor
  *

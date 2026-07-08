@@ -148,9 +148,7 @@ static int wkup_m3_rproc_probe(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
-	ret = devm_pm_runtime_enable(dev);
-	if (ret < 0)
-		return dev_err_probe(dev, ret, "Failed to enable runtime PM\n");
+	pm_runtime_enable(&pdev->dev);
 	ret = pm_runtime_get_sync(&pdev->dev);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "pm_runtime_get_sync() failed\n");
@@ -221,6 +219,7 @@ err_put_rproc:
 	rproc_free(rproc);
 err:
 	pm_runtime_put_noidle(dev);
+	pm_runtime_disable(dev);
 	return ret;
 }
 
@@ -231,6 +230,7 @@ static void wkup_m3_rproc_remove(struct platform_device *pdev)
 	rproc_del(rproc);
 	rproc_free(rproc);
 	pm_runtime_put_sync(&pdev->dev);
+	pm_runtime_disable(&pdev->dev);
 }
 
 #ifdef CONFIG_PM

@@ -12,7 +12,6 @@
 #include <linux/delay.h>
 #include <linux/platform_device.h>
 #include <linux/dma-mapping.h>
-#include <linux/dma-direct.h>
 #include <linux/errno.h>
 #include <linux/gfp.h>
 #include <linux/fb.h>
@@ -66,7 +65,7 @@ struct gbefb_par {
 static unsigned int gbe_mem_size = CONFIG_FB_GBE_MEM * 1024*1024;
 static void *gbe_mem;
 static dma_addr_t gbe_dma_addr;
-static phys_addr_t gbe_mem_phys;
+static unsigned long gbe_mem_phys;
 
 static struct {
 	uint16_t *cpu;
@@ -1001,6 +1000,8 @@ static int gbefb_mmap(struct fb_info *info,
 	unsigned long phys_addr, phys_size;
 	u16 *tile;
 
+	vma->vm_page_prot = pgprot_decrypted(vma->vm_page_prot);
+
 	/* check range */
 	if (vma->vm_pgoff > (~0UL >> PAGE_SHIFT))
 		return -EINVAL;
@@ -1045,14 +1046,13 @@ static int gbefb_mmap(struct fb_info *info,
 
 static const struct fb_ops gbefb_ops = {
 	.owner		= THIS_MODULE,
+	__FB_DEFAULT_IOMEM_OPS_RDWR,
 	.fb_check_var	= gbefb_check_var,
 	.fb_set_par	= gbefb_set_par,
 	.fb_setcolreg	= gbefb_setcolreg,
-	.fb_mmap	= gbefb_mmap,
 	.fb_blank	= gbefb_blank,
-	.fb_fillrect	= cfb_fillrect,
-	.fb_copyarea	= cfb_copyarea,
-	.fb_imageblit	= cfb_imageblit,
+	__FB_DEFAULT_IOMEM_OPS_DRAW,
+	.fb_mmap	= gbefb_mmap,
 };
 
 /*
@@ -1183,7 +1183,7 @@ static int gbefb_probe(struct platform_device *p_dev)
 			goto out_release_mem_region;
 		}
 
-		gbe_mem_phys = dma_to_phys(&p_dev->dev, gbe_dma_addr);
+		gbe_mem_phys = (unsigned long) gbe_dma_addr;
 	}
 
 	par = info->par;
@@ -1247,10 +1247,10 @@ static void gbefb_remove(struct platform_device* p_dev)
 
 static struct platform_driver gbefb_driver = {
 	.probe = gbefb_probe,
-	.remove_new = gbefb_remove,
-	.driver	= {
+	.remove = gbefb_remove,
+	.driver = {
 		.name = "gbefb",
-		.dev_groups	= gbefb_groups,
+		.dev_groups = gbefb_groups,
 	},
 };
 

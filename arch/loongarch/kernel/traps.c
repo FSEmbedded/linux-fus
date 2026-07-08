@@ -53,6 +53,32 @@
 
 #include "access-helper.h"
 
+void *exception_table[EXCCODE_INT_START] = {
+	[0 ... EXCCODE_INT_START - 1] = handle_reserved,
+
+	[EXCCODE_TLBI]		= handle_tlb_load,
+	[EXCCODE_TLBL]		= handle_tlb_load,
+	[EXCCODE_TLBS]		= handle_tlb_store,
+	[EXCCODE_TLBM]		= handle_tlb_modify,
+	[EXCCODE_TLBNR]		= handle_tlb_protect,
+	[EXCCODE_TLBNX]		= handle_tlb_protect,
+	[EXCCODE_TLBPE]		= handle_tlb_protect,
+	[EXCCODE_ADE]		= handle_ade,
+	[EXCCODE_ALE]		= handle_ale,
+	[EXCCODE_BCE]		= handle_bce,
+	[EXCCODE_SYS]		= handle_sys,
+	[EXCCODE_BP]		= handle_bp,
+	[EXCCODE_INE]		= handle_ri,
+	[EXCCODE_IPE]		= handle_ri,
+	[EXCCODE_FPDIS]		= handle_fpu,
+	[EXCCODE_LSXDIS]	= handle_lsx,
+	[EXCCODE_LASXDIS]	= handle_lasx,
+	[EXCCODE_FPE]		= handle_fpe,
+	[EXCCODE_WATCH]		= handle_watch,
+	[EXCCODE_BTDIS]		= handle_lbt,
+};
+EXPORT_SYMBOL_GPL(exception_table);
+
 static void show_backtrace(struct task_struct *task, const struct pt_regs *regs,
 			   const char *loglvl, bool user)
 {
@@ -508,15 +534,10 @@ out:
 asmlinkage void noinstr do_ade(struct pt_regs *regs)
 {
 	irqentry_state_t state = irqentry_enter(regs);
-	unsigned int esubcode = FIELD_GET(CSR_ESTAT_ESUBCODE, regs->csr_estat);
-
-	if ((esubcode == EXSUBCODE_ADEM) && fixup_exception(regs))
-		goto out;
 
 	die_if_kernel("Kernel ade access", regs);
 	force_sig_fault(SIGBUS, BUS_ADRERR, (void __user *)regs->csr_badvaddr);
 
-out:
 	irqentry_exit(regs, state);
 }
 
@@ -1102,8 +1123,8 @@ static void configure_exception_vector(void)
 	tlbrentry = (unsigned long)exception_handlers + 80*VECSIZE;
 
 	csr_write64(eentry, LOONGARCH_CSR_EENTRY);
-	csr_write64(__pa(eentry), LOONGARCH_CSR_MERRENTRY);
-	csr_write64(__pa(tlbrentry), LOONGARCH_CSR_TLBRENTRY);
+	csr_write64(eentry, LOONGARCH_CSR_MERRENTRY);
+	csr_write64(tlbrentry, LOONGARCH_CSR_TLBRENTRY);
 }
 
 void per_cpu_trap_init(int cpu)
@@ -1164,19 +1185,9 @@ void __init trap_init(void)
 	for (i = EXCCODE_INT_START; i <= EXCCODE_INT_END; i++)
 		set_handler(i * VECSIZE, handle_vint, VECSIZE);
 
-	set_handler(EXCCODE_ADE * VECSIZE, handle_ade, VECSIZE);
-	set_handler(EXCCODE_ALE * VECSIZE, handle_ale, VECSIZE);
-	set_handler(EXCCODE_BCE * VECSIZE, handle_bce, VECSIZE);
-	set_handler(EXCCODE_SYS * VECSIZE, handle_sys, VECSIZE);
-	set_handler(EXCCODE_BP * VECSIZE, handle_bp, VECSIZE);
-	set_handler(EXCCODE_INE * VECSIZE, handle_ri, VECSIZE);
-	set_handler(EXCCODE_IPE * VECSIZE, handle_ri, VECSIZE);
-	set_handler(EXCCODE_FPDIS * VECSIZE, handle_fpu, VECSIZE);
-	set_handler(EXCCODE_LSXDIS * VECSIZE, handle_lsx, VECSIZE);
-	set_handler(EXCCODE_LASXDIS * VECSIZE, handle_lasx, VECSIZE);
-	set_handler(EXCCODE_FPE * VECSIZE, handle_fpe, VECSIZE);
-	set_handler(EXCCODE_BTDIS * VECSIZE, handle_lbt, VECSIZE);
-	set_handler(EXCCODE_WATCH * VECSIZE, handle_watch, VECSIZE);
+	/* Set exception vector handler */
+	for (i = EXCCODE_ADE; i <= EXCCODE_BTDIS; i++)
+		set_handler(i * VECSIZE, exception_table[i], VECSIZE);
 
 	cache_error_setup();
 

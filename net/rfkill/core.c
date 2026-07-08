@@ -73,14 +73,11 @@ struct rfkill_int_event {
 	struct rfkill_event_ext	ev;
 };
 
-/* Max rfkill events that can be "in-flight" for one data source */
-#define MAX_RFKILL_EVENT	1000
 struct rfkill_data {
 	struct list_head	list;
 	struct list_head	events;
 	struct mutex		mtx;
 	wait_queue_head_t	read_wait;
-	u32			event_count;
 	bool			input_handler;
 	u8			max_size;
 };
@@ -258,12 +255,10 @@ static void rfkill_global_led_trigger_unregister(void)
 }
 #endif /* CONFIG_RFKILL_LEDS */
 
-static int rfkill_fill_event(struct rfkill_int_event *int_ev,
-			     struct rfkill *rfkill,
-			     struct rfkill_data *data,
-			     enum rfkill_operation op)
+static void rfkill_fill_event(struct rfkill_event_ext *ev,
+			      struct rfkill *rfkill,
+			      enum rfkill_operation op)
 {
-	struct rfkill_event_ext *ev = &int_ev->ev;
 	unsigned long flags;
 
 	ev->idx = rfkill->idx;
@@ -276,15 +271,6 @@ static int rfkill_fill_event(struct rfkill_int_event *int_ev,
 					RFKILL_BLOCK_SW_PREV));
 	ev->hard_block_reasons = rfkill->hard_block_reasons;
 	spin_unlock_irqrestore(&rfkill->lock, flags);
-
-	scoped_guard(mutex, &data->mtx) {
-		if (data->event_count++ > MAX_RFKILL_EVENT) {
-			data->event_count--;
-			return -ENOSPC;
-		}
-		list_add_tail(&int_ev->list, &data->events);
-	}
-	return 0;
 }
 
 static void rfkill_send_events(struct rfkill *rfkill, enum rfkill_operation op)
@@ -296,10 +282,10 @@ static void rfkill_send_events(struct rfkill *rfkill, enum rfkill_operation op)
 		ev = kzalloc(sizeof(*ev), GFP_KERNEL);
 		if (!ev)
 			continue;
-		if (rfkill_fill_event(ev, rfkill, data, op)) {
-			kfree(ev);
-			continue;
-		}
+		rfkill_fill_event(&ev->ev, rfkill, op);
+		mutex_lock(&data->mtx);
+		list_add_tail(&ev->list, &data->events);
+		mutex_unlock(&data->mtx);
 		wake_up_interruptible(&data->read_wait);
 	}
 }
@@ -553,17 +539,13 @@ bool rfkill_get_global_sw_state(const enum rfkill_type type)
 #endif
 
 bool rfkill_set_hw_state_reason(struct rfkill *rfkill,
-				bool blocked, unsigned long reason)
+				bool blocked,
+				enum rfkill_hard_block_reasons reason)
 {
 	unsigned long flags;
 	bool ret, prev;
 
 	BUG_ON(!rfkill);
-
-	if (WARN(reason &
-	    ~(RFKILL_HARD_BLOCK_SIGNAL | RFKILL_HARD_BLOCK_NOT_OWNER),
-	    "hw_state reason not supported: 0x%lx", reason))
-		return blocked;
 
 	spin_lock_irqsave(&rfkill->lock, flags);
 	prev = !!(rfkill->hard_block_reasons & reason);
@@ -1204,8 +1186,10 @@ static int rfkill_fop_open(struct inode *inode, struct file *file)
 		if (!ev)
 			goto free;
 		rfkill_sync(rfkill);
-		if (rfkill_fill_event(ev, rfkill, data, RFKILL_OP_ADD))
-			kfree(ev);
+		rfkill_fill_event(&ev->ev, rfkill, RFKILL_OP_ADD);
+		mutex_lock(&data->mtx);
+		list_add_tail(&ev->list, &data->events);
+		mutex_unlock(&data->mtx);
 	}
 	list_add(&data->list, &rfkill_fds);
 	mutex_unlock(&rfkill_global_mutex);
@@ -1275,7 +1259,6 @@ static ssize_t rfkill_fop_read(struct file *file, char __user *buf,
 		ret = -EFAULT;
 
 	list_del(&ev->list);
-	data->event_count--;
 	kfree(ev);
  out:
 	mutex_unlock(&data->mtx);
@@ -1364,11 +1347,11 @@ static long rfkill_fop_ioctl(struct file *file, unsigned int cmd,
 			     unsigned long arg)
 {
 	struct rfkill_data *data = file->private_data;
-	int ret = -ENOSYS;
+	int ret = -ENOTTY;
 	u32 size;
 
 	if (_IOC_TYPE(cmd) != RFKILL_IOC_MAGIC)
-		return -ENOSYS;
+		return -ENOTTY;
 
 	mutex_lock(&data->mtx);
 	switch (_IOC_NR(cmd)) {
@@ -1411,7 +1394,6 @@ static const struct file_operations rfkill_fops = {
 	.release	= rfkill_fop_release,
 	.unlocked_ioctl	= rfkill_fop_ioctl,
 	.compat_ioctl	= compat_ptr_ioctl,
-	.llseek		= no_llseek,
 };
 
 #define RFKILL_NAME "rfkill"

@@ -1300,7 +1300,6 @@ static struct ahash_alg sha_384_512_algs[] = {
 	.halg.base.cra_name		= "sha384",
 	.halg.base.cra_driver_name	= "atmel-sha384",
 	.halg.base.cra_blocksize	= SHA384_BLOCK_SIZE,
-	.halg.base.cra_alignmask	= 0x3,
 
 	.halg.digestsize = SHA384_DIGEST_SIZE,
 },
@@ -1308,7 +1307,6 @@ static struct ahash_alg sha_384_512_algs[] = {
 	.halg.base.cra_name		= "sha512",
 	.halg.base.cra_driver_name	= "atmel-sha512",
 	.halg.base.cra_blocksize	= SHA512_BLOCK_SIZE,
-	.halg.base.cra_alignmask	= 0x3,
 
 	.halg.digestsize = SHA512_DIGEST_SIZE,
 },
@@ -2418,23 +2416,27 @@ EXPORT_SYMBOL_GPL(atmel_sha_authenc_abort);
 
 static void atmel_sha_unregister_algs(struct atmel_sha_dev *dd)
 {
-	if (dd->caps.has_hmac)
-		crypto_unregister_ahashes(sha_hmac_algs,
-					  ARRAY_SIZE(sha_hmac_algs));
+	int i;
 
-	crypto_unregister_ahashes(sha_1_256_algs, ARRAY_SIZE(sha_1_256_algs));
+	if (dd->caps.has_hmac)
+		for (i = 0; i < ARRAY_SIZE(sha_hmac_algs); i++)
+			crypto_unregister_ahash(&sha_hmac_algs[i]);
+
+	for (i = 0; i < ARRAY_SIZE(sha_1_256_algs); i++)
+		crypto_unregister_ahash(&sha_1_256_algs[i]);
 
 	if (dd->caps.has_sha224)
 		crypto_unregister_ahash(&sha_224_alg);
 
-	if (dd->caps.has_sha_384_512)
-		crypto_unregister_ahashes(sha_384_512_algs,
-					  ARRAY_SIZE(sha_384_512_algs));
+	if (dd->caps.has_sha_384_512) {
+		for (i = 0; i < ARRAY_SIZE(sha_384_512_algs); i++)
+			crypto_unregister_ahash(&sha_384_512_algs[i]);
+	}
 }
 
 static int atmel_sha_register_algs(struct atmel_sha_dev *dd)
 {
-	int err, i;
+	int err, i, j;
 
 	for (i = 0; i < ARRAY_SIZE(sha_1_256_algs); i++) {
 		atmel_sha_alg_init(&sha_1_256_algs[i]);
@@ -2476,15 +2478,18 @@ static int atmel_sha_register_algs(struct atmel_sha_dev *dd)
 
 	/*i = ARRAY_SIZE(sha_hmac_algs);*/
 err_sha_hmac_algs:
-	crypto_unregister_ahashes(sha_hmac_algs, i);
+	for (j = 0; j < i; j++)
+		crypto_unregister_ahash(&sha_hmac_algs[j]);
 	i = ARRAY_SIZE(sha_384_512_algs);
 err_sha_384_512_algs:
-	crypto_unregister_ahashes(sha_384_512_algs, i);
+	for (j = 0; j < i; j++)
+		crypto_unregister_ahash(&sha_384_512_algs[j]);
 	crypto_unregister_ahash(&sha_224_alg);
 err_sha_224_algs:
 	i = ARRAY_SIZE(sha_1_256_algs);
 err_sha_1_256_algs:
-	crypto_unregister_ahashes(sha_1_256_algs, i);
+	for (j = 0; j < i; j++)
+		crypto_unregister_ahash(&sha_1_256_algs[j]);
 
 	return err;
 }
@@ -2618,27 +2623,23 @@ static int atmel_sha_probe(struct platform_device *pdev)
 	}
 
 	/* Initializing the clock */
-	sha_dd->iclk = devm_clk_get(&pdev->dev, "sha_clk");
+	sha_dd->iclk = devm_clk_get_prepared(&pdev->dev, "sha_clk");
 	if (IS_ERR(sha_dd->iclk)) {
 		dev_err(dev, "clock initialization failed.\n");
 		err = PTR_ERR(sha_dd->iclk);
 		goto err_tasklet_kill;
 	}
 
-	err = clk_prepare(sha_dd->iclk);
-	if (err)
-		goto err_tasklet_kill;
-
 	err = atmel_sha_hw_version_init(sha_dd);
 	if (err)
-		goto err_iclk_unprepare;
+		goto err_tasklet_kill;
 
 	atmel_sha_get_cap(sha_dd);
 
 	if (sha_dd->caps.has_dma) {
 		err = atmel_sha_dma_init(sha_dd);
 		if (err)
-			goto err_iclk_unprepare;
+			goto err_tasklet_kill;
 
 		dev_info(dev, "using %s for DMA transfers\n",
 				dma_chan_name(sha_dd->dma_lch_in.chan));
@@ -2664,8 +2665,6 @@ err_algs:
 	spin_unlock(&atmel_sha.lock);
 	if (sha_dd->caps.has_dma)
 		atmel_sha_dma_cleanup(sha_dd);
-err_iclk_unprepare:
-	clk_unprepare(sha_dd->iclk);
 err_tasklet_kill:
 	tasklet_kill(&sha_dd->queue_task);
 	tasklet_kill(&sha_dd->done_task);
@@ -2673,7 +2672,7 @@ err_tasklet_kill:
 	return err;
 }
 
-static int atmel_sha_remove(struct platform_device *pdev)
+static void atmel_sha_remove(struct platform_device *pdev)
 {
 	struct atmel_sha_dev *sha_dd = platform_get_drvdata(pdev);
 
@@ -2688,15 +2687,11 @@ static int atmel_sha_remove(struct platform_device *pdev)
 
 	if (sha_dd->caps.has_dma)
 		atmel_sha_dma_cleanup(sha_dd);
-
-	clk_unprepare(sha_dd->iclk);
-
-	return 0;
 }
 
 static struct platform_driver atmel_sha_driver = {
 	.probe		= atmel_sha_probe,
-	.remove		= atmel_sha_remove,
+	.remove_new	= atmel_sha_remove,
 	.driver		= {
 		.name	= "atmel_sha",
 		.of_match_table	= atmel_sha_dt_ids,

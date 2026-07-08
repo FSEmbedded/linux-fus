@@ -545,6 +545,8 @@ static int hi3110_stop(struct net_device *net)
 
 	priv->force_quit = 1;
 	free_irq(spi->irq, priv);
+	destroy_workqueue(priv->wq);
+	priv->wq = NULL;
 
 	mutex_lock(&priv->hi3110_lock);
 
@@ -756,9 +758,7 @@ static int hi3110_open(struct net_device *net)
 		return ret;
 
 	mutex_lock(&priv->hi3110_lock);
-	ret = hi3110_power_enable(priv->transceiver, 1);
-	if (ret)
-		goto out_close_candev;
+	hi3110_power_enable(priv->transceiver, 1);
 
 	priv->force_quit = 0;
 	priv->tx_skb = NULL;
@@ -771,29 +771,39 @@ static int hi3110_open(struct net_device *net)
 		goto out_close;
 	}
 
+	priv->wq = alloc_workqueue("hi3110_wq", WQ_FREEZABLE | WQ_MEM_RECLAIM,
+				   0);
+	if (!priv->wq) {
+		ret = -ENOMEM;
+		goto out_free_irq;
+	}
+	INIT_WORK(&priv->tx_work, hi3110_tx_work_handler);
+	INIT_WORK(&priv->restart_work, hi3110_restart_work_handler);
+
 	ret = hi3110_hw_reset(spi);
 	if (ret)
-		goto out_free_irq;
+		goto out_free_wq;
 
 	ret = hi3110_setup(net);
 	if (ret)
-		goto out_free_irq;
+		goto out_free_wq;
 
 	ret = hi3110_set_normal_mode(spi);
 	if (ret)
-		goto out_free_irq;
+		goto out_free_wq;
 
 	netif_wake_queue(net);
 	mutex_unlock(&priv->hi3110_lock);
 
 	return 0;
 
+ out_free_wq:
+	destroy_workqueue(priv->wq);
  out_free_irq:
 	free_irq(spi->irq, priv);
 	hi3110_hw_sleep(spi);
  out_close:
 	hi3110_power_enable(priv->transceiver, 0);
- out_close_candev:
 	close_candev(net);
 	mutex_unlock(&priv->hi3110_lock);
 	return ret;
@@ -803,7 +813,6 @@ static const struct net_device_ops hi3110_netdev_ops = {
 	.ndo_open = hi3110_open,
 	.ndo_stop = hi3110_stop,
 	.ndo_start_xmit = hi3110_hard_start_xmit,
-	.ndo_change_mtu = can_change_mtu,
 };
 
 static const struct ethtool_ops hi3110_ethtool_ops = {
@@ -833,7 +842,6 @@ static int hi3110_can_probe(struct spi_device *spi)
 	struct device *dev = &spi->dev;
 	struct net_device *net;
 	struct hi3110_priv *priv;
-	const void *match;
 	struct clk *clk;
 	u32 freq;
 	int ret;
@@ -877,11 +885,7 @@ static int hi3110_can_probe(struct spi_device *spi)
 		CAN_CTRLMODE_LISTENONLY |
 		CAN_CTRLMODE_BERR_REPORTING;
 
-	match = device_get_match_data(dev);
-	if (match)
-		priv->model = (enum hi3110_model)(uintptr_t)match;
-	else
-		priv->model = spi_get_device_id(spi)->driver_data;
+	priv->model = (enum hi3110_model)(uintptr_t)spi_get_device_match_data(spi);
 	priv->net = net;
 	priv->clk = clk;
 
@@ -904,15 +908,6 @@ static int hi3110_can_probe(struct spi_device *spi)
 	ret = hi3110_power_enable(priv->power, 1);
 	if (ret)
 		goto out_clk;
-
-	priv->wq = alloc_workqueue("hi3110_wq", WQ_FREEZABLE | WQ_MEM_RECLAIM,
-				   0);
-	if (!priv->wq) {
-		ret = -ENOMEM;
-		goto out_clk;
-	}
-	INIT_WORK(&priv->tx_work, hi3110_tx_work_handler);
-	INIT_WORK(&priv->restart_work, hi3110_restart_work_handler);
 
 	priv->spi = spi;
 	mutex_init(&priv->hi3110_lock);
@@ -949,8 +944,6 @@ static int hi3110_can_probe(struct spi_device *spi)
 	return 0;
 
  error_probe:
-	destroy_workqueue(priv->wq);
-	priv->wq = NULL;
 	hi3110_power_enable(priv->power, 0);
 
  out_clk:
@@ -970,9 +963,6 @@ static void hi3110_can_remove(struct spi_device *spi)
 	unregister_candev(net);
 
 	hi3110_power_enable(priv->power, 0);
-
-	destroy_workqueue(priv->wq);
-	priv->wq = NULL;
 
 	clk_disable_unprepare(priv->clk);
 

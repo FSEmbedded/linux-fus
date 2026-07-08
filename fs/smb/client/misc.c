@@ -27,11 +27,6 @@
 #include "fs_context.h"
 #include "cached_dir.h"
 
-struct tcon_list {
-	struct list_head entry;
-	struct cifs_tcon *tcon;
-};
-
 /* The xid serves as a useful identifier for each incoming vfs request,
    in a similar way to the mid which is useful to track each sent smb,
    and CurrentXid can also provide a running counter (although it
@@ -374,7 +369,7 @@ checkSMB(char *buf, unsigned int total_read, struct TCP_Server_Info *server)
 				 * on simple responses (wct, bcc both zero)
 				 * in particular have seen this on
 				 * ulogoffX and FindClose. This leaves
-				 * one byte of bcc potentially unitialized
+				 * one byte of bcc potentially uninitialized
 				 */
 				/* zero rest of bcc */
 				tmp[sizeof(struct smb_hdr)+1] = 0;
@@ -773,12 +768,11 @@ cifs_close_deferred_file(struct cifsInodeInfo *cifs_inode)
 {
 	struct cifsFileInfo *cfile = NULL;
 	struct file_list *tmp_list, *tmp_next_list;
-	struct list_head file_head;
+	LIST_HEAD(file_head);
 
 	if (cifs_inode == NULL)
 		return;
 
-	INIT_LIST_HEAD(&file_head);
 	spin_lock(&cifs_inode->open_file_lock);
 	list_for_each_entry(cfile, &cifs_inode->openFileList, flist) {
 		if (delayed_work_pending(&cfile->deferred)) {
@@ -809,9 +803,8 @@ cifs_close_all_deferred_files(struct cifs_tcon *tcon)
 {
 	struct cifsFileInfo *cfile;
 	struct file_list *tmp_list, *tmp_next_list;
-	struct list_head file_head;
+	LIST_HEAD(file_head);
 
-	INIT_LIST_HEAD(&file_head);
 	spin_lock(&tcon->open_file_lock);
 	list_for_each_entry(cfile, &tcon->openFileList, tlist) {
 		if (delayed_work_pending(&cfile->deferred)) {
@@ -837,71 +830,27 @@ cifs_close_all_deferred_files(struct cifs_tcon *tcon)
 	}
 }
 
-void cifs_close_all_deferred_files_sb(struct cifs_sb_info *cifs_sb)
+void cifs_close_deferred_file_under_dentry(struct cifs_tcon *tcon,
+					   struct dentry *dentry)
 {
-	struct rb_root *root = &cifs_sb->tlink_tree;
-	struct rb_node *node;
-	struct cifs_tcon *tcon;
-	struct tcon_link *tlink;
-	struct tcon_list *tmp_list, *q;
-	LIST_HEAD(tcon_head);
-
-	spin_lock(&cifs_sb->tlink_tree_lock);
-	for (node = rb_first(root); node; node = rb_next(node)) {
-		tlink = rb_entry(node, struct tcon_link, tl_rbnode);
-		tcon = tlink_tcon(tlink);
-		if (IS_ERR(tcon))
-			continue;
-		tmp_list = kmalloc(sizeof(struct tcon_list), GFP_ATOMIC);
-		if (tmp_list == NULL)
-			break;
-		tmp_list->tcon = tcon;
-		/* Take a reference on tcon to prevent it from being freed */
-		spin_lock(&tcon->tc_lock);
-		++tcon->tc_count;
-		trace_smb3_tcon_ref(tcon->debug_id, tcon->tc_count,
-				    netfs_trace_tcon_ref_get_close_defer_files);
-		spin_unlock(&tcon->tc_lock);
-		list_add_tail(&tmp_list->entry, &tcon_head);
-	}
-	spin_unlock(&cifs_sb->tlink_tree_lock);
-
-	list_for_each_entry_safe(tmp_list, q, &tcon_head, entry) {
-		cifs_close_all_deferred_files(tmp_list->tcon);
-		list_del(&tmp_list->entry);
-		cifs_put_tcon(tmp_list->tcon, netfs_trace_tcon_ref_put_close_defer_files);
-		kfree(tmp_list);
-	}
-}
-
-void
-cifs_close_deferred_file_under_dentry(struct cifs_tcon *tcon, const char *path)
-{
-	struct cifsFileInfo *cfile;
 	struct file_list *tmp_list, *tmp_next_list;
-	struct list_head file_head;
-	void *page;
-	const char *full_path;
+	struct cifsFileInfo *cfile;
+	LIST_HEAD(file_head);
 
-	INIT_LIST_HEAD(&file_head);
-	page = alloc_dentry_path();
 	spin_lock(&tcon->open_file_lock);
 	list_for_each_entry(cfile, &tcon->openFileList, tlist) {
-		full_path = build_path_from_dentry(cfile->dentry, page);
-		if (strstr(full_path, path)) {
-			if (delayed_work_pending(&cfile->deferred)) {
-				if (cancel_delayed_work(&cfile->deferred)) {
-					spin_lock(&CIFS_I(d_inode(cfile->dentry))->deferred_lock);
-					cifs_del_deferred_close(cfile);
-					spin_unlock(&CIFS_I(d_inode(cfile->dentry))->deferred_lock);
+		if ((cfile->dentry == dentry) &&
+		    delayed_work_pending(&cfile->deferred) &&
+		    cancel_delayed_work(&cfile->deferred)) {
+			spin_lock(&CIFS_I(d_inode(cfile->dentry))->deferred_lock);
+			cifs_del_deferred_close(cfile);
+			spin_unlock(&CIFS_I(d_inode(cfile->dentry))->deferred_lock);
 
-					tmp_list = kmalloc(sizeof(struct file_list), GFP_ATOMIC);
-					if (tmp_list == NULL)
-						break;
-					tmp_list->cfile = cfile;
-					list_add_tail(&tmp_list->list, &file_head);
-				}
-			}
+			tmp_list = kmalloc(sizeof(struct file_list), GFP_ATOMIC);
+			if (tmp_list == NULL)
+				break;
+			tmp_list->cfile = cfile;
+			list_add_tail(&tmp_list->list, &file_head);
 		}
 	}
 	spin_unlock(&tcon->open_file_lock);
@@ -911,7 +860,6 @@ cifs_close_deferred_file_under_dentry(struct cifs_tcon *tcon, const char *path)
 		list_del(&tmp_list->list);
 		kfree(tmp_list);
 	}
-	free_dentry_path(page);
 }
 
 /*
@@ -965,28 +913,11 @@ parse_dfs_referrals(struct get_dfs_referral_rsp *rsp, u32 rsp_size,
 	char *data_end;
 	struct dfs_referral_level_3 *ref;
 
-	if (rsp_size < sizeof(*rsp)) {
-		cifs_dbg(VFS | ONCE,
-			 "%s: header is malformed (size is %u, must be %zu)\n",
-			 __func__, rsp_size, sizeof(*rsp));
-		rc = -EINVAL;
-		goto parse_DFS_referrals_exit;
-	}
-
 	*num_of_nodes = le16_to_cpu(rsp->NumberOfReferrals);
 
 	if (*num_of_nodes < 1) {
 		cifs_dbg(VFS, "num_referrals: must be at least > 0, but we get num_referrals = %d\n",
 			 *num_of_nodes);
-		rc = -EINVAL;
-		goto parse_DFS_referrals_exit;
-	}
-
-	if (sizeof(*rsp) + *num_of_nodes * sizeof(REFERRAL3) > rsp_size) {
-		cifs_dbg(VFS | ONCE,
-			 "%s: malformed buffer (size is %u, must be at least %zu)\n",
-			 __func__, rsp_size,
-			 sizeof(*rsp) + *num_of_nodes * sizeof(REFERRAL3));
 		rc = -EINVAL;
 		goto parse_DFS_referrals_exit;
 	}
@@ -1070,60 +1001,6 @@ parse_DFS_referrals_exit:
 		*num_of_nodes = 0;
 	}
 	return rc;
-}
-
-struct cifs_aio_ctx *
-cifs_aio_ctx_alloc(void)
-{
-	struct cifs_aio_ctx *ctx;
-
-	/*
-	 * Must use kzalloc to initialize ctx->bv to NULL and ctx->direct_io
-	 * to false so that we know when we have to unreference pages within
-	 * cifs_aio_ctx_release()
-	 */
-	ctx = kzalloc(sizeof(struct cifs_aio_ctx), GFP_KERNEL);
-	if (!ctx)
-		return NULL;
-
-	INIT_LIST_HEAD(&ctx->list);
-	mutex_init(&ctx->aio_mutex);
-	init_completion(&ctx->done);
-	kref_init(&ctx->refcount);
-	return ctx;
-}
-
-void
-cifs_aio_ctx_release(struct kref *refcount)
-{
-	struct cifs_aio_ctx *ctx = container_of(refcount,
-					struct cifs_aio_ctx, refcount);
-
-	cifsFileInfo_put(ctx->cfile);
-
-	/*
-	 * ctx->bv is only set if setup_aio_ctx_iter() was call successfuly
-	 * which means that iov_iter_extract_pages() was a success and thus
-	 * that we may have references or pins on pages that we need to
-	 * release.
-	 */
-	if (ctx->bv) {
-		if (ctx->should_dirty || ctx->bv_need_unpin) {
-			unsigned int i;
-
-			for (i = 0; i < ctx->nr_pinned_pages; i++) {
-				struct page *page = ctx->bv[i].bv_page;
-
-				if (ctx->should_dirty)
-					set_page_dirty(page);
-				if (ctx->bv_need_unpin)
-					unpin_user_page(page);
-			}
-		}
-		kvfree(ctx->bv);
-	}
-
-	kfree(ctx);
 }
 
 /**
@@ -1242,7 +1119,8 @@ static void tcon_super_cb(struct super_block *sb, void *arg)
 	t2 = cifs_sb_master_tcon(cifs_sb);
 
 	spin_lock(&t2->tc_lock);
-	if (t1->ses == t2->ses &&
+	if ((t1->ses == t2->ses ||
+	     t1->ses->dfs_root_ses == t2->ses->dfs_root_ses) &&
 	    t1->ses->server == t2->ses->server &&
 	    t2->origin_fullpath &&
 	    dfs_src_pathname_equal(t2->origin_fullpath, t1->origin_fullpath))

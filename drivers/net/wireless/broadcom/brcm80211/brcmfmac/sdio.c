@@ -23,7 +23,7 @@
 #include <linux/bcma/bcma.h>
 #include <linux/debugfs.h>
 #include <linux/vmalloc.h>
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 #include <defs.h>
 #include <brcmu_wifi.h>
 #include <brcmu_utils.h>
@@ -2475,9 +2475,8 @@ static void brcmf_sdio_bus_stop(struct device *dev)
 	brcmf_dbg(TRACE, "Enter\n");
 
 	if (bus->watchdog_tsk) {
-		get_task_struct(bus->watchdog_tsk);
 		send_sig(SIGTERM, bus->watchdog_tsk, 1);
-		kthread_stop_put(bus->watchdog_tsk);
+		kthread_stop(bus->watchdog_tsk);
 		bus->watchdog_tsk = NULL;
 	}
 
@@ -4451,7 +4450,7 @@ struct brcmf_sdio *brcmf_sdio_probe(struct brcmf_sdio_dev *sdiodev)
 	brcmf_dbg(TRACE, "Enter\n");
 
 	/* Allocate private bus interface state */
-	bus = kzalloc(sizeof(struct brcmf_sdio), GFP_ATOMIC);
+	bus = kzalloc(sizeof(*bus), GFP_ATOMIC);
 	if (!bus)
 		goto fail;
 
@@ -4558,9 +4557,8 @@ void brcmf_sdio_remove(struct brcmf_sdio *bus)
 	if (bus) {
 		/* Stop watchdog task */
 		if (bus->watchdog_tsk) {
-			get_task_struct(bus->watchdog_tsk);
 			send_sig(SIGTERM, bus->watchdog_tsk, 1);
-			kthread_stop_put(bus->watchdog_tsk);
+			kthread_stop(bus->watchdog_tsk);
 			bus->watchdog_tsk = NULL;
 		}
 

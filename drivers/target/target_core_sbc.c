@@ -12,7 +12,7 @@
 #include <linux/ratelimit.h>
 #include <linux/crc-t10dif.h>
 #include <linux/t10-pi.h>
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 #include <scsi/scsi_proto.h>
 #include <scsi/scsi_tcq.h>
 
@@ -1136,8 +1136,7 @@ sbc_execute_unmap(struct se_cmd *cmd)
 			goto err;
 		}
 
-		if (lba + range < lba ||
-		    lba + range > dev->transport->get_blocks(dev) + 1) {
+		if (lba + range > dev->transport->get_blocks(dev) + 1) {
 			ret = TCM_ADDRESS_OUT_OF_RANGE;
 			goto err;
 		}

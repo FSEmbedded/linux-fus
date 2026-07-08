@@ -24,14 +24,14 @@
 #define NODE_NAME			"secure-enclave"
 
 #define GET_ASCII_TO_U8(diff, tens_chr, ones_chr) \
-		(((diff) > 2) ? ((((tens_chr) - '0') * 10) + ((ones_chr) - '0')) :\
-		((tens_chr) - '0'))
+		((diff > 2) ? (((tens_chr - '0') * 10) + (ones_chr - '0')) :\
+		(tens_chr - '0'))
 
 #define GET_IDX_FROM_DEV_NODE_NAME(dev_of_node) \
-		((strlen((dev_of_node)->full_name) > strlen(NODE_NAME)) ?\
-		GET_ASCII_TO_U8((strlen((dev_of_node)->full_name) - strlen(NODE_NAME)),\
-				(dev_of_node)->full_name[strlen(NODE_NAME) + 1], \
-				(dev_of_node)->full_name[strlen(NODE_NAME) + 2]) : 0)
+		((strlen(dev_of_node->full_name) > strlen(NODE_NAME)) ?\
+		GET_ASCII_TO_U8((strlen(dev_of_node->full_name) - strlen(NODE_NAME)),\
+				dev_of_node->full_name[strlen(NODE_NAME) + 1], \
+				dev_of_node->full_name[strlen(NODE_NAME) + 2]) : 0)
 
 struct se_clbk_handle {
 	struct completion done;
@@ -79,7 +79,6 @@ struct se_if_device_ctx {
 	struct miscdevice *miscdev;
 	const char *devname;
 
-	/* Mutex lock to restrice single operation per file-device. */
 	struct mutex fops_lock;
 
 	struct se_shared_mem_mgmt_info se_shared_mem_mgmt;
@@ -136,7 +135,7 @@ struct se_if_priv {
 	struct mbox_client se_mb_cl;
 	struct mbox_chan *tx_chan, *rx_chan;
 
-	u32 flags;
+	uint32_t flags;
 	struct se_shared_mem mu_mem;
 	struct gen_pool *mem_pool;
 	const struct se_if_defines *if_defs;
@@ -157,9 +156,9 @@ struct se_if_priv {
 #define SE_DUMP_MU_RCV_BUFS	2
 #define SE_DUMP_KDEBUG_BUFS	3
 
-u32 get_se_soc_id(struct se_if_priv *priv);
+char *get_se_if_name(u8 se_if_id);
+uint32_t get_se_soc_id(struct se_if_priv *priv);
 int se_dump_to_logfl(struct se_if_device_ctx *dev_ctx,
 		     u8 caller_type, int buf_size,
 		     const char *buf, ...);
-char *get_se_if_name(u8 se_if_id);
 #endif

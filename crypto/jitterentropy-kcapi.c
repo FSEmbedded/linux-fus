@@ -42,7 +42,6 @@
 #include <linux/fips.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
-#include <linux/mutex.h>
 #include <linux/slab.h>
 #include <linux/time.h>
 #include <crypto/internal/rng.h>
@@ -54,6 +53,16 @@
 /***************************************************************************
  * Helper function
  ***************************************************************************/
+
+void *jent_kvzalloc(unsigned int len)
+{
+	return kvzalloc(len, GFP_KERNEL);
+}
+
+void jent_kvzfree(void *ptr, unsigned int len)
+{
+	kvfree_sensitive(ptr, len);
+}
 
 void *jent_zalloc(unsigned int len)
 {
@@ -183,7 +192,7 @@ int jent_read_random_block(void *hash_state, char *dst, unsigned int dst_len)
  ***************************************************************************/
 
 struct jitterentropy {
-	struct mutex jent_lock;
+	spinlock_t jent_lock;
 	struct rand_data *entropy_collector;
 	struct crypto_shash *tfm;
 	struct shash_desc *sdesc;
@@ -193,7 +202,7 @@ static void jent_kcapi_cleanup(struct crypto_tfm *tfm)
 {
 	struct jitterentropy *rng = crypto_tfm_ctx(tfm);
 
-	mutex_lock(&rng->jent_lock);
+	spin_lock(&rng->jent_lock);
 
 	if (rng->sdesc) {
 		shash_desc_zero(rng->sdesc);
@@ -208,7 +217,7 @@ static void jent_kcapi_cleanup(struct crypto_tfm *tfm)
 	if (rng->entropy_collector)
 		jent_entropy_collector_free(rng->entropy_collector);
 	rng->entropy_collector = NULL;
-	mutex_unlock(&rng->jent_lock);
+	spin_unlock(&rng->jent_lock);
 }
 
 static int jent_kcapi_init(struct crypto_tfm *tfm)
@@ -218,7 +227,7 @@ static int jent_kcapi_init(struct crypto_tfm *tfm)
 	struct shash_desc *sdesc;
 	int size, ret = 0;
 
-	mutex_init(&rng->jent_lock);
+	spin_lock_init(&rng->jent_lock);
 
 	/*
 	 * Use SHA3-256 as conditioner. We allocate only the generic
@@ -247,12 +256,15 @@ static int jent_kcapi_init(struct crypto_tfm *tfm)
 	crypto_shash_init(sdesc);
 	rng->sdesc = sdesc;
 
-	rng->entropy_collector = jent_entropy_collector_alloc(1, 0, sdesc);
+	rng->entropy_collector =
+		jent_entropy_collector_alloc(CONFIG_CRYPTO_JITTERENTROPY_OSR, 0,
+					     sdesc);
 	if (!rng->entropy_collector) {
 		ret = -ENOMEM;
 		goto err;
 	}
 
+	spin_lock_init(&rng->jent_lock);
 	return 0;
 
 err:
@@ -267,7 +279,7 @@ static int jent_kcapi_random(struct crypto_rng *tfm,
 	struct jitterentropy *rng = crypto_rng_ctx(tfm);
 	int ret = 0;
 
-	mutex_lock(&rng->jent_lock);
+	spin_lock(&rng->jent_lock);
 
 	ret = jent_read_entropy(rng->entropy_collector, rdata, dlen);
 
@@ -293,7 +305,7 @@ static int jent_kcapi_random(struct crypto_rng *tfm,
 		ret = -EINVAL;
 	}
 
-	mutex_unlock(&rng->jent_lock);
+	spin_unlock(&rng->jent_lock);
 
 	return ret;
 }
@@ -335,7 +347,7 @@ static int __init jent_mod_init(void)
 
 	desc->tfm = tfm;
 	crypto_shash_init(desc);
-	ret = jent_entropy_init(desc);
+	ret = jent_entropy_init(CONFIG_CRYPTO_JITTERENTROPY_OSR, 0, desc, NULL);
 	shash_desc_zero(desc);
 	crypto_free_shash(tfm);
 	if (ret) {

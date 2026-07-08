@@ -517,6 +517,7 @@ static const struct st_sensor_settings st_accel_sensors_settings[] = {
 		.wai_addr = ST_SENSORS_DEFAULT_WAI_ADDRESS,
 		.sensors_supported = {
 			[0] = H3LIS331DL_ACCEL_DEV_NAME,
+			[1] = IIS328DQ_ACCEL_DEV_NAME,
 		},
 		.ch = (struct iio_chan_spec *)st_accel_12bit_channels,
 		.odr = {
@@ -557,77 +558,6 @@ static const struct st_sensor_settings st_accel_sensors_settings[] = {
 					.num = ST_ACCEL_FS_AVL_400G,
 					.value = 0x03,
 					.gain = IIO_G_TO_M_S_2(195000),
-				},
-			},
-		},
-		.bdu = {
-			.addr = 0x23,
-			.mask = 0x80,
-		},
-		.drdy_irq = {
-			.int1 = {
-				.addr = 0x22,
-				.mask = 0x02,
-			},
-			.int2 = {
-				.addr = 0x22,
-				.mask = 0x10,
-			},
-			.addr_ihl = 0x22,
-			.mask_ihl = 0x80,
-		},
-		.sim = {
-			.addr = 0x23,
-			.value = BIT(0),
-		},
-		.multi_read_bit = true,
-		.bootime = 2,
-	},
-	{
-		.wai = 0x32,
-		.wai_addr = ST_SENSORS_DEFAULT_WAI_ADDRESS,
-		.sensors_supported = {
-			[0] = IIS328DQ_ACCEL_DEV_NAME,
-		},
-		.ch = (struct iio_chan_spec *)st_accel_12bit_channels,
-		.odr = {
-			.addr = 0x20,
-			.mask = 0x18,
-			.odr_avl = {
-				{ .hz = 50, .value = 0x00, },
-				{ .hz = 100, .value = 0x01, },
-				{ .hz = 400, .value = 0x02, },
-				{ .hz = 1000, .value = 0x03, },
-			},
-		},
-		.pw = {
-			.addr = 0x20,
-			.mask = 0x20,
-			.value_on = ST_SENSORS_DEFAULT_POWER_ON_VALUE,
-			.value_off = ST_SENSORS_DEFAULT_POWER_OFF_VALUE,
-		},
-		.enable_axis = {
-			.addr = ST_SENSORS_DEFAULT_AXIS_ADDR,
-			.mask = ST_SENSORS_DEFAULT_AXIS_MASK,
-		},
-		.fs = {
-			.addr = 0x23,
-			.mask = 0x30,
-			.fs_avl = {
-				[0] = {
-					.num = ST_ACCEL_FS_AVL_100G,
-					.value = 0x00,
-					.gain = IIO_G_TO_M_S_2(980),
-				},
-				[1] = {
-					.num = ST_ACCEL_FS_AVL_200G,
-					.value = 0x01,
-					.gain = IIO_G_TO_M_S_2(1950),
-				},
-				[2] = {
-					.num = ST_ACCEL_FS_AVL_400G,
-					.value = 0x03,
-					.gain = IIO_G_TO_M_S_2(3910),
 				},
 			},
 		},
@@ -990,6 +920,87 @@ static const struct st_sensor_settings st_accel_sensors_settings[] = {
 		},
 		.sim = {
 			.addr = 0x23,
+			.value = BIT(0),
+		},
+		.multi_read_bit = true,
+		.bootime = 2,
+	},
+	{
+		.wai = 0x43,
+		.wai_addr = ST_SENSORS_DEFAULT_WAI_ADDRESS,
+		.sensors_supported = {
+			[0] = LIS2DS12_ACCEL_DEV_NAME,
+		},
+		.ch = (struct iio_chan_spec *)st_accel_16bit_channels,
+		.odr = {
+			.addr = 0x20,
+			.mask = 0xf0,
+			.odr_avl = {
+				{ .hz = 10, .value = 0x01, },
+				{ .hz = 50, .value = 0x02, },
+				{ .hz = 100, .value = 0x03, },
+				{ .hz = 200, .value = 0x04, },
+				{ .hz = 400, .value = 0x05, },
+				{ .hz = 800, .value = 0x06, },
+			},
+		},
+		.pw = {
+			.addr = 0x20,
+			.mask = 0xf0,
+			.value_off = ST_SENSORS_DEFAULT_POWER_OFF_VALUE,
+		},
+		.enable_axis = {
+			.addr = ST_SENSORS_DEFAULT_AXIS_ADDR,
+			.mask = ST_SENSORS_DEFAULT_AXIS_MASK,
+		},
+		.fs = {
+			.addr = 0x20,
+			.mask = 0x0c,
+			.fs_avl = {
+				[0] = {
+					.num = ST_ACCEL_FS_AVL_2G,
+					.value = 0x00,
+					.gain = IIO_G_TO_M_S_2(61),
+				},
+				[1] = {
+					.num = ST_ACCEL_FS_AVL_4G,
+					.value = 0x02,
+					.gain = IIO_G_TO_M_S_2(122),
+				},
+				[2] = {
+					.num = ST_ACCEL_FS_AVL_8G,
+					.value = 0x03,
+					.gain = IIO_G_TO_M_S_2(244),
+				},
+				[3] = {
+					.num = ST_ACCEL_FS_AVL_16G,
+					.value = 0x01,
+					.gain = IIO_G_TO_M_S_2(488),
+				},
+			},
+		},
+		.bdu = {
+			.addr = 0x20,
+			.mask = 0x01,
+		},
+		.drdy_irq = {
+			.int1 = {
+				.addr = 0x23,
+				.mask = 0x01,
+			},
+			.int2 = {
+				.addr = 0x24,
+				.mask = 0x01,
+			},
+			.addr_ihl = 0x22,
+			.mask_ihl = 0x02,
+			.stat_drdy = {
+				.addr = ST_SENSORS_DEFAULT_STAT_ADDR,
+				.mask = 0x01,
+			},
+		},
+		.sim = {
+			.addr = 0x21,
 			.value = BIT(0),
 		},
 		.multi_read_bit = true,

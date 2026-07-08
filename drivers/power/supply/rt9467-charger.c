@@ -376,7 +376,7 @@ static int rt9467_set_value_from_ranges(struct rt9467_chg_data *data,
 	if (rsel == RT9467_RANGE_VMIVR) {
 		ret = linear_range_get_selector_high(range, value, &sel, &found);
 		if (ret)
-			sel = range->max_sel;
+			value = range->max_sel;
 	} else {
 		linear_range_get_selector_within(range, value, &sel);
 	}
@@ -588,10 +588,6 @@ static int rt9467_run_aicl(struct rt9467_chg_data *data)
 	aicl_vth = mivr_vth + RT9467_AICLVTH_GAP_uV;
 	ret = rt9467_set_value_from_ranges(data, F_AICL_VTH,
 					   RT9467_RANGE_AICL_VTH, aicl_vth);
-	if (ret) {
-		dev_err(data->dev, "Failed to set AICL VTH\n");
-		return ret;
-	}
 
 	/* Trigger AICL function */
 	ret = regmap_field_write(data->rm_field[F_AICL_MEAS], 1);
@@ -633,13 +629,6 @@ out:
 	mutex_unlock(&data->ichg_ieoc_lock);
 	return ret;
 }
-
-static const enum power_supply_usb_type rt9467_chg_usb_types[] = {
-	POWER_SUPPLY_USB_TYPE_UNKNOWN,
-	POWER_SUPPLY_USB_TYPE_SDP,
-	POWER_SUPPLY_USB_TYPE_DCP,
-	POWER_SUPPLY_USB_TYPE_CDP,
-};
 
 static const enum power_supply_property rt9467_chg_properties[] = {
 	POWER_SUPPLY_PROP_STATUS,
@@ -749,8 +738,6 @@ static int rt9467_psy_set_property(struct power_supply *psy,
 						    RT9467_RANGE_IPREC, val->intval);
 	case POWER_SUPPLY_PROP_CHARGE_TERM_CURRENT:
 		return rt9467_psy_set_ieoc(data, val->intval);
-	case POWER_SUPPLY_PROP_USB_TYPE:
-		return regmap_field_write(data->rm_field[F_USBCHGEN], val->intval);
 	default:
 		return -EINVAL;
 	}
@@ -768,7 +755,6 @@ static int rt9467_chg_prop_is_writeable(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_INPUT_VOLTAGE_LIMIT:
 	case POWER_SUPPLY_PROP_CHARGE_TERM_CURRENT:
 	case POWER_SUPPLY_PROP_PRECHARGE_CURRENT:
-	case POWER_SUPPLY_PROP_USB_TYPE:
 		return 1;
 	default:
 		return 0;
@@ -778,8 +764,10 @@ static int rt9467_chg_prop_is_writeable(struct power_supply *psy,
 static const struct power_supply_desc rt9467_chg_psy_desc = {
 	.name = "rt9467-charger",
 	.type = POWER_SUPPLY_TYPE_USB,
-	.usb_types = rt9467_chg_usb_types,
-	.num_usb_types = ARRAY_SIZE(rt9467_chg_usb_types),
+	.usb_types = BIT(POWER_SUPPLY_USB_TYPE_SDP) |
+		     BIT(POWER_SUPPLY_USB_TYPE_CDP) |
+		     BIT(POWER_SUPPLY_USB_TYPE_DCP) |
+		     BIT(POWER_SUPPLY_USB_TYPE_UNKNOWN),
 	.properties = rt9467_chg_properties,
 	.num_properties = ARRAY_SIZE(rt9467_chg_properties),
 	.property_is_writeable = rt9467_chg_prop_is_writeable,

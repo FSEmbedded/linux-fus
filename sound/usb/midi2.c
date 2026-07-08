@@ -234,7 +234,7 @@ static void kill_midi_urbs(struct snd_usb_midi2_endpoint *ep, bool suspending)
 	if (!ep)
 		return;
 	if (suspending)
-		atomic_set(&ep->suspended, atomic_read(&ep->running));
+		ep->suspended = ep->running;
 	atomic_set(&ep->running, 0);
 	for (i = 0; i < ep->num_urbs; i++) {
 		if (!ep->urbs[i].urb)
@@ -504,17 +504,15 @@ static void *find_usb_ms_endpoint_descriptor(struct usb_host_endpoint *hostep,
 	while (extralen > 3) {
 		struct usb_ms_endpoint_descriptor *ms_ep =
 			(struct usb_ms_endpoint_descriptor *)extra;
-		int length = ms_ep->bLength;
 
-		if (!length || length > extralen)
-			break;
-
-		if (length > 3 &&
+		if (ms_ep->bLength > 3 &&
 		    ms_ep->bDescriptorType == USB_DT_CS_ENDPOINT &&
 		    ms_ep->bDescriptorSubtype == subtype)
 			return ms_ep;
-		extralen -= length;
-		extra += length;
+		if (!extra[0])
+			break;
+		extralen -= extra[0];
+		extra += extra[0];
 	}
 	return NULL;
 }
@@ -609,12 +607,8 @@ static int parse_group_terminal_block(struct snd_usb_midi2_ump *rmidi,
 		return 0;
 	}
 
-	if (ump->info.protocol && ump->info.protocol != protocol)
-		usb_audio_info(rmidi->umidi->chip,
-			       "Overriding preferred MIDI protocol in GTB %d: %x -> %x\n",
-			       rmidi->usb_block_id, ump->info.protocol,
-			       protocol);
-	ump->info.protocol = protocol;
+	if (!ump->info.protocol)
+		ump->info.protocol = protocol;
 
 	protocol_caps = protocol;
 	switch (desc->bMIDIProtocol) {
@@ -626,13 +620,7 @@ static int parse_group_terminal_block(struct snd_usb_midi2_ump *rmidi,
 		break;
 	}
 
-	if (ump->info.protocol_caps && ump->info.protocol_caps != protocol_caps)
-		usb_audio_info(rmidi->umidi->chip,
-			       "Overriding MIDI protocol caps in GTB %d: %x -> %x\n",
-			       rmidi->usb_block_id, ump->info.protocol_caps,
-			       protocol_caps);
-	ump->info.protocol_caps = protocol_caps;
-
+	ump->info.protocol_caps |= protocol_caps;
 	return 0;
 }
 
@@ -875,11 +863,25 @@ static int create_gtb_block(struct snd_usb_midi2_ump *rmidi, int dir, int blk)
 		fb->info.flags |= SNDRV_UMP_BLOCK_IS_MIDI1 |
 			SNDRV_UMP_BLOCK_IS_LOWSPEED;
 
+	/* if MIDI 2.0 protocol is supported and yet the GTB shows MIDI 1.0,
+	 * treat it as a MIDI 1.0-specific block
+	 */
+	if (rmidi->ump->info.protocol_caps & SNDRV_UMP_EP_INFO_PROTO_MIDI2) {
+		switch (desc->bMIDIProtocol) {
+		case USB_MS_MIDI_PROTO_1_0_64:
+		case USB_MS_MIDI_PROTO_1_0_64_JRTS:
+		case USB_MS_MIDI_PROTO_1_0_128:
+		case USB_MS_MIDI_PROTO_1_0_128_JRTS:
+			fb->info.flags |= SNDRV_UMP_BLOCK_IS_MIDI1;
+			break;
+		}
+	}
+
 	snd_ump_update_group_attrs(rmidi->ump);
 
 	usb_audio_dbg(umidi->chip,
-		      "Created a UMP block %d from GTB, name=%s\n",
-		      blk, fb->info.name);
+		      "Created a UMP block %d from GTB, name=%s, flags=0x%x\n",
+		      blk, fb->info.name, fb->info.flags);
 	return 0;
 }
 
@@ -1089,7 +1091,7 @@ int snd_usb_midi_v2_create(struct snd_usb_audio *chip,
 	}
 	if ((quirk && quirk->type != QUIRK_MIDI_STANDARD_INTERFACE) ||
 	    iface->num_altsetting < 2) {
-		usb_audio_info(chip, "Quirk or no altest; falling back to MIDI 1.0\n");
+		usb_audio_info(chip, "Quirk or no altset; falling back to MIDI 1.0\n");
 		goto fallback_to_midi1;
 	}
 	hostif = &iface->altsetting[1];
@@ -1195,11 +1197,10 @@ void snd_usb_midi_v2_suspend_all(struct snd_usb_audio *chip)
 
 static void resume_midi2_endpoint(struct snd_usb_midi2_endpoint *ep)
 {
-	atomic_set(&ep->running, atomic_read(&ep->suspended));
-	atomic_set(&ep->suspended, 0);
-
-	if (ep->direction == STR_IN || atomic_read(&ep->running))
+	ep->running = ep->suspended;
+	if (ep->direction == STR_IN)
 		submit_io_urbs(ep);
+	/* FIXME: does it all? */
 }
 
 void snd_usb_midi_v2_resume_all(struct snd_usb_audio *chip)

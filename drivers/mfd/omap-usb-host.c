@@ -13,7 +13,6 @@
 #include <linux/delay.h>
 #include <linux/clk.h>
 #include <linux/dma-mapping.h>
-#include <linux/gpio.h>
 #include <linux/platform_device.h>
 #include <linux/platform_data/usb-omap.h>
 #include <linux/pm_runtime.h>
@@ -699,7 +698,7 @@ static int usbhs_omap_probe(struct platform_device *pdev)
 	}
 
 	for (i = 0; i < omap->nports; i++) {
-		char clkname[30];
+		char clkname[40];
 
 		/* clock names are indexed from 1*/
 		snprintf(clkname, sizeof(clkname),
@@ -820,10 +819,8 @@ static void usbhs_omap_remove(struct platform_device *pdev)
 {
 	pm_runtime_disable(&pdev->dev);
 
-	if (pdev->dev.of_node)
-		of_platform_depopulate(&pdev->dev);
-	else
-		device_for_each_child(&pdev->dev, NULL, usbhs_omap_remove_child);
+	/* remove children */
+	device_for_each_child(&pdev->dev, NULL, usbhs_omap_remove_child);
 }
 
 static const struct dev_pm_ops usbhsomap_dev_pm_ops = {

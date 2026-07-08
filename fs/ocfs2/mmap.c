@@ -30,8 +30,7 @@
 
 static vm_fault_t ocfs2_fault(struct vm_fault *vmf)
 {
-	unsigned long long ip_blkno =
-		OCFS2_I(file_inode(vmf->vma->vm_file))->ip_blkno;
+	struct vm_area_struct *vma = vmf->vma;
 	sigset_t oldset;
 	vm_fault_t ret;
 
@@ -39,9 +38,11 @@ static vm_fault_t ocfs2_fault(struct vm_fault *vmf)
 	ret = filemap_fault(vmf);
 	ocfs2_unblock_signals(&oldset);
 
-	trace_ocfs2_fault(ip_blkno, vmf->page, vmf->pgoff);
+	trace_ocfs2_fault(OCFS2_I(vma->vm_file->f_mapping->host)->ip_blkno,
+			  vma, vmf->page, vmf->pgoff);
 	return ret;
 }
+
 static vm_fault_t __ocfs2_page_mkwrite(struct file *file,
 			struct buffer_head *di_bh, struct page *page)
 {
@@ -52,7 +53,7 @@ static vm_fault_t __ocfs2_page_mkwrite(struct file *file,
 	loff_t pos = page_offset(page);
 	unsigned int len = PAGE_SIZE;
 	pgoff_t last_index;
-	struct page *locked_page = NULL;
+	struct folio *locked_folio = NULL;
 	void *fsdata;
 	loff_t size = i_size_read(inode);
 
@@ -90,7 +91,7 @@ static vm_fault_t __ocfs2_page_mkwrite(struct file *file,
 		len = ((size - 1) & ~PAGE_MASK) + 1;
 
 	err = ocfs2_write_begin_nolock(mapping, pos, len, OCFS2_WRITE_MMAP,
-				       &locked_page, &fsdata, di_bh, page);
+				       &locked_folio, &fsdata, di_bh, page);
 	if (err) {
 		if (err != -ENOSPC)
 			mlog_errno(err);
@@ -98,7 +99,7 @@ static vm_fault_t __ocfs2_page_mkwrite(struct file *file,
 		goto out;
 	}
 
-	if (!locked_page) {
+	if (!locked_folio) {
 		ret = VM_FAULT_NOPAGE;
 		goto out;
 	}

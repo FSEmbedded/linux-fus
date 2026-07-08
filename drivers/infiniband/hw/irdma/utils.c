@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0 or Linux-OpenIB
+// SPDX-License-Identifier: GPL-2.0 OR Linux-OpenIB
 /* Copyright (c) 2015 - 2021 Intel Corporation */
 #include "main.h"
 
@@ -251,7 +251,7 @@ int irdma_net_event(struct notifier_block *notifier, unsigned long event,
 		    void *ptr)
 {
 	struct neighbour *neigh = ptr;
-	struct net_device *real_dev, *netdev;
+	struct net_device *real_dev, *netdev = (struct net_device *)neigh->dev;
 	struct irdma_device *iwdev;
 	struct ib_device *ibdev;
 	__be32 *p;
@@ -260,7 +260,6 @@ int irdma_net_event(struct notifier_block *notifier, unsigned long event,
 
 	switch (event) {
 	case NETEVENT_NEIGH_UPDATE:
-		netdev = neigh->dev;
 		real_dev = rdma_vlan_dev_real_dev(netdev);
 		if (!real_dev)
 			real_dev = netdev;
@@ -1394,17 +1393,12 @@ int irdma_ieq_check_mpacrc(struct shash_desc *desc, void *addr, u32 len,
 			   u32 val)
 {
 	u32 crc = 0;
-	int ret;
-	int ret_code = 0;
 
-	crypto_shash_init(desc);
-	ret = crypto_shash_update(desc, addr, len);
-	if (!ret)
-		crypto_shash_final(desc, (u8 *)&crc);
+	crypto_shash_digest(desc, addr, len, (u8 *)&crc);
 	if (crc != val)
-		ret_code = -EINVAL;
+		return -EINVAL;
 
-	return ret_code;
+	return 0;
 }
 
 /**
@@ -2345,6 +2339,8 @@ void irdma_modify_qp_to_err(struct irdma_sc_qp *sc_qp)
 	struct irdma_qp *qp = sc_qp->qp_uk.back_qp;
 	struct ib_qp_attr attr;
 
+	if (qp->iwdev->rf->reset)
+		return;
 	attr.qp_state = IB_QPS_ERR;
 
 	if (rdma_protocol_roce(qp->ibqp.device, 1))

@@ -19,10 +19,10 @@ properties:
   reg:
     maxItems: 1
 
-  AVDD-supply:
+  avdd-supply:
     description: A 1.8V supply that powers up the AVDD pin.
 
-  DVDD-supply:
+  dvdd-supply:
     description: A 1.2V supply that powers up the DVDD pin.
 
   reset-gpios:

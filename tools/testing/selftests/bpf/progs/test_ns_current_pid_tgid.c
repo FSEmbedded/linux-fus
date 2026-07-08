@@ -5,6 +5,13 @@
 #include <stdint.h>
 #include <bpf/bpf_helpers.h>
 
+struct {
+	__uint(type, BPF_MAP_TYPE_SOCKMAP);
+	__uint(max_entries, 2);
+	__type(key, __u32);
+	__type(value, __u32);
+} sock_map SEC(".maps");
+
 __u64 user_pid = 0;
 __u64 user_tgid = 0;
 __u64 dev = 0;
@@ -26,6 +33,20 @@ int tp_handler(const void *ctx)
 {
 	get_pid_tgid();
 	return 0;
+}
+
+SEC("?cgroup/bind4")
+int cgroup_bind4(struct bpf_sock_addr *ctx)
+{
+	get_pid_tgid();
+	return 1;
+}
+
+SEC("?sk_msg")
+int sk_msg(struct sk_msg_md *msg)
+{
+	get_pid_tgid();
+	return SK_PASS;
 }
 
 char _license[] SEC("license") = "GPL";

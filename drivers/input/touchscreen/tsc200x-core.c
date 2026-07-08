@@ -106,11 +106,11 @@ struct tsc200x {
 
 	bool			pen_down;
 
-	struct regulator	*vio;
 
 	struct gpio_desc	*reset_gpio;
 	int			(*tsc200x_cmd)(struct device *dev, u8 cmd);
 	int			irq;
+	bool			wake_irq_enabled;
 };
 
 static void tsc200x_update_pen_state(struct tsc200x *ts,
@@ -138,7 +138,6 @@ static void tsc200x_update_pen_state(struct tsc200x *ts,
 static irqreturn_t tsc200x_irq_thread(int irq, void *_ts)
 {
 	struct tsc200x *ts = _ts;
-	unsigned long flags;
 	unsigned int pressure;
 	struct tsc200x_data tsdata;
 	int error;
@@ -184,13 +183,13 @@ static irqreturn_t tsc200x_irq_thread(int irq, void *_ts)
 	if (unlikely(pressure > MAX_12BIT))
 		goto out;
 
-	spin_lock_irqsave(&ts->lock, flags);
+	scoped_guard(spinlock_irqsave, &ts->lock) {
 
 	tsc200x_update_pen_state(ts, tsdata.x, tsdata.y, pressure);
 	mod_timer(&ts->penup_timer,
 		  jiffies + msecs_to_jiffies(TSC200X_PENUP_TIME_MS));
 
-	spin_unlock_irqrestore(&ts->lock, flags);
+	}
 
 	ts->last_valid_interrupt = jiffies;
 out:
@@ -200,11 +199,9 @@ out:
 static void tsc200x_penup_timer(struct timer_list *t)
 {
 	struct tsc200x *ts = from_timer(ts, t, penup_timer);
-	unsigned long flags;
 
-	spin_lock_irqsave(&ts->lock, flags);
+	guard(spinlock_irqsave)(&ts->lock);
 	tsc200x_update_pen_state(ts, 0, 0, 0);
-	spin_unlock_irqrestore(&ts->lock, flags);
 }
 
 static u_int16_t check_config_reg(struct tsc200x *ts)
@@ -219,7 +216,6 @@ static u_int16_t check_config_reg(struct tsc200x *ts)
 
 	return cfr0_init_val;
 }
-
 static void tsc200x_start_scan(struct tsc200x *ts)
 {
 	u_int16_t cfr0_init_val = check_config_reg(ts);
@@ -248,12 +244,11 @@ static void __tsc200x_disable(struct tsc200x *ts)
 {
 	tsc200x_stop_scan(ts);
 
-	disable_irq(ts->irq);
+	guard(disable_irq)(&ts->irq);
 	del_timer_sync(&ts->penup_timer);
 
 	cancel_delayed_work_sync(&ts->esd_work);
 
-	enable_irq(ts->irq);
 }
 
 /* must be called with ts->mutex held */
@@ -269,80 +264,79 @@ static void __tsc200x_enable(struct tsc200x *ts)
 	}
 }
 
-static ssize_t tsc200x_selftest_show(struct device *dev,
-				     struct device_attribute *attr,
-				     char *buf)
+/*
+ * Test TSC200X communications via temp high register.
+ */
+static int tsc200x_do_selftest(struct tsc200x *ts)
 {
-	struct tsc200x *ts = dev_get_drvdata(dev);
-	unsigned int temp_high;
 	unsigned int temp_high_orig;
 	unsigned int temp_high_test;
-	bool success = true;
+	unsigned int temp_high;
 	int error;
 
-	mutex_lock(&ts->mutex);
-
-	/*
-	 * Test TSC200X communications via temp high register.
-	 */
-	__tsc200x_disable(ts);
 
 	error = regmap_read(ts->regmap, TSC200X_REG_TEMP_HIGH, &temp_high_orig);
 	if (error) {
-		dev_warn(dev, "selftest failed: read error %d\n", error);
-		success = false;
-		goto out;
+		dev_warn(ts->dev, "selftest failed: read error %d\n", error);
+		return error;
 	}
 
 	temp_high_test = (temp_high_orig - 1) & MAX_12BIT;
 
 	error = regmap_write(ts->regmap, TSC200X_REG_TEMP_HIGH, temp_high_test);
 	if (error) {
-		dev_warn(dev, "selftest failed: write error %d\n", error);
-		success = false;
-		goto out;
+		dev_warn(ts->dev, "selftest failed: write error %d\n", error);
+		return error;
 	}
 
 	error = regmap_read(ts->regmap, TSC200X_REG_TEMP_HIGH, &temp_high);
 	if (error) {
-		dev_warn(dev, "selftest failed: read error %d after write\n",
-			 error);
-		success = false;
-		goto out;
-	}
-
-	if (temp_high != temp_high_test) {
-		dev_warn(dev, "selftest failed: %d != %d\n",
-			 temp_high, temp_high_test);
-		success = false;
+		dev_warn(ts->dev,
+			 "selftest failed: read error %d after write\n", error);
+		return error;
 	}
 
 	/* hardware reset */
 	tsc200x_reset(ts);
+	if (temp_high != temp_high_test) {
+		dev_warn(ts->dev, "selftest failed: %d != %d\n",
+			 temp_high, temp_high_test);
+		return -EINVAL;
+	}
 
-	if (!success)
-		goto out;
 
 	/* test that the reset really happened */
 	error = regmap_read(ts->regmap, TSC200X_REG_TEMP_HIGH, &temp_high);
 	if (error) {
-		dev_warn(dev, "selftest failed: read error %d after reset\n",
-			 error);
-		success = false;
-		goto out;
+		dev_warn(ts->dev,
+			 "selftest failed: read error %d after reset\n", error);
+		return error;
 	}
 
 	if (temp_high != temp_high_orig) {
-		dev_warn(dev, "selftest failed after reset: %d != %d\n",
+		dev_warn(ts->dev, "selftest failed after reset: %d != %d\n",
 			 temp_high, temp_high_orig);
-		success = false;
+		return -EINVAL;
 	}
 
-out:
-	__tsc200x_enable(ts);
-	mutex_unlock(&ts->mutex);
+	return 0;
+}
 
-	return sprintf(buf, "%d\n", success);
+static ssize_t tsc200x_selftest_show(struct device *dev,
+				     struct device_attribute *attr,
+				     char *buf)
+{
+	struct tsc200x *ts = dev_get_drvdata(dev);
+	int error;
+
+	scoped_guard(mutex, &ts->mutex) {
+		__tsc200x_disable(ts);
+
+		error = tsc200x_do_selftest(ts);
+	__tsc200x_enable(ts);
+	}
+
+	return sprintf(buf, "%d\n", !error);
 }
 
 static DEVICE_ATTR(selftest, S_IRUGO, tsc200x_selftest_show, NULL);
@@ -372,6 +366,11 @@ static const struct attribute_group tsc200x_attr_group = {
 	.attrs		= tsc200x_attrs,
 };
 
+const struct attribute_group *tsc200x_groups[] = {
+	&tsc200x_attr_group,
+	NULL
+};
+EXPORT_SYMBOL_GPL(tsc200x_groups);
 static void tsc200x_esd_work(struct work_struct *work)
 {
 	struct tsc200x *ts = container_of(work, struct tsc200x, esd_work.work);
@@ -379,47 +378,46 @@ static void tsc200x_esd_work(struct work_struct *work)
 	unsigned int r;
 	u_int16_t cfr0_init_val;
 
-	if (!mutex_trylock(&ts->mutex)) {
 		/*
 		 * If the mutex is taken, it means that disable or enable is in
 		 * progress. In that case just reschedule the work. If the work
 		 * is not needed, it will be canceled by disable.
 		 */
-		goto reschedule;
-	}
+	scoped_guard(mutex_try, &ts->mutex) {
 
 	if (time_is_after_jiffies(ts->last_valid_interrupt +
 				  msecs_to_jiffies(ts->esd_timeout)))
-		goto out;
+			break;
 
 	cfr0_init_val = check_config_reg(ts);
-	/* We should be able to read register without disabling interrupts. */
+		/*
+		 * We should be able to read register without disabling
+		 * interrupts.
+		 */
 	error = regmap_read(ts->regmap, TSC200X_REG_CFR0, &r);
 	if (!error &&
 	    !((r ^ cfr0_init_val) & TSC200X_CFR0_RW_MASK)) {
-		goto out;
+			break;
 	}
 
 	/*
-	 * If we could not read our known value from configuration register 0
-	 * then we should reset the controller as if from power-up and start
-	 * scanning again.
+		 * If we could not read our known value from configuration
+		 * register 0 then we should reset the controller as if from
+		 * power-up and start scanning again.
 	 */
 	dev_info(ts->dev, "TSC200X not responding - resetting\n");
 
-	disable_irq(ts->irq);
+		scoped_guard(disable_irq, &ts->irq) {
 	del_timer_sync(&ts->penup_timer);
 
 	tsc200x_update_pen_state(ts, 0, 0, 0);
 
 	tsc200x_reset(ts);
+		}
 
-	enable_irq(ts->irq);
 	tsc200x_start_scan(ts);
+	}
 
-out:
-	mutex_unlock(&ts->mutex);
-reschedule:
 	/* re-arm the watchdog */
 	schedule_delayed_work(&ts->esd_work,
 			      round_jiffies_relative(
@@ -430,14 +428,13 @@ static int tsc200x_open(struct input_dev *input)
 {
 	struct tsc200x *ts = input_get_drvdata(input);
 
-	mutex_lock(&ts->mutex);
+	guard(mutex)(&ts->mutex);
 
 	if (!ts->suspended)
 		__tsc200x_enable(ts);
 
 	ts->opened = true;
 
-	mutex_unlock(&ts->mutex);
 
 	return 0;
 }
@@ -446,14 +443,13 @@ static void tsc200x_close(struct input_dev *input)
 {
 	struct tsc200x *ts = input_get_drvdata(input);
 
-	mutex_lock(&ts->mutex);
+	guard(mutex)(&ts->mutex);
 
 	if (!ts->suspended)
 		__tsc200x_disable(ts);
 
 	ts->opened = false;
 
-	mutex_unlock(&ts->mutex);
 }
 
 int tsc200x_probe(struct device *dev, int irq, const struct input_id *tsc_id,
@@ -512,20 +508,6 @@ int tsc200x_probe(struct device *dev, int irq, const struct input_id *tsc_id,
 	ts->sense_time_sel = (error ? (TSC200X_CFR0_SNS_32US >>
 			TSC200X_CFR0_SNS_OFFSET) : sense_time_sel) & 0x7;
 
-	ts->reset_gpio = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_HIGH);
-	if (IS_ERR(ts->reset_gpio)) {
-		error = PTR_ERR(ts->reset_gpio);
-		dev_err(dev, "error acquiring reset gpio: %d\n", error);
-		return error;
-	}
-
-	ts->vio = devm_regulator_get(dev, "vio");
-	if (IS_ERR(ts->vio)) {
-		error = PTR_ERR(ts->vio);
-		dev_err(dev, "error acquiring vio regulator: %d", error);
-		return error;
-	}
-
 	mutex_init(&ts->mutex);
 
 	spin_lock_init(&ts->lock);
@@ -553,7 +535,6 @@ int tsc200x_probe(struct device *dev, int irq, const struct input_id *tsc_id,
 	input_dev->close = tsc200x_close;
 
 	input_set_drvdata(input_dev, ts);
-
 	tsc200x_reset(ts);
 
 	__set_bit(INPUT_PROP_DIRECT, input_dev->propbit);
@@ -568,70 +549,61 @@ int tsc200x_probe(struct device *dev, int irq, const struct input_id *tsc_id,
 
 	touchscreen_parse_properties(input_dev, false, &ts->prop);
 
+	ts->reset_gpio = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_HIGH);
+	error = PTR_ERR_OR_ZERO(ts->reset_gpio);
+	if (error) {
+		dev_err(dev, "error acquiring reset gpio: %d\n", error);
+		return error;
+	}
+
+	error = devm_regulator_get_enable(dev, "vio");
+	if (error) {
+		dev_err(dev, "error acquiring vio regulator: %d\n", error);
+		return error;
+	}
+
+	tsc200x_reset(ts);
 	/* Ensure the touchscreen is off */
 	tsc200x_stop_scan(ts);
 
-	error = devm_request_threaded_irq(dev, irq, NULL,
-					  tsc200x_irq_thread,
-					  IRQF_TRIGGER_RISING | IRQF_ONESHOT,
-					  "tsc200x", ts);
+	error = devm_request_threaded_irq(dev, irq, NULL, tsc200x_irq_thread,
+					  IRQF_ONESHOT, "tsc200x", ts);
 	if (error) {
 		dev_err(dev, "Failed to request irq, err: %d\n", error);
 		return error;
 	}
 
-	error = regulator_enable(ts->vio);
-	if (error)
-		return error;
 
 	dev_set_drvdata(dev, ts);
-	error = sysfs_create_group(&dev->kobj, &tsc200x_attr_group);
-	if (error) {
-		dev_err(dev,
-			"Failed to create sysfs attributes, err: %d\n", error);
-		goto disable_regulator;
-	}
 
 	error = input_register_device(ts->idev);
 	if (error) {
 		dev_err(dev,
 			"Failed to register input device, err: %d\n", error);
-		goto err_remove_sysfs;
+		return error;
 	}
 
-	irq_set_irq_wake(irq, 1);
+	device_init_wakeup(dev,
+			   device_property_read_bool(dev, "wakeup-source"));
 	return 0;
 
-err_remove_sysfs:
-	sysfs_remove_group(&dev->kobj, &tsc200x_attr_group);
-disable_regulator:
-	regulator_disable(ts->vio);
-	return error;
 }
 EXPORT_SYMBOL_GPL(tsc200x_probe);
 
-void tsc200x_remove(struct device *dev)
-{
-	struct tsc200x *ts = dev_get_drvdata(dev);
-
-	sysfs_remove_group(&dev->kobj, &tsc200x_attr_group);
-
-	regulator_disable(ts->vio);
-}
-EXPORT_SYMBOL_GPL(tsc200x_remove);
 
 static int tsc200x_suspend(struct device *dev)
 {
 	struct tsc200x *ts = dev_get_drvdata(dev);
 
-	mutex_lock(&ts->mutex);
+	guard(mutex)(&ts->mutex);
 
 	if (!ts->suspended && ts->opened)
 		__tsc200x_disable(ts);
 
 	ts->suspended = true;
 
-	mutex_unlock(&ts->mutex);
+	if (device_may_wakeup(dev))
+		ts->wake_irq_enabled = enable_irq_wake(ts->irq) == 0;
 
 	return 0;
 }
@@ -640,14 +612,18 @@ static int tsc200x_resume(struct device *dev)
 {
 	struct tsc200x *ts = dev_get_drvdata(dev);
 
-	mutex_lock(&ts->mutex);
+	guard(mutex)(&ts->mutex);
+
+	if (ts->wake_irq_enabled) {
+		disable_irq_wake(ts->irq);
+		ts->wake_irq_enabled = false;
+	}
 
 	if (ts->suspended && ts->opened)
 		__tsc200x_enable(ts);
 
 	ts->suspended = false;
 
-	mutex_unlock(&ts->mutex);
 
 	return 0;
 }

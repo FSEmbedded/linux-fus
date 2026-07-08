@@ -6,29 +6,35 @@
 //                         Cirrus Logic International Semiconductor Ltd.
 
 #include <linux/build_bug.h>
+#include <linux/completion.h>
 #include <linux/delay.h>
 #include <linux/errno.h>
 #include <linux/irq.h>
 #include <linux/jiffies.h>
 #include <linux/mfd/cs42l43.h>
 #include <linux/mfd/cs42l43-regs.h>
+#include <linux/mutex.h>
 #include <linux/pm_runtime.h>
 #include <linux/property.h>
+#include <linux/regmap.h>
+#include <linux/time.h>
+#include <linux/workqueue.h>
 #include <sound/control.h>
 #include <sound/jack.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 #include <sound/soc-component.h>
+#include <sound/soc-jack.h>
 #include <sound/soc.h>
 
 #include "cs42l43.h"
 
 static const unsigned int cs42l43_accdet_us[] = {
-	20, 100, 1000, 10000, 50000, 75000, 100000, 200000
+	20, 100, 1000, 10000, 50000, 75000, 100000, 200000,
 };
 
 static const unsigned int cs42l43_accdet_db_ms[] = {
-	0, 125, 250, 500, 750, 1000, 1250, 1500
+	0, 125, 250, 500, 750, 1000, 1250, 1500,
 };
 
 static const unsigned int cs42l43_accdet_ramp_ms[] = { 10, 40, 90, 170 };
@@ -101,8 +107,13 @@ int cs42l43_set_jack(struct snd_soc_component *component,
 			goto error;
 		}
 
-		device_property_read_u32_array(cs42l43->dev, "cirrus,buttons-ohms",
-					       priv->buttons, ret);
+		ret = device_property_read_u32_array(cs42l43->dev, "cirrus,buttons-ohms",
+						     priv->buttons, ret);
+		if (ret < 0) {
+			dev_err(priv->dev, "Property cirrus,button-ohms malformed: %d\n",
+				ret);
+			goto error;
+		}
 	} else {
 		priv->buttons[0] = 70;
 		priv->buttons[1] = 185;
@@ -110,7 +121,7 @@ int cs42l43_set_jack(struct snd_soc_component *component,
 		priv->buttons[3] = 735;
 	}
 
-	ret = cs42l43_find_index(priv, "cirrus,detect-us", 10000, &priv->detect_us,
+	ret = cs42l43_find_index(priv, "cirrus,detect-us", 50000, &priv->detect_us,
 				 cs42l43_accdet_us, ARRAY_SIZE(cs42l43_accdet_us));
 	if (ret < 0)
 		goto error;
@@ -127,7 +138,7 @@ int cs42l43_set_jack(struct snd_soc_component *component,
 
 	hs2 |= ret << CS42L43_HSBIAS_RAMP_SHIFT;
 
-	ret = cs42l43_find_index(priv, "cirrus,bias-sense-microamp", 0,
+	ret = cs42l43_find_index(priv, "cirrus,bias-sense-microamp", 14,
 				 &priv->bias_sense_ua, cs42l43_accdet_bias_sense,
 				 ARRAY_SIZE(cs42l43_accdet_bias_sense));
 	if (ret < 0)
@@ -237,7 +248,7 @@ error:
 	return ret;
 }
 
-static void cs42l43_start_hs_bias(struct cs42l43_codec *priv, bool force_high)
+static void cs42l43_start_hs_bias(struct cs42l43_codec *priv, bool type_detect)
 {
 	struct cs42l43 *cs42l43 = priv->core;
 	unsigned int val = 0x3 << CS42L43_HSBIAS_MODE_SHIFT;
@@ -247,8 +258,18 @@ static void cs42l43_start_hs_bias(struct cs42l43_codec *priv, bool force_high)
 	regmap_update_bits(cs42l43->regmap, CS42L43_HS2,
 			   CS42L43_HS_CLAMP_DISABLE_MASK, CS42L43_HS_CLAMP_DISABLE_MASK);
 
-	if (!force_high && priv->bias_low)
-		val = 0x2 << CS42L43_HSBIAS_MODE_SHIFT;
+	if (!type_detect) {
+		if (priv->bias_low)
+			val = 0x2 << CS42L43_HSBIAS_MODE_SHIFT;
+
+		if (priv->bias_sense_ua)
+			regmap_update_bits(cs42l43->regmap,
+					   CS42L43_HS_BIAS_SENSE_AND_CLAMP_AUTOCONTROL,
+					   CS42L43_HSBIAS_SENSE_EN_MASK |
+					   CS42L43_AUTO_HSBIAS_CLAMP_EN_MASK,
+					   CS42L43_HSBIAS_SENSE_EN_MASK |
+					   CS42L43_AUTO_HSBIAS_CLAMP_EN_MASK);
+	}
 
 	regmap_update_bits(cs42l43->regmap, CS42L43_MIC_DETECT_CONTROL_1,
 			   CS42L43_HSBIAS_MODE_MASK, val);
@@ -267,6 +288,13 @@ static void cs42l43_stop_hs_bias(struct cs42l43_codec *priv)
 
 	regmap_update_bits(cs42l43->regmap, CS42L43_HS2,
 			   CS42L43_HS_CLAMP_DISABLE_MASK, 0);
+
+	if (priv->bias_sense_ua) {
+		regmap_update_bits(cs42l43->regmap,
+				   CS42L43_HS_BIAS_SENSE_AND_CLAMP_AUTOCONTROL,
+				   CS42L43_HSBIAS_SENSE_EN_MASK |
+				   CS42L43_AUTO_HSBIAS_CLAMP_EN_MASK, 0);
+	}
 }
 
 irqreturn_t cs42l43_bias_detect_clamp(int irq, void *data)
@@ -274,7 +302,7 @@ irqreturn_t cs42l43_bias_detect_clamp(int irq, void *data)
 	struct cs42l43_codec *priv = data;
 
 	queue_delayed_work(system_wq, &priv->bias_sense_timeout,
-			   msecs_to_jiffies(250));
+			   msecs_to_jiffies(1000));
 
 	return IRQ_HANDLED;
 }
@@ -318,15 +346,6 @@ static void cs42l43_start_button_detect(struct cs42l43_codec *priv)
 	regmap_update_bits(cs42l43->regmap, CS42L43_MIC_DETECT_CONTROL_1,
 			   CS42L43_BUTTON_DETECT_MODE_MASK |
 			   CS42L43_MIC_LVL_DET_DISABLE_MASK, val);
-
-	if (priv->bias_sense_ua) {
-		regmap_update_bits(cs42l43->regmap,
-				   CS42L43_HS_BIAS_SENSE_AND_CLAMP_AUTOCONTROL,
-				   CS42L43_HSBIAS_SENSE_EN_MASK |
-				   CS42L43_AUTO_HSBIAS_CLAMP_EN_MASK,
-				   CS42L43_HSBIAS_SENSE_EN_MASK |
-				   CS42L43_AUTO_HSBIAS_CLAMP_EN_MASK);
-	}
 }
 
 static void cs42l43_stop_button_detect(struct cs42l43_codec *priv)
@@ -334,13 +353,6 @@ static void cs42l43_stop_button_detect(struct cs42l43_codec *priv)
 	struct cs42l43 *cs42l43 = priv->core;
 
 	dev_dbg(priv->dev, "Stop button detect\n");
-
-	if (priv->bias_sense_ua) {
-		regmap_update_bits(cs42l43->regmap,
-				   CS42L43_HS_BIAS_SENSE_AND_CLAMP_AUTOCONTROL,
-				   CS42L43_HSBIAS_SENSE_EN_MASK |
-				   CS42L43_AUTO_HSBIAS_CLAMP_EN_MASK, 0);
-	}
 
 	regmap_update_bits(cs42l43->regmap, CS42L43_MIC_DETECT_CONTROL_1,
 			   CS42L43_BUTTON_DETECT_MODE_MASK |
@@ -421,7 +433,7 @@ irqreturn_t cs42l43_button_press(int irq, void *data)
 
 	// Wait for 2 full cycles of comb filter to ensure good reading
 	queue_delayed_work(system_wq, &priv->button_press_work,
-			   msecs_to_jiffies(10));
+			   msecs_to_jiffies(20));
 
 	return IRQ_HANDLED;
 }
@@ -496,23 +508,7 @@ void cs42l43_bias_sense_timeout(struct work_struct *work)
 	pm_runtime_put_autosuspend(priv->dev);
 }
 
-static const struct reg_sequence cs42l43_3pole_patch[] = {
-	{ 0x4000,	0x00000055 },
-	{ 0x4000,	0x000000AA },
-	{ 0x17420,	0x8500F300 },
-	{ 0x17424,	0x36003E00 },
-	{ 0x4000,	0x00000000 },
-};
-
-static const struct reg_sequence cs42l43_4pole_patch[] = {
-	{ 0x4000,	0x00000055 },
-	{ 0x4000,	0x000000AA },
-	{ 0x17420,	0x7800E600 },
-	{ 0x17424,	0x36003800 },
-	{ 0x4000,	0x00000000 },
-};
-
-static void cs42l43_start_load_detect(struct cs42l43_codec *priv, bool mic)
+static void cs42l43_start_load_detect(struct cs42l43_codec *priv)
 {
 	struct cs42l43 *cs42l43 = priv->core;
 
@@ -522,7 +518,7 @@ static void cs42l43_start_load_detect(struct cs42l43_codec *priv, bool mic)
 
 	priv->load_detect_running = true;
 
-	if (priv->hp_ena) {
+	if (priv->hp_ena && !priv->hp_ilimited) {
 		unsigned long time_left;
 
 		reinit_completion(&priv->hp_shutdown);
@@ -535,15 +531,6 @@ static void cs42l43_start_load_detect(struct cs42l43_codec *priv, bool mic)
 		if (!time_left)
 			dev_err(priv->dev, "Load detect HP power down timed out\n");
 	}
-
-	if (mic)
-		regmap_multi_reg_write_bypassed(cs42l43->regmap,
-						cs42l43_4pole_patch,
-						ARRAY_SIZE(cs42l43_4pole_patch));
-	else
-		regmap_multi_reg_write_bypassed(cs42l43->regmap,
-						cs42l43_3pole_patch,
-						ARRAY_SIZE(cs42l43_3pole_patch));
 
 	regmap_update_bits(cs42l43->regmap, CS42L43_BLOCK_EN3,
 			   CS42L43_ADC1_EN_MASK | CS42L43_ADC2_EN_MASK, 0);
@@ -596,7 +583,7 @@ static void cs42l43_stop_load_detect(struct cs42l43_codec *priv)
 			   CS42L43_ADC1_EN_MASK | CS42L43_ADC2_EN_MASK,
 			   priv->adc_ena);
 
-	if (priv->hp_ena) {
+	if (priv->hp_ena && !priv->hp_ilimited) {
 		unsigned long time_left;
 
 		reinit_completion(&priv->hp_startup);
@@ -623,7 +610,7 @@ static int cs42l43_run_load_detect(struct cs42l43_codec *priv, bool mic)
 
 	reinit_completion(&priv->load_detect);
 
-	cs42l43_start_load_detect(priv, mic);
+	cs42l43_start_load_detect(priv);
 	time_left = wait_for_completion_timeout(&priv->load_detect,
 						msecs_to_jiffies(CS42L43_LOAD_TIMEOUT_MS));
 	cs42l43_stop_load_detect(priv);
@@ -647,11 +634,11 @@ static int cs42l43_run_load_detect(struct cs42l43_codec *priv, bool mic)
 	}
 
 	switch (val & CS42L43_AMP3_RES_DET_MASK) {
-	case 0x0: // < 22 Ohm impedance
-	case 0x1: // < 150 Ohm impedance
-	case 0x2: // < 1000 Ohm impedance
+	case 0x0: // low impedance
+	case 0x1: // high impedance
 		return CS42L43_JACK_HEADPHONE;
-	case 0x3: // > 1000 Ohm impedance
+	case 0x2: // lineout
+	case 0x3: // Open circuit
 		return CS42L43_JACK_LINEOUT;
 	default:
 		return -EINVAL;
@@ -661,7 +648,7 @@ static int cs42l43_run_load_detect(struct cs42l43_codec *priv, bool mic)
 static int cs42l43_run_type_detect(struct cs42l43_codec *priv)
 {
 	struct cs42l43 *cs42l43 = priv->core;
-	int timeout_ms = ((2 * priv->detect_us) / 1000) + 200;
+	int timeout_ms = ((2 * priv->detect_us) / USEC_PER_MSEC) + 200;
 	unsigned int type = 0xff;
 	unsigned long time_left;
 
@@ -699,7 +686,6 @@ static int cs42l43_run_type_detect(struct cs42l43_codec *priv)
 	switch (type & CS42L43_HSDET_TYPE_STS_MASK) {
 	case 0x0: // CTIA
 	case 0x1: // OMTP
-	case 0x4:
 		return cs42l43_run_load_detect(priv, true);
 	case 0x2: // 3-pole
 		return cs42l43_run_load_detect(priv, false);
@@ -881,6 +867,9 @@ static const char * const cs42l43_jack_text[] = {
 	"Line-In", "Microphone", "Optical",
 };
 
+static_assert(ARRAY_SIZE(cs42l43_jack_override_modes) ==
+	      ARRAY_SIZE(cs42l43_jack_text) - 1);
+
 SOC_ENUM_SINGLE_VIRT_DECL(cs42l43_jack_enum, cs42l43_jack_text);
 
 int cs42l43_jack_get(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *ucontrol)
@@ -902,9 +891,6 @@ int cs42l43_jack_put(struct snd_kcontrol *kcontrol, struct snd_ctl_elem_value *u
 	struct cs42l43 *cs42l43 = priv->core;
 	struct soc_enum *e = (struct soc_enum *)kcontrol->private_value;
 	unsigned int override = ucontrol->value.integer.value[0];
-
-	BUILD_BUG_ON(ARRAY_SIZE(cs42l43_jack_override_modes) !=
-		     ARRAY_SIZE(cs42l43_jack_text) - 1);
 
 	if (override >= e->items)
 		return -EINVAL;

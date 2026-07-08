@@ -546,7 +546,7 @@ struct hv_pcidev_description {
 struct hv_dr_state {
 	struct list_head list_entry;
 	u32 device_count;
-	struct hv_pcidev_description func[];
+	struct hv_pcidev_description func[] __counted_by(device_count);
 };
 
 struct hv_pci_dev {
@@ -650,13 +650,6 @@ static void hv_arch_irq_unmask(struct irq_data *data)
 			   (hbus->hdev->dev_instance.b[6] & 0xf8) |
 			   PCI_FUNC(pdev->devfn);
 	params->int_target.vector = hv_msi_get_int_vector(data);
-
-	/*
-	 * Honoring apic->delivery_mode set to APIC_DELIVERY_MODE_FIXED by
-	 * setting the HV_DEVICE_INTERRUPT_TARGET_MULTICAST flag results in a
-	 * spurious interrupt storm. Not doing so does not seem to have a
-	 * negative effect (yet?).
-	 */
 
 	if (hbus->protocol_version >= PCI_PROTOCOL_VERSION_1_2) {
 		/*
@@ -2370,14 +2363,6 @@ static void hv_pci_assign_numa_node(struct hv_pcibus_device *hbus)
 		hv_dev = get_pcichild_wslot(hbus, devfn_to_wslot(dev->devfn));
 		if (!hv_dev)
 			continue;
-
-		/*
-		 * If the Hyper-V host doesn't provide a NUMA node for the
-		 * device, default to node 0. With NUMA_NO_NODE the kernel
-		 * may spread work across NUMA nodes, which degrades
-		 * performance on Hyper-V.
-		 */
-		set_dev_node(&dev->dev, 0);
 
 		if (hv_dev->desc.flags & HV_PCI_DEVICE_FLAG_NUMA_AFFINITY &&
 		    hv_dev->desc.virtual_numa_node < num_possible_nodes())

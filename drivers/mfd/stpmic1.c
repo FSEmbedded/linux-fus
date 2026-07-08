@@ -16,8 +16,6 @@
 
 #include <dt-bindings/mfd/st,stpmic1.h>
 
-#define STPMIC1_MAX_RETRIES 2
-
 #define STPMIC1_MAIN_IRQ 0
 
 static const struct regmap_range stpmic1_readable_ranges[] = {
@@ -65,7 +63,7 @@ static const struct regmap_access_table stpmic1_volatile_table = {
 static const struct regmap_config stpmic1_regmap_config = {
 	.reg_bits = 8,
 	.val_bits = 8,
-	.cache_type = REGCACHE_RBTREE,
+	.cache_type = REGCACHE_MAPLE,
 	.max_register = PMIC_MAX_REGISTER_ADDRESS,
 	.rd_table = &stpmic1_readable_table,
 	.wr_table = &stpmic1_writeable_table,
@@ -123,23 +121,9 @@ static const struct regmap_irq_chip stpmic1_regmap_irq_chip = {
 static int stpmic1_power_off(struct sys_off_data *data)
 {
 	struct stpmic1 *ddata = data->cb_data;
-	int ret;
 
-	/*
-	 * Attempt to shut down again, in case the first attempt failed.
-	 * The STPMIC1 might get confused and the first regmap_update_bits()
-	 * returns with -ETIMEDOUT / -110 . If that or similar transient
-	 * failure occurs, try to shut down again. If the second attempt
-	 * fails, there is some bigger problem, report it to user.
-	 */
-	for (int retries = 0; retries < STPMIC1_MAX_RETRIES; retries++) {
-		ret = regmap_update_bits(ddata->regmap, MAIN_CR, SOFTWARE_SWITCH_OFF,
-					 SOFTWARE_SWITCH_OFF);
-		if (!ret)
-			return NOTIFY_DONE;
-	}
-
-	dev_err(ddata->dev, "Failed to access PMIC I2C bus (%d)\n", ret);
+	regmap_update_bits(ddata->regmap, MAIN_CR,
+			   SOFTWARE_SWITCH_OFF, SOFTWARE_SWITCH_OFF);
 
 	return NOTIFY_DONE;
 }

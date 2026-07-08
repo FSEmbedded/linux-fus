@@ -25,7 +25,7 @@
 #include <linux/ima.h>
 
 #define DM_MSG_PREFIX "ioctl"
-#define DM_DRIVER_EMAIL "dm-devel@redhat.com"
+#define DM_DRIVER_EMAIL "dm-devel@lists.linux.dev"
 
 struct dm_file {
 	/*
@@ -384,7 +384,7 @@ retry:
 
 	up_write(&_hash_lock);
 
-	if (dev_skipped && !only_deferred)
+	if (dev_skipped)
 		DMWARN("remove_all left %d open device(s)", dev_skipped);
 }
 
@@ -1313,8 +1313,8 @@ static void retrieve_status(struct dm_table *table,
 		spec->status = 0;
 		spec->sector_start = ti->begin;
 		spec->length = ti->len;
-		strncpy(spec->target_type, ti->type->name,
-			sizeof(spec->target_type) - 1);
+		strscpy_pad(spec->target_type, ti->type->name,
+			sizeof(spec->target_type));
 
 		outptr += sizeof(struct dm_target_spec);
 		remaining = len - (outptr - outbuf);
@@ -1341,10 +1341,6 @@ static void retrieve_status(struct dm_table *table,
 		used = param->data_start + (outptr - outbuf);
 
 		outptr = align_ptr(outptr);
-		if (!outptr || outptr > outbuf + len) {
-			param->flags |= DM_BUFFER_FULL_FLAG;
-			break;
-		}
 		spec->next = outptr - outbuf;
 	}
 

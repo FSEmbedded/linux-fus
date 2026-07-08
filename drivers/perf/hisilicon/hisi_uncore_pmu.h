@@ -33,7 +33,7 @@
 	})[0].attr.attr)
 
 #define HISI_PMU_FORMAT_ATTR(_name, _config)		\
-	HISI_PMU_ATTR(_name, hisi_format_sysfs_show, (void *)_config)
+	HISI_PMU_ATTR(_name, device_show_string, _config)
 #define HISI_PMU_EVENT_ATTR(_name, _config)		\
 	HISI_PMU_ATTR(_name, hisi_event_sysfs_show, (unsigned long)_config)
 
@@ -43,8 +43,7 @@
 		return FIELD_GET(GENMASK_ULL(hi, lo), event->attr.config);  \
 	}
 
-#define HISI_EVENTID_MASK		GENMASK(7, 0)
-#define HISI_GET_EVENTID(ev)		((ev)->hw.config_base & HISI_EVENTID_MASK)
+#define HISI_GET_EVENTID(ev) (ev->hw.config_base & 0xff)
 
 #define HISI_PMU_EVTYPE_BITS		8
 #define HISI_PMU_EVTYPE_SHIFT(idx)	((idx) % 4 * HISI_PMU_EVTYPE_BITS)
@@ -123,8 +122,6 @@ void hisi_uncore_pmu_enable(struct pmu *pmu);
 void hisi_uncore_pmu_disable(struct pmu *pmu);
 ssize_t hisi_event_sysfs_show(struct device *dev,
 			      struct device_attribute *attr, char *buf);
-ssize_t hisi_format_sysfs_show(struct device *dev,
-			       struct device_attribute *attr, char *buf);
 ssize_t hisi_cpumask_sysfs_show(struct device *dev,
 				struct device_attribute *attr, char *buf);
 int hisi_uncore_pmu_online_cpu(unsigned int cpu, struct hlist_node *node);

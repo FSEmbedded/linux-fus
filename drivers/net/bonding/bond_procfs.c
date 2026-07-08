@@ -187,7 +187,6 @@ static void bond_info_show_master(struct seq_file *seq)
 	}
 }
 
-/* Note: runs under rcu_read_lock() */
 static void bond_info_show_slave(struct seq_file *seq,
 				 const struct slave *slave)
 {
@@ -210,11 +209,11 @@ static void bond_info_show_slave(struct seq_file *seq,
 
 	seq_printf(seq, "Permanent HW addr: %*phC\n",
 		   slave->dev->addr_len, slave->perm_hwaddr);
-	seq_printf(seq, "Slave queue ID: %d\n", slave->queue_id);
+	seq_printf(seq, "Slave queue ID: %d\n", READ_ONCE(slave->queue_id));
 
 	if (BOND_MODE(bond) == BOND_MODE_8023AD) {
 		const struct port *port = &SLAVE_AD_INFO(slave)->port;
-		const struct aggregator *agg = rcu_dereference(port->aggregator);
+		const struct aggregator *agg = port->aggregator;
 
 		if (agg) {
 			seq_printf(seq, "Aggregator ID: %d\n",

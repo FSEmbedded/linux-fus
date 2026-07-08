@@ -20,7 +20,7 @@
 
 #include "pinctrl-lpass-lpi.h"
 
-#define MAX_NR_GPIO		23
+#define MAX_NR_GPIO		32
 #define GPIO_FUNC		0
 #define MAX_LPI_NUM_CLKS	2
 
@@ -186,6 +186,41 @@ static int lpi_config_get(struct pinctrl_dev *pctldev,
 	return 0;
 }
 
+static int lpi_config_set_slew_rate(struct lpi_pinctrl *pctrl,
+				    const struct lpi_pingroup *g,
+				    unsigned int group, unsigned int slew)
+{
+	unsigned long sval;
+	void __iomem *reg;
+	int slew_offset;
+
+	if (slew > LPI_SLEW_RATE_MAX) {
+		dev_err(pctrl->dev, "invalid slew rate %u for pin: %d\n",
+			slew, group);
+		return -EINVAL;
+	}
+
+	slew_offset = g->slew_offset;
+	if (slew_offset == LPI_NO_SLEW)
+		return 0;
+
+	if (pctrl->data->flags & LPI_FLAG_SLEW_RATE_SAME_REG)
+		reg = pctrl->tlmm_base + LPI_TLMM_REG_OFFSET * group + LPI_GPIO_CFG_REG;
+	else
+		reg = pctrl->slew_base + LPI_SLEW_RATE_CTL_REG;
+
+	mutex_lock(&pctrl->lock);
+
+	sval = ioread32(reg);
+	sval &= ~(LPI_SLEW_RATE_MASK << slew_offset);
+	sval |= slew << slew_offset;
+	iowrite32(sval, reg);
+
+	mutex_unlock(&pctrl->lock);
+
+	return 0;
+}
+
 static int lpi_config_set(struct pinctrl_dev *pctldev, unsigned int group,
 			  unsigned long *configs, unsigned int nconfs)
 {
@@ -193,8 +228,7 @@ static int lpi_config_set(struct pinctrl_dev *pctldev, unsigned int group,
 	unsigned int param, arg, pullup = LPI_GPIO_BIAS_DISABLE, strength = 2;
 	bool value, output_enabled = false;
 	const struct lpi_pingroup *g;
-	unsigned long sval;
-	int i, slew_offset;
+	int i, ret;
 	u32 val;
 
 	g = &pctrl->data->groups[group];
@@ -226,24 +260,9 @@ static int lpi_config_set(struct pinctrl_dev *pctldev, unsigned int group,
 			strength = arg;
 			break;
 		case PIN_CONFIG_SLEW_RATE:
-			if (arg > LPI_SLEW_RATE_MAX) {
-				dev_err(pctldev->dev, "invalid slew rate %u for pin: %d\n",
-					arg, group);
-				return -EINVAL;
-			}
-
-			slew_offset = g->slew_offset;
-			if (slew_offset == LPI_NO_SLEW)
-				break;
-
-			mutex_lock(&pctrl->lock);
-
-			sval = ioread32(pctrl->slew_base + LPI_SLEW_RATE_CTL_REG);
-			sval &= ~(LPI_SLEW_RATE_MASK << slew_offset);
-			sval |= arg << slew_offset;
-			iowrite32(sval, pctrl->slew_base + LPI_SLEW_RATE_CTL_REG);
-
-			mutex_unlock(&pctrl->lock);
+			ret = lpi_config_set_slew_rate(pctrl, g, group, arg);
+			if (ret)
+				return ret;
 			break;
 		default:
 			return -EINVAL;
@@ -278,22 +297,6 @@ static const struct pinconf_ops lpi_gpio_pinconf_ops = {
 	.pin_config_group_get		= lpi_config_get,
 	.pin_config_group_set		= lpi_config_set,
 };
-
-static int lpi_gpio_get_direction(struct gpio_chip *chip, unsigned int pin)
-{
-	unsigned long config = pinconf_to_config_packed(PIN_CONFIG_OUTPUT, 0);
-	struct lpi_pinctrl *state = gpiochip_get_data(chip);
-	unsigned long arg;
-	int ret;
-
-	ret = lpi_config_get(state->ctrl, pin, &config);
-	if (ret)
-		return ret;
-
-	arg = pinconf_to_config_argument(config);
-
-	return arg ? GPIO_LINE_DIRECTION_OUT : GPIO_LINE_DIRECTION_IN;
-}
 
 static int lpi_gpio_direction_input(struct gpio_chip *chip, unsigned int pin)
 {
@@ -335,7 +338,6 @@ static void lpi_gpio_set(struct gpio_chip *chip, unsigned int pin, int value)
 }
 
 #ifdef CONFIG_DEBUG_FS
-#include <linux/seq_file.h>
 
 static unsigned int lpi_regval_to_drive(u32 val)
 {
@@ -393,7 +395,6 @@ static void lpi_gpio_dbg_show(struct seq_file *s, struct gpio_chip *chip)
 #endif
 
 static const struct gpio_chip lpi_gpio_template = {
-	.get_direction		= lpi_gpio_get_direction,
 	.direction_input	= lpi_gpio_direction_input,
 	.direction_output	= lpi_gpio_direction_output,
 	.get			= lpi_gpio_get,
@@ -456,10 +457,12 @@ int lpi_pinctrl_probe(struct platform_device *pdev)
 		return dev_err_probe(dev, PTR_ERR(pctrl->tlmm_base),
 				     "TLMM resource not provided\n");
 
-	pctrl->slew_base = devm_platform_ioremap_resource(pdev, 1);
-	if (IS_ERR(pctrl->slew_base))
-		return dev_err_probe(dev, PTR_ERR(pctrl->slew_base),
-				     "Slew resource not provided\n");
+	if (!(data->flags & LPI_FLAG_SLEW_RATE_SAME_REG)) {
+		pctrl->slew_base = devm_platform_ioremap_resource(pdev, 1);
+		if (IS_ERR(pctrl->slew_base))
+			return dev_err_probe(dev, PTR_ERR(pctrl->slew_base),
+					     "Slew resource not provided\n");
+	}
 
 	ret = devm_clk_bulk_get_optional(dev, MAX_LPI_NUM_CLKS, pctrl->clks);
 	if (ret)
@@ -481,7 +484,7 @@ int lpi_pinctrl_probe(struct platform_device *pdev)
 	pctrl->chip.base = -1;
 	pctrl->chip.ngpio = data->npins;
 	pctrl->chip.label = dev_name(dev);
-	pctrl->chip.can_sleep = true;
+	pctrl->chip.can_sleep = false;
 
 	mutex_init(&pctrl->lock);
 
@@ -512,7 +515,7 @@ err_pinctrl:
 }
 EXPORT_SYMBOL_GPL(lpi_pinctrl_probe);
 
-int lpi_pinctrl_remove(struct platform_device *pdev)
+void lpi_pinctrl_remove(struct platform_device *pdev)
 {
 	struct lpi_pinctrl *pctrl = platform_get_drvdata(pdev);
 	int i;
@@ -522,8 +525,6 @@ int lpi_pinctrl_remove(struct platform_device *pdev)
 
 	for (i = 0; i < pctrl->data->npins; i++)
 		pinctrl_generic_remove_group(pctrl->ctrl, i);
-
-	return 0;
 }
 EXPORT_SYMBOL_GPL(lpi_pinctrl_remove);
 

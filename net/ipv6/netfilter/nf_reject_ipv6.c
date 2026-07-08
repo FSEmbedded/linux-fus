@@ -83,39 +83,13 @@ struct sk_buff *nf_reject_skb_v6_tcp_reset(struct net *net,
 
 	skb_reserve(nskb, LL_MAX_HEADER);
 	nip6h = nf_reject_ip6hdr_put(nskb, oldskb, IPPROTO_TCP,
-				     net->ipv6.devconf_all->hop_limit);
+				     READ_ONCE(net->ipv6.devconf_all->hop_limit));
 	nf_reject_ip6_tcphdr_put(nskb, oldskb, oth, otcplen);
 	nip6h->payload_len = htons(nskb->len - sizeof(struct ipv6hdr));
 
 	return nskb;
 }
 EXPORT_SYMBOL_GPL(nf_reject_skb_v6_tcp_reset);
-
-static bool nf_skb_is_icmp6_unreach(const struct sk_buff *skb)
-{
-	const struct ipv6hdr *ip6h = ipv6_hdr(skb);
-	u8 proto = ip6h->nexthdr;
-	u8 _type, *tp;
-	int thoff;
-	__be16 fo;
-
-	thoff = ipv6_skip_exthdr(skb, ((u8 *)(ip6h + 1) - skb->data), &proto, &fo);
-
-	if (thoff < 0 || thoff >= skb->len || fo != 0)
-		return false;
-
-	if (proto != IPPROTO_ICMPV6)
-		return false;
-
-	tp = skb_header_pointer(skb,
-				thoff + offsetof(struct icmp6hdr, icmp6_type),
-				sizeof(_type), &_type);
-
-	if (!tp)
-		return false;
-
-	return *tp == ICMPV6_DEST_UNREACH;
-}
 
 struct sk_buff *nf_reject_skb_v6_unreach(struct net *net,
 					 struct sk_buff *oldskb,
@@ -128,10 +102,6 @@ struct sk_buff *nf_reject_skb_v6_unreach(struct net *net,
 	unsigned int len;
 
 	if (!nf_reject_ip6hdr_validate(oldskb))
-		return NULL;
-
-	/* Don't reply to ICMPV6_DEST_UNREACH with ICMPV6_DEST_UNREACH */
-	if (nf_skb_is_icmp6_unreach(oldskb))
 		return NULL;
 
 	/* Include "As much of invoking packet as possible without the ICMPv6
@@ -154,7 +124,7 @@ struct sk_buff *nf_reject_skb_v6_unreach(struct net *net,
 
 	skb_reserve(nskb, LL_MAX_HEADER);
 	nip6h = nf_reject_ip6hdr_put(nskb, oldskb, IPPROTO_ICMPV6,
-				     net->ipv6.devconf_all->hop_limit);
+				     READ_ONCE(net->ipv6.devconf_all->hop_limit));
 
 	skb_reset_transport_header(nskb);
 	icmp6h = skb_put_zero(nskb, sizeof(struct icmp6hdr));
@@ -435,3 +405,4 @@ void nf_send_unreach6(struct net *net, struct sk_buff *skb_in,
 EXPORT_SYMBOL_GPL(nf_send_unreach6);
 
 MODULE_LICENSE("GPL");
+MODULE_DESCRIPTION("IPv6 packet rejection core");

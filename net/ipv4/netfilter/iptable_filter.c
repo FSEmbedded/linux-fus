@@ -44,7 +44,7 @@ static int iptable_filter_table_init(struct net *net)
 		return -ENOMEM;
 	/* Entry 1 is the FORWARD hook */
 	((struct ipt_standard *)repl->entries)[1].target.verdict =
-		forward ? -NF_ACCEPT - 1 : -NF_DROP - 1;
+		forward ? -NF_ACCEPT - 1 : NF_DROP - 1;
 
 	err = ipt_register_table(net, &packet_filter, repl, filter_ops);
 	kfree(repl);
@@ -101,8 +101,8 @@ static int __init iptable_filter_init(void)
 
 static void __exit iptable_filter_fini(void)
 {
-	xt_unregister_template(&packet_filter);
 	unregister_pernet_subsys(&iptable_filter_net_ops);
+	xt_unregister_template(&packet_filter);
 	kfree(filter_ops);
 }
 

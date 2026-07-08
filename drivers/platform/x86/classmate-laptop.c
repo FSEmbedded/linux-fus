@@ -13,8 +13,6 @@
 #include <linux/input.h>
 #include <linux/rfkill.h>
 
-MODULE_LICENSE("GPL");
-
 struct cmpc_accel {
 	int sensitivity;
 	int g_select;
@@ -208,12 +206,7 @@ static ssize_t cmpc_accel_sensitivity_show_v4(struct device *dev,
 
 	acpi = to_acpi_device(dev);
 	inputdev = dev_get_drvdata(&acpi->dev);
-	if (!inputdev)
-		return -ENXIO;
-
 	accel = dev_get_drvdata(&inputdev->dev);
-	if (!accel)
-		return -ENXIO;
 
 	return sprintf(buf, "%d\n", accel->sensitivity);
 }
@@ -230,12 +223,7 @@ static ssize_t cmpc_accel_sensitivity_store_v4(struct device *dev,
 
 	acpi = to_acpi_device(dev);
 	inputdev = dev_get_drvdata(&acpi->dev);
-	if (!inputdev)
-		return -ENXIO;
-
 	accel = dev_get_drvdata(&inputdev->dev);
-	if (!accel)
-		return -ENXIO;
 
 	r = kstrtoul(buf, 0, &sensitivity);
 	if (r)
@@ -267,12 +255,7 @@ static ssize_t cmpc_accel_g_select_show_v4(struct device *dev,
 
 	acpi = to_acpi_device(dev);
 	inputdev = dev_get_drvdata(&acpi->dev);
-	if (!inputdev)
-		return -ENXIO;
-
 	accel = dev_get_drvdata(&inputdev->dev);
-	if (!accel)
-		return -ENXIO;
 
 	return sprintf(buf, "%d\n", accel->g_select);
 }
@@ -289,12 +272,7 @@ static ssize_t cmpc_accel_g_select_store_v4(struct device *dev,
 
 	acpi = to_acpi_device(dev);
 	inputdev = dev_get_drvdata(&acpi->dev);
-	if (!inputdev)
-		return -ENXIO;
-
 	accel = dev_get_drvdata(&inputdev->dev);
-	if (!accel)
-		return -ENXIO;
 
 	r = kstrtoul(buf, 0, &g_select);
 	if (r)
@@ -323,8 +301,6 @@ static int cmpc_accel_open_v4(struct input_dev *input)
 
 	acpi = to_acpi_device(input->dev.parent);
 	accel = dev_get_drvdata(&input->dev);
-	if (!accel)
-		return -ENXIO;
 
 	cmpc_accel_set_sensitivity_v4(acpi->handle, accel->sensitivity);
 	cmpc_accel_set_g_select_v4(acpi->handle, accel->g_select);
@@ -456,7 +432,6 @@ static const struct acpi_device_id cmpc_accel_device_ids_v4[] = {
 };
 
 static struct acpi_driver cmpc_accel_acpi_driver_v4 = {
-	.owner = THIS_MODULE,
 	.name = "cmpc_accel_v4",
 	.class = "cmpc_accel_v4",
 	.ids = cmpc_accel_device_ids_v4,
@@ -573,12 +548,7 @@ static ssize_t cmpc_accel_sensitivity_show(struct device *dev,
 
 	acpi = to_acpi_device(dev);
 	inputdev = dev_get_drvdata(&acpi->dev);
-	if (!inputdev)
-		return -ENXIO;
-
 	accel = dev_get_drvdata(&inputdev->dev);
-	if (!accel)
-		return -ENXIO;
 
 	return sprintf(buf, "%d\n", accel->sensitivity);
 }
@@ -595,12 +565,7 @@ static ssize_t cmpc_accel_sensitivity_store(struct device *dev,
 
 	acpi = to_acpi_device(dev);
 	inputdev = dev_get_drvdata(&acpi->dev);
-	if (!inputdev)
-		return -ENXIO;
-
 	accel = dev_get_drvdata(&inputdev->dev);
-	if (!accel)
-		return -ENXIO;
 
 	r = kstrtoul(buf, 0, &sensitivity);
 	if (r)
@@ -692,7 +657,6 @@ static const struct acpi_device_id cmpc_accel_device_ids[] = {
 };
 
 static struct acpi_driver cmpc_accel_acpi_driver = {
-	.owner = THIS_MODULE,
 	.name = "cmpc_accel",
 	.class = "cmpc_accel",
 	.ids = cmpc_accel_device_ids,
@@ -786,7 +750,6 @@ static const struct acpi_device_id cmpc_tablet_device_ids[] = {
 };
 
 static struct acpi_driver cmpc_tablet_acpi_driver = {
-	.owner = THIS_MODULE,
 	.name = "cmpc_tablet",
 	.class = "cmpc_tablet",
 	.ids = cmpc_tablet_device_ids,
@@ -1028,7 +991,6 @@ static const struct acpi_device_id cmpc_ipml_device_ids[] = {
 };
 
 static struct acpi_driver cmpc_ipml_acpi_driver = {
-	.owner = THIS_MODULE,
 	.name = "cmpc",
 	.class = "cmpc",
 	.ids = cmpc_ipml_device_ids,
@@ -1096,7 +1058,6 @@ static const struct acpi_device_id cmpc_keys_device_ids[] = {
 };
 
 static struct acpi_driver cmpc_keys_acpi_driver = {
-	.owner = THIS_MODULE,
 	.name = "cmpc_keys",
 	.class = "cmpc_keys",
 	.ids = cmpc_keys_device_ids,
@@ -1176,3 +1137,5 @@ static const struct acpi_device_id cmpc_device_ids[] __maybe_unused = {
 };
 
 MODULE_DEVICE_TABLE(acpi, cmpc_device_ids);
+MODULE_DESCRIPTION("Support for Intel Classmate PC ACPI devices");
+MODULE_LICENSE("GPL");

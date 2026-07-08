@@ -231,7 +231,10 @@ typedef struct port {
 	mux_states_t sm_mux_state;	/* state machine mux state */
 	u16 sm_mux_timer_counter;	/* state machine mux timer counter */
 	tx_states_t sm_tx_state;	/* state machine tx state */
-	u16 sm_tx_timer_counter;	/* state machine tx timer counter(allways on - enter to transmit state 3 time per second) */
+	u16 sm_tx_timer_counter;	/* state machine tx timer counter
+					 * (always on - enter to transmit
+					 *  state 3 time per second)
+					 */
 	u16 sm_churn_actor_timer_counter;
 	u16 sm_churn_partner_timer_counter;
 	u32 churn_actor_count;
@@ -239,7 +242,7 @@ typedef struct port {
 	churn_state_t sm_churn_actor_state;
 	churn_state_t sm_churn_partner_state;
 	struct slave *slave;		/* pointer to the bond slave that this port belongs to */
-	struct aggregator __rcu *aggregator;	/* pointer to an aggregator that this port related to */
+	struct aggregator *aggregator;	/* pointer to an aggregator that this port related to */
 	struct port *next_port_in_aggregator;	/* Next port on the linked list of the parent aggregator */
 	u32 transaction_id;		/* continuous number for identification of Marker PDU's; */
 	struct lacpdu lacpdu;		/* the lacpdu that will be sent for this port */
@@ -271,7 +274,6 @@ struct ad_slave_info {
 	struct port port;		/* 802.3ad port structure */
 	struct bond_3ad_stats stats;
 	u16 id;
-	u16 port_priority;
 };
 
 static inline const char *bond_3ad_churn_desc(churn_state_t state)

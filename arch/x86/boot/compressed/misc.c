@@ -52,6 +52,7 @@ struct port_io_ops pio_ops;
 
 memptr free_mem_ptr;
 memptr free_mem_end_ptr;
+int spurious_nmi_count;
 
 static char *vidmem;
 static int vidport;
@@ -164,21 +165,34 @@ void __putstr(const char *s)
 	outb(0xff & (pos >> 1), vidport+1);
 }
 
+static noinline void __putnum(unsigned long value, unsigned int base,
+			      int mindig)
+{
+	char buf[8*sizeof(value)+1];
+	char *p;
+
+	p = buf + sizeof(buf);
+	*--p = '\0';
+
+	while (mindig-- > 0 || value) {
+		unsigned char digit = value % base;
+		digit += (digit >= 10) ? ('a'-10) : '0';
+		*--p = digit;
+
+		value /= base;
+	}
+
+	__putstr(p);
+}
+
 void __puthex(unsigned long value)
 {
-	char alpha[2] = "0";
-	int bits;
+	__putnum(value, 16, sizeof(value)*2);
+}
 
-	for (bits = sizeof(value) * 8 - 4; bits >= 0; bits -= 4) {
-		unsigned long digit = (value >> bits) & 0xf;
-
-		if (digit < 0xA)
-			alpha[0] = '0' + digit;
-		else
-			alpha[0] = 'a' + (digit - 0xA);
-
-		__putstr(alpha);
-	}
+void __putdec(unsigned long value)
+{
+	__putnum(value, 10, 1);
 }
 
 #ifdef CONFIG_X86_NEED_RELOCS
@@ -497,7 +511,7 @@ asmlinkage __visible void *extract_kernel(void *rmode, unsigned char *output)
 
 	if (init_unaccepted_memory()) {
 		debug_putstr("Accepting memory... ");
-		accept_memory(__pa(output), __pa(output) + needed_size);
+		accept_memory(__pa(output), needed_size);
 	}
 
 	entry_offset = decompress_kernel(output, virt_addr, error);
@@ -509,10 +523,11 @@ asmlinkage __visible void *extract_kernel(void *rmode, unsigned char *output)
 	/* Disable exception handling before booting the kernel */
 	cleanup_exception_handling();
 
-	return output + entry_offset;
-}
+	if (spurious_nmi_count) {
+		error_putstr("Spurious early NMIs ignored: ");
+		error_putdec(spurious_nmi_count);
+		error_putstr("\n");
+	}
 
-void fortify_panic(const char *name)
-{
-	error("detected buffer overflow");
+	return output + entry_offset;
 }

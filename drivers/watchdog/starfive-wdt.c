@@ -152,8 +152,10 @@ static int starfive_wdt_enable_clock(struct starfive_wdt *wdt)
 		return dev_err_probe(wdt->wdd.parent, ret, "failed to enable apb clock\n");
 
 	ret = clk_prepare_enable(wdt->core_clk);
-	if (ret)
+	if (ret) {
+		clk_disable_unprepare(wdt->apb_clk);
 		return dev_err_probe(wdt->wdd.parent, ret, "failed to enable core clock\n");
+	}
 
 	return 0;
 }
@@ -444,7 +446,7 @@ static int starfive_wdt_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, wdt);
 	pm_runtime_enable(&pdev->dev);
 	if (pm_runtime_enabled(&pdev->dev)) {
-		ret = pm_runtime_resume_and_get(&pdev->dev);
+		ret = pm_runtime_get_sync(&pdev->dev);
 		if (ret < 0)
 			return ret;
 	} else {
@@ -498,14 +500,12 @@ static int starfive_wdt_probe(struct platform_device *pdev)
 		if (pm_runtime_enabled(&pdev->dev)) {
 			ret = pm_runtime_put_sync(&pdev->dev);
 			if (ret)
-				goto err_unregister_wdt;
+				goto err_exit;
 		}
 	}
 
 	return 0;
 
-err_unregister_wdt:
-	watchdog_unregister_device(&wdt->wdd);
 err_exit:
 	starfive_wdt_disable_clock(wdt);
 	pm_runtime_disable(&pdev->dev);
@@ -513,7 +513,7 @@ err_exit:
 	return ret;
 }
 
-static int starfive_wdt_remove(struct platform_device *pdev)
+static void starfive_wdt_remove(struct platform_device *pdev)
 {
 	struct starfive_wdt *wdt = platform_get_drvdata(pdev);
 
@@ -525,8 +525,6 @@ static int starfive_wdt_remove(struct platform_device *pdev)
 	else
 		/* disable clock without PM */
 		starfive_wdt_disable_clock(wdt);
-
-	return 0;
 }
 
 static void starfive_wdt_shutdown(struct platform_device *pdev)
@@ -563,7 +561,10 @@ static int starfive_wdt_resume(struct device *dev)
 	starfive_wdt_set_reload_count(wdt, wdt->reload);
 	starfive_wdt_lock(wdt);
 
-	return starfive_wdt_start(wdt);
+	if (watchdog_active(&wdt->wdd))
+		return starfive_wdt_start(wdt);
+
+	return 0;
 }
 
 static int starfive_wdt_runtime_suspend(struct device *dev)
@@ -596,7 +597,7 @@ MODULE_DEVICE_TABLE(of, starfive_wdt_match);
 
 static struct platform_driver starfive_wdt_driver = {
 	.probe = starfive_wdt_probe,
-	.remove = starfive_wdt_remove,
+	.remove_new = starfive_wdt_remove,
 	.shutdown = starfive_wdt_shutdown,
 	.driver = {
 		.name = "starfive-wdt",

@@ -874,7 +874,6 @@ static int mxs_dma_probe(struct platform_device *pdev)
 	if (ret) {
 		dev_err(mxs_dma->dma_device.dev,
 			"failed to register controller\n");
-		return ret;
 	}
 
 	dev_info(mxs_dma->dma_device.dev, "initialized\n");
@@ -882,7 +881,7 @@ static int mxs_dma_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int mxs_dma_remove(struct platform_device *pdev)
+static void mxs_dma_remove(struct platform_device *pdev)
 {
 	struct mxs_dma_engine *mxs_dma = platform_get_drvdata(pdev);
 	int i;
@@ -896,8 +895,6 @@ static int mxs_dma_remove(struct platform_device *pdev)
 		tasklet_kill(&mxs_chan->tasklet);
 		mxs_chan->ccw_pool = NULL;
 	}
-
-	return 0;
 }
 
 #ifdef CONFIG_PM_SLEEP
@@ -923,7 +920,7 @@ static int mxs_dma_pm_resume(struct device *dev)
 }
 #endif
 
-int mxs_dma_runtime_suspend(struct device *dev)
+static int mxs_dma_runtime_suspend(struct device *dev)
 {
 	struct mxs_dma_engine *mxs_dma = dev_get_drvdata(dev);
 
@@ -932,7 +929,7 @@ int mxs_dma_runtime_suspend(struct device *dev)
 	return 0;
 }
 
-int mxs_dma_runtime_resume(struct device *dev)
+static int mxs_dma_runtime_resume(struct device *dev)
 {
 	struct mxs_dma_engine *mxs_dma = dev_get_drvdata(dev);
 	int ret;

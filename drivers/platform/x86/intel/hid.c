@@ -13,6 +13,7 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
+#include <linux/string_choices.h>
 #include <linux/suspend.h>
 #include "../dual_accel_detect.h"
 
@@ -38,18 +39,22 @@ MODULE_PARM_DESC(enable_sw_tablet_mode,
 /* When NOT in tablet mode, VGBS returns with the flag 0x40 */
 #define TABLET_MODE_FLAG BIT(6)
 
+MODULE_DESCRIPTION("Intel HID Event hotkey driver");
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Alex Hung");
 
 static const struct acpi_device_id intel_hid_ids[] = {
-	{"INT33D5", 0},
-	{"INTC1051", 0},
-	{"INTC1054", 0},
-	{"INTC1070", 0},
-	{"INTC1076", 0},
-	{"INTC1077", 0},
-	{"INTC1078", 0},
-	{"", 0},
+	{ "INT33D5" },
+	{ "INTC1051" },
+	{ "INTC1054" },
+	{ "INTC1070" },
+	{ "INTC1076" },
+	{ "INTC1077" },
+	{ "INTC1078" },
+	{ "INTC107B" },
+	{ "INTC10CB" },
+	{ "INTC10CC" },
+	{ }
 };
 MODULE_DEVICE_TABLE(acpi, intel_hid_ids);
 
@@ -122,13 +127,6 @@ static const struct dmi_system_id button_array_table[] = {
 		},
 	},
 	{
-		.ident = "Lenovo ThinkPad X1 Fold 16 Gen 1",
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "LENOVO"),
-			DMI_MATCH(DMI_PRODUCT_FAMILY, "ThinkPad X1 Fold 16 Gen 1"),
-		},
-	},
-	{
 		.ident = "Microsoft Surface Go 3",
 		.matches = {
 			DMI_MATCH(DMI_SYS_VENDOR, "Microsoft Corporation"),
@@ -168,24 +166,6 @@ static const struct dmi_system_id dmi_vgbs_allow_list[] = {
 		.matches = {
 			DMI_MATCH(DMI_SYS_VENDOR, "HP"),
 			DMI_MATCH(DMI_PRODUCT_NAME, "HP Elite Dragonfly G2 Notebook PC"),
-		},
-	},
-	{
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "Dell Inc."),
-			DMI_MATCH(DMI_PRODUCT_NAME, "Dell Pro Rugged 10 Tablet RA00260"),
-		},
-	},
-	{
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "Dell Inc."),
-			DMI_MATCH(DMI_PRODUCT_NAME, "Dell Pro Rugged 12 Tablet RA02260"),
-		},
-	},
-	{
-		.matches = {
-			DMI_MATCH(DMI_SYS_VENDOR, "Dell Inc."),
-			DMI_MATCH(DMI_PRODUCT_NAME, "Dell 14 Plus 2-in-1 DB04250"),
 		},
 	},
 	{ }
@@ -360,10 +340,8 @@ static int intel_hid_set_enable(struct device *device, bool enable)
 	acpi_handle handle = ACPI_HANDLE(device);
 
 	/* Enable|disable features - power button is always enabled */
-	if (!intel_hid_execute_method(handle, INTEL_HID_DSM_HDSM_FN,
-				      enable)) {
-		dev_warn(device, "failed to %sable hotkeys\n",
-			 enable ? "en" : "dis");
+	if (!intel_hid_execute_method(handle, INTEL_HID_DSM_HDSM_FN, enable)) {
+		dev_warn(device, "failed to %s hotkeys\n", str_enable_disable(enable));
 		return -EIO;
 	}
 
@@ -536,6 +514,7 @@ static void notify_handler(acpi_handle handle, u32 event, void *context)
 	struct platform_device *device = context;
 	struct intel_hid_priv *priv = dev_get_drvdata(&device->dev);
 	unsigned long long ev_index;
+	struct key_entry *ke;
 	int err;
 
 	/*
@@ -577,10 +556,14 @@ static void notify_handler(acpi_handle handle, u32 event, void *context)
 		if (event == 0xc0 || !priv->array)
 			return;
 
-		if (!sparse_keymap_entry_from_scancode(priv->array, event)) {
+		ke = sparse_keymap_entry_from_scancode(priv->array, event);
+		if (!ke) {
 			dev_info(&device->dev, "unknown event 0x%x\n", event);
 			return;
 		}
+
+		if (ke->type == KE_IGNORE)
+			return;
 
 wakeup:
 		pm_wakeup_hard_event(&device->dev);
@@ -657,15 +640,11 @@ static bool button_array_present(struct platform_device *device)
 
 static int intel_hid_probe(struct platform_device *device)
 {
+	acpi_handle handle = ACPI_HANDLE(&device->dev);
 	unsigned long long mode, dummy;
 	struct intel_hid_priv *priv;
-	acpi_handle handle;
 	acpi_status status;
 	int err;
-
-	handle = ACPI_HANDLE(&device->dev);
-	if (!handle)
-		return -ENODEV;
 
 	intel_hid_init_dsm(handle);
 

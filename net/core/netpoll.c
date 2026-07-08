@@ -34,7 +34,7 @@
 #include <net/addrconf.h>
 #include <net/ndisc.h>
 #include <net/ip6_checksum.h>
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 #include <trace/events/napi.h>
 #include <linux/kconfig.h>
 
@@ -45,6 +45,9 @@
 
 #define MAX_UDP_CHUNK 1460
 #define MAX_SKBS 32
+
+static struct sk_buff_head skb_pool;
+
 #define USEC_PER_POLL	50
 
 #define MAX_SKB_SIZE							\
@@ -157,7 +160,7 @@ static void poll_one_napi(struct napi_struct *napi)
 	if (test_and_set_bit(NAPI_STATE_NPSVC, &napi->state))
 		return;
 
-	/* We explicilty pass the polling call a budget of 0 to
+	/* We explicitly pass the polling call a budget of 0 to
 	 * indicate that we are clearing the Tx path only.
 	 */
 	work = napi->poll(napi, 0);
@@ -221,7 +224,6 @@ void netpoll_poll_disable(struct net_device *dev)
 	if (ni)
 		down(&ni->dev_lock);
 }
-EXPORT_SYMBOL(netpoll_poll_disable);
 
 void netpoll_poll_enable(struct net_device *dev)
 {
@@ -231,25 +233,21 @@ void netpoll_poll_enable(struct net_device *dev)
 	if (ni)
 		up(&ni->dev_lock);
 }
-EXPORT_SYMBOL(netpoll_poll_enable);
 
-static void refill_skbs(struct netpoll *np)
+static void refill_skbs(void)
 {
-	struct sk_buff_head *skb_pool;
 	struct sk_buff *skb;
 	unsigned long flags;
 
-	skb_pool = &np->skb_pool;
-
-	spin_lock_irqsave(&skb_pool->lock, flags);
-	while (skb_pool->qlen < MAX_SKBS) {
+	spin_lock_irqsave(&skb_pool.lock, flags);
+	while (skb_pool.qlen < MAX_SKBS) {
 		skb = alloc_skb(MAX_SKB_SIZE, GFP_ATOMIC);
 		if (!skb)
 			break;
 
-		__skb_queue_tail(skb_pool, skb);
+		__skb_queue_tail(&skb_pool, skb);
 	}
-	spin_unlock_irqrestore(&skb_pool->lock, flags);
+	spin_unlock_irqrestore(&skb_pool.lock, flags);
 }
 
 static void zap_completion_queue(void)
@@ -286,12 +284,12 @@ static struct sk_buff *find_skb(struct netpoll *np, int len, int reserve)
 	struct sk_buff *skb;
 
 	zap_completion_queue();
-	refill_skbs(np);
+	refill_skbs();
 repeat:
 
 	skb = alloc_skb(len, GFP_ATOMIC);
 	if (!skb)
-		skb = skb_dequeue(&np->skb_pool);
+		skb = skb_dequeue(&skb_pool);
 
 	if (!skb) {
 		if (++count < 10) {
@@ -538,14 +536,6 @@ static int netpoll_parse_ip_addr(const char *str, union inet_addr *addr)
 	return -1;
 }
 
-static void skb_pool_flush(struct netpoll *np)
-{
-	struct sk_buff_head *skb_pool;
-
-	skb_pool = &np->skb_pool;
-	skb_queue_purge_reason(skb_pool, SKB_CONSUMED);
-}
-
 int netpoll_parse_options(struct netpoll *np, char *opt)
 {
 	char *cur=opt, *delim;
@@ -634,8 +624,6 @@ int __netpoll_setup(struct netpoll *np, struct net_device *ndev)
 	const struct net_device_ops *ops;
 	int err;
 
-	skb_queue_head_init(&np->skb_pool);
-
 	if (ndev->priv_flags & IFF_DISABLE_NETPOLL) {
 		np_err(np, "%s doesn't support polling, aborting\n",
 		       ndev->name);
@@ -670,9 +658,6 @@ int __netpoll_setup(struct netpoll *np, struct net_device *ndev)
 	np->dev = ndev;
 	strscpy(np->dev_name, ndev->name, IFNAMSIZ);
 	npinfo->netpoll = np;
-
-	/* fill up the skb queue */
-	refill_skbs(np);
 
 	/* last thing to do is link it to the net device structure */
 	rcu_assign_pointer(ndev->npinfo, npinfo);
@@ -792,9 +777,12 @@ put_noaddr:
 		}
 	}
 
+	/* fill up the skb queue */
+	refill_skbs();
+
 	err = __netpoll_setup(np, ndev);
 	if (err)
-		goto flush;
+		goto put;
 	rtnl_unlock();
 
 	/* Make sure all NAPI polls which started before dev->npinfo
@@ -805,8 +793,6 @@ put_noaddr:
 
 	return 0;
 
-flush:
-	skb_pool_flush(np);
 put:
 	DEBUG_NET_WARN_ON_ONCE(np->dev);
 	if (ip_overwritten)
@@ -817,6 +803,13 @@ unlock:
 	return err;
 }
 EXPORT_SYMBOL(netpoll_setup);
+
+static int __init netpoll_init(void)
+{
+	skb_queue_head_init(&skb_pool);
+	return 0;
+}
+core_initcall(netpoll_init);
 
 static void rcu_cleanup_netpoll_info(struct rcu_head *rcu_head)
 {
@@ -843,10 +836,6 @@ void __netpoll_cleanup(struct netpoll *np)
 	if (!npinfo)
 		return;
 
-	/* At this point, there is a single npinfo instance per netdevice, and
-	 * its refcnt tracks how many netpoll structures are linked to it. We
-	 * only perform npinfo cleanup when the refcnt decrements to zero.
-	 */
 	if (refcount_dec_and_test(&npinfo->refcnt)) {
 		const struct net_device_ops *ops;
 
@@ -856,9 +845,8 @@ void __netpoll_cleanup(struct netpoll *np)
 
 		RCU_INIT_POINTER(np->dev->npinfo, NULL);
 		call_rcu(&npinfo->rcu, rcu_cleanup_netpoll_info);
-	}
-
-	skb_pool_flush(np);
+	} else
+		RCU_INIT_POINTER(np->dev->npinfo, NULL);
 }
 EXPORT_SYMBOL_GPL(__netpoll_cleanup);
 
@@ -873,14 +861,20 @@ void __netpoll_free(struct netpoll *np)
 }
 EXPORT_SYMBOL_GPL(__netpoll_free);
 
+void do_netpoll_cleanup(struct netpoll *np)
+{
+	__netpoll_cleanup(np);
+	netdev_put(np->dev, &np->dev_tracker);
+	np->dev = NULL;
+}
+EXPORT_SYMBOL(do_netpoll_cleanup);
+
 void netpoll_cleanup(struct netpoll *np)
 {
 	rtnl_lock();
 	if (!np->dev)
 		goto out;
-	__netpoll_cleanup(np);
-	netdev_put(np->dev, &np->dev_tracker);
-	np->dev = NULL;
+	do_netpoll_cleanup(np);
 out:
 	rtnl_unlock();
 }

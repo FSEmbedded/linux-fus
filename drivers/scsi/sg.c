@@ -731,8 +731,6 @@ sg_new_write(Sg_fd *sfp, struct file *file, const char __user *buf,
 		sg_remove_request(sfp, srp);
 		return -EFAULT;
 	}
-	hp->duration = jiffies_to_msecs(jiffies);
-
 	if (hp->interface_id != 'S') {
 		sg_remove_request(sfp, srp);
 		return -ENOSYS;
@@ -817,6 +815,7 @@ sg_common_write(Sg_fd * sfp, Sg_request * srp,
 		return -ENODEV;
 	}
 
+	hp->duration = jiffies_to_msecs(jiffies);
 	if (hp->interface_id != '\0' &&	/* v3 (or later) interface */
 	    (SG_FLAG_Q_AT_TAIL & hp->flags))
 		at_head = 0;
@@ -1340,6 +1339,9 @@ sg_rq_end_io(struct request *rq, blk_status_t status)
 				      "sg_cmd_done: pack_id=%d, res=0x%x\n",
 				      srp->header.pack_id, result));
 	srp->header.resid = resid;
+	ms = jiffies_to_msecs(jiffies);
+	srp->header.duration = (ms > srp->header.duration) ?
+				(ms - srp->header.duration) : 0;
 	if (0 != result) {
 		struct scsi_sense_hdr sshdr;
 
@@ -1388,9 +1390,6 @@ sg_rq_end_io(struct request *rq, blk_status_t status)
 			done = 0;
 	}
 	srp->done = done;
-	ms = jiffies_to_msecs(jiffies);
-	srp->header.duration = (ms > srp->header.duration) ?
-				(ms - srp->header.duration) : 0;
 	write_unlock_irqrestore(&sfp->rq_list_lock, iflags);
 
 	if (likely(done)) {
@@ -1418,7 +1417,6 @@ static const struct file_operations sg_fops = {
 	.mmap = sg_mmap,
 	.release = sg_release,
 	.fasync = sg_fasync,
-	.llseek = no_llseek,
 };
 
 static const struct class sg_sysfs_class = {
@@ -1623,34 +1621,9 @@ sg_remove_device(struct device *cl_dev)
 }
 
 module_param_named(scatter_elem_sz, scatter_elem_sz, int, S_IRUGO | S_IWUSR);
-module_param_named(allow_dio, sg_allow_dio, int, S_IRUGO | S_IWUSR);
-
-static int def_reserved_size_set(const char *val, const struct kernel_param *kp)
-{
-	int size, ret;
-
-	if (!val)
-		return -EINVAL;
-
-	ret = kstrtoint(val, 0, &size);
-	if (ret)
-		return ret;
-
-	/* limit to 1 MB */
-	if (size < 0 || size > 1048576)
-		return -ERANGE;
-
-	def_reserved_size = size;
-	return 0;
-}
-
-static const struct kernel_param_ops def_reserved_size_ops = {
-	.set	= def_reserved_size_set,
-	.get	= param_get_int,
-};
-
-module_param_cb(def_reserved_size, &def_reserved_size_ops, &def_reserved_size,
+module_param_named(def_reserved_size, def_reserved_size, int,
 		   S_IRUGO | S_IWUSR);
+module_param_named(allow_dio, sg_allow_dio, int, S_IRUGO | S_IWUSR);
 
 MODULE_AUTHOR("Douglas Gilbert");
 MODULE_DESCRIPTION("SCSI generic (sg) driver");
@@ -1674,7 +1647,6 @@ static struct ctl_table sg_sysctls[] = {
 		.mode		= 0444,
 		.proc_handler	= proc_dointvec,
 	},
-	{}
 };
 
 static struct ctl_table_header *hdr;
@@ -1718,13 +1690,13 @@ init_sg(void)
 	sg_sysfs_valid = 1;
 	rc = scsi_register_interface(&sg_interface);
 	if (0 == rc) {
-		register_sg_sysctls();
 #ifdef CONFIG_SCSI_PROC_FS
 		sg_proc_init();
 #endif				/* CONFIG_SCSI_PROC_FS */
 		return 0;
 	}
 	class_unregister(&sg_sysfs_class);
+	register_sg_sysctls();
 err_out:
 	unregister_chrdev_region(MKDEV(SCSI_GENERIC_MAJOR, 0), SG_MAX_DEVS);
 	return rc;
@@ -2238,17 +2210,9 @@ sg_remove_sfp_usercontext(struct work_struct *work)
 	write_lock_irqsave(&sfp->rq_list_lock, iflags);
 	while (!list_empty(&sfp->rq_list)) {
 		srp = list_first_entry(&sfp->rq_list, Sg_request, entry);
-		list_del(&srp->entry);
-		write_unlock_irqrestore(&sfp->rq_list_lock, iflags);
-
 		sg_finish_rem_req(srp);
-		/*
-		 * sg_rq_end_io() uses srp->parentfp. Hence, only clear
-		 * srp->parentfp after blk_mq_free_request() has been called.
-		 */
+		list_del(&srp->entry);
 		srp->parentfp = NULL;
-
-		write_lock_irqsave(&sfp->rq_list_lock, iflags);
 	}
 	write_unlock_irqrestore(&sfp->rq_list_lock, iflags);
 
@@ -2563,7 +2527,6 @@ static void sg_proc_debug_helper(struct seq_file *s, Sg_device * sdp)
 	const sg_io_hdr_t *hp;
 	const char * cp;
 	unsigned int ms;
-	unsigned int duration;
 
 	k = 0;
 	list_for_each_entry(fp, &sdp->sfds, sfd_siblings) {
@@ -2601,17 +2564,13 @@ static void sg_proc_debug_helper(struct seq_file *s, Sg_device * sdp)
 			seq_printf(s, " id=%d blen=%d",
 				   srp->header.pack_id, blen);
 			if (srp->done)
-				seq_printf(s, " dur=%u", hp->duration);
+				seq_printf(s, " dur=%d", hp->duration);
 			else {
 				ms = jiffies_to_msecs(jiffies);
-				duration = READ_ONCE(hp->duration);
-				if (duration)
-					duration = (ms > duration ?
-						    ms - duration : 0);
-				seq_printf(s, " t_o/elap=%u/%u",
+				seq_printf(s, " t_o/elap=%d/%d",
 					(new_interface ? hp->timeout :
 						  jiffies_to_msecs(fp->timeout)),
-					duration);
+					(ms > hp->duration ? ms - hp->duration : 0));
 			}
 			seq_printf(s, "ms sgat=%d op=0x%02x\n", usg,
 				   (int) srp->data.cmd_opcode);

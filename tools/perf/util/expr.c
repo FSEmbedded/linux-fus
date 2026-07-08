@@ -25,10 +25,6 @@
 #include <math.h>
 #include "pmu.h"
 
-#ifdef PARSER_DEBUG
-extern int expr_debug;
-#endif
-
 struct expr_id_data {
 	union {
 		struct {
@@ -377,8 +373,7 @@ int expr__find_ids(const char *expr, const char *one,
 	if (one)
 		expr__del_id(ctx, one);
 
-	/* A positive value means syntax error, convert to -EINVAL */
-	return ret > 0 ? -EINVAL : ret;
+	return ret;
 }
 
 double expr_id_data__value(const struct expr_id_data *data)

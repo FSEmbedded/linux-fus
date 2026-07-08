@@ -1176,10 +1176,8 @@ int ncsi_rcv_rsp(struct sk_buff *skb, struct net_device *dev,
 	/* Find the NCSI device */
 	nd = ncsi_find_dev(orig_dev);
 	ndp = nd ? TO_NCSI_DEV_PRIV(nd) : NULL;
-	if (!ndp) {
-		ret = -ENODEV;
-		goto err_free_skb;
-	}
+	if (!ndp)
+		return -ENODEV;
 
 	/* Check if it is AEN packet */
 	hdr = (struct ncsi_pkt_hdr *)skb_network_header(skb);
@@ -1201,8 +1199,7 @@ int ncsi_rcv_rsp(struct sk_buff *skb, struct net_device *dev,
 	if (!nrh) {
 		netdev_err(nd->dev, "Received unrecognized packet (0x%x)\n",
 			   hdr->type);
-		ret = -ENOENT;
-		goto err_free_skb;
+		return -ENOENT;
 	}
 
 	/* Associate with the request */
@@ -1210,8 +1207,7 @@ int ncsi_rcv_rsp(struct sk_buff *skb, struct net_device *dev,
 	nr = &ndp->requests[hdr->id];
 	if (!nr->used) {
 		spin_unlock_irqrestore(&ndp->lock, flags);
-		ret = -ENODEV;
-		goto err_free_skb;
+		return -ENODEV;
 	}
 
 	nr->rsp = skb;
@@ -1264,9 +1260,5 @@ out_netlink:
 
 out:
 	ncsi_free_request(nr);
-	return ret;
-
-err_free_skb:
-	kfree_skb(skb);
 	return ret;
 }

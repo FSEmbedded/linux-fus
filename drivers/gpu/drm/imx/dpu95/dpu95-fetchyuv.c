@@ -19,11 +19,6 @@
 				 DPU95_FETCHUNIT_CAP_USE_VSCALER9 | \
 				 DPU95_FETCHUNIT_CAP_PACKED_YUV422)
 
-#define DPU95_FETCHYUV_CAP_NO_VS4_MASK (DPU95_FETCHUNIT_CAP_USE_FETCHECO | \
-					DPU95_FETCHUNIT_CAP_USE_HSCALER | \
-					DPU95_FETCHUNIT_CAP_USE_VSCALER9 | \
-					DPU95_FETCHUNIT_CAP_PACKED_YUV422)
-
 static const enum dpu95_link_id dpu95_fy_link_id[] = {
 	DPU95_LINK_ID_FETCHYUV0, DPU95_LINK_ID_FETCHYUV1,
 	DPU95_LINK_ID_FETCHYUV2, DPU95_LINK_ID_FETCHYUV3,
@@ -184,17 +179,9 @@ struct dpu95_fetchunit *dpu95_fy_get(struct dpu95_soc *dpu, unsigned int id)
 	if (IS_ERR(fu->hs))
 		return ERR_CAST(fu->hs);
 
-	if (dpu->use_vs4 && fu->type == DPU95_DISP) {
-		fu->vs = dpu95_vs_get(dpu, 4);
-		if (IS_ERR(fu->vs))
-			return ERR_CAST(fu->vs);
-	}
-
-	if (fu->type == DPU95_BLIT) {
-		fu->vs = dpu95_vs_get(dpu, 9);
-		if (IS_ERR(fu->vs))
-			return ERR_CAST(fu->vs);
-	}
+	fu->vs = dpu95_vs_get(dpu, fu->type == DPU95_DISP ? 4 : 9);
+	if (IS_ERR(fu->vs))
+		return ERR_CAST(fu->vs);
 
 	return fu;
 }
@@ -233,8 +220,7 @@ int dpu95_fy_init(struct dpu95_soc *dpu, unsigned int index,
 	fu->type = type;
 	fu->association_bit = id == 3 ? INT_PLANE : VIDEO_PLANE(index);
 	fu->link_id = dpu95_fy_link_id[index];
-	fu->cap_mask = dpu->use_vs4 ?
-			DPU95_FETCHYUV_CAP_MASK : DPU95_FETCHYUV_CAP_NO_VS4_MASK;
+	fu->cap_mask = DPU95_FETCHYUV_CAP_MASK;
 	fu->reg_offset1 = 0x28;
 	fu->reg_offset2 = 0x60;
 	fu->reg_burstbuffermanagement = 0x0c;

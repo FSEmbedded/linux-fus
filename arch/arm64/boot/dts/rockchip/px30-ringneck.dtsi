@@ -358,6 +358,12 @@
 	};
 };
 
+&pmu_io_domains {
+	pmuio1-supply = <&vcc_3v3>;
+	pmuio2-supply = <&vcc_3v3>;
+	status = "okay";
+};
+
 &saradc {
 	vref-supply = <&vcc_1v8>;
 	status = "okay";
@@ -393,6 +399,7 @@
 &uart5 {
 	/delete-property/ dmas;
 	/delete-property/ dma-names;
+	pinctrl-0 = <&uart5_xfer>;
 };
 
 /* Mule UCAN */

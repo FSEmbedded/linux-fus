@@ -1506,8 +1506,8 @@ static bool install_gpe_event_handler(struct acpi_ec *ec)
 
 static bool install_gpio_irq_event_handler(struct acpi_ec *ec)
 {
-	return request_irq(ec->irq, acpi_ec_irq_handler, IRQF_SHARED,
-			   "ACPI EC", ec) >= 0;
+	return request_threaded_irq(ec->irq, NULL, acpi_ec_irq_handler,
+				    IRQF_SHARED | IRQF_ONESHOT, "ACPI EC", ec) >= 0;
 }
 
 /**
@@ -1653,8 +1653,6 @@ static int acpi_ec_setup(struct acpi_ec *ec, struct acpi_device *device, bool ca
 
 	ret = ec_install_handlers(ec, device, call_reg);
 	if (ret) {
-		ec_remove_handlers(ec);
-
 		if (ec == first_ec)
 			first_ec = NULL;
 

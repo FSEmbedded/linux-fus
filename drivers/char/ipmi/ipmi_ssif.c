@@ -225,9 +225,6 @@ struct ssif_info {
 	bool		    has_event_buffer;
 	bool		    supports_alert;
 
-	/* When requesting events and messages, don't do it forever. */
-	unsigned int        num_requests_in_a_row;
-
 	/*
 	 * Used to tell what we should do with alerts.  If we are
 	 * waiting on a response, read the data immediately.
@@ -416,10 +413,7 @@ static void start_event_fetch(struct ssif_info *ssif_info, unsigned long *flags)
 	}
 
 	ssif_info->curr_msg = msg;
-	if (ssif_info->ssif_state != SSIF_GETTING_EVENTS) {
-		ssif_info->num_requests_in_a_row = 0;
-		ssif_info->ssif_state = SSIF_GETTING_EVENTS;
-	}
+	ssif_info->ssif_state = SSIF_GETTING_EVENTS;
 	ipmi_ssif_unlock_cond(ssif_info, flags);
 
 	msg->data[0] = (IPMI_NETFN_APP_REQUEST << 2);
@@ -442,10 +436,7 @@ static void start_recv_msg_fetch(struct ssif_info *ssif_info,
 	}
 
 	ssif_info->curr_msg = msg;
-	if (ssif_info->ssif_state != SSIF_GETTING_MESSAGES) {
-		ssif_info->num_requests_in_a_row = 0;
-		ssif_info->ssif_state = SSIF_GETTING_MESSAGES;
-	}
+	ssif_info->ssif_state = SSIF_GETTING_MESSAGES;
 	ipmi_ssif_unlock_cond(ssif_info, flags);
 
 	msg->data[0] = (IPMI_NETFN_APP_REQUEST << 2);
@@ -490,6 +481,8 @@ static int ipmi_ssif_thread(void *data)
 		/* Wait for something to do */
 		result = wait_for_completion_interruptible(
 						&ssif_info->wake_thread);
+		if (ssif_info->stopping)
+			break;
 		if (result == -ERESTARTSYS)
 			continue;
 		init_completion(&ssif_info->wake_thread);
@@ -850,11 +843,6 @@ static void msg_done_handler(struct ssif_info *ssif_info, int result,
 			ssif_info->msg_flags &= ~EVENT_MSG_BUFFER_FULL;
 			handle_flags(ssif_info, flags);
 		} else {
-			ssif_info->num_requests_in_a_row++;
-			if (ssif_info->num_requests_in_a_row > 10)
-				/* Stop if we do this too many times. */
-				ssif_info->msg_flags &= ~EVENT_MSG_BUFFER_FULL;
-
 			handle_flags(ssif_info, flags);
 			ssif_inc_stat(ssif_info, events);
 			deliver_recv_msg(ssif_info, msg);
@@ -888,11 +876,6 @@ static void msg_done_handler(struct ssif_info *ssif_info, int result,
 			ssif_info->msg_flags &= ~RECEIVE_MSG_AVAIL;
 			handle_flags(ssif_info, flags);
 		} else {
-			ssif_info->num_requests_in_a_row++;
-			if (ssif_info->num_requests_in_a_row > 10)
-				/* Stop if we do this too many times. */
-				ssif_info->msg_flags &= ~RECEIVE_MSG_AVAIL;
-
 			ssif_inc_stat(ssif_info, incoming_messages);
 			handle_flags(ssif_info, flags);
 			deliver_recv_msg(ssif_info, msg);
@@ -997,7 +980,7 @@ static void msg_written_handler(struct ssif_info *ssif_info, int result,
 			ipmi_ssif_unlock_cond(ssif_info, flags);
 			start_get(ssif_info);
 		} else {
-			/* Wait a jiffie then request the next message */
+			/* Wait a jiffy then request the next message */
 			ssif_info->waiting_alert = true;
 			ssif_info->retries_left = SSIF_RECV_RETRIES;
 			if (!ssif_info->stopping)
@@ -1288,8 +1271,8 @@ static void shutdown_ssif(void *send_info)
 	del_timer_sync(&ssif_info->watch_timer);
 	del_timer_sync(&ssif_info->retry_timer);
 	if (ssif_info->thread) {
+		complete(&ssif_info->wake_thread);
 		kthread_stop(ssif_info->thread);
-		ssif_info->thread = NULL;
 	}
 }
 
@@ -1385,8 +1368,20 @@ static int ssif_detect(struct i2c_client *client, struct i2c_board_info *info)
 	rv = do_cmd(client, 2, msg, &len, resp);
 	if (rv)
 		rv = -ENODEV;
-	else
+	else {
+	    if (len < 3) {
+		rv = -ENODEV;
+	    } else {
+		struct ipmi_device_id id;
+
+		rv = ipmi_demangle_device_id(resp[0] >> 2, resp[1],
+					     resp + 2, len - 2, &id);
+		if (rv)
+		    rv = -ENODEV; /* Error means a BMC probably isn't there. */
+	    }
+	    if (!rv && info)
 		strscpy(info->type, DEVICE_NAME, I2C_NAME_SIZE);
+	}
 	kfree(resp);
 	return rv;
 }
@@ -1721,6 +1716,16 @@ static int ssif_probe(struct i2c_client *client)
 		ipmi_addr_src_to_str(ssif_info->addr_source),
 		client->addr, client->adapter->name, slave_addr);
 
+	/*
+	 * Send a get device id command and validate its response to
+	 * make sure a valid BMC is there.
+	 */
+	rv = ssif_detect(client, NULL);
+	if (rv) {
+		dev_err(&client->dev, "Not present\n");
+		goto out;
+	}
+
 	/* Now check for system interface capabilities */
 	msg[0] = IPMI_NETFN_APP_REQUEST << 2;
 	msg[1] = IPMI_GET_SYSTEM_INTERFACE_CAPABILITIES_CMD;
@@ -1915,15 +1920,6 @@ static int ssif_probe(struct i2c_client *client)
 
  out:
 	if (rv) {
-		/*
-		 * If ipmi_register_smi() starts the interface, it will
-		 * call shutdown and that will free the thread and set
-		 * it to NULL.  Otherwise it must be freed here.
-		 */
-		if (ssif_info->thread) {
-			kthread_stop(ssif_info->thread);
-			ssif_info->thread = NULL;
-		}
 		if (addr_info)
 			addr_info->client = NULL;
 
@@ -1971,7 +1967,7 @@ static int new_ssif_client(int addr, char *adapter_name,
 		}
 	}
 
-	strncpy(addr_info->binfo.type, DEVICE_NAME,
+	strscpy(addr_info->binfo.type, DEVICE_NAME,
 		sizeof(addr_info->binfo.type));
 	addr_info->binfo.addr = addr;
 	addr_info->binfo.platform_data = addr_info;
@@ -2075,7 +2071,7 @@ static int dmi_ipmi_probe(struct platform_device *pdev)
 #endif
 
 static const struct i2c_device_id ssif_id[] = {
-	{ DEVICE_NAME, 0 },
+	{ DEVICE_NAME },
 	{ }
 };
 MODULE_DEVICE_TABLE(i2c, ssif_id);
@@ -2097,7 +2093,7 @@ static int ssif_platform_probe(struct platform_device *dev)
 	return dmi_ipmi_probe(dev);
 }
 
-static int ssif_platform_remove(struct platform_device *dev)
+static void ssif_platform_remove(struct platform_device *dev)
 {
 	struct ssif_addr_info *addr_info = dev_get_drvdata(&dev->dev);
 
@@ -2105,20 +2101,20 @@ static int ssif_platform_remove(struct platform_device *dev)
 	list_del(&addr_info->link);
 	kfree(addr_info);
 	mutex_unlock(&ssif_infos_mutex);
-	return 0;
 }
 
 static const struct platform_device_id ssif_plat_ids[] = {
     { "dmi-ipmi-ssif", 0 },
     { }
 };
+MODULE_DEVICE_TABLE(platform, ssif_plat_ids);
 
 static struct platform_driver ipmi_driver = {
 	.driver = {
 		.name = DEVICE_NAME,
 	},
 	.probe		= ssif_platform_probe,
-	.remove		= ssif_platform_remove,
+	.remove_new	= ssif_platform_remove,
 	.id_table       = ssif_plat_ids
 };
 

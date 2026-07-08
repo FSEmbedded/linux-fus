@@ -6,9 +6,8 @@
  ******************************************************************************/
 
 #include <drv_types.h>
-#include <rtw_debug.h>
 #include <linux/of.h>
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 
 u8 RTW_WPA_OUI_TYPE[] = { 0x00, 0x50, 0xf2, 1 };
 u16 RTW_WPA_VERSION = 1;
@@ -55,7 +54,9 @@ static u8 WIFI_OFDMRATES[] = {
 
 int rtw_get_bit_value_from_ieee_value(u8 val)
 {
-	unsigned char dot11_rate_table[] = {2, 4, 11, 22, 12, 18, 24, 36, 48, 72, 96, 108, 0}; /*  last element must be zero!! */
+	static const unsigned char dot11_rate_table[] = {
+		2, 4, 11, 22, 12, 18, 24, 36, 48, 72, 96, 108, 0
+	}; /*  last element must be zero!! */
 	int i = 0;
 
 	while (dot11_rate_table[i] != 0) {
@@ -139,24 +140,22 @@ u8 *rtw_get_ie(u8 *pbuf, signed int index, signed int *len, signed int limit)
 	signed int tmp, i;
 	u8 *p;
 
-	if (limit < 2)
+	if (limit < 1)
 		return NULL;
 
 	p = pbuf;
 	i = 0;
 	*len = 0;
-	while (i + 2 <= limit) {
-		tmp = *(p + 1);
-		if (i + 2 + tmp > limit)
-			break;
-
+	while (1) {
 		if (*p == index) {
-			*len = tmp;
+			*len = *(p + 1);
 			return p;
 		}
-
+		tmp = *(p + 1);
 		p += (tmp + 2);
 		i += (tmp + 2);
+		if (i >= limit)
+			break;
 	}
 	return NULL;
 }
@@ -186,25 +185,20 @@ u8 *rtw_get_ie_ex(u8 *in_ie, uint in_len, u8 eid, u8 *oui, u8 oui_len, u8 *ie, u
 
 	cnt = 0;
 
-	while (cnt + 2 <= in_len) {
-		u8 ie_len = in_ie[cnt + 1];
-
-		if (cnt + 2 + ie_len > in_len)
-			break;
-
+	while (cnt < in_len) {
 		if (eid == in_ie[cnt]
-			&& (!oui || (ie_len >= oui_len && !memcmp(&in_ie[cnt + 2], oui, oui_len)))) {
+			&& (!oui || !memcmp(&in_ie[cnt+2], oui, oui_len))) {
 			target_ie = &in_ie[cnt];
 
 			if (ie)
-				memcpy(ie, &in_ie[cnt], ie_len + 2);
+				memcpy(ie, &in_ie[cnt], in_ie[cnt+1]+2);
 
 			if (ielen)
-				*ielen = ie_len + 2;
+				*ielen = in_ie[cnt+1]+2;
 
 			break;
 		}
-		cnt += ie_len + 2; /* goto next */
+		cnt += in_ie[cnt+1]+2; /* goto next */
 	}
 
 	return target_ie;
@@ -1042,8 +1036,8 @@ void rtw_get_bcn_info(struct wlan_network *pnetwork)
 	u16 wpa_len = 0, rsn_len = 0;
 	struct HT_info_element *pht_info = NULL;
 	struct ieee80211_ht_cap *pht_cap = NULL;
-	unsigned int		len;
-	unsigned char 	*p;
+	unsigned int len;
+	unsigned char *p;
 	__le16 le_cap;
 
 	memcpy((u8 *)&le_cap, rtw_get_capability_from_ie(pnetwork->network.ies), 2);

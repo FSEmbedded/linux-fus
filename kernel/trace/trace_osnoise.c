@@ -1461,9 +1461,9 @@ static int run_osnoise(void)
 	save_osn_sample_stats(osn_var, &s);
 
 	/*
-	 * if threshold is 0, use the default value of 5 us.
+	 * if threshold is 0, use the default value of 1 us.
 	 */
-	threshold = tracing_thresh ? : 5000;
+	threshold = tracing_thresh ? : 1000;
 
 	/*
 	 * Apply PREEMPT and IRQ disabled options.
@@ -1552,7 +1552,7 @@ static int run_osnoise(void)
 		 * This will eventually cause unwarranted noise as PREEMPT_RCU
 		 * will force preemption as the means of ending the current
 		 * grace period. We avoid this problem by calling
-		 * rcu_momentary_dyntick_idle(), which performs a zero duration
+		 * rcu_momentary_eqs(), which performs a zero duration
 		 * EQS allowing PREEMPT_RCU to end the current grace period.
 		 * This call shouldn't be wrapped inside an RCU critical
 		 * section.
@@ -1564,7 +1564,7 @@ static int run_osnoise(void)
 			if (!disable_irq)
 				local_irq_disable();
 
-			rcu_momentary_dyntick_idle();
+			rcu_momentary_eqs();
 
 			if (!disable_irq)
 				local_irq_enable();
@@ -2099,21 +2099,26 @@ static void osnoise_hotplug_workfn(struct work_struct *dummy)
 {
 	unsigned int cpu = smp_processor_id();
 
-	guard(mutex)(&trace_types_lock);
+	mutex_lock(&trace_types_lock);
 
 	if (!osnoise_has_registered_instances())
-		return;
+		goto out_unlock_trace;
 
-	guard(cpus_read_lock)();
-	guard(mutex)(&interface_lock);
+	mutex_lock(&interface_lock);
+	cpus_read_lock();
 
 	if (!cpu_online(cpu))
-		return;
-
+		goto out_unlock;
 	if (!cpumask_test_cpu(cpu, &osnoise_cpumask))
-		return;
+		goto out_unlock;
 
 	start_kthread(cpu);
+
+out_unlock:
+	cpus_read_unlock();
+	mutex_unlock(&interface_lock);
+out_unlock_trace:
+	mutex_unlock(&trace_types_lock);
 }
 
 static DECLARE_WORK(osnoise_hotplug_work, osnoise_hotplug_workfn);
@@ -2268,11 +2273,11 @@ static ssize_t osnoise_options_write(struct file *filp, const char __user *ubuf,
 	if (running)
 		stop_per_cpu_kthreads();
 
+	mutex_lock(&interface_lock);
 	/*
 	 * avoid CPU hotplug operations that might read options.
 	 */
 	cpus_read_lock();
-	mutex_lock(&interface_lock);
 
 	retval = cnt;
 
@@ -2288,8 +2293,8 @@ static ssize_t osnoise_options_write(struct file *filp, const char __user *ubuf,
 			clear_bit(option, &osnoise_options);
 	}
 
-	mutex_unlock(&interface_lock);
 	cpus_read_unlock();
+	mutex_unlock(&interface_lock);
 
 	if (running)
 		start_per_cpu_kthreads();
@@ -2311,21 +2316,30 @@ static ssize_t
 osnoise_cpus_read(struct file *filp, char __user *ubuf, size_t count,
 		  loff_t *ppos)
 {
-	char *mask_str __free(kfree) = NULL;
+	char *mask_str;
 	int len;
 
-	guard(mutex)(&interface_lock);
+	mutex_lock(&interface_lock);
 
 	len = snprintf(NULL, 0, "%*pbl\n", cpumask_pr_args(&osnoise_cpumask)) + 1;
 	mask_str = kmalloc(len, GFP_KERNEL);
-	if (!mask_str)
-		return -ENOMEM;
+	if (!mask_str) {
+		count = -ENOMEM;
+		goto out_unlock;
+	}
 
 	len = snprintf(mask_str, len, "%*pbl\n", cpumask_pr_args(&osnoise_cpumask));
-	if (len >= count)
-		return -EINVAL;
+	if (len >= count) {
+		count = -EINVAL;
+		goto out_free;
+	}
 
 	count = simple_read_from_buffer(ubuf, count, ppos, mask_str, len);
+
+out_free:
+	kfree(mask_str);
+out_unlock:
+	mutex_unlock(&interface_lock);
 
 	return count;
 }
@@ -2375,16 +2389,16 @@ osnoise_cpus_write(struct file *filp, const char __user *ubuf, size_t count,
 	if (running)
 		stop_per_cpu_kthreads();
 
+	mutex_lock(&interface_lock);
 	/*
 	 * osnoise_cpumask is read by CPU hotplug operations.
 	 */
 	cpus_read_lock();
-	mutex_lock(&interface_lock);
 
 	cpumask_copy(&osnoise_cpumask, osnoise_cpumask_new);
 
-	mutex_unlock(&interface_lock);
 	cpus_read_unlock();
+	mutex_unlock(&interface_lock);
 
 	if (running)
 		start_per_cpu_kthreads();

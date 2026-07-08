@@ -672,8 +672,6 @@ int usb_add_phy(struct usb_phy *x, enum usb_phy_type type)
 		return -EINVAL;
 	}
 
-	INIT_LIST_HEAD(&x->head);
-
 	usb_charger_init(x);
 	ret = usb_add_extcon(x);
 	if (ret)
@@ -701,7 +699,7 @@ out:
 }
 EXPORT_SYMBOL_GPL(usb_add_phy);
 
-static struct device_type usb_phy_dev_type = {
+static const struct device_type usb_phy_dev_type = {
 	.name = "usb_phy",
 	.uevent = usb_phy_uevent,
 };
@@ -723,8 +721,6 @@ int usb_add_phy_dev(struct usb_phy *x)
 		dev_err(x->dev, "no device provided for PHY\n");
 		return -EINVAL;
 	}
-
-	INIT_LIST_HEAD(&x->head);
 
 	usb_charger_init(x);
 	ret = usb_add_extcon(x);

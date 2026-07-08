@@ -133,7 +133,7 @@ static int get_temp_target(struct peci_cputemp *priv, enum peci_temp_target_type
 		*val = priv->temp.target.tjmax;
 		break;
 	case crit_hyst_type:
-		*val = priv->temp.target.tcontrol;
+		*val = priv->temp.target.tjmax - priv->temp.target.tcontrol;
 		break;
 	default:
 		ret = -EOPNOTSUPP;
@@ -339,7 +339,7 @@ static umode_t cputemp_is_visible(const void *data, enum hwmon_sensor_types type
 {
 	const struct peci_cputemp *priv = data;
 
-	if (channel >= CPUTEMP_CHANNEL_NUMS)
+	if (channel > CPUTEMP_CHANNEL_NUMS)
 		return 0;
 
 	if (channel < channel_core)
@@ -360,10 +360,10 @@ static int init_core_mask(struct peci_cputemp *priv)
 	int ret;
 
 	/* Get the RESOLVED_CORES register value */
-	switch (peci_dev->info.model) {
-	case INTEL_FAM6_ICELAKE_X:
-	case INTEL_FAM6_ICELAKE_D:
-	case INTEL_FAM6_SAPPHIRERAPIDS_X:
+	switch (peci_dev->info.x86_vfm) {
+	case INTEL_ICELAKE_X:
+	case INTEL_ICELAKE_D:
+	case INTEL_SAPPHIRERAPIDS_X:
 		ret = peci_ep_pci_local_read(peci_dev, 0, reg->bus, reg->dev,
 					     reg->func, reg->offset + 4, &data);
 		if (ret)

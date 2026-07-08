@@ -53,7 +53,9 @@ mlx5_devlink_info_get(struct devlink *devlink, struct devlink_info_req *req,
 	if (err)
 		return err;
 
-	mlx5_fw_version_query(dev, &running_fw, &stored_fw);
+	err = mlx5_fw_version_query(dev, &running_fw, &stored_fw);
+	if (err)
+		return err;
 
 	snprintf(version_str, sizeof(version_str), "%d.%d.%04d",
 		 mlx5_fw_ver_major(running_fw), mlx5_fw_ver_minor(running_fw),
@@ -139,29 +141,13 @@ static int mlx5_devlink_reload_down(struct devlink *devlink, bool netns_change,
 {
 	struct mlx5_core_dev *dev = devlink_priv(devlink);
 	struct pci_dev *pdev = dev->pdev;
-	bool sf_dev_allocated;
 	int ret = 0;
-
-	if (mlx5_fw_reset_in_progress(dev)) {
-		NL_SET_ERR_MSG_MOD(extack, "Can't reload during firmware reset");
-		return -EBUSY;
-	}
 
 	if (mlx5_dev_is_lightweight(dev)) {
 		if (action != DEVLINK_RELOAD_ACTION_DRIVER_REINIT)
 			return -EOPNOTSUPP;
 		mlx5_unload_one_light(dev);
 		return 0;
-	}
-
-	sf_dev_allocated = mlx5_sf_dev_allocated(dev);
-	if (sf_dev_allocated) {
-		/* Reload results in deleting SF device which further results in
-		 * unregistering devlink instance while holding devlink_mutext.
-		 * Hence, do not support reload.
-		 */
-		NL_SET_ERR_MSG_MOD(extack, "reload is unsupported when SFs are allocated");
-		return -EOPNOTSUPP;
 	}
 
 	if (mlx5_lag_is_active(dev)) {

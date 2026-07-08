@@ -6,6 +6,7 @@
  */
 
 #include <linux/busfreq-imx.h>
+#include <linux/cleanup.h>
 #include <linux/clk.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
@@ -15,9 +16,7 @@
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
-#include <linux/sys_soc.h>
 
-#include "../host/xhci.h"
 #include "core.h"
 
 /* USB wakeup registers */
@@ -59,8 +58,6 @@ struct dwc3_imx8mp {
 	struct clk			*hsio_clk;
 	struct clk			*suspend_clk;
 	int				irq;
-	u8				tx_maxburst;
-	u8				tx_thr_num;
 	bool				pm_suspended;
 	bool				wakeup_pending;
 };
@@ -133,6 +130,16 @@ static void dwc3_imx8mp_wakeup_disable(struct dwc3_imx8mp *dwc3_imx)
 	writel(val, dwc3_imx->hsio_blk_base + USB_WAKEUP_CTRL);
 }
 
+static const struct property_entry dwc3_imx8mp_properties[] = {
+	PROPERTY_ENTRY_BOOL("xhci-missing-cas-quirk"),
+	PROPERTY_ENTRY_BOOL("xhci-skip-phy-init-quirk"),
+	{},
+};
+
+static const struct software_node dwc3_imx8mp_swnode = {
+	.properties = dwc3_imx8mp_properties,
+};
+
 static irqreturn_t dwc3_imx8mp_interrupt(int irq, void *_dwc3_imx)
 {
 	struct dwc3_imx8mp	*dwc3_imx = _dwc3_imx;
@@ -173,13 +180,7 @@ static void dwc3_imx8mp_set_role_post(struct dwc3 *dwc, u32 role)
 	}
 }
 
-static struct xhci_plat_priv dwc3_imx8mp_xhci_priv = {
-	.quirks = XHCI_MISSING_CAS |
-		  XHCI_SKIP_PHY_INIT,
-};
-
 static struct dwc3_platform_data dwc3_imx8mp_pdata = {
-	.xhci_priv = &dwc3_imx8mp_xhci_priv,
 	.set_role_post = dwc3_imx8mp_set_role_post,
 };
 
@@ -191,49 +192,10 @@ static struct of_dev_auxdata dwc3_imx8mp_auxdata[] = {
 	{},
 };
 
-static const struct soc_device_attribute imx95_rev_1_x_soc_devices[] = {
-	{ .soc_id = "i.MX95", .revision = "1.0" },
-	{ .soc_id = "i.MX95", .revision = "1.1" },
-	{ /* sentinel */ }
-};
-
-static int dwc3_imx95_limit_tx_maxburst(struct dwc3_imx8mp *dwc3_imx,
-					struct device_node *dwc3_node)
-{
-	struct device		*dev = dwc3_imx->dev;
-	struct property		*prop;
-	int			ret;
-
-	dwc3_imx->tx_maxburst = 4;
-	dwc3_imx->tx_thr_num = 1;
-
-	prop = devm_kzalloc(dev, sizeof(*prop), GFP_KERNEL);
-	if (!prop)
-		return -ENOMEM;
-
-	prop->name = "snps,tx-max-burst";
-	prop->value = &dwc3_imx->tx_maxburst;
-	prop->length = sizeof(u8);
-	ret = of_add_property(dwc3_node, prop);
-	if (ret)
-		return ret;
-
-	prop = devm_kzalloc(dev, sizeof(*prop), GFP_KERNEL);
-	if (!prop)
-		return -ENOMEM;
-
-	prop->name = "snps,tx-thr-num-pkt";
-	prop->value = &dwc3_imx->tx_thr_num;
-	prop->length = sizeof(u8);
-	ret = of_add_property(dwc3_node, prop);
-
-	return ret;
-}
-
 static int dwc3_imx8mp_probe(struct platform_device *pdev)
 {
 	struct device		*dev = &pdev->dev;
-	struct device_node	*dwc3_np, *node = dev->of_node;
+	struct device_node	*node = dev->of_node;
 	struct dwc3_imx8mp	*dwc3_imx;
 	struct resource		*res;
 	int			err, irq;
@@ -264,41 +226,29 @@ static int dwc3_imx8mp_probe(struct platform_device *pdev)
 			return PTR_ERR(dwc3_imx->glue_base);
 	}
 
-	request_bus_freq(BUS_FREQ_HIGH);
-	dwc3_imx->hsio_clk = devm_clk_get(dev, "hsio");
-	if (IS_ERR(dwc3_imx->hsio_clk)) {
-		err = PTR_ERR(dwc3_imx->hsio_clk);
-		dev_err(dev, "Failed to get hsio clk, err=%d\n", err);
-		goto rel_high_bus;
-	}
+	dwc3_imx->hsio_clk = devm_clk_get_enabled(dev, "hsio");
+	if (IS_ERR(dwc3_imx->hsio_clk))
+		return dev_err_probe(dev, PTR_ERR(dwc3_imx->hsio_clk),
+				     "Failed to get hsio clk\n");
 
-	err = clk_prepare_enable(dwc3_imx->hsio_clk);
-	if (err) {
-		dev_err(dev, "Failed to enable hsio clk, err=%d\n", err);
-		return err;
-	}
-
-	dwc3_imx->suspend_clk = devm_clk_get(dev, "suspend");
-	if (IS_ERR(dwc3_imx->suspend_clk)) {
-		err = PTR_ERR(dwc3_imx->suspend_clk);
-		dev_err(dev, "Failed to get suspend clk, err=%d\n", err);
-		goto disable_hsio_clk;
-	}
-
-	err = clk_prepare_enable(dwc3_imx->suspend_clk);
-	if (err) {
-		dev_err(dev, "Failed to enable suspend clk, err=%d\n", err);
-		goto disable_hsio_clk;
-	}
+	dwc3_imx->suspend_clk = devm_clk_get_enabled(dev, "suspend");
+	if (IS_ERR(dwc3_imx->suspend_clk))
+		return dev_err_probe(dev, PTR_ERR(dwc3_imx->suspend_clk),
+				     "Failed to get suspend clk\n");
 
 	irq = platform_get_irq(pdev, 0);
-	if (irq < 0) {
-		err = irq;
-		goto disable_clks;
-	}
+	if (irq < 0)
+		return irq;
 	dwc3_imx->irq = irq;
 
+	struct device_node *dwc3_np __free(device_node) = of_get_compatible_child(node,
+										  "snps,dwc3");
+	if (!dwc3_np)
+		return dev_err_probe(dev, -ENODEV, "failed to find dwc3 core child\n");
+
 	imx8mp_configure_glue(dwc3_imx);
+
+	request_bus_freq(BUS_FREQ_HIGH);
 
 	pm_runtime_set_active(dev);
 	pm_runtime_enable(dev);
@@ -306,25 +256,17 @@ static int dwc3_imx8mp_probe(struct platform_device *pdev)
 	if (err < 0)
 		goto disable_rpm;
 
-	dwc3_np = of_get_compatible_child(node, "snps,dwc3");
-	if (!dwc3_np) {
+	err = device_add_software_node(dev, &dwc3_imx8mp_swnode);
+	if (err) {
 		err = -ENODEV;
-		dev_err(dev, "failed to find dwc3 core child\n");
+		dev_err(dev, "failed to add software node\n");
 		goto disable_rpm;
-	}
-
-	if (soc_device_match(imx95_rev_1_x_soc_devices)) {
-		err = dwc3_imx95_limit_tx_maxburst(dwc3_imx, dwc3_np);
-		if (err) {
-			dev_err(dev, "failed to limit tx maxburst for i.MX95 A1\n");
-			goto disable_rpm;
-		}
 	}
 
 	err = of_platform_populate(node, NULL, dwc3_imx8mp_auxdata, dev);
 	if (err) {
 		dev_err(&pdev->dev, "failed to create dwc3 core\n");
-		goto err_node_put;
+		goto remove_swnode;
 	}
 
 	dwc3_imx->dwc3 = of_find_device_by_node(dwc3_np);
@@ -333,7 +275,6 @@ static int dwc3_imx8mp_probe(struct platform_device *pdev)
 		err = -ENODEV;
 		goto depopulate;
 	}
-	of_node_put(dwc3_np);
 
 	err = devm_request_threaded_irq(dev, irq, NULL, dwc3_imx8mp_interrupt,
 					IRQF_ONESHOT, dev_name(dev), dwc3_imx);
@@ -351,16 +292,11 @@ put_dwc3:
 	put_device(&dwc3_imx->dwc3->dev);
 depopulate:
 	of_platform_depopulate(dev);
-err_node_put:
-	of_node_put(dwc3_np);
+remove_swnode:
+	device_remove_software_node(dev);
 disable_rpm:
 	pm_runtime_disable(dev);
 	pm_runtime_put_noidle(dev);
-disable_clks:
-	clk_disable_unprepare(dwc3_imx->suspend_clk);
-disable_hsio_clk:
-	clk_disable_unprepare(dwc3_imx->hsio_clk);
-rel_high_bus:
 	release_bus_freq(BUS_FREQ_HIGH);
 
 	return err;
@@ -370,21 +306,21 @@ static void dwc3_imx8mp_remove(struct platform_device *pdev)
 {
 	struct dwc3_imx8mp *dwc3_imx = platform_get_drvdata(pdev);
 	struct device *dev = &pdev->dev;
+	struct device *dwc3_dev = &dwc3_imx->dwc3->dev;
 
 	put_device(&dwc3_imx->dwc3->dev);
 
 	pm_runtime_get_sync(dev);
+	dwc3_dev->platform_data = NULL;
 	of_platform_depopulate(dev);
+	device_remove_software_node(dev);
 
-	clk_disable_unprepare(dwc3_imx->suspend_clk);
-	clk_disable_unprepare(dwc3_imx->hsio_clk);
-	release_bus_freq(BUS_FREQ_HIGH);
 	pm_runtime_disable(dev);
 	pm_runtime_put_noidle(dev);
+	release_bus_freq(BUS_FREQ_HIGH);
 }
 
-static int __maybe_unused dwc3_imx8mp_suspend(struct dwc3_imx8mp *dwc3_imx,
-					      pm_message_t msg)
+static int dwc3_imx8mp_suspend(struct dwc3_imx8mp *dwc3_imx, pm_message_t msg)
 {
 	if (dwc3_imx->pm_suspended)
 		return 0;
@@ -399,8 +335,7 @@ static int __maybe_unused dwc3_imx8mp_suspend(struct dwc3_imx8mp *dwc3_imx,
 	return 0;
 }
 
-static int __maybe_unused dwc3_imx8mp_resume(struct dwc3_imx8mp *dwc3_imx,
-					     pm_message_t msg)
+static int dwc3_imx8mp_resume(struct dwc3_imx8mp *dwc3_imx, pm_message_t msg)
 {
 	struct dwc3	*dwc = platform_get_drvdata(dwc3_imx->dwc3);
 	int ret = 0;
@@ -434,7 +369,7 @@ static int __maybe_unused dwc3_imx8mp_resume(struct dwc3_imx8mp *dwc3_imx,
 	return ret;
 }
 
-static int __maybe_unused dwc3_imx8mp_pm_suspend(struct device *dev)
+static int dwc3_imx8mp_pm_suspend(struct device *dev)
 {
 	struct dwc3_imx8mp *dwc3_imx = dev_get_drvdata(dev);
 	int ret;
@@ -452,7 +387,7 @@ static int __maybe_unused dwc3_imx8mp_pm_suspend(struct device *dev)
 	return ret;
 }
 
-static int __maybe_unused dwc3_imx8mp_pm_resume(struct device *dev)
+static int dwc3_imx8mp_pm_resume(struct device *dev)
 {
 	struct dwc3_imx8mp *dwc3_imx = dev_get_drvdata(dev);
 	int ret;
@@ -466,8 +401,10 @@ static int __maybe_unused dwc3_imx8mp_pm_resume(struct device *dev)
 	}
 
 	ret = clk_prepare_enable(dwc3_imx->hsio_clk);
-	if (ret)
+	if (ret) {
+		clk_disable_unprepare(dwc3_imx->suspend_clk);
 		return ret;
+	}
 
 	ret = dwc3_imx8mp_resume(dwc3_imx, PMSG_RESUME);
 
@@ -480,7 +417,7 @@ static int __maybe_unused dwc3_imx8mp_pm_resume(struct device *dev)
 	return ret;
 }
 
-static int __maybe_unused dwc3_imx8mp_runtime_suspend(struct device *dev)
+static int dwc3_imx8mp_runtime_suspend(struct device *dev)
 {
 	struct dwc3_imx8mp *dwc3_imx = dev_get_drvdata(dev);
 
@@ -489,7 +426,7 @@ static int __maybe_unused dwc3_imx8mp_runtime_suspend(struct device *dev)
 	return dwc3_imx8mp_suspend(dwc3_imx, PMSG_AUTO_SUSPEND);
 }
 
-static int __maybe_unused dwc3_imx8mp_runtime_resume(struct device *dev)
+static int dwc3_imx8mp_runtime_resume(struct device *dev)
 {
 	struct dwc3_imx8mp *dwc3_imx = dev_get_drvdata(dev);
 
@@ -499,9 +436,9 @@ static int __maybe_unused dwc3_imx8mp_runtime_resume(struct device *dev)
 }
 
 static const struct dev_pm_ops dwc3_imx8mp_dev_pm_ops = {
-	SET_SYSTEM_SLEEP_PM_OPS(dwc3_imx8mp_pm_suspend, dwc3_imx8mp_pm_resume)
-	SET_RUNTIME_PM_OPS(dwc3_imx8mp_runtime_suspend,
-			   dwc3_imx8mp_runtime_resume, NULL)
+	SYSTEM_SLEEP_PM_OPS(dwc3_imx8mp_pm_suspend, dwc3_imx8mp_pm_resume)
+	RUNTIME_PM_OPS(dwc3_imx8mp_runtime_suspend, dwc3_imx8mp_runtime_resume,
+		       NULL)
 };
 
 static const struct of_device_id dwc3_imx8mp_of_match[] = {
@@ -515,7 +452,7 @@ static struct platform_driver dwc3_imx8mp_driver = {
 	.remove_new	= dwc3_imx8mp_remove,
 	.driver		= {
 		.name	= "imx8mp-dwc3",
-		.pm	= &dwc3_imx8mp_dev_pm_ops,
+		.pm	= pm_ptr(&dwc3_imx8mp_dev_pm_ops),
 		.of_match_table	= dwc3_imx8mp_of_match,
 	},
 };

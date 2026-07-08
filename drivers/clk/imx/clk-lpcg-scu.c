@@ -64,7 +64,7 @@ static void do_lpcg_workaround(u32 rate, void __iomem *reg, u32 val)
 		 * For clocks running below 24MHz, wait a minimum of
 		 * 4 clock cycles.
 		 */
-		ndelay(4 * (DIV_ROUND_UP(1000000000, rate)));
+		ndelay(4 * (DIV_ROUND_UP(1000 * HZ_PER_MHZ, rate)));
 	}
 }
 

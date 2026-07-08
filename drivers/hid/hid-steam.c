@@ -45,6 +45,7 @@
 #include <linux/power_supply.h>
 #include "hid-ids.h"
 
+MODULE_DESCRIPTION("HID driver for Valve Steam Controller");
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Rodrigo Rivas Costa <rodrigorivascosta@gmail.com>");
 
@@ -287,14 +288,14 @@ enum {
 #define STEAM_PAD_BOTH 2
 
 /* Other random constants */
-#define STEAM_SERIAL_LEN 10
+#define STEAM_SERIAL_LEN 0x15
 
 struct steam_device {
 	struct list_head list;
 	spinlock_t lock;
 	struct hid_device *hdev, *client_hdev;
 	struct mutex report_mutex;
-	bool client_opened;
+	unsigned long client_opened;
 	struct input_dev __rcu *input;
 	struct input_dev __rcu *sensors;
 	unsigned long quirks;
@@ -440,10 +441,10 @@ static int steam_get_serial(struct steam_device *steam)
 {
 	/*
 	 * Send: 0xae 0x15 0x01
-	 * Recv: 0xae 0x15 0x01 serialnumber (10 chars)
+	 * Recv: 0xae 0x15 0x01 serialnumber
 	 */
 	int ret = 0;
-	u8 cmd[] = {ID_GET_STRING_ATTRIBUTE, 0x15, ATTRIB_STR_UNIT_SERIAL};
+	u8 cmd[] = {ID_GET_STRING_ATTRIBUTE, sizeof(steam->serial_no), ATTRIB_STR_UNIT_SERIAL};
 	u8 reply[3 + STEAM_SERIAL_LEN + 1];
 
 	mutex_lock(&steam->report_mutex);
@@ -453,12 +454,13 @@ static int steam_get_serial(struct steam_device *steam)
 	ret = steam_recv_report(steam, reply, sizeof(reply));
 	if (ret < 0)
 		goto out;
-	if (reply[0] != ID_GET_STRING_ATTRIBUTE || reply[1] != 0x15 || reply[2] != ATTRIB_STR_UNIT_SERIAL) {
+	if (reply[0] != ID_GET_STRING_ATTRIBUTE || reply[1] < 1 ||
+	    reply[1] > sizeof(steam->serial_no) || reply[2] != ATTRIB_STR_UNIT_SERIAL) {
 		ret = -EIO;
 		goto out;
 	}
 	reply[3 + STEAM_SERIAL_LEN] = 0;
-	strscpy(steam->serial_no, reply + 3, sizeof(steam->serial_no));
+	strscpy(steam->serial_no, reply + 3, reply[1]);
 out:
 	mutex_unlock(&steam->report_mutex);
 	return ret;
@@ -952,7 +954,7 @@ static void steam_battery_unregister(struct steam_device *steam)
 static int steam_register(struct steam_device *steam)
 {
 	int ret;
-	bool client_opened;
+	unsigned long client_opened;
 	unsigned long flags;
 
 	/*
@@ -1049,10 +1051,10 @@ static void steam_mode_switch_cb(struct work_struct *work)
 							struct steam_device, mode_switch);
 	unsigned long flags;
 	bool client_opened;
-	steam->gamepad_mode = !steam->gamepad_mode;
 	if (!lizard_mode)
 		return;
 
+	steam->gamepad_mode = !steam->gamepad_mode;
 	if (steam->gamepad_mode)
 		steam_set_lizard_mode(steam, false);
 	else {
@@ -1138,7 +1140,7 @@ static int steam_client_ll_open(struct hid_device *hdev)
 	unsigned long flags;
 
 	spin_lock_irqsave(&steam->lock, flags);
-	steam->client_opened = true;
+	steam->client_opened++;
 	spin_unlock_irqrestore(&steam->lock, flags);
 
 	schedule_work(&steam->unregister_work);
@@ -1154,7 +1156,7 @@ static void steam_client_ll_close(struct hid_device *hdev)
 	bool connected;
 
 	spin_lock_irqsave(&steam->lock, flags);
-	steam->client_opened = false;
+	steam->client_opened--;
 	connected = steam->connected && !steam->client_opened;
 	spin_unlock_irqrestore(&steam->lock, flags);
 
@@ -1288,7 +1290,7 @@ static int steam_probe(struct hid_device *hdev,
 	steam->client_hdev = steam_create_client_hid(hdev);
 	if (IS_ERR(steam->client_hdev)) {
 		ret = PTR_ERR(steam->client_hdev);
-		goto err_stream_unregister;
+		goto err_steam_unregister;
 	}
 	steam->client_hdev->driver_data = steam;
 
@@ -1300,7 +1302,7 @@ static int steam_probe(struct hid_device *hdev,
 
 err_destroy:
 	hid_destroy_device(steam->client_hdev);
-err_stream_unregister:
+err_steam_unregister:
 	if (steam->connected)
 		steam_unregister(steam);
 err_hw_close:
@@ -1331,7 +1333,7 @@ static void steam_remove(struct hid_device *hdev)
 	cancel_work_sync(&steam->rumble_work);
 	cancel_work_sync(&steam->unregister_work);
 	steam->client_hdev = NULL;
-	steam->client_opened = false;
+	steam->client_opened = 0;
 	if (steam->quirks & STEAM_QUIRK_WIRELESS) {
 		hid_info(hdev, "Steam wireless receiver disconnected");
 	}
@@ -1621,7 +1623,7 @@ static void steam_do_deck_input_event(struct steam_device *steam,
 		schedule_delayed_work(&steam->mode_switch, 45 * HZ / 100);
 	}
 
-	if (!steam->gamepad_mode)
+	if (!steam->gamepad_mode && lizard_mode)
 		return;
 
 	lpad_touched = b10 & BIT(3);
@@ -1691,7 +1693,7 @@ static void steam_do_deck_sensors_event(struct steam_device *steam,
 	 */
 	steam->sensor_timestamp_us += 4000;
 
-	if (!steam->gamepad_mode)
+	if (!steam->gamepad_mode && lizard_mode)
 		return;
 
 	input_event(sensors, EV_MSC, MSC_TIMESTAMP, steam->sensor_timestamp_us);

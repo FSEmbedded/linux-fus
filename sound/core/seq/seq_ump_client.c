@@ -37,7 +37,6 @@ struct seq_ump_client {
 	struct snd_ump_endpoint *ump;	/* assigned endpoint */
 	int seq_client;			/* sequencer client id */
 	int opened[2];			/* current opens for each direction */
-	rwlock_t output_lock;		/* protects out_rfile output access */
 	struct snd_rawmidi_file out_rfile; /* rawmidi for output */
 	struct seq_ump_input_buffer input; /* input parser context */
 	void *ump_info[SNDRV_UMP_MAX_BLOCKS + 1]; /* shadow of seq client ump_info */
@@ -89,7 +88,6 @@ static int seq_ump_process_event(struct snd_seq_event *ev, int direct,
 	unsigned char type;
 	int len;
 
-	guard(read_lock_irqsave)(&client->output_lock);
 	substream = client->out_rfile.output;
 	if (!substream)
 		return -ENODEV;
@@ -108,7 +106,6 @@ static int seq_ump_process_event(struct snd_seq_event *ev, int direct,
 static int seq_ump_client_open(struct seq_ump_client *client, int dir)
 {
 	struct snd_ump_endpoint *ump = client->ump;
-	struct snd_rawmidi_file rfile = {};
 	int err;
 
 	guard(mutex)(&ump->open_mutex);
@@ -116,11 +113,9 @@ static int seq_ump_client_open(struct seq_ump_client *client, int dir)
 		err = snd_rawmidi_kernel_open(&ump->core, 0,
 					      SNDRV_RAWMIDI_LFLG_OUTPUT |
 					      SNDRV_RAWMIDI_LFLG_APPEND,
-					      &rfile);
+					      &client->out_rfile);
 		if (err < 0)
 			return err;
-		scoped_guard(write_lock_irqsave, &client->output_lock)
-			client->out_rfile = rfile;
 	}
 	client->opened[dir]++;
 	return 0;
@@ -130,19 +125,11 @@ static int seq_ump_client_open(struct seq_ump_client *client, int dir)
 static int seq_ump_client_close(struct seq_ump_client *client, int dir)
 {
 	struct snd_ump_endpoint *ump = client->ump;
-	struct snd_rawmidi_file rfile = {};
 
 	guard(mutex)(&ump->open_mutex);
-	if (!--client->opened[dir]) {
-		if (dir == STR_OUT) {
-			scoped_guard(write_lock_irqsave, &client->output_lock) {
-				rfile = client->out_rfile;
-				client->out_rfile = (struct snd_rawmidi_file){};
-			}
-			if (rfile.rmidi)
-				snd_rawmidi_kernel_release(&rfile);
-		}
-	}
+	if (!--client->opened[dir])
+		if (dir == STR_OUT)
+			snd_rawmidi_kernel_release(&client->out_rfile);
 	return 0;
 }
 
@@ -202,6 +189,8 @@ static void fill_port_info(struct snd_seq_port_info *port,
 	port->ump_group = group->group + 1;
 	if (!group->active)
 		port->capability |= SNDRV_SEQ_PORT_CAP_INACTIVE;
+	if (group->is_midi1)
+		port->flags |= SNDRV_SEQ_PORT_FLG_IS_MIDI1;
 	port->type = SNDRV_SEQ_PORT_TYPE_MIDI_GENERIC |
 		SNDRV_SEQ_PORT_TYPE_MIDI_UMP |
 		SNDRV_SEQ_PORT_TYPE_HARDWARE |
@@ -236,7 +225,7 @@ static int seq_ump_group_init(struct seq_ump_client *client, int group_index)
 		return -ENOMEM;
 
 	fill_port_info(port, client, group);
-	port->flags = SNDRV_SEQ_PORT_FLG_GIVEN_PORT;
+	port->flags |= SNDRV_SEQ_PORT_FLG_GIVEN_PORT;
 	memset(&pcallbacks, 0, sizeof(pcallbacks));
 	pcallbacks.owner = THIS_MODULE;
 	pcallbacks.private_data = client;
@@ -283,6 +272,8 @@ static void update_port_infos(struct seq_ump_client *client)
 						new);
 		if (err < 0)
 			continue;
+		/* notify to system port */
+		snd_seq_system_client_ev_port_change(client->seq_client, i);
 	}
 }
 
@@ -380,7 +371,7 @@ static void setup_client_group_filter(struct seq_ump_client *client)
 	cptr = snd_seq_kernel_client_get(client->seq_client);
 	if (!cptr)
 		return;
-	filter = SND_SEQ_GROUP_FILTER_GROUPS; /* always allow groupless messages */
+	filter = ~(1U << 0); /* always allow groupless messages */
 	for (p = 0; p < SNDRV_UMP_MAX_GROUPS; p++) {
 		if (client->ump->groups[p].active)
 			filter &= ~(1U << (p + 1));
@@ -443,7 +434,6 @@ static int snd_seq_ump_probe(struct device *_dev)
 
 	INIT_WORK(&client->group_notify_work, handle_group_notify);
 	client->ump = ump;
-	rwlock_init(&client->output_lock);
 
 	client->seq_client =
 		snd_seq_create_kernel_client(card, ump->core.device,

@@ -150,12 +150,16 @@ struct svc_i3c_xfer {
 	int ret;
 	unsigned int type;
 	unsigned int ncmds;
-	struct svc_i3c_cmd cmds[];
+	struct svc_i3c_cmd cmds[] __counted_by(ncmds);
 };
 
 struct svc_i3c_regs_save {
 	u32 mconfig;
 	u32 mdynaddr;
+};
+
+struct svc_i3c_drvdata {
+	u32 quirks;
 };
 
 /**
@@ -183,6 +187,7 @@ struct svc_i3c_regs_save {
  * @ibi.tbq_slot: To be queued IBI slot
  * @ibi.lock: IBI lock
  * @lock: Transfer lock, protect between IBI work thread and callbacks from master
+ * @drvdata: Driver data
  * @enabled_events: Bit masks for enable events (IBI, HotJoin).
  * @mctrl_config: Configuration value in SVC_I3C_MCTRL for setting speed back.
  */
@@ -214,6 +219,7 @@ struct svc_i3c_master {
 		spinlock_t lock;
 	} ibi;
 	struct mutex lock;
+	const struct svc_i3c_drvdata *drvdata;
 	u32 enabled_events;
 	u32 mctrl_config;
 };
@@ -360,26 +366,19 @@ static int svc_i3c_master_handle_ibi(struct svc_i3c_master *master,
 	int ret, val;
 	u8 *buf;
 
-	/*
-	 * Wait for transfer to complete before returning. Otherwise, the EmitStop
-	 * request might be sent when the transfer is not complete.
-	 */
+	slot = i3c_generic_ibi_get_free_slot(data->ibi_pool);
+	if (!slot)
+		return -ENOSPC;
+
+	slot->len = 0;
+	buf = slot->data;
+
 	ret = readl_relaxed_poll_timeout(master->regs + SVC_I3C_MSTATUS, val,
 						SVC_I3C_MSTATUS_COMPLETE(val), 0, 1000);
 	if (ret) {
 		dev_err(master->dev, "Timeout when polling for COMPLETE\n");
 		return ret;
 	}
-
-	slot = i3c_generic_ibi_get_free_slot(data->ibi_pool);
-	if (!slot) {
-		dev_dbg(master->dev, "No free ibi slot, drop the data\n");
-		writel(SVC_I3C_MDATACTRL_FLUSHRB, master->regs + SVC_I3C_MDATACTRL);
-		return -ENOSPC;
-	}
-
-	slot->len = 0;
-	buf = slot->data;
 
 	while (SVC_I3C_MSTATUS_RXPEND(readl(master->regs + SVC_I3C_MSTATUS))  &&
 	       slot->len < SVC_I3C_FIFO_SIZE) {
@@ -420,8 +419,8 @@ static void svc_i3c_master_ibi_work(struct work_struct *work)
 {
 	struct svc_i3c_master *master = container_of(work, struct svc_i3c_master, ibi_work);
 	struct svc_i3c_i2c_dev_data *data;
-	struct i3c_dev_desc *dev = NULL;
 	unsigned int ibitype, ibiaddr;
+	struct i3c_dev_desc *dev;
 	u32 status, val;
 	int ret;
 
@@ -439,24 +438,9 @@ static void svc_i3c_master_ibi_work(struct work_struct *work)
 	 */
 	writel(SVC_I3C_MINT_IBIWON, master->regs + SVC_I3C_MSTATUS);
 
-	/*
-	 * Write REQUEST_START_ADDR request to emit broadcast address for arbitration,
-	 * instend of using AUTO_IBI.
-	 *
-	 * Using AutoIBI request may cause controller to remain in AutoIBI state when
-	 * there is a glitch on SDA line (high->low->high).
-	 * 1. SDA high->low, raising an interrupt to execute IBI isr.
-	 * 2. SDA low->high.
-	 * 3. IBI isr writes an AutoIBI request.
-	 * 4. The controller will not start AutoIBI process because SDA is not low.
-	 * 5. IBIWON polling times out.
-	 * 6. Controller reamins in AutoIBI state and doesn't accept EmitStop request.
-	 */
-	writel(SVC_I3C_MCTRL_REQUEST_START_ADDR |
-	       SVC_I3C_MCTRL_TYPE_I3C |
-	       SVC_I3C_MCTRL_IBIRESP_MANUAL |
-	       SVC_I3C_MCTRL_DIR(SVC_I3C_MCTRL_DIR_WRITE) |
-	       SVC_I3C_MCTRL_ADDR(I3C_BROADCAST_ADDR),
+	/* Acknowledge the incoming interrupt with the AUTOIBI mechanism */
+	writel(SVC_I3C_MCTRL_REQUEST_AUTO_IBI |
+	       SVC_I3C_MCTRL_IBIRESP_AUTO,
 	       master->regs + SVC_I3C_MCTRL);
 
 	/* Wait for IBIWON, should take approximately 100us */
@@ -476,15 +460,10 @@ static void svc_i3c_master_ibi_work(struct work_struct *work)
 	switch (ibitype) {
 	case SVC_I3C_MSTATUS_IBITYPE_IBI:
 		dev = svc_i3c_master_dev_from_addr(master, ibiaddr);
-		if (!dev || !is_events_enabled(master, SVC_I3C_EVENT_IBI)) {
+		if (!dev || !is_events_enabled(master, SVC_I3C_EVENT_IBI))
 			svc_i3c_master_nack_ibi(master);
-		} else {
-			if (dev->info.bcr & I3C_BCR_IBI_PAYLOAD)
-				svc_i3c_master_ack_ibi(master, true);
-			else
-				svc_i3c_master_ack_ibi(master, false);
+		else
 			svc_i3c_master_handle_ibi(master, dev);
-		}
 		break;
 	case SVC_I3C_MSTATUS_IBITYPE_HOT_JOIN:
 		if (is_events_enabled(master, SVC_I3C_EVENT_HOTJOIN))
@@ -505,7 +484,7 @@ static void svc_i3c_master_ibi_work(struct work_struct *work)
 	 * for the slave to interrupt again.
 	 */
 	if (svc_i3c_master_error(master)) {
-		if (master->ibi.tbq_slot && dev) {
+		if (master->ibi.tbq_slot) {
 			data = i3c_dev_get_master_data(dev);
 			i3c_generic_ibi_recycle_slot(data->ibi_pool,
 						     master->ibi.tbq_slot);
@@ -641,44 +620,43 @@ static int svc_i3c_master_bus_init(struct i3c_master_controller *m)
 	i2c_scl_rate = bus->scl_rate.i2c;
 	i3c_scl_rate = bus->scl_rate.i3c;
 
+	/*
+	 * Using I3C Push-Pull mode, target is 12.5MHz/80ns period.
+	 * Simplest configuration is using a 50% duty-cycle of 40ns.
+	 */
+	ppbaud = DIV_ROUND_UP(fclk_rate / 2, i3c_scl_rate) - 1;
+	pplow = 0;
+
+	/*
+	 * Using I3C Open-Drain mode, target is 4.17MHz/240ns with a
+	 * duty-cycle tuned so that high levels are filetered out by
+	 * the 50ns filter (target being 40ns).
+	 */
+	odhpp = 1;
+	high_period_ns = (ppbaud + 1) * fclk_period_ns;
+	odbaud = DIV_ROUND_UP(fclk_rate, SVC_I3C_QUICK_I2C_CLK * (1 + ppbaud)) - 2;
+	od_low_period_ns = (odbaud + 1) * high_period_ns;
+
 	switch (bus->mode) {
 	case I3C_BUS_MODE_PURE:
-		/* Using I3C Push-Pull mode and I2C OP 50% duty-cycle. */
-		pplow = 0;
-		ppbaud = DIV_ROUND_UP(fclk_rate / 2, i3c_scl_rate) - 1;
-		high_period_ns = (ppbaud + 1) * fclk_period_ns;
-		odbaud = DIV_ROUND_UP(fclk_rate, SVC_I3C_QUICK_I2C_CLK * (1 + ppbaud)) - 2;
-		od_low_period_ns = (odbaud + 1) * high_period_ns;
 		i2cbaud = 0;
 		odstop = 0;
 		break;
 	case I3C_BUS_MODE_MIXED_FAST:
 		/*
-		 * I3C in <= 12.5M PP + I3C OP + I2C OP in clk rate
-		 * keep I3C OD clk high period <= 40ns and use odbaud and pplow
-		 * to adjust the i2c/i3c duty cycle.
+		 * Using I2C Fm+ mode, target is 1MHz/1000ns, the difference
+		 * between the high and low period does not really matter.
 		 */
-		ppbaud = DIV_ROUND_UP(fclk_rate / 2, I3C_BUS_TYP_I3C_SCL_RATE) - 1;
-		high_period_ns = (ppbaud + 1) * fclk_period_ns;
-		pplow =  DIV_ROUND_UP(fclk_rate, i3c_scl_rate) - (2 + 2 * ppbaud);
-
-		odhpp = 1;
-		odbaud = DIV_ROUND_UP(fclk_rate, SVC_I3C_QUICK_I2C_CLK * (1 + ppbaud)) - 2;
-
-		//i2c FM/FM+
-		od_low_period_ns = (odbaud + 1) * high_period_ns;
 		i2cbaud = DIV_ROUND_UP(i2c_period_ns, od_low_period_ns) - 2;
 		odstop = 1;
 		break;
 	case I3C_BUS_MODE_MIXED_LIMITED:
 	case I3C_BUS_MODE_MIXED_SLOW:
-		/* I3C PP + I3C OP + I2C OP both use i2c clk rate*/
-		ppbaud = DIV_ROUND_UP(fclk_rate / 2, i3c_scl_rate) - 1;
+		/* I3C PP + I3C OP + I2C OP both use i2c clk rate */
 		if (ppbaud > SVC_I3C_PPBAUD_MAX) {
 			ppbaud = SVC_I3C_PPBAUD_MAX;
 			pplow =  DIV_ROUND_UP(fclk_rate, i3c_scl_rate) - (2 + 2 * ppbaud);
-		} else
-			pplow = 0;
+		}
 
 		high_period_ns = (ppbaud + 1) * fclk_period_ns;
 		odhpp = 0;
@@ -886,7 +864,20 @@ static int svc_i3c_master_do_daa_locked(struct svc_i3c_master *master,
 	svc_i3c_master_flush_fifo(master);
 
 	while (true) {
-		/* Enter/proceed with DAA */
+		/* SVC_I3C_MCTRL_REQUEST_PROC_DAA have two mode, ENTER DAA or PROCESS DAA.
+		 *
+		 * ENTER DAA:
+		 *   1 will issue START, 7E, ENTDAA, and then emits 7E/R to process first target.
+		 *   2 Stops just before the new Dynamic Address (DA) is to be emitted.
+		 *
+		 * PROCESS DAA:
+		 *   1 The DA is written using MWDATAB or ADDR bits 6:0.
+		 *   2 ProcessDAA is requested again to write the new address, and then starts the
+		 *     next (START, 7E, ENTDAA)  unless marked to STOP; an MSTATUS indicating NACK
+		 *     means DA was not accepted (e.g. parity error). If PROCESSDAA is NACKed on the
+		 *     7E/R, which means no more Slaves need a DA, then a COMPLETE will be signaled
+		 *     (along with DONE), and a STOP issued automatically.
+		 */
 		writel(SVC_I3C_MCTRL_REQUEST_PROC_DAA |
 		       SVC_I3C_MCTRL_TYPE_I3C |
 		       SVC_I3C_MCTRL_IBIRESP_NACK |
@@ -903,19 +894,19 @@ static int svc_i3c_master_do_daa_locked(struct svc_i3c_master *master,
 						SVC_I3C_MSTATUS_MCTRLDONE(reg),
 						1, 1000);
 		if (ret)
-			return ret;
+			break;
 
 		if (SVC_I3C_MSTATUS_RXPEND(reg)) {
 			u8 data[6];
 
 			/*
-			 * We only care about the 48-bit provisional ID yet to
+			 * We only care about the 48-bit provisioned ID yet to
 			 * be sure a device does not nack an address twice.
 			 * Otherwise, we would just need to flush the RX FIFO.
 			 */
 			ret = svc_i3c_master_readb(master, data, 6);
 			if (ret)
-				return ret;
+				break;
 
 			for (i = 0; i < 6; i++)
 				prov_id[dev_nb] |= (u64)(data[i]) << (8 * (5 - i));
@@ -923,7 +914,7 @@ static int svc_i3c_master_do_daa_locked(struct svc_i3c_master *master,
 			/* We do not care about the BCR and DCR yet */
 			ret = svc_i3c_master_readb(master, data, 2);
 			if (ret)
-				return ret;
+				break;
 		} else if (SVC_I3C_MSTATUS_MCTRLDONE(reg)) {
 			if (SVC_I3C_MSTATUS_STATE_IDLE(reg) &&
 			    SVC_I3C_MSTATUS_COMPLETE(reg)) {
@@ -931,12 +922,23 @@ static int svc_i3c_master_do_daa_locked(struct svc_i3c_master *master,
 				 * All devices received and acked they dynamic
 				 * address, this is the natural end of the DAA
 				 * procedure.
+				 *
+				 * Hardware will auto emit STOP at this case.
 				 */
-				break;
+				*count = dev_nb;
+				return 0;
+
 			} else if (SVC_I3C_MSTATUS_NACKED(reg)) {
 				/* No I3C devices attached */
-				if (dev_nb == 0)
+				if (dev_nb == 0) {
+					/*
+					 * Hardware can't treat first NACK for ENTAA as normal
+					 * COMPLETE. So need manual emit STOP.
+					 */
+					ret = 0;
+					*count = 0;
 					break;
+				}
 
 				/*
 				 * A slave device nacked the address, this is
@@ -945,8 +947,10 @@ static int svc_i3c_master_do_daa_locked(struct svc_i3c_master *master,
 				 * answer again immediately and shall ack the
 				 * address this time.
 				 */
-				if (prov_id[dev_nb] == nacking_prov_id)
-					return -EIO;
+				if (prov_id[dev_nb] == nacking_prov_id) {
+					ret = -EIO;
+					break;
+				}
 
 				dev_nb--;
 				nacking_prov_id = prov_id[dev_nb];
@@ -954,7 +958,7 @@ static int svc_i3c_master_do_daa_locked(struct svc_i3c_master *master,
 
 				continue;
 			} else {
-				return -EIO;
+				break;
 			}
 		}
 
@@ -966,12 +970,12 @@ static int svc_i3c_master_do_daa_locked(struct svc_i3c_master *master,
 						SVC_I3C_MSTATUS_BETWEEN(reg),
 						0, 1000);
 		if (ret)
-			return ret;
+			break;
 
 		/* Give the slave device a suitable dynamic address */
 		ret = i3c_master_get_free_addr(&master->base, last_addr + 1);
 		if (ret < 0)
-			return ret;
+			break;
 
 		addrs[dev_nb] = ret;
 		dev_dbg(master->dev, "DAA: device %d assigned to 0x%02x\n",
@@ -981,9 +985,9 @@ static int svc_i3c_master_do_daa_locked(struct svc_i3c_master *master,
 		last_addr = addrs[dev_nb++];
 	}
 
-	*count = dev_nb;
-
-	return 0;
+	/* Need manual issue STOP except for Complete condition */
+	svc_i3c_master_emit_stop(master);
+	return ret;
 }
 
 static int svc_i3c_update_ibirules(struct svc_i3c_master *master)
@@ -1057,11 +1061,10 @@ static int svc_i3c_master_do_daa(struct i3c_master_controller *m)
 	spin_lock_irqsave(&master->xferqueue.lock, flags);
 	ret = svc_i3c_master_do_daa_locked(master, addrs, &dev_nb);
 	spin_unlock_irqrestore(&master->xferqueue.lock, flags);
-	if (ret) {
-		svc_i3c_master_emit_stop(master);
-		svc_i3c_master_clear_merrwarn(master);
+
+	svc_i3c_master_clear_merrwarn(master);
+	if (ret)
 		goto rpm_out;
-	}
 
 	/*
 	 * Register all devices who participated to the core
@@ -1462,7 +1465,7 @@ static int svc_i3c_master_send_direct_ccc_cmd(struct svc_i3c_master *master,
 	cmd->addr = ccc->dests[0].addr;
 	cmd->rnw = ccc->rnw;
 	cmd->in = ccc->rnw ? ccc->dests[0].payload.data : NULL;
-	cmd->out = ccc->rnw ? NULL : ccc->dests[0].payload.data,
+	cmd->out = ccc->rnw ? NULL : ccc->dests[0].payload.data;
 	cmd->len = xfer_len;
 	cmd->actual_len = actual_len;
 	cmd->continued = false;
@@ -1775,6 +1778,10 @@ static int svc_i3c_master_probe(struct platform_device *pdev)
 	if (!master)
 		return -ENOMEM;
 
+	master->drvdata = of_device_get_match_data(dev);
+	if (!master->drvdata)
+		return -EINVAL;
+
 	master->regs = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(master->regs))
 		return PTR_ERR(master->regs);
@@ -1916,8 +1923,13 @@ static const struct dev_pm_ops svc_i3c_pm_ops = {
 			   svc_i3c_runtime_resume, NULL)
 };
 
+static const struct svc_i3c_drvdata npcm845_drvdata = {};
+
+static const struct svc_i3c_drvdata svc_default_drvdata = {};
+
 static const struct of_device_id svc_i3c_master_of_match_tbl[] = {
-	{ .compatible = "silvaco,i3c-master" },
+	{ .compatible = "nuvoton,npcm845-i3c", .data = &npcm845_drvdata },
+	{ .compatible = "silvaco,i3c-master-v1", .data = &svc_default_drvdata },
 	{ /* sentinel */ },
 };
 MODULE_DEVICE_TABLE(of, svc_i3c_master_of_match_tbl);

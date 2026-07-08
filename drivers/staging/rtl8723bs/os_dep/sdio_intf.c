@@ -5,7 +5,6 @@
  *
  ******************************************************************************/
 #include <drv_types.h>
-#include <rtw_debug.h>
 #include <hal_btcoex.h>
 #include <linux/jiffies.h>
 
@@ -380,8 +379,7 @@ static int rtw_drv_init(
 	if (status != _SUCCESS)
 		goto free_if1;
 
-	status = sdio_alloc_irq(dvobj);
-	if (status != _SUCCESS)
+	if (sdio_alloc_irq(dvobj) != _SUCCESS)
 		goto free_if1;
 
 	rtw_ndev_notifier_register();

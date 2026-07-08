@@ -581,10 +581,8 @@ static u16 adapter_prepare(u16 adapter)
 		HPI_ADAPTER_OPEN);
 	hm.adapter_index = adapter;
 	hw_entry_point(&hm, &hr);
-	memcpy(&rESP_HPI_ADAPTER_OPEN[adapter].h, &hr,
-		sizeof(rESP_HPI_ADAPTER_OPEN[adapter].h));
-	memcpy(&rESP_HPI_ADAPTER_OPEN[adapter].a, &hr.u.ax.info,
-		sizeof(rESP_HPI_ADAPTER_OPEN[adapter].a));
+	memcpy(&rESP_HPI_ADAPTER_OPEN[adapter], &hr,
+		sizeof(rESP_HPI_ADAPTER_OPEN[0]));
 	if (hr.error)
 		return hr.error;
 

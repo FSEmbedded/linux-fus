@@ -495,7 +495,7 @@ struct xgbe_ring {
  * a DMA channel.
  */
 struct xgbe_channel {
-	char name[16];
+	char name[20];
 
 	/* Address of private data area for device */
 	struct xgbe_prv_data *pdata;
@@ -1083,6 +1083,9 @@ struct xgbe_prv_data {
 	unsigned int pp3;
 	unsigned int pp4;
 
+	/* Overall device lock */
+	spinlock_t lock;
+
 	/* XPCS indirect addressing lock */
 	spinlock_t xpcs_lock;
 	unsigned int xpcs_window_def_reg;
@@ -1299,11 +1302,11 @@ struct xgbe_prv_data {
 
 	unsigned int lpm_ctrl;		/* CTRL1 for resume */
 
-	unsigned int isr_as_tasklet;
-	struct tasklet_struct tasklet_dev;
-	struct tasklet_struct tasklet_ecc;
-	struct tasklet_struct tasklet_i2c;
-	struct tasklet_struct tasklet_an;
+	unsigned int isr_as_bh_work;
+	struct work_struct dev_bh_work;
+	struct work_struct ecc_bh_work;
+	struct work_struct i2c_bh_work;
+	struct work_struct an_bh_work;
 
 	struct dentry *xgbe_debugfs;
 
@@ -1321,10 +1324,6 @@ struct xgbe_prv_data {
 	bool en_rx_adap;
 	int rx_adapt_retries;
 	bool rx_adapt_done;
-	/* Flag to track if data path (TX/RX) was stopped for RX adaptation.
-	 * This prevents packet corruption during the adaptation window.
-	 */
-	bool data_path_stopped;
 	bool mode_set;
 };
 

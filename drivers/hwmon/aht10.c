@@ -37,10 +37,6 @@
 #define AHT10_CMD_MEAS	0b10101100
 #define AHT10_CMD_RST	0b10111010
 
-#define AHT20_CMD_INIT	0b10111110
-
-#define DHT20_CMD_INIT	0b01110001
-
 /*
  * Flags in the answer byte/command
  */
@@ -52,12 +48,11 @@
 
 #define AHT10_MAX_POLL_INTERVAL_LEN	30
 
-enum aht10_variant { aht10, aht20, dht20};
+enum aht10_variant { aht10, aht20 };
 
 static const struct i2c_device_id aht10_id[] = {
 	{ "aht10", aht10 },
 	{ "aht20", aht20 },
-	{ "dht20", dht20 },
 	{ },
 };
 MODULE_DEVICE_TABLE(i2c, aht10_id);
@@ -82,7 +77,6 @@ MODULE_DEVICE_TABLE(i2c, aht10_id);
  *              AHT10/AHT20
  *   @crc8: crc8 support flag
  *   @meas_size: measurements data size
- *   @init_cmd: Initialization command
  */
 
 struct aht10_data {
@@ -98,7 +92,6 @@ struct aht10_data {
 	int humidity;
 	bool crc8;
 	unsigned int meas_size;
-	u8 init_cmd;
 };
 
 /**
@@ -108,13 +101,13 @@ struct aht10_data {
  */
 static int aht10_init(struct aht10_data *data)
 {
-	const u8 cmd_init[] = {data->init_cmd, AHT10_CAL_ENABLED | AHT10_MODE_CYC,
+	const u8 cmd_init[] = {AHT10_CMD_INIT, AHT10_CAL_ENABLED | AHT10_MODE_CYC,
 			       0x00};
 	int res;
 	u8 status;
 	struct i2c_client *client = data->client;
 
-	res = i2c_master_send(client, cmd_init, sizeof(cmd_init));
+	res = i2c_master_send(client, cmd_init, 3);
 	if (res < 0)
 		return res;
 
@@ -338,8 +331,7 @@ static const struct hwmon_chip_info aht10_chip_info = {
 
 static int aht10_probe(struct i2c_client *client)
 {
-	const struct i2c_device_id *id = i2c_match_id(aht10_id, client);
-	enum aht10_variant variant = id->driver_data;
+	enum aht10_variant variant = (uintptr_t)i2c_get_match_data(client);
 	struct device *device = &client->dev;
 	struct device *hwmon_dev;
 	struct aht10_data *data;
@@ -360,17 +352,9 @@ static int aht10_probe(struct i2c_client *client)
 		data->meas_size = AHT20_MEAS_SIZE;
 		data->crc8 = true;
 		crc8_populate_msb(crc8_table, AHT20_CRC8_POLY);
-		data->init_cmd = AHT20_CMD_INIT;
-		break;
-	case dht20:
-		data->meas_size = AHT20_MEAS_SIZE;
-		data->crc8 = true;
-		crc8_populate_msb(crc8_table, AHT20_CRC8_POLY);
-		data->init_cmd = DHT20_CMD_INIT;
 		break;
 	default:
 		data->meas_size = AHT10_MEAS_SIZE;
-		data->init_cmd = AHT10_CMD_INIT;
 		break;
 	}
 

@@ -107,7 +107,6 @@ out:
 	return ++printed;
 }
 
-#ifndef PYTHON_PERF
 int sample__fprintf_callchain(struct perf_sample *sample, int left_alignment,
 			      unsigned int print_opts, struct callchain_cursor *cursor,
 			      struct strlist *bt_stop_list, FILE *fp)
@@ -181,12 +180,8 @@ int sample__fprintf_callchain(struct perf_sample *sample, int left_alignment,
 			if (print_dso && (!sym || !sym->inlined))
 				printed += map__fprintf_dsoname_dsoff(map, print_dsoff, addr, fp);
 
-			if (print_srcline) {
-				if (node->srcline)
-					printed += fprintf(fp, "\n  %s", node->srcline);
-				else
-					printed += map__fprintf_srcline(map, addr, "\n  ", fp);
-			}
+			if (print_srcline)
+				printed += map__fprintf_srcline(map, addr, "\n  ", fp);
 
 			if (sym && sym->inlined)
 				printed += fprintf(fp, " (inlined)");
@@ -252,4 +247,3 @@ int sample__fprintf_sym(struct perf_sample *sample, struct addr_location *al,
 
 	return printed;
 }
-#endif /* PYTHON_PERF */

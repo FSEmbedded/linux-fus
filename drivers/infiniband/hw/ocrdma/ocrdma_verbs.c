@@ -620,9 +620,9 @@ static int ocrdma_copy_pd_uresp(struct ocrdma_dev *dev, struct ocrdma_pd *pd,
 
 ucopy_err:
 	if (pd->dpp_enabled)
-		ocrdma_del_mmap(uctx, dpp_page_addr, PAGE_SIZE);
+		ocrdma_del_mmap(pd->uctx, dpp_page_addr, PAGE_SIZE);
 dpp_map_err:
-	ocrdma_del_mmap(uctx, db_page_addr, db_page_size);
+	ocrdma_del_mmap(pd->uctx, db_page_addr, db_page_size);
 	return status;
 }
 
@@ -963,8 +963,9 @@ err:
 }
 
 int ocrdma_create_cq(struct ib_cq *ibcq, const struct ib_cq_init_attr *attr,
-		     struct ib_udata *udata)
+		     struct uverbs_attr_bundle *attrs)
 {
+	struct ib_udata *udata = &attrs->driver_udata;
 	struct ib_device *ibdev = ibcq->device;
 	int entries = attr->cqe;
 	struct ocrdma_cq *cq = get_ocrdma_cq(ibcq);

@@ -28,9 +28,6 @@ static size_t bond_get_slave_size(const struct net_device *bond_dev,
 		nla_total_size(sizeof(u8)) +	/* IFLA_BOND_SLAVE_AD_ACTOR_OPER_PORT_STATE */
 		nla_total_size(sizeof(u16)) +	/* IFLA_BOND_SLAVE_AD_PARTNER_OPER_PORT_STATE */
 		nla_total_size(sizeof(s32)) +	/* IFLA_BOND_SLAVE_PRIO */
-		nla_total_size(sizeof(u16)) +	/* IFLA_BOND_SLAVE_ACTOR_PORT_PRIO */
-		nla_total_size(sizeof(u8)) +	/* IFLA_BOND_SLAVE_AD_CHURN_ACTOR_STATE */
-		nla_total_size(sizeof(u8)) +	/* IFLA_BOND_SLAVE_AD_CHURN_PARTNER_STATE */
 		0;
 }
 
@@ -54,7 +51,8 @@ static int bond_fill_slave_info(struct sk_buff *skb,
 		    slave_dev->addr_len, slave->perm_hwaddr))
 		goto nla_put_failure;
 
-	if (nla_put_u16(skb, IFLA_BOND_SLAVE_QUEUE_ID, slave->queue_id))
+	if (nla_put_u16(skb, IFLA_BOND_SLAVE_QUEUE_ID,
+			READ_ONCE(slave->queue_id)))
 		goto nla_put_failure;
 
 	if (nla_put_s32(skb, IFLA_BOND_SLAVE_PRIO, slave->prio))
@@ -65,45 +63,30 @@ static int bond_fill_slave_info(struct sk_buff *skb,
 		const struct port *ad_port;
 
 		ad_port = &SLAVE_AD_INFO(slave)->port;
-		rcu_read_lock();
-		agg = rcu_dereference(SLAVE_AD_INFO(slave)->port.aggregator);
+		agg = SLAVE_AD_INFO(slave)->port.aggregator;
 		if (agg) {
 			if (nla_put_u16(skb, IFLA_BOND_SLAVE_AD_AGGREGATOR_ID,
 					agg->aggregator_identifier))
-				goto nla_put_failure_rcu;
+				goto nla_put_failure;
 			if (nla_put_u8(skb,
 				       IFLA_BOND_SLAVE_AD_ACTOR_OPER_PORT_STATE,
 				       ad_port->actor_oper_port_state))
-				goto nla_put_failure_rcu;
+				goto nla_put_failure;
 			if (nla_put_u16(skb,
 					IFLA_BOND_SLAVE_AD_PARTNER_OPER_PORT_STATE,
 					ad_port->partner_oper.port_state))
-				goto nla_put_failure_rcu;
-
-			if (nla_put_u8(skb, IFLA_BOND_SLAVE_AD_CHURN_ACTOR_STATE,
-				       ad_port->sm_churn_actor_state))
-				goto nla_put_failure_rcu;
-			if (nla_put_u8(skb, IFLA_BOND_SLAVE_AD_CHURN_PARTNER_STATE,
-				       ad_port->sm_churn_partner_state))
-				goto nla_put_failure_rcu;
+				goto nla_put_failure;
 		}
-		rcu_read_unlock();
-
-		if (nla_put_u16(skb, IFLA_BOND_SLAVE_ACTOR_PORT_PRIO,
-				SLAVE_AD_INFO(slave)->port_priority))
-			goto nla_put_failure;
 	}
 
 	return 0;
 
-nla_put_failure_rcu:
-	rcu_read_unlock();
 nla_put_failure:
 	return -EMSGSIZE;
 }
 
 /* Limit the max delay range to 300s */
-static struct netlink_range_validation delay_range = {
+static const struct netlink_range_validation delay_range = {
 	.max = 300000,
 };
 
@@ -146,7 +129,6 @@ static const struct nla_policy bond_policy[IFLA_BOND_MAX + 1] = {
 static const struct nla_policy bond_slave_policy[IFLA_BOND_SLAVE_MAX + 1] = {
 	[IFLA_BOND_SLAVE_QUEUE_ID]	= { .type = NLA_U16 },
 	[IFLA_BOND_SLAVE_PRIO]		= { .type = NLA_S32 },
-	[IFLA_BOND_SLAVE_ACTOR_PORT_PRIO]	= { .type = NLA_U16 },
 };
 
 static int bond_validate(struct nlattr *tb[], struct nlattr *data[],
@@ -193,16 +175,6 @@ static int bond_slave_changelink(struct net_device *bond_dev,
 		bond_opt_slave_initval(&newval, &slave_dev, prio);
 		err = __bond_opt_set(bond, BOND_OPT_PRIO, &newval,
 				     data[IFLA_BOND_SLAVE_PRIO], extack);
-		if (err)
-			return err;
-	}
-
-	if (data[IFLA_BOND_SLAVE_ACTOR_PORT_PRIO]) {
-		u16 ad_prio = nla_get_u16(data[IFLA_BOND_SLAVE_ACTOR_PORT_PRIO]);
-
-		bond_opt_slave_initval(&newval, &slave_dev, ad_prio);
-		err = __bond_opt_set(bond, BOND_OPT_ACTOR_PORT_PRIO, &newval,
-				     data[IFLA_BOND_SLAVE_ACTOR_PORT_PRIO], extack);
 		if (err)
 			return err;
 	}

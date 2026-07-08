@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note
 /*
  *
- * (C) COPYRIGHT 2011-2023 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2011-2024 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -27,17 +27,13 @@
 #include <mali_kbase_pm.h>
 #include <backend/gpu/mali_kbase_pm_internal.h>
 
-#if MALI_USE_CSF
 #include "backend/gpu/mali_kbase_clk_rate_trace_mgr.h"
 #include <csf/ipa_control/mali_kbase_csf_ipa_control.h>
-#else
-#include <backend/gpu/mali_kbase_jm_rb.h>
-#endif /* !MALI_USE_CSF */
 
 #include <backend/gpu/mali_kbase_pm_defs.h>
 #include <mali_linux_trace.h>
 
-#if defined(CONFIG_MALI_DEVFREQ) || defined(CONFIG_MALI_MIDGARD_DVFS) || !MALI_USE_CSF
+#if defined(CONFIG_MALI_DEVFREQ) || defined(CONFIG_MALI_MIDGARD_DVFS)
 /* Shift used for kbasep_pm_metrics_data.time_busy/idle - units of (1 << 8) ns
  * This gives a maximum period between samples of 2^(32+8)/100 ns = slightly
  * under 11s. Exceeding this will cause overflow
@@ -45,10 +41,8 @@
 #define KBASE_PM_TIME_SHIFT 8
 #endif
 
-#if MALI_USE_CSF
 /* To get the GPU_ACTIVE value in nano seconds unit */
 #define GPU_ACTIVE_SCALING_FACTOR ((u64)1E9)
-#endif
 
 /*
  * Possible state transitions
@@ -98,80 +92,149 @@ static enum hrtimer_restart dvfs_callback(struct hrtimer *timer)
 }
 #endif /* CONFIG_MALI_MIDGARD_DVFS */
 
+static void kbase_pm_hardware_unit_metrics_init(struct kbase_ipa_control_perf_counter  *perf_counter)
+{
+	perf_counter[KBASE_PM_METRICS_CNT_MCU].scaling_factor = GPU_ACTIVE_SCALING_FACTOR;
+
+	/* Normalize values by GPU frequency */
+	perf_counter[KBASE_PM_METRICS_CNT_MCU].gpu_norm = true;
+
+	/* We need the MCU_ACTIVE counter, which is in the CSHW group */
+	perf_counter[KBASE_PM_METRICS_CNT_MCU].type = KBASE_IPA_CORE_TYPE_CSHW;
+
+	/* We need the CPU_ACTIVE counter */
+	perf_counter[KBASE_PM_METRICS_CNT_MCU].idx = MCU_ACTIVE_CNT_IDX;
+
+	perf_counter[KBASE_PM_METRICS_CNT_IDVS].scaling_factor = GPU_ACTIVE_SCALING_FACTOR;
+
+	/* Normalize values by GPU frequency */
+	perf_counter[KBASE_PM_METRICS_CNT_IDVS].gpu_norm = true;
+
+	/* We need the IDVS_ACTIVE counter, which is in the CSHW group */
+	perf_counter[KBASE_PM_METRICS_CNT_IDVS].type = KBASE_IPA_CORE_TYPE_CSHW;
+
+	/* We need the IDVS_ACTIVE counter */
+	perf_counter[KBASE_PM_METRICS_CNT_IDVS].idx = IDVS_ACTIVE_CNT_IDX;
+
+	perf_counter[KBASE_PM_METRICS_CNT_CEU].scaling_factor = GPU_ACTIVE_SCALING_FACTOR;
+
+	/* Normalize values by GPU frequency */
+	perf_counter[KBASE_PM_METRICS_CNT_CEU].gpu_norm = true;
+
+	/* We need the CEU_ACTIVE counter, which is in the CSHW group */
+	perf_counter[KBASE_PM_METRICS_CNT_CEU].type = KBASE_IPA_CORE_TYPE_CSHW;
+
+	/* We need the CEU_ACTIVE counter */
+	perf_counter[KBASE_PM_METRICS_CNT_CEU].idx = CEU_ACTIVE_CNT_IDX;
+
+	perf_counter[KBASE_PM_METRICS_CNT_LSU].scaling_factor = GPU_ACTIVE_SCALING_FACTOR;
+
+	/* Normalize values by GPU frequency */
+	perf_counter[KBASE_PM_METRICS_CNT_LSU].gpu_norm = true;
+
+	/* We need the LSU_ACTIVE counter, which is in the CSHW group */
+	perf_counter[KBASE_PM_METRICS_CNT_LSU].type = KBASE_IPA_CORE_TYPE_CSHW;
+
+	/* We need the LSU_ACTIVE counter */
+	perf_counter[KBASE_PM_METRICS_CNT_LSU].idx = LSU_ACTIVE_CNT_IDX;
+
+	perf_counter[KBASE_PM_METRICS_CNT_MEM_EXT_READ].scaling_factor = GPU_ACTIVE_SCALING_FACTOR;
+
+	/* Normalize values by GPU frequency */
+	perf_counter[KBASE_PM_METRICS_CNT_MEM_EXT_READ].gpu_norm = true;
+
+	/* We need the L2  external memory read counter, which is in the CSHW group */
+	perf_counter[KBASE_PM_METRICS_CNT_MEM_EXT_READ].type = KBASE_IPA_CORE_TYPE_MEMSYS;
+
+	perf_counter[KBASE_PM_METRICS_CNT_MEM_EXT_READ].idx = MEM_L2_EXT_READ_CNT_IDX;
+
+	perf_counter[KBASE_PM_METRICS_CNT_MEM_EXT_WRITE].scaling_factor = GPU_ACTIVE_SCALING_FACTOR;
+	/* Normalize values by GPU frequency */
+	perf_counter[KBASE_PM_METRICS_CNT_MEM_EXT_WRITE].gpu_norm = true;
+
+	perf_counter[KBASE_PM_METRICS_CNT_MEM_EXT_WRITE].type = KBASE_IPA_CORE_TYPE_MEMSYS;
+
+	perf_counter[KBASE_PM_METRICS_CNT_MEM_EXT_WRITE].idx = MEM_L2_EXT_WRITE_CNT_IDX ;
+
+	perf_counter[KBASE_PM_METRICS_CNT_SHADER_STARVING].scaling_factor = GPU_ACTIVE_SCALING_FACTOR;
+
+	/* Normalize values by GPU frequency */
+	perf_counter[KBASE_PM_METRICS_CNT_SHADER_STARVING].gpu_norm = true;
+
+	/* We need the SHADER_ACTIVE counter, which is in the Shader core group */
+	perf_counter[KBASE_PM_METRICS_CNT_SHADER_STARVING].type = KBASE_IPA_CORE_TYPE_SHADER;
+
+	/* We need the SHADER_ACTIVE counter */
+	perf_counter[KBASE_PM_METRICS_CNT_SHADER_STARVING].idx = SHADER_STARVING_CNT_IDX;
+
+}
 int kbasep_pm_metrics_init(struct kbase_device *kbdev)
 {
-#if MALI_USE_CSF
-	struct kbase_ipa_control_perf_counter perf_counter[7];
+	struct kbase_ipa_control_perf_counter perf_counter[KBASE_PM_METRICS_CNT_COUNT];
 	int err;
 
 	/* One counter group */
-	const size_t NUM_PERF_COUNTERS = 4;
+	const size_t NUM_PERF_COUNTERS = KBASE_PM_METRICS_CNT_COUNT;
 
 	KBASE_DEBUG_ASSERT(kbdev != NULL);
 	kbdev->pm.backend.metrics.kbdev = kbdev;
 	kbdev->pm.backend.metrics.time_period_start = ktime_get_raw();
 
-	perf_counter[0].scaling_factor = GPU_ACTIVE_SCALING_FACTOR;
+	perf_counter[KBASE_PM_METRICS_CNT_GPU].scaling_factor = GPU_ACTIVE_SCALING_FACTOR;
 
 	/* Normalize values by GPU frequency */
-	perf_counter[0].gpu_norm = true;
+	perf_counter[KBASE_PM_METRICS_CNT_GPU].gpu_norm = true;
 
 	/* We need the GPU_ACTIVE counter, which is in the CSHW group */
-	perf_counter[0].type = KBASE_IPA_CORE_TYPE_CSHW;
+	perf_counter[KBASE_PM_METRICS_CNT_GPU].type = KBASE_IPA_CORE_TYPE_CSHW;
 
 	/* We need the GPU_ACTIVE counter */
-	perf_counter[0].idx = GPU_ACTIVE_CNT_IDX;
+	perf_counter[KBASE_PM_METRICS_CNT_GPU].idx = GPU_ACTIVE_CNT_IDX;
 
 	//init perf_counter[1] for shader core
-	perf_counter[1].scaling_factor = GPU_ACTIVE_SCALING_FACTOR;
+	perf_counter[KBASE_PM_METRICS_CNT_SHADER_FRAG].scaling_factor = GPU_ACTIVE_SCALING_FACTOR;
 
 	/* Normalize values by GPU frequency */
-	perf_counter[1].gpu_norm = true;
+	perf_counter[KBASE_PM_METRICS_CNT_SHADER_FRAG].gpu_norm = true;
 
 	/* We need the shader counter */
-	perf_counter[1].type = KBASE_IPA_CORE_TYPE_SHADER;
+	perf_counter[KBASE_PM_METRICS_CNT_SHADER_FRAG].type = KBASE_IPA_CORE_TYPE_SHADER;
 
 	/* We need the shader frag active counter */
-	perf_counter[1].idx = FRAG_ACTIVE_CNT_IDX;
+	perf_counter[KBASE_PM_METRICS_CNT_SHADER_FRAG].idx = FRAG_ACTIVE_CNT_IDX;
 
 	//init perf_counter[2] for shader core
-	perf_counter[2].scaling_factor = GPU_ACTIVE_SCALING_FACTOR;
+	perf_counter[KBASE_PM_METRICS_CNT_SHADER_COMPUTE].scaling_factor =
+		GPU_ACTIVE_SCALING_FACTOR;
 
 	/* Normalize values by GPU frequency */
-	perf_counter[2].gpu_norm = true;
+	perf_counter[KBASE_PM_METRICS_CNT_SHADER_COMPUTE].gpu_norm = true;
 
 	/* We need the shader counter */
-	perf_counter[2].type = KBASE_IPA_CORE_TYPE_SHADER;
+	perf_counter[KBASE_PM_METRICS_CNT_SHADER_COMPUTE].type = KBASE_IPA_CORE_TYPE_SHADER;
 
 	/* We need the shader counter */
-	perf_counter[2].idx = COMPUTE_ACTIVE_CNT_IDX;
+	perf_counter[KBASE_PM_METRICS_CNT_SHADER_COMPUTE].idx = COMPUTE_ACTIVE_CNT_IDX;
 
 	//init perf_counter[3] for Tiler core
-	perf_counter[3].scaling_factor = GPU_ACTIVE_SCALING_FACTOR;
-
 	/* Normalize values by GPU frequency */
-	perf_counter[3].gpu_norm = true;
+	perf_counter[KBASE_PM_METRICS_CNT_TILER].scaling_factor = GPU_ACTIVE_SCALING_FACTOR;
+
+	perf_counter[KBASE_PM_METRICS_CNT_TILER].gpu_norm = true;
 
 	/* We need the  counter */
-	perf_counter[3].type = KBASE_IPA_CORE_TYPE_TILER;
+	perf_counter[KBASE_PM_METRICS_CNT_TILER].type = KBASE_IPA_CORE_TYPE_TILER;
 
-	/* We need the shader counter */
-	perf_counter[3].idx = TILER_ACTIVE_CNT_IDX;
+	perf_counter[KBASE_PM_METRICS_CNT_TILER].idx = TILER_ACTIVE_CNT_IDX;
 
-	//init perf_counter[1] for shader core
-	perf_counter[3].scaling_factor = GPU_ACTIVE_SCALING_FACTOR;
-
-	err = kbase_ipa_control_register(kbdev, &perf_counter[0], NUM_PERF_COUNTERS,
-					 &kbdev->pm.backend.metrics.ipa_control_client);
+	kbase_pm_hardware_unit_metrics_init(&perf_counter[0]);
+	err = kbase_ipa_control_register(kbdev, &perf_counter[KBASE_PM_METRICS_CNT_GPU],
+						NUM_PERF_COUNTERS,
+						&kbdev->pm.backend.metrics.ipa_control_client);
 	if (err) {
 		dev_err(kbdev->dev, "Failed to register IPA with kbase_ipa_control: err=%d", err);
 		return -1;
 	}
-#else
-	KBASE_DEBUG_ASSERT(kbdev != NULL);
-	kbdev->pm.backend.metrics.kbdev = kbdev;
-	kbdev->pm.backend.metrics.time_period_start = ktime_get_raw();
-#endif
 	spin_lock_init(&kbdev->pm.backend.metrics.lock);
 
 #ifdef CONFIG_MALI_MIDGARD_DVFS
@@ -182,13 +245,11 @@ int kbasep_pm_metrics_init(struct kbase_device *kbdev)
 	kbase_pm_metrics_start(kbdev);
 #endif /* CONFIG_MALI_MIDGARD_DVFS */
 
-#if MALI_USE_CSF
 	/* The sanity check on the GPU_ACTIVE performance counter
 	 * is skipped for Juno platforms that have timing problems.
 	 */
 	kbdev->pm.backend.metrics.skip_gpu_active_sanity_check =
-		of_machine_is_compatible("arm,juno");
-#endif
+		(kbdev->gpu_props.impl_tech >= THREAD_FEATURES_IMPLEMENTATION_TECHNOLOGY_FPGA);
 
 	return 0;
 }
@@ -205,11 +266,7 @@ void kbasep_pm_metrics_term(struct kbase_device *kbdev)
 	hrtimer_cancel(&kbdev->pm.backend.metrics.timer);
 #endif /* CONFIG_MALI_MIDGARD_DVFS */
 
-#if MALI_USE_CSF
 	kbase_ipa_control_unregister(kbdev, kbdev->pm.backend.metrics.ipa_control_client);
-#else
-	CSTD_UNUSED(kbdev);
-#endif
 }
 
 KBASE_EXPORT_TEST_API(kbasep_pm_metrics_term);
@@ -217,12 +274,28 @@ KBASE_EXPORT_TEST_API(kbasep_pm_metrics_term);
 /* caller needs to hold kbdev->pm.backend.metrics.lock before calling this
  * function
  */
-#if MALI_USE_CSF
 #if defined(CONFIG_MALI_DEVFREQ) || defined(CONFIG_MALI_MIDGARD_DVFS)
+static void kbase_pm_get_dvfs_hardware_unit_utilisation_calc(struct kbase_device *kbdev, u64 *gpu_active_counter)
+{
+	kbdev->pm.backend.metrics.values.mcu_time_busy +=
+		gpu_active_counter[KBASE_PM_METRICS_CNT_MCU];
+	kbdev->pm.backend.metrics.values.idvs_time_busy +=
+		gpu_active_counter[KBASE_PM_METRICS_CNT_IDVS];
+	kbdev->pm.backend.metrics.values.ceu_time_busy +=
+		gpu_active_counter[KBASE_PM_METRICS_CNT_CEU];
+	kbdev->pm.backend.metrics.values.lsu_time_busy +=
+		gpu_active_counter[KBASE_PM_METRICS_CNT_LSU];
+	kbdev->pm.backend.metrics.values.l2_ext_read_time_busy +=
+		gpu_active_counter[KBASE_PM_METRICS_CNT_MEM_EXT_READ];
+	kbdev->pm.backend.metrics.values.l2_ext_write_time_busy +=
+		gpu_active_counter[KBASE_PM_METRICS_CNT_MEM_EXT_WRITE];
+	kbdev->pm.backend.metrics.values.shader_starving_time_busy +=
+		gpu_active_counter[KBASE_PM_METRICS_CNT_SHADER_STARVING];
+}
 static void kbase_pm_get_dvfs_utilisation_calc(struct kbase_device *kbdev)
 {
 	int err;
-	u64 gpu_active_counter[4];
+	u64 gpu_active_counter[KBASE_PM_METRICS_CNT_COUNT];
 	u64 protected_time;
 	ktime_t now;
 
@@ -232,7 +305,8 @@ static void kbase_pm_get_dvfs_utilisation_calc(struct kbase_device *kbdev)
 	 * info.
 	 */
 	err = kbase_ipa_control_query(kbdev, kbdev->pm.backend.metrics.ipa_control_client,
-				      &gpu_active_counter[0], 4, &protected_time);
+				      &gpu_active_counter[KBASE_PM_METRICS_CNT_GPU],
+				      KBASE_PM_METRICS_CNT_COUNT, &protected_time);
 
 	/* Read the timestamp after reading the GPU_ACTIVE counter value.
 	 * This ensures the time gap between the 2 reads is consistent for
@@ -277,11 +351,11 @@ static void kbase_pm_get_dvfs_utilisation_calc(struct kbase_device *kbdev)
 			u64 const MARGIN_NS =
 				IPA_CONTROL_TIMER_DEFAULT_VALUE_MS * NSEC_PER_MSEC * 3 / 2;
 
-			if (gpu_active_counter[0] > (diff_ns + MARGIN_NS)) {
-				dev_dbg(
+			if (gpu_active_counter[KBASE_PM_METRICS_CNT_GPU] > (diff_ns + MARGIN_NS)) {
+				dev_info(
 					kbdev->dev,
 					"GPU activity takes longer than time interval: %llu ns > %llu ns",
-					(unsigned long long)gpu_active_counter[0],
+					gpu_active_counter[KBASE_PM_METRICS_CNT_GPU],
 					(unsigned long long)diff_ns);
 			}
 		}
@@ -301,27 +375,27 @@ static void kbase_pm_get_dvfs_utilisation_calc(struct kbase_device *kbdev)
 		 * the chances of overflows.
 		 */
 		protected_time >>= KBASE_PM_TIME_SHIFT;
-		gpu_active_counter[0] >>= KBASE_PM_TIME_SHIFT;
-		gpu_active_counter[1] >>= KBASE_PM_TIME_SHIFT;
-		gpu_active_counter[2] >>= KBASE_PM_TIME_SHIFT;
-		gpu_active_counter[3] >>= KBASE_PM_TIME_SHIFT;
+		for (int i = 0; i < KBASE_PM_METRICS_CNT_COUNT; i++)
+			gpu_active_counter[i] >>= KBASE_PM_TIME_SHIFT;
 
-		gpu_active_counter[0] += protected_time;
+		gpu_active_counter[KBASE_PM_METRICS_CNT_GPU] += protected_time;
+		gpu_active_counter[KBASE_PM_METRICS_CNT_GPU] =
+			MIN(gpu_active_counter[KBASE_PM_METRICS_CNT_GPU], ns_time);
 
 		/* Ensure the following equations don't go wrong if ns_time is
 		 * slightly larger than gpu_active_counter somehow
 		 */
-		gpu_active_counter[0] = MIN(gpu_active_counter[0], ns_time);
-		gpu_active_counter[1] = MIN(gpu_active_counter[1], ns_time);
-		gpu_active_counter[2] = MIN(gpu_active_counter[2], ns_time);
-		gpu_active_counter[3] = MIN(gpu_active_counter[3], ns_time);
-
-		kbdev->pm.backend.metrics.values.time_busy += gpu_active_counter[0];
-		kbdev->pm.backend.metrics.values.shader_frag_time_busy += gpu_active_counter[1];
-		kbdev->pm.backend.metrics.values.shader_time_busy += gpu_active_counter[1]+gpu_active_counter[2];
-		kbdev->pm.backend.metrics.values.tiler_time_busy += gpu_active_counter[3];
-		kbdev->pm.backend.metrics.values.time_idle += ns_time - gpu_active_counter[0];
-
+		kbdev->pm.backend.metrics.values.time_busy +=
+			gpu_active_counter[KBASE_PM_METRICS_CNT_GPU];
+		kbdev->pm.backend.metrics.values.shader_frag_time_busy +=
+			gpu_active_counter[KBASE_PM_METRICS_CNT_SHADER_FRAG];
+		kbdev->pm.backend.metrics.values.shader_compute_time_busy +=
+			gpu_active_counter[KBASE_PM_METRICS_CNT_SHADER_COMPUTE];
+		kbdev->pm.backend.metrics.values.tiler_time_busy +=
+			gpu_active_counter[KBASE_PM_METRICS_CNT_TILER];
+		kbdev->pm.backend.metrics.values.time_idle +=
+			ns_time - gpu_active_counter[KBASE_PM_METRICS_CNT_GPU];
+		kbase_pm_get_dvfs_hardware_unit_utilisation_calc(kbdev, &gpu_active_counter[0]);
 		/* Also make time in protected mode available explicitly,
 		 * so users of this data have this info, too.
 		 */
@@ -331,41 +405,19 @@ static void kbase_pm_get_dvfs_utilisation_calc(struct kbase_device *kbdev)
 	kbdev->pm.backend.metrics.time_period_start = now;
 }
 #endif /* defined(CONFIG_MALI_DEVFREQ) || defined(CONFIG_MALI_MIDGARD_DVFS) */
-#else
-static void kbase_pm_get_dvfs_utilisation_calc(struct kbase_device *kbdev, ktime_t now)
-{
-	ktime_t diff;
-
-	lockdep_assert_held(&kbdev->pm.backend.metrics.lock);
-
-	diff = ktime_sub(now, kbdev->pm.backend.metrics.time_period_start);
-	if (ktime_to_ns(diff) < 0)
-		return;
-
-	if (kbdev->pm.backend.metrics.gpu_active) {
-		u32 ns_time = (u32)(ktime_to_ns(diff) >> KBASE_PM_TIME_SHIFT);
-
-		kbdev->pm.backend.metrics.values.time_busy += ns_time;
-		if (kbdev->pm.backend.metrics.active_cl_ctx[0])
-			kbdev->pm.backend.metrics.values.busy_cl[0] += ns_time;
-		if (kbdev->pm.backend.metrics.active_cl_ctx[1])
-			kbdev->pm.backend.metrics.values.busy_cl[1] += ns_time;
-		if (kbdev->pm.backend.metrics.active_gl_ctx[0])
-			kbdev->pm.backend.metrics.values.busy_gl += ns_time;
-		if (kbdev->pm.backend.metrics.active_gl_ctx[1])
-			kbdev->pm.backend.metrics.values.busy_gl += ns_time;
-		if (kbdev->pm.backend.metrics.active_gl_ctx[2])
-			kbdev->pm.backend.metrics.values.busy_gl += ns_time;
-	} else {
-		kbdev->pm.backend.metrics.values.time_idle +=
-			(u32)(ktime_to_ns(diff) >> KBASE_PM_TIME_SHIFT);
-	}
-
-	kbdev->pm.backend.metrics.time_period_start = now;
-}
-#endif /* MALI_USE_CSF */
 
 #if defined(CONFIG_MALI_DEVFREQ) || defined(CONFIG_MALI_MIDGARD_DVFS)
+static void kbase_pm_get_dvfs_hardware_unit_metrics(struct kbasep_pm_metrics *last,
+			       struct kbasep_pm_metrics *cur, struct kbasep_pm_metrics *diff)
+{
+	diff->mcu_time_busy = cur->mcu_time_busy - last->mcu_time_busy;
+	diff->idvs_time_busy = cur->idvs_time_busy - last->idvs_time_busy;
+	diff->ceu_time_busy = cur->ceu_time_busy - last->ceu_time_busy;
+	diff->lsu_time_busy = cur->lsu_time_busy - last->lsu_time_busy;
+	diff->l2_ext_read_time_busy = cur->l2_ext_read_time_busy - last->l2_ext_read_time_busy;
+	diff->l2_ext_write_time_busy = cur->l2_ext_write_time_busy - last->l2_ext_write_time_busy;
+	diff->shader_starving_time_busy = cur->shader_starving_time_busy - last->shader_starving_time_busy;
+}
 void kbase_pm_get_dvfs_metrics(struct kbase_device *kbdev, struct kbasep_pm_metrics *last,
 			       struct kbasep_pm_metrics *diff)
 {
@@ -373,27 +425,19 @@ void kbase_pm_get_dvfs_metrics(struct kbase_device *kbdev, struct kbasep_pm_metr
 	unsigned long flags;
 
 	spin_lock_irqsave(&kbdev->pm.backend.metrics.lock, flags);
-#if MALI_USE_CSF
 	kbase_pm_get_dvfs_utilisation_calc(kbdev);
-#else
-	kbase_pm_get_dvfs_utilisation_calc(kbdev, ktime_get_raw());
-#endif
 
 	memset(diff, 0, sizeof(*diff));
 	diff->time_busy = cur->time_busy - last->time_busy;
 	diff->time_idle = cur->time_idle - last->time_idle;
 
-#if MALI_USE_CSF
 	diff->time_in_protm = cur->time_in_protm - last->time_in_protm;
 	diff->shader_frag_time_busy = cur->shader_frag_time_busy - last->shader_frag_time_busy;
-	diff->shader_time_busy = cur->shader_time_busy - last->shader_time_busy;
+	diff->shader_compute_time_busy = cur->shader_compute_time_busy -
+						last->shader_compute_time_busy;
 	diff->tiler_time_busy = cur->tiler_time_busy - last->tiler_time_busy;
+	kbase_pm_get_dvfs_hardware_unit_metrics(last, cur, diff);
 
-#else
-	diff->busy_cl[0] = cur->busy_cl[0] - last->busy_cl[0];
-	diff->busy_cl[1] = cur->busy_cl[1] - last->busy_cl[1];
-	diff->busy_gl = cur->busy_gl - last->busy_gl;
-#endif
 
 	*last = *cur;
 
@@ -407,11 +451,6 @@ void kbase_pm_get_dvfs_action(struct kbase_device *kbdev)
 {
 	int utilisation;
 	struct kbasep_pm_metrics *diff;
-#if !MALI_USE_CSF
-	int busy;
-	int util_gl_share;
-	int util_cl_share[2];
-#endif
 
 	KBASE_DEBUG_ASSERT(kbdev != NULL);
 
@@ -421,15 +460,6 @@ void kbase_pm_get_dvfs_action(struct kbase_device *kbdev)
 
 	utilisation = (100 * diff->time_busy) / max(diff->time_busy + diff->time_idle, 1u);
 
-#if !MALI_USE_CSF
-	busy = max(diff->busy_gl + diff->busy_cl[0] + diff->busy_cl[1], 1u);
-
-	util_gl_share = (100 * diff->busy_gl) / busy;
-	util_cl_share[0] = (100 * diff->busy_cl[0]) / busy;
-	util_cl_share[1] = (100 * diff->busy_cl[1]) / busy;
-
-	kbase_platform_dvfs_event(kbdev, utilisation, util_gl_share, util_cl_share);
-#else
 	/* Note that, at present, we don't pass protected-mode time to the
 	 * platform here. It's unlikely to be useful, however, as the platform
 	 * probably just cares whether the GPU is busy or not; time in
@@ -437,7 +467,6 @@ void kbase_pm_get_dvfs_action(struct kbase_device *kbdev)
 	 * so we should be good.
 	 */
 	kbase_platform_dvfs_event(kbdev, utilisation);
-#endif
 }
 
 bool kbase_pm_metrics_is_active(struct kbase_device *kbdev)
@@ -472,77 +501,3 @@ void kbase_pm_metrics_stop(struct kbase_device *kbdev)
 }
 
 #endif /* CONFIG_MALI_MIDGARD_DVFS */
-
-#if !MALI_USE_CSF
-/**
- * kbase_pm_metrics_active_calc - Update PM active counts based on currently
- *                                running atoms
- * @kbdev: Device pointer
- *
- * The caller must hold kbdev->pm.backend.metrics.lock
- */
-static void kbase_pm_metrics_active_calc(struct kbase_device *kbdev)
-{
-	unsigned int js;
-
-	lockdep_assert_held(&kbdev->pm.backend.metrics.lock);
-
-	kbdev->pm.backend.metrics.active_gl_ctx[0] = 0;
-	kbdev->pm.backend.metrics.active_gl_ctx[1] = 0;
-	kbdev->pm.backend.metrics.active_gl_ctx[2] = 0;
-	kbdev->pm.backend.metrics.active_cl_ctx[0] = 0;
-	kbdev->pm.backend.metrics.active_cl_ctx[1] = 0;
-	kbdev->pm.backend.metrics.gpu_active = false;
-
-	for (js = 0; js < BASE_JM_MAX_NR_SLOTS; js++) {
-		struct kbase_jd_atom *katom = kbase_gpu_inspect(kbdev, js, 0);
-
-		/* Head atom may have just completed, so if it isn't running
-		 * then try the next atom
-		 */
-		if (katom && katom->gpu_rb_state != KBASE_ATOM_GPU_RB_SUBMITTED)
-			katom = kbase_gpu_inspect(kbdev, js, 1);
-
-		if (katom && katom->gpu_rb_state == KBASE_ATOM_GPU_RB_SUBMITTED) {
-			if (katom->core_req & BASE_JD_REQ_ONLY_COMPUTE) {
-				u32 device_nr =
-					(katom->core_req & BASE_JD_REQ_SPECIFIC_COHERENT_GROUP) ?
-						      katom->device_nr :
-						      0;
-				if (!WARN_ON(device_nr >= 2))
-					kbdev->pm.backend.metrics.active_cl_ctx[device_nr] = 1;
-			} else {
-				kbdev->pm.backend.metrics.active_gl_ctx[js] = 1;
-				trace_sysgraph(SGR_ACTIVE, 0, js);
-			}
-			kbdev->pm.backend.metrics.gpu_active = true;
-		} else {
-			trace_sysgraph(SGR_INACTIVE, 0, js);
-		}
-	}
-}
-
-/* called when job is submitted to or removed from a GPU slot */
-void kbase_pm_metrics_update(struct kbase_device *kbdev, ktime_t *timestamp)
-{
-	unsigned long flags;
-	ktime_t now;
-
-	lockdep_assert_held(&kbdev->hwaccess_lock);
-
-	spin_lock_irqsave(&kbdev->pm.backend.metrics.lock, flags);
-
-	if (!timestamp) {
-		now = ktime_get_raw();
-		timestamp = &now;
-	}
-
-	/* Track how much of time has been spent busy or idle. For JM GPUs,
-	 * this also evaluates how long CL and/or GL jobs have been busy for.
-	 */
-	kbase_pm_get_dvfs_utilisation_calc(kbdev, *timestamp);
-
-	kbase_pm_metrics_active_calc(kbdev);
-	spin_unlock_irqrestore(&kbdev->pm.backend.metrics.lock, flags);
-}
-#endif /* !MALI_USE_CSF */

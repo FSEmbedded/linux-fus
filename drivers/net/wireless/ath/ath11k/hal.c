@@ -571,7 +571,7 @@ u32 ath11k_hal_ce_get_desc_size(enum hal_ce_desc type)
 void ath11k_hal_ce_src_set_desc(void *buf, dma_addr_t paddr, u32 len, u32 id,
 				u8 byte_swap_data)
 {
-	struct hal_ce_srng_src_desc *desc = (struct hal_ce_srng_src_desc *)buf;
+	struct hal_ce_srng_src_desc *desc = buf;
 
 	desc->buffer_addr_low = paddr & HAL_ADDR_LSB_REG_MASK;
 	desc->buffer_addr_info =
@@ -586,8 +586,7 @@ void ath11k_hal_ce_src_set_desc(void *buf, dma_addr_t paddr, u32 len, u32 id,
 
 void ath11k_hal_ce_dst_set_desc(void *buf, dma_addr_t paddr)
 {
-	struct hal_ce_srng_dest_desc *desc =
-		(struct hal_ce_srng_dest_desc *)buf;
+	struct hal_ce_srng_dest_desc *desc = buf;
 
 	desc->buffer_addr_low = paddr & HAL_ADDR_LSB_REG_MASK;
 	desc->buffer_addr_info =
@@ -597,8 +596,7 @@ void ath11k_hal_ce_dst_set_desc(void *buf, dma_addr_t paddr)
 
 u32 ath11k_hal_ce_dst_status_get_length(void *buf)
 {
-	struct hal_ce_srng_dst_status_desc *desc =
-		(struct hal_ce_srng_dst_status_desc *)buf;
+	struct hal_ce_srng_dst_status_desc *desc = buf;
 	u32 len;
 
 	len = FIELD_GET(HAL_CE_DST_STATUS_DESC_FLAGS_LEN, READ_ONCE(desc->flags));
@@ -628,15 +626,30 @@ u32 *ath11k_hal_srng_dst_peek(struct ath11k_base *ab, struct hal_srng *srng)
 	return NULL;
 }
 
+static u32 *ath11k_hal_srng_dst_peek_with_dma(struct ath11k_base *ab,
+					      struct hal_srng *srng, dma_addr_t *paddr)
+{
+	lockdep_assert_held(&srng->lock);
+
+	if (srng->u.dst_ring.tp != srng->u.dst_ring.cached_hp) {
+		*paddr = srng->ring_base_paddr +
+			  sizeof(*srng->ring_base_vaddr) * srng->u.dst_ring.tp;
+		return srng->ring_base_vaddr + srng->u.dst_ring.tp;
+	}
+
+	return NULL;
+}
+
 static void ath11k_hal_srng_prefetch_desc(struct ath11k_base *ab,
 					  struct hal_srng *srng)
 {
+	dma_addr_t desc_paddr;
 	u32 *desc;
 
 	/* prefetch only if desc is available */
-	desc = ath11k_hal_srng_dst_peek(ab, srng);
+	desc = ath11k_hal_srng_dst_peek_with_dma(ab, srng, &desc_paddr);
 	if (likely(desc)) {
-		dma_sync_single_for_cpu(ab->dev, virt_to_phys(desc),
+		dma_sync_single_for_cpu(ab->dev, desc_paddr,
 					(srng->entry_size * sizeof(u32)),
 					DMA_FROM_DEVICE);
 		prefetch(desc);
@@ -1369,30 +1382,6 @@ void ath11k_hal_srng_deinit(struct ath11k_base *ab)
 	kfree(hal->srng_config);
 }
 EXPORT_SYMBOL(ath11k_hal_srng_deinit);
-
-void ath11k_hal_srng_clear(struct ath11k_base *ab)
-{
-	/*
-	 * Preserve the shared pointer buffers, but clear the previous
-	 * firmware instance's hp/tp state before handing them back to FW.
-	 * LMAC rings reuse this shared memory without going through the
-	 * normal SRNG hw-init path that zeros non-LMAC ring pointers.
-	 */
-	memset(ab->hal.srng_list, 0,
-	       sizeof(ab->hal.srng_list));
-	memset(ab->hal.shadow_reg_addr, 0,
-	       sizeof(ab->hal.shadow_reg_addr));
-	if (ab->hal.rdp.vaddr)
-		memset(ab->hal.rdp.vaddr, 0,
-		       sizeof(*ab->hal.rdp.vaddr) * HAL_SRNG_RING_ID_MAX);
-	if (ab->hal.wrp.vaddr)
-		memset(ab->hal.wrp.vaddr, 0,
-		       sizeof(*ab->hal.wrp.vaddr) * HAL_SRNG_NUM_LMAC_RINGS);
-	ab->hal.avail_blk_resource = 0;
-	ab->hal.current_blk_index = 0;
-	ab->hal.num_shadow_reg_configured = 0;
-}
-EXPORT_SYMBOL(ath11k_hal_srng_clear);
 
 void ath11k_hal_dump_srng_stats(struct ath11k_base *ab)
 {

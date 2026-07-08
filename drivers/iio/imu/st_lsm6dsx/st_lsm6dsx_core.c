@@ -14,34 +14,51 @@
  * by a different driver.
  *
  * Supported sensors:
- * - LSM6DS3:
+ *
+ * - LSM6DS3
  *   - Accelerometer/Gyroscope supported ODR [Hz]: 12.5, 26, 52, 104, 208, 416
  *   - Accelerometer supported full-scale [g]: +-2/+-4/+-8/+-16
  *   - Gyroscope supported full-scale [dps]: +-125/+-245/+-500/+-1000/+-2000
  *   - FIFO size: 8KB
  *
- * - LSM6DS3H/LSM6DSL/LSM6DSM/ISM330DLC/LSM6DS3TR-C:
+ * - ISM330DLC
+ * - LSM6DS3H
+ * - LSM6DS3TR-C
+ * - LSM6DSL
+ * - LSM6DSM
  *   - Accelerometer/Gyroscope supported ODR [Hz]: 12.5, 26, 52, 104, 208, 416
  *   - Accelerometer supported full-scale [g]: +-2/+-4/+-8/+-16
  *   - Gyroscope supported full-scale [dps]: +-125/+-245/+-500/+-1000/+-2000
  *   - FIFO size: 4KB
  *
- * - LSM6DSO/LSM6DSOX/ASM330LHH/ASM330LHHX/LSM6DSR/ISM330DHCX/LSM6DST/LSM6DSOP/
- *   LSM6DSTX/LSM6DSO16IS/ISM330IS:
+ * - ASM330LHH
+ * - ASM330LHHX
+ * - ASM330LHHXG1
+ * - ISM330DHCX
+ * - ISM330IS
+ * - LSM6DSO
+ * - LSM6DSO16IS
+ * - LSM6DSOP
+ * - LSM6DSOX
+ * - LSM6DSR
+ * - LSM6DST
+ * - LSM6DSTX
  *   - Accelerometer/Gyroscope supported ODR [Hz]: 12.5, 26, 52, 104, 208, 416,
  *     833
  *   - Accelerometer supported full-scale [g]: +-2/+-4/+-8/+-16
  *   - Gyroscope supported full-scale [dps]: +-125/+-245/+-500/+-1000/+-2000
  *   - FIFO size: 3KB
  *
- * - LSM6DSV/LSM6DSV16X:
+ * - LSM6DSV
+ * - LSM6DSV16X
  *   - Accelerometer/Gyroscope supported ODR [Hz]: 7.5, 15, 30, 60, 120, 240,
  *     480, 960
  *   - Accelerometer supported full-scale [g]: +-2/+-4/+-8/+-16
  *   - Gyroscope supported full-scale [dps]: +-125/+-250/+-500/+-1000/+-2000
  *   - FIFO size: 3KB
  *
- * - LSM9DS1/LSM6DS0:
+ * - LSM6DS0
+ * - LSM9DS1
  *   - Accelerometer supported ODR [Hz]: 10, 50, 119, 238, 476, 952
  *   - Accelerometer supported full-scale [g]: +-2/+-4/+-8/+-16
  *   - Gyroscope supported ODR [Hz]: 15, 60, 119, 238, 476, 952
@@ -77,17 +94,12 @@
 
 #define ST_LSM6DSX_REG_WHOAMI_ADDR		0x0f
 
+#define ST_LSM6DSX_TS_SENSITIVITY		25000UL /* 25us */
+
 static const struct iio_chan_spec st_lsm6dsx_acc_channels[] = {
 	ST_LSM6DSX_CHANNEL_ACC(IIO_ACCEL, 0x28, IIO_MOD_X, 0),
 	ST_LSM6DSX_CHANNEL_ACC(IIO_ACCEL, 0x2a, IIO_MOD_Y, 1),
 	ST_LSM6DSX_CHANNEL_ACC(IIO_ACCEL, 0x2c, IIO_MOD_Z, 2),
-	IIO_CHAN_SOFT_TIMESTAMP(3),
-};
-
-static const struct iio_chan_spec st_lsm6ds0_acc_channels[] = {
-	ST_LSM6DSX_CHANNEL(IIO_ACCEL, 0x28, IIO_MOD_X, 0),
-	ST_LSM6DSX_CHANNEL(IIO_ACCEL, 0x2a, IIO_MOD_Y, 1),
-	ST_LSM6DSX_CHANNEL(IIO_ACCEL, 0x2c, IIO_MOD_Z, 2),
 	IIO_CHAN_SOFT_TIMESTAMP(3),
 };
 
@@ -132,8 +144,8 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 		},
 		.channels = {
 			[ST_LSM6DSX_ID_ACC] = {
-				.chan = st_lsm6ds0_acc_channels,
-				.len = ARRAY_SIZE(st_lsm6ds0_acc_channels),
+				.chan = st_lsm6dsx_acc_channels,
+				.len = ARRAY_SIZE(st_lsm6dsx_acc_channels),
 			},
 			[ST_LSM6DSX_ID_GYRO] = {
 				.chan = st_lsm6ds0_gyro_channels,
@@ -826,6 +838,10 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 				.name = ST_ASM330LHHX_DEV_NAME,
 				.wai = 0x6b,
 			}, {
+				.hw_id = ST_ASM330LHHXG1_ID,
+				.name = ST_ASM330LHHXG1_DEV_NAME,
+				.wai = 0x6b,
+			}, {
 				.hw_id = ST_LSM6DSTX_ID,
 				.name = ST_LSM6DSTX_DEV_NAME,
 				.wai = 0x6d,
@@ -967,8 +983,6 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 				.mask = GENMASK(7, 6),
 			},
 			.freq_fine = 0x63,
-			.ts_sensitivity = 25000,
-			.ts_trim_coeff = 37500,
 		},
 		.shub_settings = {
 			.page_mux = {
@@ -1182,8 +1196,6 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 				.mask = GENMASK(7, 6),
 			},
 			.freq_fine = 0x63,
-			.ts_sensitivity = 25000,
-			.ts_trim_coeff = 37500,
 		},
 		.event_settings = {
 			.enable_reg = {
@@ -1359,8 +1371,6 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 				.mask = GENMASK(7, 6),
 			},
 			.freq_fine = 0x4f,
-			.ts_sensitivity = 21701,
-			.ts_trim_coeff = 28212,
 		},
 		.shub_settings = {
 			.page_mux = {
@@ -1435,8 +1445,8 @@ static const struct st_lsm6dsx_settings st_lsm6dsx_sensor_settings[] = {
 		},
 		.channels = {
 			[ST_LSM6DSX_ID_ACC] = {
-				.chan = st_lsm6ds0_acc_channels,
-				.len = ARRAY_SIZE(st_lsm6ds0_acc_channels),
+				.chan = st_lsm6dsx_acc_channels,
+				.len = ARRAY_SIZE(st_lsm6dsx_acc_channels),
 			},
 			[ST_LSM6DSX_ID_GYRO] = {
 				.chan = st_lsm6dsx_gyro_channels,
@@ -2117,25 +2127,15 @@ static const struct iio_info st_lsm6dsx_gyro_info = {
 	.write_raw_get_fmt = st_lsm6dsx_write_raw_get_fmt,
 };
 
-static int st_lsm6dsx_get_drdy_pin(struct st_lsm6dsx_hw *hw, int *drdy_pin)
-{
-	struct device *dev = hw->dev;
-
-	if (!dev_fwnode(dev))
-		return -EINVAL;
-
-	return device_property_read_u32(dev, "st,drdy-int-pin", drdy_pin);
-}
-
 static int
 st_lsm6dsx_get_drdy_reg(struct st_lsm6dsx_hw *hw,
 			const struct st_lsm6dsx_reg **drdy_reg)
 {
+	struct device *dev = hw->dev;
 	int err = 0, drdy_pin;
 
-	if (st_lsm6dsx_get_drdy_pin(hw, &drdy_pin) < 0) {
+	if (device_property_read_u32(dev, "st,drdy-int-pin", &drdy_pin) < 0) {
 		struct st_sensors_platform_data *pdata;
-		struct device *dev = hw->dev;
 
 		pdata = (struct st_sensors_platform_data *)dev->platform_data;
 		drdy_pin = pdata ? pdata->drdy_int_pin : 1;
@@ -2170,7 +2170,7 @@ static int st_lsm6dsx_init_shub(struct st_lsm6dsx_hw *hw)
 	hub_settings = &hw->settings->shub_settings;
 
 	pdata = (struct st_sensors_platform_data *)dev->platform_data;
-	if ((dev_fwnode(dev) && device_property_read_bool(dev, "st,pullups")) ||
+	if (device_property_read_bool(dev, "st,pullups") ||
 	    (pdata && pdata->pullups)) {
 		if (hub_settings->pullup_en.sec_page) {
 			err = st_lsm6dsx_set_page(hw, true);
@@ -2254,13 +2254,20 @@ static int st_lsm6dsx_init_hw_timer(struct st_lsm6dsx_hw *hw)
 	}
 
 	/* calibrate timestamp sensitivity */
-	hw->ts_gain = ts_settings->ts_sensitivity;
+	hw->ts_gain = ST_LSM6DSX_TS_SENSITIVITY;
 	if (ts_settings->freq_fine) {
 		err = regmap_read(hw->regmap, ts_settings->freq_fine, &val);
 		if (err < 0)
 			return err;
 
-		hw->ts_gain -= ((s8)val * ts_settings->ts_trim_coeff) / 1000;
+		/*
+		 * linearize the AN5192 formula:
+		 * 1 / (1 + x) ~= 1 - x (Taylor’s Series)
+		 * ttrim[s] = 1 / (40000 * (1 + 0.0015 * val))
+		 * ttrim[ns] ~= 25000 - 37.5 * val
+		 * ttrim[ns] ~= 25000 - (37500 * val) / 1000
+		 */
+		hw->ts_gain -= ((s8)val * 37500) / 1000;
 	}
 
 	return 0;
@@ -2548,7 +2555,7 @@ static int st_lsm6dsx_irq_setup(struct st_lsm6dsx_hw *hw)
 		return err;
 
 	pdata = (struct st_sensors_platform_data *)dev->platform_data;
-	if ((dev_fwnode(dev) && device_property_read_bool(dev, "drive-open-drain")) ||
+	if (device_property_read_bool(dev, "drive-open-drain") ||
 	    (pdata && pdata->open_drain)) {
 		reg = &hw->settings->irq_config.od;
 		err = regmap_update_bits(hw->regmap, reg->addr, reg->mask,
@@ -2629,73 +2636,6 @@ static int st_lsm6dsx_init_regulators(struct device *dev)
 	return 0;
 }
 
-#ifdef CONFIG_ACPI
-
-static int lsm6dsx_get_acpi_mount_matrix(struct device *dev,
-					 struct iio_mount_matrix *orientation)
-{
-	struct acpi_buffer buffer = { ACPI_ALLOCATE_BUFFER, NULL };
-	struct acpi_device *adev = ACPI_COMPANION(dev);
-	union acpi_object *obj, *elements;
-	acpi_status status;
-	int i, j, val[3];
-	char *str;
-
-	if (!has_acpi_companion(dev))
-		return -EINVAL;
-
-	if (!acpi_has_method(adev->handle, "ROTM"))
-		return -EINVAL;
-
-	status = acpi_evaluate_object(adev->handle, "ROTM", NULL, &buffer);
-	if (ACPI_FAILURE(status)) {
-		dev_warn(dev, "Failed to get ACPI mount matrix: %d\n", status);
-		return -EINVAL;
-	}
-
-	obj = buffer.pointer;
-	if (obj->type != ACPI_TYPE_PACKAGE || obj->package.count != 3)
-		goto unknown_format;
-
-	elements = obj->package.elements;
-	for (i = 0; i < 3; i++) {
-		if (elements[i].type != ACPI_TYPE_STRING)
-			goto unknown_format;
-
-		str = elements[i].string.pointer;
-		if (sscanf(str, "%d %d %d", &val[0], &val[1], &val[2]) != 3)
-			goto unknown_format;
-
-		for (j = 0; j < 3; j++) {
-			switch (val[j]) {
-			case -1: str = "-1"; break;
-			case 0:  str = "0";  break;
-			case 1:  str = "1";  break;
-			default: goto unknown_format;
-			}
-			orientation->rotation[i * 3 + j] = str;
-		}
-	}
-
-	kfree(buffer.pointer);
-	return 0;
-
-unknown_format:
-	dev_warn(dev, "Unknown ACPI mount matrix format, ignoring\n");
-	kfree(buffer.pointer);
-	return -EINVAL;
-}
-
-#else
-
-static int lsm6dsx_get_acpi_mount_matrix(struct device *dev,
-					  struct iio_mount_matrix *orientation)
-{
-	return -EOPNOTSUPP;
-}
-
-#endif
-
 int st_lsm6dsx_probe(struct device *dev, int irq, int hw_id,
 		     struct regmap *regmap)
 {
@@ -2709,7 +2649,7 @@ int st_lsm6dsx_probe(struct device *dev, int irq, int hw_id,
 	if (!hw)
 		return -ENOMEM;
 
-	dev_set_drvdata(dev, (void *)hw);
+	dev_set_drvdata(dev, hw);
 
 	mutex_init(&hw->fifo_lock);
 	mutex_init(&hw->conf_lock);
@@ -2743,8 +2683,7 @@ int st_lsm6dsx_probe(struct device *dev, int irq, int hw_id,
 
 	hub_settings = &hw->settings->shub_settings;
 	if (hub_settings->master_en.addr &&
-	    (!dev_fwnode(dev) ||
-	     !device_property_read_bool(dev, "st,disable-sensor-hub"))) {
+	    !device_property_read_bool(dev, "st,disable-sensor-hub")) {
 		err = st_lsm6dsx_shub_probe(hw, name);
 		if (err < 0)
 			return err;
@@ -2770,8 +2709,7 @@ int st_lsm6dsx_probe(struct device *dev, int irq, int hw_id,
 			return err;
 	}
 
-	err = lsm6dsx_get_acpi_mount_matrix(hw->dev, &hw->orientation);
-	if (err) {
+	if (!iio_read_acpi_mount_matrix(hw->dev, &hw->orientation, "ROTM")) {
 		err = iio_read_mount_matrix(hw->dev, &hw->orientation);
 		if (err)
 			return err;
@@ -2786,7 +2724,7 @@ int st_lsm6dsx_probe(struct device *dev, int irq, int hw_id,
 			return err;
 	}
 
-	if ((dev_fwnode(dev) && device_property_read_bool(dev, "wakeup-source")) ||
+	if (device_property_read_bool(dev, "wakeup-source") ||
 	    (pdata && pdata->wakeup_source))
 		device_init_wakeup(dev, true);
 

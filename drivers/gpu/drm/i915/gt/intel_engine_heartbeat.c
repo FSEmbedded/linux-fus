@@ -96,7 +96,8 @@ static void heartbeat_commit(struct i915_request *rq,
 static void show_heartbeat(const struct i915_request *rq,
 			   struct intel_engine_cs *engine)
 {
-	struct drm_printer p = drm_debug_printer("heartbeat");
+	struct drm_printer p =
+		drm_dbg_printer(&engine->i915->drm, DRM_UT_DRIVER, "heartbeat");
 
 	if (!rq) {
 		intel_engine_dump(engine, &p,
@@ -144,12 +145,10 @@ static void heartbeat(struct work_struct *wrk)
 	/* Just in case everything has gone horribly wrong, give it a kick */
 	intel_engine_flush_submission(engine);
 
-	rq = xchg(&engine->heartbeat.systole, NULL);
-	if (rq) {
-		if (i915_request_completed(rq))
-			i915_request_put(rq);
-		else
-			engine->heartbeat.systole = rq;
+	rq = engine->heartbeat.systole;
+	if (rq && i915_request_completed(rq)) {
+		i915_request_put(rq);
+		engine->heartbeat.systole = NULL;
 	}
 
 	if (!intel_engine_pm_get_if_awake(engine))
@@ -190,7 +189,7 @@ static void heartbeat(struct work_struct *wrk)
 			 * low latency and no jitter] the chance to naturally
 			 * complete before being preempted.
 			 */
-			attr.priority = 0;
+			attr.priority = I915_PRIORITY_NORMAL;
 			if (rq->sched.attr.priority >= attr.priority)
 				attr.priority = I915_PRIORITY_HEARTBEAT;
 			if (rq->sched.attr.priority >= attr.priority)
@@ -230,11 +229,8 @@ static void heartbeat(struct work_struct *wrk)
 unlock:
 	mutex_unlock(&ce->timeline->mutex);
 out:
-	if (!engine->i915->params.enable_hangcheck || !next_heartbeat(engine)) {
-		rq = xchg(&engine->heartbeat.systole, NULL);
-		if (rq)
-			i915_request_put(rq);
-	}
+	if (!engine->i915->params.enable_hangcheck || !next_heartbeat(engine))
+		i915_request_put(fetch_and_zero(&engine->heartbeat.systole));
 	intel_engine_pm_put(engine);
 }
 
@@ -248,13 +244,8 @@ void intel_engine_unpark_heartbeat(struct intel_engine_cs *engine)
 
 void intel_engine_park_heartbeat(struct intel_engine_cs *engine)
 {
-	if (cancel_delayed_work(&engine->heartbeat.work)) {
-		struct i915_request *rq;
-
-		rq = xchg(&engine->heartbeat.systole, NULL);
-		if (rq)
-			i915_request_put(rq);
-	}
+	if (cancel_delayed_work(&engine->heartbeat.work))
+		i915_request_put(fetch_and_zero(&engine->heartbeat.systole));
 }
 
 void intel_gt_unpark_heartbeats(struct intel_gt *gt)
@@ -299,6 +290,9 @@ static int __intel_engine_pulse(struct intel_engine_cs *engine)
 
 	heartbeat_commit(rq, &attr);
 	GEM_BUG_ON(rq->sched.attr.priority < I915_PRIORITY_BARRIER);
+
+	/* Ensure the forced pulse gets a full period to execute */
+	next_heartbeat(engine);
 
 	return 0;
 }

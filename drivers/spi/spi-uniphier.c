@@ -15,7 +15,7 @@
 #include <linux/platform_device.h>
 #include <linux/spi/spi.h>
 
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 
 #define SSI_TIMEOUT_MS		2000
 #define SSI_POLL_TIMEOUT_US	200
@@ -666,24 +666,28 @@ static int uniphier_spi_probe(struct platform_device *pdev)
 	}
 	priv->base_dma_addr = res->start;
 
-	priv->clk = devm_clk_get_enabled(&pdev->dev, NULL);
+	priv->clk = devm_clk_get(&pdev->dev, NULL);
 	if (IS_ERR(priv->clk)) {
 		dev_err(&pdev->dev, "failed to get clock\n");
 		ret = PTR_ERR(priv->clk);
 		goto out_host_put;
 	}
 
+	ret = clk_prepare_enable(priv->clk);
+	if (ret)
+		goto out_host_put;
+
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0) {
 		ret = irq;
-		goto out_host_put;
+		goto out_disable_clk;
 	}
 
 	ret = devm_request_irq(&pdev->dev, irq, uniphier_spi_handler,
 			       0, "uniphier-spi", priv);
 	if (ret) {
 		dev_err(&pdev->dev, "failed to request IRQ\n");
-		goto out_host_put;
+		goto out_disable_clk;
 	}
 
 	init_completion(&priv->xfer_done);
@@ -713,7 +717,7 @@ static int uniphier_spi_probe(struct platform_device *pdev)
 	if (IS_ERR_OR_NULL(host->dma_tx)) {
 		if (PTR_ERR(host->dma_tx) == -EPROBE_DEFER) {
 			ret = -EPROBE_DEFER;
-			goto out_host_put;
+			goto out_disable_clk;
 		}
 		host->dma_tx = NULL;
 		dma_tx_burst = INT_MAX;
@@ -747,7 +751,7 @@ static int uniphier_spi_probe(struct platform_device *pdev)
 
 	host->max_dma_len = min(dma_tx_burst, dma_rx_burst);
 
-	ret = spi_register_controller(host);
+	ret = devm_spi_register_controller(&pdev->dev, host);
 	if (ret)
 		goto out_release_dma;
 
@@ -763,6 +767,9 @@ out_release_dma:
 		host->dma_tx = NULL;
 	}
 
+out_disable_clk:
+	clk_disable_unprepare(priv->clk);
+
 out_host_put:
 	spi_controller_put(host);
 	return ret;
@@ -771,17 +778,14 @@ out_host_put:
 static void uniphier_spi_remove(struct platform_device *pdev)
 {
 	struct spi_controller *host = platform_get_drvdata(pdev);
-
-	spi_controller_get(host);
-
-	spi_unregister_controller(host);
+	struct uniphier_spi_priv *priv = spi_controller_get_devdata(host);
 
 	if (host->dma_tx)
 		dma_release_channel(host->dma_tx);
 	if (host->dma_rx)
 		dma_release_channel(host->dma_rx);
 
-	spi_controller_put(host);
+	clk_disable_unprepare(priv->clk);
 }
 
 static const struct of_device_id uniphier_spi_match[] = {

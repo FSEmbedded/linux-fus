@@ -133,6 +133,11 @@ static void fl_release(struct ip6_flowlabel *fl)
 		if (time_after(ttd, fl->expires))
 			fl->expires = ttd;
 		ttd = fl->expires;
+		if (fl->opt && fl->share == IPV6_FL_S_EXCL) {
+			struct ipv6_txoptions *opt = fl->opt;
+			fl->opt = NULL;
+			kfree(opt);
+		}
 		if (!timer_pending(&ip6_fl_gc_timer) ||
 		    time_after(ip6_fl_gc_timer.expires, ttd))
 			mod_timer(&ip6_fl_gc_timer, ttd);
@@ -508,7 +513,7 @@ int ipv6_flowlabel_opt_get(struct sock *sk, struct in6_flowlabel_req *freq,
 		return 0;
 	}
 
-	if (np->repflow) {
+	if (inet6_test_bit(REPFLOW, sk)) {
 		freq->flr_label = np->flow_label;
 		return 0;
 	}
@@ -546,10 +551,10 @@ static int ipv6_flowlabel_put(struct sock *sk, struct in6_flowlabel_req *freq)
 	if (freq->flr_flags & IPV6_FL_F_REFLECT) {
 		if (sk->sk_protocol != IPPROTO_TCP)
 			return -ENOPROTOOPT;
-		if (!np->repflow)
+		if (!inet6_test_bit(REPFLOW, sk))
 			return -ESRCH;
 		np->flow_label = 0;
-		np->repflow = 0;
+		inet6_clear_bit(REPFLOW, sk);
 		return 0;
 	}
 
@@ -621,7 +626,7 @@ static int ipv6_flowlabel_get(struct sock *sk, struct in6_flowlabel_req *freq,
 
 		if (sk->sk_protocol != IPPROTO_TCP)
 			return -ENOPROTOOPT;
-		np->repflow = 1;
+		inet6_set_bit(REPFLOW, sk);
 		return 0;
 	}
 

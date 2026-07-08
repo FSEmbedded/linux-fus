@@ -128,7 +128,7 @@ struct pl35x_nand {
  * @conf_regs: SMC configuration registers for command phase
  * @io_regs: NAND data registers for data phase
  * @controller: Core NAND controller structure
- * @chip: NAND chip information structure
+ * @chips: List of connected NAND chips
  * @selected_chip: NAND chip currently selected by the controller
  * @assigned_cs: List of assigned CS
  * @ecc_buf: Temporary buffer to extract ECC bytes
@@ -862,9 +862,6 @@ static int pl35x_nfc_setup_interface(struct nand_chip *chip, int cs,
 			  PL35X_SMC_NAND_TAR_CYCLES(tmgs.t_ar) |
 			  PL35X_SMC_NAND_TRR_CYCLES(tmgs.t_rr);
 
-	writel(plnand->timings, nfc->conf_regs + PL35X_SMC_CYCLES);
-	pl35x_smc_update_regs(nfc);
-
 	return 0;
 }
 
@@ -979,7 +976,6 @@ static int pl35x_nand_attach_chip(struct nand_chip *chip)
 		fallthrough;
 	case NAND_ECC_ENGINE_TYPE_NONE:
 	case NAND_ECC_ENGINE_TYPE_SOFT:
-		chip->ecc.write_page_raw = nand_monolithic_write_page_raw;
 		break;
 	case NAND_ECC_ENGINE_TYPE_ON_HOST:
 		ret = pl35x_nand_init_hw_ecc_controller(nfc, chip);
@@ -1115,7 +1111,7 @@ static void pl35x_nand_chips_cleanup(struct pl35x_nandc *nfc)
 
 static int pl35x_nand_chips_init(struct pl35x_nandc *nfc)
 {
-	struct device_node *np = nfc->dev->of_node, *nand_np;
+	struct device_node *np = nfc->dev->of_node;
 	int nchips = of_get_child_count(np);
 	int ret;
 
@@ -1125,10 +1121,9 @@ static int pl35x_nand_chips_init(struct pl35x_nandc *nfc)
 		return -EINVAL;
 	}
 
-	for_each_child_of_node(np, nand_np) {
+	for_each_child_of_node_scoped(np, nand_np) {
 		ret = pl35x_nand_chip_init(nfc, nand_np);
 		if (ret) {
-			of_node_put(nand_np);
 			pl35x_nand_chips_cleanup(nfc);
 			break;
 		}

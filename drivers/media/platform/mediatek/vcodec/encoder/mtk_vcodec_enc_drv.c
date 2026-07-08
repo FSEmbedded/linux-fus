@@ -117,7 +117,6 @@ static int fops_vcodec_open(struct file *file)
 	struct mtk_vcodec_enc_ctx *ctx = NULL;
 	int ret = 0;
 	struct vb2_queue *src_vq;
-	unsigned long flags;
 
 	ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);
 	if (!ctx)
@@ -178,9 +177,9 @@ static int fops_vcodec_open(struct file *file)
 	mtk_v4l2_venc_dbg(2, ctx, "Create instance [%d]@%p m2m_ctx=%p ",
 			  ctx->id, ctx, ctx->m2m_ctx);
 
-	spin_lock_irqsave(&dev->dev_ctx_lock, flags);
+	mutex_lock(&dev->dev_ctx_lock);
 	list_add(&ctx->list, &dev->ctx_list);
-	spin_unlock_irqrestore(&dev->dev_ctx_lock, flags);
+	mutex_unlock(&dev->dev_ctx_lock);
 
 	mutex_unlock(&dev->dev_mutex);
 	mtk_v4l2_venc_dbg(0, ctx, "%s encoder [%d]", dev_name(&dev->plat_dev->dev),
@@ -205,7 +204,6 @@ static int fops_vcodec_release(struct file *file)
 {
 	struct mtk_vcodec_enc_dev *dev = video_drvdata(file);
 	struct mtk_vcodec_enc_ctx *ctx = fh_to_enc_ctx(file->private_data);
-	unsigned long flags;
 
 	mtk_v4l2_venc_dbg(1, ctx, "[%d] encoder", ctx->id);
 	mutex_lock(&dev->dev_mutex);
@@ -216,18 +214,9 @@ static int fops_vcodec_release(struct file *file)
 	v4l2_fh_exit(&ctx->fh);
 	v4l2_ctrl_handler_free(&ctx->ctrl_hdl);
 
-	/*
-	 * Cancel any pending encode work before freeing the context.
-	 * Although v4l2_m2m_ctx_release() waits for m2m job completion,
-	 * the workqueue handler (mtk_venc_worker) may still be accessing
-	 * the context after v4l2_m2m_job_finish() returns. Without this,
-	 * a use-after-free occurs when the worker accesses ctx after kfree.
-	 */
-	cancel_work_sync(&ctx->encode_work);
-
-	spin_lock_irqsave(&dev->dev_ctx_lock, flags);
+	mutex_lock(&dev->dev_ctx_lock);
 	list_del_init(&ctx->list);
-	spin_unlock_irqrestore(&dev->dev_ctx_lock, flags);
+	mutex_unlock(&dev->dev_ctx_lock);
 	kfree(ctx);
 	mutex_unlock(&dev->dev_mutex);
 	return 0;
@@ -309,7 +298,7 @@ static int mtk_vcodec_probe(struct platform_device *pdev)
 
 	mutex_init(&dev->enc_mutex);
 	mutex_init(&dev->dev_mutex);
-	spin_lock_init(&dev->dev_ctx_lock);
+	mutex_init(&dev->dev_ctx_lock);
 	spin_lock_init(&dev->irqlock);
 
 	snprintf(dev->v4l2_dev.name, sizeof(dev->v4l2_dev.name), "%s",

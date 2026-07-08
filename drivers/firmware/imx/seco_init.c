@@ -144,15 +144,15 @@ int imx_scu_init_fw(struct se_if_priv *priv)
 		priv->flags |= SCU_MEM_CFG;
 
 		if (get_se_soc_id(priv) == SOC_ID_OF_IMX8DXL &&
-		    (priv->if_defs->se_if_type == SE_TYPE_ID_SHE ||
-		    priv->if_defs->se_if_type == SE_TYPE_ID_HSM))
+				(priv->if_defs->se_if_type == SE_TYPE_ID_SHE ||
+				priv->if_defs->se_if_type == SE_TYPE_ID_HSM))
 			priv->flags |= SCU_SIGNED_MSG_CFG;
 	}
 exit:
 	return ret;
 }
 
-int imx_scu_sec_mem_cfg(struct file *fp, u32 offset, u32 size)
+int imx_scu_sec_mem_cfg(struct file *fp, uint32_t offset, uint32_t size)
 {
 	struct se_if_device_ctx *dev_ctx = fp->private_data;
 	u64 high_boundary;
@@ -173,11 +173,10 @@ int imx_scu_sec_mem_cfg(struct file *fp, u32 offset, u32 size)
 	dev_ctx->se_shared_mem_mgmt.secure_mem.dma_addr = (dma_addr_t)offset;
 	dev_ctx->se_shared_mem_mgmt.secure_mem.size = size;
 	dev_ctx->se_shared_mem_mgmt.secure_mem.pos = 0;
-	dev_ctx->se_shared_mem_mgmt.secure_mem.ptr =
-				devm_ioremap(dev_ctx->priv->dev,
-					     (phys_addr_t)(SECURE_RAM_BASE_ADDRESS +
+	dev_ctx->se_shared_mem_mgmt.secure_mem.ptr = devm_ioremap(dev_ctx->priv->dev,
+					      (phys_addr_t)(SECURE_RAM_BASE_ADDRESS +
 					      (u64)dev_ctx->se_shared_mem_mgmt.secure_mem.dma_addr),
-					     dev_ctx->se_shared_mem_mgmt.secure_mem.size);
+					      dev_ctx->se_shared_mem_mgmt.secure_mem.size);
 	if (!dev_ctx->se_shared_mem_mgmt.secure_mem.ptr) {
 		dev_err(dev_ctx->priv->dev, "Failed to map secure memory\n");
 		return -ENOMEM;
@@ -219,13 +218,14 @@ int imx_scu_mem_access(struct se_if_device_ctx *dev_ctx)
 }
 
 int imx_scu_signed_msg(struct file *fp,
-		       u8 *msg,
-		       u32 size,
-		       u32 *error)
+		       uint8_t *msg,
+		       uint32_t size,
+		       uint32_t *error)
 {
 	struct se_if_device_ctx *dev_ctx = fp->private_data;
 	struct se_if_priv *priv = dev_ctx->priv;
-	struct se_shared_mem *shared_mem = &dev_ctx->se_shared_mem_mgmt.non_secure_mem;
+	struct se_shared_mem *shared_mem
+		= &dev_ctx->se_shared_mem_mgmt.non_secure_mem;
 	int err;
 	u64 addr;
 	u32 pos;

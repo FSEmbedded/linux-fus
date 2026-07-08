@@ -98,7 +98,6 @@ my $test_type;
 my $build_type;
 my $build_options;
 my $final_post_ktest;
-my $post_ktest_done = 0;
 my $pre_ktest;
 my $post_ktest;
 my $pre_test;
@@ -222,6 +221,8 @@ my $build_time;
 my $install_time;
 my $reboot_time;
 my $test_time;
+
+my $warning_found = 0;
 
 my $pwd;
 my $dirname = $FindBin::Bin;
@@ -730,11 +731,18 @@ sub print_times {
 	show_time($test_time);
 	doprint "\n";
     }
+    if ($warning_found) {
+	doprint "\n*** WARNING";
+	doprint "S" if ($warning_found > 1);
+	doprint " found in build: $warning_found ***\n\n";
+    }
+
     # reset for iterations like bisect
     $build_time = 0;
     $install_time = 0;
     $reboot_time = 0;
     $test_time = 0;
+    $warning_found = 0;
 }
 
 sub get_mandatory_configs {
@@ -793,13 +801,13 @@ sub process_variables {
     my $retval = "";
 
     # We want to check for '\', and it is just easier
-    # to check the previous characet of '$' and not need
+    # to check the previous character of '$' and not need
     # to worry if '$' is the first character. By adding
     # a space to $value, we can just check [^\\]\$ and
     # it will still work.
     $value = " $value";
 
-    while ($value =~ /(.*?[^\\])\$\{(.*?)\}(.*)/) {
+    while ($value =~ /(.*?[^\\])\$\{([^\{]*?)\}(.*)/) {
 	my $begin = $1;
 	my $var = $2;
 	my $end = $3;
@@ -819,16 +827,20 @@ sub process_variables {
 	    # we simple convert to 0
 	    $retval = "${retval}0";
 	} else {
-	    # put back the origin piece.
-	    $retval = "$retval\$\{$var\}";
+	    # put back the origin piece, but with $#### to not reprocess it
+	    $retval = "$retval\$####\{$var\}";
 	    # This could be an option that is used later, save
 	    # it so we don't warn if this option is not one of
 	    # ktests options.
 	    $used_options{$var} = 1;
 	}
-	$value = $end;
+	$value = "$retval$end";
+	$retval = "";
     }
-    $retval = "$retval$value";
+    $retval = $value;
+
+    # Convert the saved variables with $####{var} back to ${var}
+    $retval =~ s/\$####/\$/g;
 
     # remove the space added in the beginning
     $retval =~ s/ //;
@@ -1538,24 +1550,6 @@ sub get_test_name() {
     return $name;
 }
 
-sub run_post_ktest {
-    my $cmd;
-
-    return if ($post_ktest_done);
-
-    if (defined($final_post_ktest)) {
-	$cmd = $final_post_ktest;
-    } elsif (defined($post_ktest)) {
-	$cmd = $post_ktest;
-    } else {
-	return;
-    }
-
-    my $cp_post_ktest = eval_kernel_version($cmd);
-    run_command $cp_post_ktest;
-    $post_ktest_done = 1;
-}
-
 sub dodie {
     # avoid recursion
     return if ($in_die);
@@ -1615,7 +1609,6 @@ sub dodie {
     if (defined($post_test)) {
 	run_command $post_test;
     }
-    run_post_ktest;
 
     die @_, "\n";
 }
@@ -1797,7 +1790,7 @@ sub save_logs {
     my ($result, $basedir) = @_;
     my @t = localtime;
     my $date = sprintf "%04d%02d%02d%02d%02d%02d",
-	1900+$t[5],$t[4]+1,$t[3],$t[2],$t[1],$t[0];
+	1900+$t[5],$t[4],$t[3],$t[2],$t[1],$t[0];
 
     my $type = $build_type;
     if ($type =~ /useconfig/) {
@@ -2484,15 +2477,13 @@ sub process_warning_line {
 # Returns 1 if OK
 #         0 otherwise
 sub check_buildlog {
-    return 1 if (!defined $warnings_file);
-
     my %warnings_list;
 
     # Failed builds should not reboot the target
     my $save_no_reboot = $no_reboot;
     $no_reboot = 1;
 
-    if (defined($warnings_file) && -f $warnings_file) {
+    if (-f $warnings_file) {
 	open(IN, $warnings_file) or
 	    dodie "Error opening $warnings_file";
 
@@ -2506,18 +2497,21 @@ sub check_buildlog {
 	close(IN);
     }
 
-    # If warnings file didn't exist, and WARNINGS_FILE exist,
-    # then we fail on any warning!
-
     open(IN, $buildlog) or dodie "Can't open $buildlog";
     while (<IN>) {
 	if (/$check_build_re/) {
 	    my $warning = process_warning_line $_;
 
 	    if (!defined $warnings_list{$warning}) {
-		fail "New warning found (not in $warnings_file)\n$_\n";
-		$no_reboot = $save_no_reboot;
-		return 0;
+		$warning_found++;
+
+		# If warnings file didn't exist, and WARNINGS_FILE exist,
+		# then we fail on any warning!
+		if (defined $warnings_file) {
+		    fail "New warning found (not in $warnings_file)\n$_\n";
+		    $no_reboot = $save_no_reboot;
+		    return 0;
+		}
 	    }
 	}
     }
@@ -4133,8 +4127,7 @@ sub __set_test_option {
 
     my $option = "$name\[$i\]";
 
-    if (exists($opt{$option})) {
-	return undef if (!option_defined($option));
+    if (option_defined($option)) {
 	return $opt{$option};
     }
 
@@ -4142,8 +4135,7 @@ sub __set_test_option {
 	if ($i >= $test &&
 	    $i < $test + $repeat_tests{$test}) {
 	    $option = "$name\[$test\]";
-	    if (exists($opt{$option})) {
-		return undef if (!option_defined($option));
+	    if (option_defined($option)) {
 		return $opt{$option};
 	    }
 	}
@@ -4250,7 +4242,6 @@ sub cancel_test {
 	send_email("KTEST: Your [$name] test was cancelled",
 	    "Your test started at $script_start_time was cancelled: sig int");
     }
-    run_post_ktest;
     die "\nCaught Sig Int, test interrupted: $!\n"
 }
 
@@ -4561,7 +4552,11 @@ for (my $i = 1; $i <= $opt{"NUM_TESTS"}; $i++) {
     success $i;
 }
 
-run_post_ktest;
+if (defined($final_post_ktest)) {
+
+    my $cp_final_post_ktest = eval_kernel_version $final_post_ktest;
+    run_command $cp_final_post_ktest;
+}
 
 if ($opt{"POWEROFF_ON_SUCCESS"}) {
     halt;

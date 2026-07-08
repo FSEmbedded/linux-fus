@@ -90,6 +90,7 @@ static int logicvc_drm_config_parse(struct logicvc_drm *logicvc)
 	struct device *dev = drm_dev->dev;
 	struct device_node *of_node = dev->of_node;
 	struct logicvc_drm_config *config = &logicvc->config;
+	struct device_node *layers_node;
 	int ret;
 
 	logicvc_of_property_parse_bool(of_node, LOGICVC_OF_PROPERTY_DITHERING,
@@ -125,8 +126,7 @@ static int logicvc_drm_config_parse(struct logicvc_drm *logicvc)
 	if (ret)
 		return ret;
 
-	struct device_node *layers_node __free(device_node) =
-		of_get_child_by_name(of_node, "layers");
+	layers_node = of_get_child_by_name(of_node, "layers");
 	if (!layers_node) {
 		drm_err(drm_dev, "Missing non-optional layers node\n");
 		return -EINVAL;
@@ -482,6 +482,14 @@ static void logicvc_drm_remove(struct platform_device *pdev)
 	of_reserved_mem_device_release(dev);
 }
 
+static void logicvc_drm_shutdown(struct platform_device *pdev)
+{
+	struct logicvc_drm *logicvc = platform_get_drvdata(pdev);
+	struct drm_device *drm_dev = &logicvc->drm_dev;
+
+	drm_atomic_helper_shutdown(drm_dev);
+}
+
 static const struct of_device_id logicvc_drm_of_table[] = {
 	{ .compatible = "xylon,logicvc-3.02.a-display" },
 	{ .compatible = "xylon,logicvc-4.01.a-display" },
@@ -492,6 +500,7 @@ MODULE_DEVICE_TABLE(of, logicvc_drm_of_table);
 static struct platform_driver logicvc_drm_platform_driver = {
 	.probe		= logicvc_drm_probe,
 	.remove_new	= logicvc_drm_remove,
+	.shutdown	= logicvc_drm_shutdown,
 	.driver		= {
 		.name		= "logicvc-drm",
 		.of_match_table	= logicvc_drm_of_table,

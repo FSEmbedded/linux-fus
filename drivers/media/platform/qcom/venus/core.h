@@ -25,7 +25,6 @@
 
 #define VIDC_CLKS_NUM_MAX		4
 #define VIDC_VCODEC_CLKS_NUM_MAX	2
-#define VIDC_PMDOMAINS_NUM_MAX		3
 #define VIDC_RESETS_NUM_MAX		2
 
 #define VENUS_MAX_FPS			240
@@ -74,7 +73,7 @@ struct venus_resources {
 	const char * const vcodec0_clks[VIDC_VCODEC_CLKS_NUM_MAX];
 	const char * const vcodec1_clks[VIDC_VCODEC_CLKS_NUM_MAX];
 	unsigned int vcodec_clks_num;
-	const char * const vcodec_pmdomains[VIDC_PMDOMAINS_NUM_MAX];
+	const char **vcodec_pmdomains;
 	unsigned int vcodec_pmdomains_num;
 	const char **opp_pmdomain;
 	unsigned int vcodec_num;
@@ -136,7 +135,7 @@ struct venus_format {
  * @video_path: an interconnect handle to video to/from memory path
  * @cpucfg_path: an interconnect handle to cpu configuration path
  * @has_opp_table: does OPP table exist
- * @pmdomains:	an array of pmdomains struct device pointers
+ * @pmdomains:	a pointer to a list of pmdomains
  * @opp_dl_venus: an device-link for device OPP
  * @opp_pmdomain: an OPP power-domain
  * @resets: an array of reset signals
@@ -172,6 +171,7 @@ struct venus_format {
  * @core1_usage_count: usage counter for core1
  * @root:	debugfs root directory
  * @venus_ver:	the venus firmware version
+ * @dump_core:	a flag indicating that a core dump is required
  */
 struct venus_core {
 	void __iomem *base;
@@ -189,7 +189,7 @@ struct venus_core {
 	struct icc_path *video_path;
 	struct icc_path *cpucfg_path;
 	bool has_opp_table;
-	struct device *pmdomains[VIDC_PMDOMAINS_NUM_MAX];
+	struct dev_pm_domain_list *pmdomains;
 	struct device_link *opp_dl_venus;
 	struct device *opp_pmdomain;
 	struct reset_control *resets[VIDC_RESETS_NUM_MAX];
@@ -235,6 +235,7 @@ struct venus_core {
 		u32 minor;
 		u32 rev;
 	} venus_ver;
+	unsigned long dump_core;
 };
 
 struct vdec_controls {
@@ -430,7 +431,6 @@ enum venus_inst_modes {
  * @error:	an error returned during last HFI sync operation
  * @session_error:	a flag rised by HFI interface in case of session error
  * @ops:		HFI operations
- * @priv:	a private for HFI operations callbacks
  * @session_type:	the type of the session (decoder or encoder)
  * @hprop:	a union used as a holder by get property
  * @core_acquired:	the Core has been acquired

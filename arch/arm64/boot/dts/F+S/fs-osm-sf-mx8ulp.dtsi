@@ -83,8 +83,8 @@ osm_spi_b: &spidev0_rpchip {};
 		pwm2 = &osm_pwm_2;
 		pwm3 = &osm_pwm_3_4;
 		/* pwm 1,2,3,4,5 via m33 */
-		isi0 = &isi_0;
-		csi0 = &mipi_csi0;
+		isi0 = &isi;
+		csi0 = &mipi_csi;
 	};
 
 	/* -------------------- BOARD INFO -------------------- */

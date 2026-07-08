@@ -98,11 +98,12 @@ static int __init ip6table_raw_init(void)
 
 static void __exit ip6table_raw_fini(void)
 {
-	xt_unregister_template(&packet_raw);
 	unregister_pernet_subsys(&ip6table_raw_net_ops);
+	xt_unregister_template(&packet_raw);
 	kfree(rawtable_ops);
 }
 
 module_init(ip6table_raw_init);
 module_exit(ip6table_raw_fini);
 MODULE_LICENSE("GPL");
+MODULE_DESCRIPTION("Ip6tables legacy raw table");

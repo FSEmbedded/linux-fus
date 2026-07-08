@@ -169,7 +169,7 @@
 
 &pmi8950_wled {
 	qcom,current-limit-microamp = <20000>;
-	qcom,ovp-millivolt = <29500>;
+	qcom,ovp-millivolt = <29600>;
 	qcom,num-strings = <2>;
 	qcom,external-pfet;
 	qcom,cabc;
@@ -357,5 +357,6 @@
 };
 
 &usb3_dwc3 {
+	/delete-property/ usb-role-switch;
 	dr_mode = "peripheral";
 };

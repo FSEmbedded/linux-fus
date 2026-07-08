@@ -575,7 +575,7 @@ static const struct attribute_group rbd_bus_group = {
 };
 __ATTRIBUTE_GROUPS(rbd_bus);
 
-static struct bus_type rbd_bus_type = {
+static const struct bus_type rbd_bus_type = {
 	.name		= "rbd",
 	.bus_groups	= rbd_bus_groups,
 };
@@ -3495,29 +3495,11 @@ static void rbd_img_object_requests(struct rbd_img_request *img_req)
 	rbd_assert(!need_exclusive_lock(img_req) ||
 		   __rbd_is_lock_owner(rbd_dev));
 
-	if (test_bit(IMG_REQ_CHILD, &img_req->flags)) {
-		rbd_assert(!rbd_img_is_write(img_req));
-	} else {
-		struct request *rq = blk_mq_rq_from_pdu(img_req);
-		u64 off = (u64)blk_rq_pos(rq) << SECTOR_SHIFT;
-		u64 len = blk_rq_bytes(rq);
-		u64 mapping_size;
-
+	if (rbd_img_is_write(img_req)) {
+		rbd_assert(!img_req->snapc);
 		down_read(&rbd_dev->header_rwsem);
-		mapping_size = rbd_dev->mapping.size;
-		if (rbd_img_is_write(img_req)) {
-			rbd_assert(!img_req->snapc);
-			img_req->snapc =
-			    ceph_get_snap_context(rbd_dev->header.snapc);
-		}
+		img_req->snapc = ceph_get_snap_context(rbd_dev->header.snapc);
 		up_read(&rbd_dev->header_rwsem);
-
-		if (unlikely(off + len > mapping_size)) {
-			rbd_warn(rbd_dev, "beyond EOD (%llu~%llu > %llu)",
-				 off, len, mapping_size);
-			img_req->pending.result = -EIO;
-			return;
-		}
 	}
 
 	for_each_obj_request(img_req, obj_req) {
@@ -4743,6 +4725,7 @@ static void rbd_queue_workfn(struct work_struct *work)
 	struct request *rq = blk_mq_rq_from_pdu(img_request);
 	u64 offset = (u64)blk_rq_pos(rq) << SECTOR_SHIFT;
 	u64 length = blk_rq_bytes(rq);
+	u64 mapping_size;
 	int result;
 
 	/* Ignore/skip any zero-length requests */
@@ -4755,8 +4738,16 @@ static void rbd_queue_workfn(struct work_struct *work)
 	blk_mq_start_request(rq);
 
 	down_read(&rbd_dev->header_rwsem);
+	mapping_size = rbd_dev->mapping.size;
 	rbd_img_capture_header(img_request);
 	up_read(&rbd_dev->header_rwsem);
+
+	if (offset + length > mapping_size) {
+		rbd_warn(rbd_dev, "beyond EOD (%llu~%llu > %llu)", offset,
+			 length, mapping_size);
+		result = -EIO;
+		goto err_img_request;
+	}
 
 	dout("%s rbd_dev %p img_req %p %s %llu~%llu\n", __func__, rbd_dev,
 	     img_request, obj_op_name(op_type), offset, length);
@@ -4958,9 +4949,15 @@ static const struct blk_mq_ops rbd_mq_ops = {
 static int rbd_init_disk(struct rbd_device *rbd_dev)
 {
 	struct gendisk *disk;
-	struct request_queue *q;
 	unsigned int objset_bytes =
 	    rbd_dev->layout.object_size * rbd_dev->layout.stripe_count;
+	struct queue_limits lim = {
+		.max_hw_sectors		= objset_bytes >> SECTOR_SHIFT,
+		.io_opt			= objset_bytes,
+		.io_min			= rbd_dev->opts->alloc_size,
+		.max_segments		= USHRT_MAX,
+		.max_segment_size	= UINT_MAX,
+	};
 	int err;
 
 	memset(&rbd_dev->tag_set, 0, sizeof(rbd_dev->tag_set));
@@ -4975,12 +4972,20 @@ static int rbd_init_disk(struct rbd_device *rbd_dev)
 	if (err)
 		return err;
 
-	disk = blk_mq_alloc_disk(&rbd_dev->tag_set, rbd_dev);
+	if (rbd_dev->opts->trim) {
+		lim.discard_granularity = rbd_dev->opts->alloc_size;
+		lim.max_hw_discard_sectors = objset_bytes >> SECTOR_SHIFT;
+		lim.max_write_zeroes_sectors = objset_bytes >> SECTOR_SHIFT;
+	}
+
+	if (!ceph_test_opt(rbd_dev->rbd_client->client, NOCRC))
+		lim.features |= BLK_FEAT_STABLE_WRITES;
+
+	disk = blk_mq_alloc_disk(&rbd_dev->tag_set, &lim, rbd_dev);
 	if (IS_ERR(disk)) {
 		err = PTR_ERR(disk);
 		goto out_tag_set;
 	}
-	q = disk->queue;
 
 	snprintf(disk->disk_name, sizeof(disk->disk_name), RBD_DRV_NAME "%d",
 		 rbd_dev->dev_id);
@@ -4992,26 +4997,6 @@ static int rbd_init_disk(struct rbd_device *rbd_dev)
 		disk->minors = RBD_MINORS_PER_MAJOR;
 	disk->fops = &rbd_bd_ops;
 	disk->private_data = rbd_dev;
-
-	blk_queue_flag_set(QUEUE_FLAG_NONROT, q);
-	/* QUEUE_FLAG_ADD_RANDOM is off by default for blk-mq */
-
-	blk_queue_max_hw_sectors(q, objset_bytes >> SECTOR_SHIFT);
-	q->limits.max_sectors = queue_max_hw_sectors(q);
-	blk_queue_max_segments(q, USHRT_MAX);
-	blk_queue_max_segment_size(q, UINT_MAX);
-	blk_queue_io_min(q, rbd_dev->opts->alloc_size);
-	blk_queue_io_opt(q, rbd_dev->opts->alloc_size);
-
-	if (rbd_dev->opts->trim) {
-		q->limits.discard_granularity = rbd_dev->opts->alloc_size;
-		blk_queue_max_discard_sectors(q, objset_bytes >> SECTOR_SHIFT);
-		blk_queue_max_write_zeroes_sectors(q, objset_bytes >> SECTOR_SHIFT);
-	}
-
-	if (!ceph_test_opt(rbd_dev->rbd_client->client, NOCRC))
-		blk_queue_flag_set(QUEUE_FLAG_STABLE_WRITES, q);
-
 	rbd_dev->disk = disk;
 
 	return 0;
@@ -5341,7 +5326,7 @@ static void rbd_dev_release(struct device *dev)
 
 	if (need_put) {
 		destroy_workqueue(rbd_dev->task_wq);
-		ida_simple_remove(&rbd_dev_id_ida, rbd_dev->dev_id);
+		ida_free(&rbd_dev_id_ida, rbd_dev->dev_id);
 	}
 
 	rbd_dev_free(rbd_dev);
@@ -5417,9 +5402,9 @@ static struct rbd_device *rbd_dev_create(struct rbd_client *rbdc,
 		return NULL;
 
 	/* get an id and fill in device name */
-	rbd_dev->dev_id = ida_simple_get(&rbd_dev_id_ida, 0,
-					 minor_to_rbd_dev_id(1 << MINORBITS),
-					 GFP_KERNEL);
+	rbd_dev->dev_id = ida_alloc_max(&rbd_dev_id_ida,
+					minor_to_rbd_dev_id(1 << MINORBITS) - 1,
+					GFP_KERNEL);
 	if (rbd_dev->dev_id < 0)
 		goto fail_rbd_dev;
 
@@ -5440,7 +5425,7 @@ static struct rbd_device *rbd_dev_create(struct rbd_client *rbdc,
 	return rbd_dev;
 
 fail_dev_id:
-	ida_simple_remove(&rbd_dev_id_ida, rbd_dev->dev_id);
+	ida_free(&rbd_dev_id_ida, rbd_dev->dev_id);
 fail_rbd_dev:
 	rbd_dev_free(rbd_dev);
 	return NULL;
@@ -7172,7 +7157,7 @@ static ssize_t do_rbd_add(const char *buf, size_t count)
 
 	rc = device_add_disk(&rbd_dev->dev, rbd_dev->disk, NULL);
 	if (rc)
-		goto err_out_device;
+		goto err_out_cleanup_disk;
 
 	spin_lock(&rbd_dev_list_lock);
 	list_add_tail(&rbd_dev->node, &rbd_dev_list);
@@ -7186,8 +7171,8 @@ out:
 	module_put(THIS_MODULE);
 	return rc;
 
-err_out_device:
-	device_del(&rbd_dev->dev);
+err_out_cleanup_disk:
+	rbd_free_disk(rbd_dev);
 err_out_image_lock:
 	rbd_dev_image_unlock(rbd_dev);
 	rbd_dev_device_release(rbd_dev);

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: (GPL-2.0+ OR BSD-3-Clause)
 /* Copyright 2017-2019 NXP */
 
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 #include <linux/mdio.h>
 #include <linux/module.h>
 #include <linux/fsl/enetc_mdio.h>
@@ -33,12 +33,15 @@ static void enetc_pf_set_primary_mac_addr(struct enetc_hw *hw, int si,
 	__raw_writew(lower, hw->port + ENETC_PSIPMAR1(si));
 }
 
-static void enetc_set_vlan_promisc(struct enetc_hw *hw, char si_map)
+static void enetc_set_si_vlan_promisc(struct enetc_hw *hw, int si, bool en)
 {
 	u32 val = enetc_port_rd(hw, ENETC_PSIPVMR);
 
-	val = u32_replace_bits(val, ENETC_PSIPVMR_SET_VP(si_map),
-			       ENETC_VLAN_PROMISC_MAP_ALL);
+	if (en)
+		val |= BIT(si);
+	else
+		val &= ~BIT(si);
+
 	enetc_port_wr(hw, ENETC_PSIPVMR, val);
 }
 
@@ -285,12 +288,33 @@ static void enetc_port_assign_rfs_entries(struct enetc_si *si)
 	enetc_port_wr(hw, ENETC_PRFSMR, ENETC_PRFSMR_RFSE);
 }
 
+static void enetc_port_get_caps(struct enetc_si *si)
+{
+	struct enetc_hw *hw = &si->hw;
+	u32 val;
+
+	val = enetc_port_rd(hw, ENETC_PCAPR0);
+
+	if (val & ENETC_PCAPR0_QBV)
+		si->hw_features |= ENETC_SI_F_QBV;
+
+	if (val & ENETC_PCAPR0_QBU) {
+		si->hw_features |= ENETC_SI_F_QBU;
+		si->pmac_offset = ENETC_PMAC_OFFSET;
+	}
+
+	if (val & ENETC_PCAPR0_PSFP)
+		si->hw_features |= ENETC_SI_F_PSFP;
+}
+
 static void enetc_port_si_configure(struct enetc_si *si)
 {
 	struct enetc_pf *pf = enetc_si_priv(si);
 	struct enetc_hw *hw = &si->hw;
 	int num_rings, i;
 	u32 val;
+
+	enetc_port_get_caps(si);
 
 	val = enetc_port_rd(hw, ENETC_PCAPR0);
 	num_rings = min(ENETC_PCAPR0_RXBDR(val), ENETC_PCAPR0_TXBDR(val));
@@ -362,7 +386,7 @@ static const struct enetc_pf_hw_ops enetc_pf_hw_ops = {
 	.set_si_primary_mac = enetc_pf_set_primary_mac_addr,
 	.get_si_primary_mac = enetc_pf_get_primary_mac_addr,
 	.set_si_based_vlan = enetc_set_isol_vlan,
-	.set_si_vlan_promisc = enetc_set_vlan_promisc,
+	.set_si_vlan_promisc = enetc_set_si_vlan_promisc,
 	.set_si_mac_promisc = enetc_pf_set_si_mac_promisc,
 	.set_si_mac_hash_filter = enetc_set_mac_ht_flt,
 	.set_si_vlan_hash_filter = enetc_set_vlan_ht_filter,
@@ -425,6 +449,7 @@ static void enetc_configure_port(struct enetc_pf *pf)
 {
 	u8 hash_key[ENETC_RSSHASH_KEY_SIZE];
 	struct enetc_hw *hw = &pf->si->hw;
+	u32 val;
 
 	enetc_configure_port_mac(pf->si);
 
@@ -438,9 +463,9 @@ static void enetc_configure_port(struct enetc_pf *pf)
 	enetc_port_assign_rfs_entries(pf->si);
 
 	/* enforce VLAN promisc mode for all SIs */
-	pf->vlan_promisc_simap = ENETC_VLAN_PROMISC_MAP_ALL;
-	if (pf->hw_ops->set_si_vlan_promisc)
-		pf->hw_ops->set_si_vlan_promisc(hw, pf->vlan_promisc_simap);
+	val = enetc_port_rd(hw, ENETC_PSIPVMR);
+	val |= ENETC_VLAN_PROMISC_MAP_ALL;
+	enetc_port_wr(hw, ENETC_PSIPVMR, val);
 
 	enetc_port_wr(hw, ENETC_PSIPMR, 0);
 
@@ -467,6 +492,7 @@ static const struct net_device_ops enetc_ndev_ops = {
 	.ndo_setup_tc		= enetc_pf_setup_tc,
 	.ndo_bpf		= enetc_setup_bpf,
 	.ndo_xdp_xmit		= enetc_xdp_xmit,
+	.ndo_xsk_wakeup		= enetc_xsk_wakeup,
 };
 
 static struct phylink_pcs *
@@ -796,6 +822,13 @@ static int enetc_pf_probe(struct pci_dev *pdev,
 	pf = enetc_si_priv(si);
 	pf->si = si;
 	pf->total_vfs = pci_sriov_get_totalvfs(pdev);
+	if (pf->total_vfs) {
+		pf->vf_state = kcalloc(pf->total_vfs, sizeof(struct enetc_vf_state),
+				       GFP_KERNEL);
+		if (!pf->vf_state)
+			goto err_alloc_vf_state;
+	}
+
 	enetc_pf_register_hw_ops(pf, &enetc_pf_hw_ops);
 
 	err = enetc_setup_mac_addresses(node, pf);
@@ -877,6 +910,7 @@ err_alloc_si_res:
 err_alloc_netdev:
 err_setup_mac_addresses:
 	kfree(pf->vf_state);
+err_alloc_vf_state:
 	enetc_psi_destroy(pdev);
 err_psi_create:
 	return err;

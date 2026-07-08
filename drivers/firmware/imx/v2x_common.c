@@ -20,7 +20,7 @@ static u32 v2x_fw_state;
 static bool is_v2x_fw_running(u32 v2x_fw_state)
 {
 	if (v2x_fw_state == V2X_FW_AUTH_DBG_COMPLETE ||
-	    v2x_fw_state == V2X_FW_AUTH_NORM_COMPLETE)
+			v2x_fw_state == V2X_FW_AUTH_NORM_COMPLETE)
 		return true;
 	return false;
 }
@@ -32,7 +32,7 @@ int v2x_early_init(struct se_if_priv *priv)
 
 	if (!is_v2x_fw_running(v2x_fw_state)) {
 		ele_priv = imx_get_se_data_info(get_se_soc_id(priv), 0);
-		if (!ele_priv) {
+		if (ele_priv == NULL) {
 			ret = -EPERM;
 			goto exit;
 		}
@@ -120,6 +120,7 @@ int v2x_resume(struct se_if_priv *priv)
 	}
 
 	if (!is_v2x_fw_running(v2x_fw_state)) {
+		/* TODO : Calculate retry count in more predictable manner */
 		v2x_state_fetch_count = V2X_STATE_FETCH_MAX_RETRIES;
 		ret = ele_v2x_fw_authenticate(ele_priv, V2X_FW_IMG_DDR_ADDR);
 		if (ret) {

@@ -67,6 +67,7 @@
 #include <net/sctp/sctp.h>
 #include <net/sctp/sm.h>
 #include <net/sctp/stream_sched.h>
+#include <net/rps.h>
 
 /* Forward declarations for internal helper functions. */
 static bool sctp_writeable(const struct sock *sk);
@@ -1553,6 +1554,8 @@ static void sctp_close(struct sock *sk, long timeout)
 	spin_unlock_bh(&net->sctp.addr_wq_lock);
 
 	sock_put(sk);
+
+	SCTP_DBG_OBJCNT_DEC(sock);
 }
 
 /* Handle EPIPE error. */
@@ -1985,15 +1988,6 @@ static int sctp_sendmsg(struct sock *sk, struct msghdr *msg, size_t msg_len)
 				goto out_unlock;
 
 			iov_iter_revert(&msg->msg_iter, err);
-
-			/* sctp_sendmsg_to_asoc() may have released the socket
-			 * lock (sctp_wait_for_sndbuf), during which other
-			 * associations on ep->asocs could have been peeled
-			 * off or freed.  @asoc itself is revalidated by the
-			 * base.dead and base.sk checks in sctp_wait_for_sndbuf,
-			 * so re-derive the cached cursor from it.
-			 */
-			tmp = list_next_entry(asoc, asocs);
 		}
 
 		goto out_unlock;
@@ -4841,10 +4835,14 @@ int sctp_inet_connect(struct socket *sock, struct sockaddr *uaddr,
 	return sctp_connect(sock->sk, uaddr, addr_len, flags);
 }
 
-/* FIXME: Write comments. */
+/* Only called when shutdown a listening SCTP socket. */
 static int sctp_disconnect(struct sock *sk, int flags)
 {
-	return -EOPNOTSUPP; /* STUB */
+	if (!sctp_style(sk, TCP))
+		return -EOPNOTSUPP;
+
+	sk->sk_shutdown |= RCV_SHUTDOWN;
+	return 0;
 }
 
 /* 4.1.4 accept() - TCP Style Syntax
@@ -4854,7 +4852,7 @@ static int sctp_disconnect(struct sock *sk, int flags)
  * descriptor will be returned from accept() to represent the newly
  * formed association.
  */
-static struct sock *sctp_accept(struct sock *sk, int flags, int *err, bool kern)
+static struct sock *sctp_accept(struct sock *sk, struct proto_accept_arg *arg)
 {
 	struct sctp_sock *sp;
 	struct sctp_endpoint *ep;
@@ -4873,12 +4871,13 @@ static struct sock *sctp_accept(struct sock *sk, int flags, int *err, bool kern)
 		goto out;
 	}
 
-	if (!sctp_sstate(sk, LISTENING)) {
+	if (!sctp_sstate(sk, LISTENING) ||
+	    (sk->sk_shutdown & RCV_SHUTDOWN)) {
 		error = -EINVAL;
 		goto out;
 	}
 
-	timeo = sock_rcvtimeo(sk, flags & O_NONBLOCK);
+	timeo = sock_rcvtimeo(sk, arg->flags & O_NONBLOCK);
 
 	error = sctp_wait_for_accept(sk, timeo);
 	if (error)
@@ -4889,7 +4888,7 @@ static struct sock *sctp_accept(struct sock *sk, int flags, int *err, bool kern)
 	 */
 	asoc = list_entry(ep->asocs.next, struct sctp_association, asocs);
 
-	newsk = sp->pf->create_accept_sk(sk, asoc, kern);
+	newsk = sp->pf->create_accept_sk(sk, asoc, arg->kern);
 	if (!newsk) {
 		error = -ENOMEM;
 		goto out;
@@ -4906,7 +4905,7 @@ static struct sock *sctp_accept(struct sock *sk, int flags, int *err, bool kern)
 
 out:
 	release_sock(sk);
-	*err = error;
+	arg->err = error;
 	return newsk;
 }
 
@@ -5113,12 +5112,9 @@ static void sctp_destroy_sock(struct sock *sk)
 		sp->do_auto_asconf = 0;
 		list_del(&sp->auto_asconf_list);
 	}
-
 	sctp_endpoint_free(sp->ep);
-
 	sk_sockets_allocated_dec(sk);
 	sock_prot_inuse_add(sock_net(sk), sk->sk_prot, -1);
-	SCTP_DBG_OBJCNT_DEC(sock);
 }
 
 /* Triggered when there are no references on the socket anymore */
@@ -6997,7 +6993,7 @@ static int sctp_getsockopt_peer_auth_chunks(struct sock *sk, int len,
 
 	/* See if the user provided enough room for all the data */
 	num_chunks = ntohs(ch->param_hdr.length) - sizeof(struct sctp_paramhdr);
-	if (len < sizeof(struct sctp_authchunks) + num_chunks)
+	if (len < num_chunks)
 		return -EINVAL;
 
 	if (copy_to_user(to, ch->chunks, num_chunks))
@@ -9303,7 +9299,7 @@ void sctp_data_ready(struct sock *sk)
 	if (skwq_has_sleeper(wq))
 		wake_up_interruptible_sync_poll(&wq->wait, EPOLLIN |
 						EPOLLRDNORM | EPOLLRDBAND);
-	sk_wake_async(sk, SOCK_WAKE_WAITD, POLL_IN);
+	sk_wake_async_rcu(sk, SOCK_WAKE_WAITD, POLL_IN);
 	rcu_read_unlock();
 }
 
@@ -9419,7 +9415,8 @@ static int sctp_wait_for_accept(struct sock *sk, long timeo)
 		}
 
 		err = -EINVAL;
-		if (!sctp_sstate(sk, LISTENING))
+		if (!sctp_sstate(sk, LISTENING) ||
+		    (sk->sk_shutdown & RCV_SHUTDOWN))
 			break;
 
 		err = 0;

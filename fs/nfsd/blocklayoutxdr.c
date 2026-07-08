@@ -16,9 +16,9 @@
 
 __be32
 nfsd4_block_encode_layoutget(struct xdr_stream *xdr,
-		struct nfsd4_layoutget *lgp)
+		const struct nfsd4_layoutget *lgp)
 {
-	struct pnfs_block_extent *b = lgp->lg_content;
+	const struct pnfs_block_extent *b = lgp->lg_content;
 	int len = sizeof(__be32) + 5 * sizeof(__be64) + sizeof(__be32);
 	__be32 *p;
 
@@ -29,7 +29,8 @@ nfsd4_block_encode_layoutget(struct xdr_stream *xdr,
 	*p++ = cpu_to_be32(len);
 	*p++ = cpu_to_be32(1);		/* we always return a single extent */
 
-	p = svcxdr_encode_deviceid4(p, &b->vol_id);
+	p = xdr_encode_opaque_fixed(p, &b->vol_id,
+			sizeof(struct nfsd4_deviceid));
 	p = xdr_encode_hyper(p, b->foff);
 	p = xdr_encode_hyper(p, b->len);
 	p = xdr_encode_hyper(p, b->soff);
@@ -76,7 +77,7 @@ nfsd4_block_encode_volume(struct xdr_stream *xdr, struct pnfs_block_volume *b)
 
 __be32
 nfsd4_block_encode_getdeviceinfo(struct xdr_stream *xdr,
-		struct nfsd4_getdeviceinfo *gdp)
+		const struct nfsd4_getdeviceinfo *gdp)
 {
 	struct pnfs_block_deviceaddr *dev = gdp->gd_device;
 	int len = sizeof(__be32), ret, i;
@@ -144,7 +145,9 @@ nfsd4_block_decode_layoutupdate(__be32 *p, u32 len, struct iomap **iomapp,
 	for (i = 0; i < nr_iomaps; i++) {
 		struct pnfs_block_extent bex;
 
-		p = svcxdr_decode_deviceid4(p, &bex.vol_id);
+		memcpy(&bex.vol_id, p, sizeof(struct nfsd4_deviceid));
+		p += XDR_QUADLEN(sizeof(struct nfsd4_deviceid));
+
 		p = xdr_decode_hyper(p, &bex.foff);
 		if (bex.foff & (block_size - 1)) {
 			dprintk("%s: unaligned offset 0x%llx\n",

@@ -34,6 +34,7 @@
 struct aa_ns;
 
 extern int unprivileged_userns_apparmor_policy;
+extern int aa_unprivileged_unconfined_restricted;
 
 extern const char *const aa_profile_mode_names[];
 #define APPARMOR_MODE_NAMES_MAX_INDEX 4
@@ -252,10 +253,6 @@ extern enum profile_mode aa_g_profile_mode;
 #define profiles_ns(P) ((P)->ns)
 #define name_is_shared(A, B) ((A)->hname && (A)->hname == (B)->hname)
 
-void aa_add_profile(struct aa_policy *common, struct aa_profile *profile);
-
-
-void aa_free_proxy_kref(struct kref *kref);
 struct aa_ruleset *aa_alloc_ruleset(gfp_t gfp);
 struct aa_profile *aa_alloc_profile(const char *name, struct aa_proxy *proxy,
 				    gfp_t gfp);
@@ -264,23 +261,18 @@ struct aa_profile *aa_alloc_null(struct aa_profile *parent, const char *name,
 struct aa_profile *aa_new_learning_profile(struct aa_profile *parent, bool hat,
 					   const char *base, gfp_t gfp);
 void aa_free_profile(struct aa_profile *profile);
-void aa_free_profile_kref(struct kref *kref);
 struct aa_profile *aa_find_child(struct aa_profile *parent, const char *name);
 struct aa_profile *aa_lookupn_profile(struct aa_ns *ns, const char *hname,
 				      size_t n);
 struct aa_profile *aa_lookup_profile(struct aa_ns *ns, const char *name);
 struct aa_profile *aa_fqlookupn_profile(struct aa_label *base,
 					const char *fqname, size_t n);
-struct aa_profile *aa_match_profile(struct aa_ns *ns, const char *name);
 
 ssize_t aa_replace_profiles(struct aa_ns *view, struct aa_label *label,
 			    u32 mask, struct aa_loaddata *udata);
 ssize_t aa_remove_profiles(struct aa_ns *view, struct aa_label *label,
 			   char *name, size_t size);
 void __aa_profile_list_release(struct list_head *head);
-
-#define PROF_ADD 1
-#define PROF_REPLACE 0
 
 #define profile_unconfined(X) ((X)->mode == APPARMOR_UNCONFINED)
 
@@ -337,7 +329,7 @@ static inline aa_state_t ANY_RULE_MEDIATES(struct list_head *head,
 static inline struct aa_profile *aa_get_profile(struct aa_profile *p)
 {
 	if (p)
-		kref_get(&(p->label.count.count));
+		kref_get(&(p->label.count));
 
 	return p;
 }
@@ -351,7 +343,7 @@ static inline struct aa_profile *aa_get_profile(struct aa_profile *p)
  */
 static inline struct aa_profile *aa_get_profile_not0(struct aa_profile *p)
 {
-	if (p && kref_get_unless_zero(&p->label.count.count))
+	if (p && kref_get_unless_zero(&p->label.count))
 		return p;
 
 	return NULL;
@@ -371,7 +363,7 @@ static inline struct aa_profile *aa_get_profile_rcu(struct aa_profile __rcu **p)
 	rcu_read_lock();
 	do {
 		c = rcu_dereference(*p);
-	} while (c && !kref_get_unless_zero(&c->label.count.count));
+	} while (c && !kref_get_unless_zero(&c->label.count));
 	rcu_read_unlock();
 
 	return c;
@@ -384,7 +376,7 @@ static inline struct aa_profile *aa_get_profile_rcu(struct aa_profile __rcu **p)
 static inline void aa_put_profile(struct aa_profile *p)
 {
 	if (p)
-		kref_put(&p->label.count.count, aa_label_kref);
+		kref_put(&p->label.count, aa_label_kref);
 }
 
 static inline int AUDIT_MODE(struct aa_profile *profile)
@@ -401,7 +393,7 @@ bool aa_policy_admin_capable(const struct cred *subj_cred,
 			     struct aa_label *label, struct aa_ns *ns);
 int aa_may_manage_policy(const struct cred *subj_cred,
 			 struct aa_label *label, struct aa_ns *ns,
-			 const struct cred *ocred, u32 mask);
+			 u32 mask);
 bool aa_current_policy_view_capable(struct aa_ns *ns);
 bool aa_current_policy_admin_capable(struct aa_ns *ns);
 

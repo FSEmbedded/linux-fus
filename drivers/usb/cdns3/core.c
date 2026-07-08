@@ -524,13 +524,14 @@ EXPORT_SYMBOL_GPL(cdns_suspend);
 
 int cdns_resume(struct cdns *cdns)
 {
-	bool power_lost = cdns_power_is_lost(cdns);
 	enum usb_role real_role;
 	bool role_changed = false;
 	int ret = 0;
 
-	if (power_lost) {
-		if (!cdns->role_sw) {
+	if (cdns_power_is_lost(cdns)) {
+		if (cdns->role_sw) {
+			cdns->role = cdns_role_get(cdns->role_sw);
+		} else {
 			real_role = cdns_hw_role_state_machine(cdns);
 			if (real_role != cdns->role) {
 				ret = cdns_hw_role_switch(cdns);
@@ -551,8 +552,8 @@ int cdns_resume(struct cdns *cdns)
 		}
 	}
 
-	if (!role_changed && cdns->roles[cdns->role]->resume)
-		cdns->roles[cdns->role]->resume(cdns, power_lost);
+	if (cdns->roles[cdns->role]->resume)
+		cdns->roles[cdns->role]->resume(cdns, cdns_power_is_lost(cdns));
 
 	return 0;
 }

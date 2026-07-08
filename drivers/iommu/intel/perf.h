@@ -11,7 +11,6 @@ enum latency_type {
 	DMAR_LATENCY_INV_IOTLB = 0,
 	DMAR_LATENCY_INV_DEVTLB,
 	DMAR_LATENCY_INV_IEC,
-	DMAR_LATENCY_PRQ,
 	DMAR_LATENCY_NUM
 };
 
@@ -41,7 +40,7 @@ void dmar_latency_disable(struct intel_iommu *iommu, enum latency_type type);
 bool dmar_latency_enabled(struct intel_iommu *iommu, enum latency_type type);
 void dmar_latency_update(struct intel_iommu *iommu, enum latency_type type,
 			 u64 latency);
-void dmar_latency_snapshot(struct intel_iommu *iommu, char *str, size_t size);
+int dmar_latency_snapshot(struct intel_iommu *iommu, char *str, size_t size);
 #else
 static inline int
 dmar_latency_enable(struct intel_iommu *iommu, enum latency_type type)
@@ -65,8 +64,9 @@ dmar_latency_update(struct intel_iommu *iommu, enum latency_type type, u64 laten
 {
 }
 
-static inline void
+static inline int
 dmar_latency_snapshot(struct intel_iommu *iommu, char *str, size_t size)
 {
+	return 0;
 }
 #endif /* CONFIG_DMAR_PERF */

@@ -16,7 +16,6 @@
 #include "clk-regmap-divider.h"
 #include "common.h"
 #include "gdsc.h"
-#include "reset.h"
 
 enum {
 	P_BI_TCXO,
@@ -636,11 +635,6 @@ static struct gdsc mdss_gdsc = {
 	.flags = HW_CTRL,
 };
 
-static const struct qcom_reset_map disp_cc_sc7180_resets[] = {
-	[DISP_CC_MDSS_CORE_BCR] = { 0x2000 },
-	[DISP_CC_MDSS_RSCC_BCR] = { 0x4000 },
-};
-
 static struct gdsc *disp_cc_sc7180_gdscs[] = {
 	[MDSS_GDSC] = &mdss_gdsc,
 };
@@ -692,8 +686,6 @@ static const struct qcom_cc_desc disp_cc_sc7180_desc = {
 	.config = &disp_cc_sc7180_regmap_config,
 	.clks = disp_cc_sc7180_clocks,
 	.num_clks = ARRAY_SIZE(disp_cc_sc7180_clocks),
-	.resets = disp_cc_sc7180_resets,
-	.num_resets = ARRAY_SIZE(disp_cc_sc7180_resets),
 	.gdscs = disp_cc_sc7180_gdscs,
 	.num_gdscs = ARRAY_SIZE(disp_cc_sc7180_gdscs),
 };
@@ -721,7 +713,7 @@ static int disp_cc_sc7180_probe(struct platform_device *pdev)
 
 	clk_fabia_pll_configure(&disp_cc_pll0, regmap, &disp_cc_pll_config);
 
-	return qcom_cc_really_probe(pdev, &disp_cc_sc7180_desc, regmap);
+	return qcom_cc_really_probe(&pdev->dev, &disp_cc_sc7180_desc, regmap);
 }
 
 static struct platform_driver disp_cc_sc7180_driver = {
@@ -732,17 +724,7 @@ static struct platform_driver disp_cc_sc7180_driver = {
 	},
 };
 
-static int __init disp_cc_sc7180_init(void)
-{
-	return platform_driver_register(&disp_cc_sc7180_driver);
-}
-subsys_initcall(disp_cc_sc7180_init);
-
-static void __exit disp_cc_sc7180_exit(void)
-{
-	platform_driver_unregister(&disp_cc_sc7180_driver);
-}
-module_exit(disp_cc_sc7180_exit);
+module_platform_driver(disp_cc_sc7180_driver);
 
 MODULE_DESCRIPTION("QTI DISP_CC SC7180 Driver");
 MODULE_LICENSE("GPL v2");

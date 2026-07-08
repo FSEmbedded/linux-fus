@@ -249,8 +249,7 @@ static int fsl_spi_cpu_bufs(struct mpc8xxx_spi *mspi,
 	return 0;
 }
 
-static int fsl_spi_bufs(struct spi_device *spi, struct spi_transfer *t,
-			    bool is_dma_mapped)
+static int fsl_spi_bufs(struct spi_device *spi, struct spi_transfer *t)
 {
 	struct mpc8xxx_spi *mpc8xxx_spi = spi_controller_get_devdata(spi->controller);
 	struct fsl_spi_reg __iomem *reg_base;
@@ -274,7 +273,7 @@ static int fsl_spi_bufs(struct spi_device *spi, struct spi_transfer *t,
 	reinit_completion(&mpc8xxx_spi->done);
 
 	if (mpc8xxx_spi->flags & SPI_CPM_MODE)
-		ret = fsl_spi_cpm_bufs(mpc8xxx_spi, t, is_dma_mapped);
+		ret = fsl_spi_cpm_bufs(mpc8xxx_spi, t);
 	else
 		ret = fsl_spi_cpu_bufs(mpc8xxx_spi, t, len);
 	if (ret)
@@ -336,7 +335,7 @@ static int fsl_spi_prepare_message(struct spi_controller *ctlr,
 			if (t->bits_per_word == 16 || t->bits_per_word == 32)
 				t->bits_per_word = 8; /* pretend its 8 bits */
 			if (t->bits_per_word == 8 && t->len >= 256 &&
-			    !(t->len & 1) && (mpc8xxx_spi->flags & SPI_CPM1))
+			    (mpc8xxx_spi->flags & SPI_CPM1))
 				t->bits_per_word = 16;
 		}
 	}
@@ -353,7 +352,7 @@ static int fsl_spi_transfer_one(struct spi_controller *controller,
 	if (status < 0)
 		return status;
 	if (t->len)
-		status = fsl_spi_bufs(spi, t, !!t->tx_dma || !!t->rx_dma);
+		status = fsl_spi_bufs(spi, t);
 	if (status > 0)
 		return -EMSGSIZE;
 
@@ -615,7 +614,7 @@ static struct spi_controller *fsl_spi_probe(struct device *dev,
 
 	mpc8xxx_spi_write_reg(&reg_base->mode, regval);
 
-	ret = spi_register_controller(host);
+	ret = devm_spi_register_controller(dev, host);
 	if (ret < 0)
 		goto err_probe;
 
@@ -706,13 +705,7 @@ static void of_fsl_spi_remove(struct platform_device *ofdev)
 	struct spi_controller *host = platform_get_drvdata(ofdev);
 	struct mpc8xxx_spi *mpc8xxx_spi = spi_controller_get_devdata(host);
 
-	spi_controller_get(host);
-
-	spi_unregister_controller(host);
-
 	fsl_spi_cpm_free(mpc8xxx_spi);
-
-	spi_controller_put(host);
 }
 
 static struct platform_driver of_fsl_spi_driver = {
@@ -758,13 +751,7 @@ static void plat_mpc8xxx_spi_remove(struct platform_device *pdev)
 	struct spi_controller *host = platform_get_drvdata(pdev);
 	struct mpc8xxx_spi *mpc8xxx_spi = spi_controller_get_devdata(host);
 
-	spi_controller_get(host);
-
-	spi_unregister_controller(host);
-
 	fsl_spi_cpm_free(mpc8xxx_spi);
-
-	spi_controller_put(host);
 }
 
 MODULE_ALIAS("platform:mpc8xxx_spi");

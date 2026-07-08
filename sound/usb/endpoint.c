@@ -160,8 +160,8 @@ int snd_usb_endpoint_implicit_feedback_sink(struct snd_usb_endpoint *ep)
  * This won't be used for implicit feedback which takes the packet size
  * returned from the sync source
  */
-static int synced_next_packet_size(struct snd_usb_endpoint *ep,
-				   unsigned int avail)
+static int slave_next_packet_size(struct snd_usb_endpoint *ep,
+				  unsigned int avail)
 {
 	unsigned long flags;
 	unsigned int phase;
@@ -224,14 +224,13 @@ int snd_usb_endpoint_next_packet_size(struct snd_usb_endpoint *ep,
 
 	packet = ctx->packet_size[idx];
 	if (packet) {
-		packet = min(packet, ep->maxframesize);
 		if (avail && packet >= avail)
 			return -EAGAIN;
 		return packet;
 	}
 
 	if (ep->sync_source)
-		return synced_next_packet_size(ep, avail);
+		return slave_next_packet_size(ep, avail);
 	else
 		return next_packet_size(ep, avail);
 }
@@ -279,8 +278,8 @@ static inline bool has_tx_length_quirk(struct snd_usb_audio *chip)
 	return chip->quirk_flags & QUIRK_FLAG_TX_LENGTH;
 }
 
-static int prepare_silent_urb(struct snd_usb_endpoint *ep,
-			      struct snd_urb_ctx *ctx)
+static void prepare_silent_urb(struct snd_usb_endpoint *ep,
+			       struct snd_urb_ctx *ctx)
 {
 	struct urb *urb = ctx->urb;
 	unsigned int offs = 0;
@@ -293,34 +292,28 @@ static int prepare_silent_urb(struct snd_usb_endpoint *ep,
 		extra = sizeof(packet_length);
 
 	for (i = 0; i < ctx->packets; ++i) {
-		int length;
+		unsigned int offset;
+		unsigned int length;
+		int counts;
 
-		length = snd_usb_endpoint_next_packet_size(ep, ctx, i, 0);
-		if (length < 0)
-			return length;
-		length *= ep->stride; /* number of silent bytes */
-		if (offs + length + extra > ctx->buffer_size)
-			break;
-		urb->iso_frame_desc[i].offset = offs;
+		counts = snd_usb_endpoint_next_packet_size(ep, ctx, i, 0);
+		length = counts * ep->stride; /* number of silent bytes */
+		offset = offs * ep->stride + extra * i;
+		urb->iso_frame_desc[i].offset = offset;
 		urb->iso_frame_desc[i].length = length + extra;
 		if (extra) {
 			packet_length = cpu_to_le32(length);
-			memcpy(urb->transfer_buffer + offs,
+			memcpy(urb->transfer_buffer + offset,
 			       &packet_length, sizeof(packet_length));
-			offs += extra;
 		}
-		memset(urb->transfer_buffer + offs,
+		memset(urb->transfer_buffer + offset + extra,
 		       ep->silence_value, length);
-		offs += length;
+		offs += counts;
 	}
 
-	if (!offs)
-		return -EPIPE;
-
-	urb->number_of_packets = i;
-	urb->transfer_buffer_length = offs;
+	urb->number_of_packets = ctx->packets;
+	urb->transfer_buffer_length = offs * ep->stride + ctx->packets * extra;
 	ctx->queued = 0;
-	return 0;
 }
 
 /*
@@ -342,7 +335,8 @@ static int prepare_outbound_urb(struct snd_usb_endpoint *ep,
 		if (data_subs && ep->prepare_data_urb)
 			return ep->prepare_data_urb(data_subs, urb, in_stream_lock);
 		/* no data provider, so send silence */
-		return prepare_silent_urb(ep, ctx);
+		prepare_silent_urb(ep, ctx);
+		break;
 
 	case SND_USB_ENDPOINT_TYPE_SYNC:
 		if (snd_usb_get_speed(ep->chip->dev) >= USB_SPEED_HIGH) {
@@ -495,7 +489,6 @@ int snd_usb_queue_pending_output_urbs(struct snd_usb_endpoint *ep,
 
 		/* copy over the length information */
 		if (implicit_fb) {
-			ctx->packets = packet->packets;
 			for (i = 0; i < packet->packets; i++)
 				ctx->packet_size[i] = packet->packet_size[i];
 		}
@@ -938,6 +931,9 @@ static int endpoint_set_interface(struct snd_usb_audio *chip,
 
 	if (ep->iface_ref->altset == altset)
 		return 0;
+	/* already disconnected? */
+	if (unlikely(atomic_read(&chip->shutdown)))
+		return -ENODEV;
 
 	usb_audio_dbg(chip, "Setting usb interface %d:%d for EP 0x%x\n",
 		      ep->iface, altset, ep->ep_num);
@@ -1390,12 +1386,6 @@ int snd_usb_endpoint_set_params(struct snd_usb_audio *chip,
 	ep->sample_rem = ep->cur_rate % ep->pps;
 	ep->packsize[0] = ep->cur_rate / ep->pps;
 	ep->packsize[1] = (ep->cur_rate + (ep->pps - 1)) / ep->pps;
-	if (ep->packsize[1] > ep->maxpacksize) {
-		usb_audio_dbg(chip, "Too small maxpacksize %u for rate %u / pps %u\n",
-			      ep->maxpacksize, ep->cur_rate, ep->pps);
-		err = -EINVAL;
-		goto unlock;
-	}
 
 	/* calculate the frequency in 16.16 format */
 	ep->freqm = ep->freqn;
@@ -1422,9 +1412,6 @@ int snd_usb_endpoint_set_params(struct snd_usb_audio *chip,
 	/* some unit conversions in runtime */
 	ep->maxframesize = ep->maxpacksize / ep->cur_frame_bytes;
 	ep->curframesize = ep->curpacksize / ep->cur_frame_bytes;
-
-	ep->packsize[0] = min(ep->packsize[0], ep->maxframesize);
-	ep->packsize[1] = min(ep->packsize[1], ep->maxframesize);
 
 	err = update_clock_ref_rate(chip, ep);
 	if (err >= 0) {

@@ -32,7 +32,7 @@ struct ttusbir {
 
 	struct led_classdev led;
 	struct urb *bulk_urb;
-	u8 *bulk_buffer;
+	uint8_t bulk_buffer[5];
 	int bulk_out_endp, iso_in_endp;
 	bool led_on, is_led_on;
 	atomic_t led_complete;
@@ -186,16 +186,13 @@ static int ttusbir_probe(struct usb_interface *intf,
 	struct rc_dev *rc;
 	int i, j, ret;
 	int altsetting = -1;
-	u8 *buffer;
 
 	tt = kzalloc(sizeof(*tt), GFP_KERNEL);
-	buffer = kzalloc(5, GFP_KERNEL);
 	rc = rc_allocate_device(RC_DRIVER_IR_RAW);
-	if (!tt || !rc || buffer) {
+	if (!tt || !rc) {
 		ret = -ENOMEM;
 		goto out;
 	}
-	tt->bulk_buffer = buffer;
 
 	/* find the correct alt setting */
 	for (i = 0; i < intf->num_altsetting && altsetting == -1; i++) {
@@ -284,8 +281,8 @@ static int ttusbir_probe(struct usb_interface *intf,
 	tt->bulk_buffer[3] = 0x01;
 
 	usb_fill_bulk_urb(tt->bulk_urb, tt->udev, usb_sndbulkpipe(tt->udev,
-			  tt->bulk_out_endp), tt->bulk_buffer, 5,
-			  ttusbir_bulk_complete, tt);
+		tt->bulk_out_endp), tt->bulk_buffer, sizeof(tt->bulk_buffer),
+						ttusbir_bulk_complete, tt);
 
 	tt->led.name = "ttusbir:green:power";
 	tt->led.default_trigger = "rc-feedback";
@@ -354,7 +351,6 @@ out:
 		kfree(tt);
 	}
 	rc_free_device(rc);
-	kfree(buffer);
 
 	return ret;
 }
@@ -377,7 +373,6 @@ static void ttusbir_disconnect(struct usb_interface *intf)
 	}
 	usb_kill_urb(tt->bulk_urb);
 	usb_free_urb(tt->bulk_urb);
-	kfree(tt->bulk_buffer);
 	usb_set_intfdata(intf, NULL);
 	kfree(tt);
 }

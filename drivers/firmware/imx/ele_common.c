@@ -3,10 +3,13 @@
  * Copyright 2024-2025 NXP
  */
 
+#include <linux/firmware/imx/se_api.h>
 #include <uapi/linux/se_ioctl.h>
 
 #include "ele_base_msg.h"
+#include "ele_bbsm.h"
 #include "ele_common.h"
+#include "ele_fw_api.h"
 #include "se_msg_sqfl_ctrl.h"
 #include "v2x_base_msg.h"
 
@@ -162,15 +165,15 @@ exit:
 }
 
 static bool exception_for_size(struct se_if_priv *priv,
-			       struct se_msg_hdr *header)
+				struct se_msg_hdr *header)
 {
 	/* List of API(s) that can be accepte variable length
 	 * response buffer.
 	 */
-	if ((header->command == ELE_DEBUG_DUMP_REQ || header->command == V2X_DEBUG_DUMP_REQ) &&
-	    header->ver == priv->if_defs->base_api_ver &&
-	    header->size >= 0 &&
-	    header->size <= ELE_DEBUG_DUMP_RSP_SZ)
+	if ((header->command == ELE_DEBUG_DUMP_REQ || header->command == V2X_DBG_DUMP_REQ) &&
+		header->ver == priv->if_defs->base_api_ver &&
+		header->size >= 0 &&
+		header->size <= ELE_DEBUG_DUMP_RSP_SZ)
 		return true;
 
 	return false;
@@ -205,7 +208,7 @@ void se_if_rx_callback(struct mbox_client *mbox_cl, void *msg)
 	rx_msg_sz = header->size << 2;
 
 	if (priv->if_defs->se_if_type == SE_TYPE_ID_V2X_DBG &&
-	    header->tag == V2X_DBG_MU_MSG_RSP_TAG) {
+			header->tag == V2X_DBG_MU_MSG_RSP_TAG) {
 		header->tag = priv->if_defs->rsp_tag;
 		header->ver = priv->if_defs->base_api_ver;
 	}
@@ -216,7 +219,7 @@ void se_if_rx_callback(struct mbox_client *mbox_cl, void *msg)
 		dev_dbg(dev,
 			"Selecting cmd receiver:%s for mesg header:0x%x.",
 			se_clbk_hdl->dev_ctx->devname,
-			*(u32 *)header);
+			*(u32 *) header);
 
 		/* Pre-allocated buffer of MAX_NVM_MSG_LEN
 		 * as the NVM command are initiated by FW.
@@ -226,7 +229,7 @@ void se_if_rx_callback(struct mbox_client *mbox_cl, void *msg)
 			dev_err(dev,
 				"%s: CMD-RCVER NVM: hdr(0x%x) with different sz(%d != %d).\n",
 				se_clbk_hdl->dev_ctx->devname,
-				*(u32 *)header,
+				*(u32 *) header,
 				rx_msg_sz, se_clbk_hdl->rx_msg_sz);
 
 			se_clbk_hdl->rx_msg_sz = MAX_NVM_MSG_LEN;
@@ -238,21 +241,21 @@ void se_if_rx_callback(struct mbox_client *mbox_cl, void *msg)
 		dev_dbg(dev,
 			"Selecting resp waiter:%s for mesg header:0x%x.",
 			se_clbk_hdl->dev_ctx->devname,
-			*(u32 *)header);
+			*(u32 *) header);
 
-		if (rx_msg_sz != se_clbk_hdl->rx_msg_sz &&
-		    !exception_for_size(priv, header)) {
+		if (rx_msg_sz != se_clbk_hdl->rx_msg_sz
+				&& !exception_for_size(priv, header)) {
 			dev_err(dev,
 				"%s: Rsp to CMD: hdr(0x%x) with different sz(%d != %d).\n",
 				se_clbk_hdl->dev_ctx->devname,
-				*(u32 *)header,
+				*(u32 *) header,
 				rx_msg_sz, se_clbk_hdl->rx_msg_sz);
 
 			se_clbk_hdl->rx_msg_sz = min(rx_msg_sz, se_clbk_hdl->rx_msg_sz);
 		}
 	} else {
 		dev_err(dev, "Failed to select a device for message: %.8x\n",
-			*((u32 *)header));
+			*((u32 *) header));
 		return;
 	}
 
@@ -264,8 +267,8 @@ void se_if_rx_callback(struct mbox_client *mbox_cl, void *msg)
 
 int se_val_rsp_hdr_n_status(struct se_if_priv *priv,
 			    struct se_api_msg *msg,
-			    u8 msg_id,
-			    u8 sz,
+			    uint8_t msg_id,
+			    uint8_t sz,
 			    bool is_base_api)
 {
 	u32 status;
@@ -292,7 +295,7 @@ int se_val_rsp_hdr_n_status(struct se_if_priv *priv,
 		return -EINVAL;
 	}
 
-	if (is_base_api && header->ver != priv->if_defs->base_api_ver) {
+	if (is_base_api && (header->ver != priv->if_defs->base_api_ver)) {
 		dev_err(priv->dev,
 			"MSG[0x%x] Hdr: Base API Vers mismatch. (0x%x != 0x%x)",
 			msg_id, header->ver, priv->if_defs->base_api_ver);
@@ -314,11 +317,36 @@ int se_val_rsp_hdr_n_status(struct se_if_priv *priv,
 	return 0;
 }
 
+int ele_late_init(struct se_if_priv *priv)
+{
+	int ret = 0;
+
+	if (get_se_soc_id(priv) == SOC_ID_OF_IMX93) {
+		/* Register BBSM Tamper IRQ handlers */
+		ret = ele_bbsm_irq_register(priv);
+		if (ret) {
+			dev_err(priv->dev, "Failed to register Tamper IRQ handlers");
+			return ret;
+		}
+
+		/* Check if any tamper event has been reported */
+		if (ele_bbsm_get_tamper_status(priv))
+			dev_err(priv->dev, "BBSM Tamper event has been reported.");
+	}
+
+	/* Initialize ELE HSM services */
+	if (ele_init_fw(priv))
+		dev_err(priv->dev, "Failed to initialize ELE HSM services.");
+
+	return ret;
+}
+
 int se_save_imem_state(struct se_if_priv *priv, struct se_imem_buf *imem)
 {
 	struct ele_dev_info s_info = {0};
 	int ret;
 
+	/* get info from ELE */
 	ret = ele_get_info(priv, &s_info);
 	if (ret) {
 		dev_err(priv->dev, "Failed to get info from ELE.\n");
@@ -381,9 +409,8 @@ int se_restore_imem_state(struct se_if_priv *priv, struct se_imem_buf *imem)
 			dev_err(priv->dev, "Failed to import IMEM\n");
 			goto exit;
 		}
-	} else {
+	} else
 		goto exit;
-	}
 
 	/* After importing IMEM, check if IMEM state is equal to 0xCA
 	 * to ensure IMEM is fully loaded and

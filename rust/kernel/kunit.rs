@@ -2,7 +2,7 @@
 
 //! KUnit-based macros for Rust unit tests.
 //!
-//! C header: [`include/kunit/test.h`](../../../../../include/kunit/test.h)
+//! C header: [`include/kunit/test.h`](srctree/include/kunit/test.h)
 //!
 //! Reference: <https://docs.kernel.org/dev-tools/kunit/index.html>
 
@@ -13,16 +13,12 @@ use core::{ffi::c_void, fmt};
 /// Public but hidden since it should only be used from KUnit generated code.
 #[doc(hidden)]
 pub fn err(args: fmt::Arguments<'_>) {
-    // `args` is unused if `CONFIG_PRINTK` is not set - this avoids a build-time warning.
-    #[cfg(not(CONFIG_PRINTK))]
-    let _ = args;
-
     // SAFETY: The format string is null-terminated and the `%pA` specifier matches the argument we
     // are passing.
     #[cfg(CONFIG_PRINTK)]
     unsafe {
         bindings::_printk(
-            b"\x013%pA\0".as_ptr() as _,
+            c"\x013%pA".as_ptr() as _,
             &args as *const _ as *const c_void,
         );
     }
@@ -33,16 +29,12 @@ pub fn err(args: fmt::Arguments<'_>) {
 /// Public but hidden since it should only be used from KUnit generated code.
 #[doc(hidden)]
 pub fn info(args: fmt::Arguments<'_>) {
-    // `args` is unused if `CONFIG_PRINTK` is not set - this avoids a build-time warning.
-    #[cfg(not(CONFIG_PRINTK))]
-    let _ = args;
-
     // SAFETY: The format string is null-terminated and the `%pA` specifier matches the argument we
     // are passing.
     #[cfg(CONFIG_PRINTK)]
     unsafe {
         bindings::_printk(
-            b"\x016%pA\0".as_ptr() as _,
+            c"\x016%pA".as_ptr() as _,
             &args as *const _ as *const c_void,
         );
     }

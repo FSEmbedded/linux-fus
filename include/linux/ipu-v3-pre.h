@@ -99,45 +99,45 @@ int ipu_pre_set_fb_buffer(int id, bool resolve,
 			  unsigned int trd_buf_off);
 int ipu_pre_sdw_update(int id);
 #else
-int ipu_pre_alloc(int ipu_id, ipu_channel_t channel)
+static inline int ipu_pre_alloc(int ipu_id, ipu_channel_t channel)
 {
 	return -ENODEV;
 }
 
-void ipu_pre_free(unsigned int *id)
+static void ipu_pre_free(unsigned int *id)
 {
 }
 
-unsigned long ipu_pre_alloc_double_buffer(unsigned int id, unsigned int size)
-{
-	return -ENODEV;
-}
-
-void ipu_pre_free_double_buffer(unsigned int id)
-{
-}
-
-int ipu_pre_config(int id, struct ipu_pre_context *config)
+static inline unsigned long ipu_pre_alloc_double_buffer(unsigned int id, unsigned int size)
 {
 	return -ENODEV;
 }
 
-int ipu_pre_set_ctrl(unsigned int id, struct ipu_pre_context *config)
+static inline void ipu_pre_free_double_buffer(unsigned int id)
+{
+}
+
+static inline int ipu_pre_config(int id, struct ipu_pre_context *config)
 {
 	return -ENODEV;
 }
 
-int ipu_pre_enable(int id)
+static inline int ipu_pre_set_ctrl(unsigned int id, struct ipu_pre_context *config)
 {
 	return -ENODEV;
 }
 
-void ipu_pre_disable(int id)
+static inline int ipu_pre_enable(int id)
+{
+	return -ENODEV;
+}
+
+static inline void ipu_pre_disable(int id)
 {
 	return;
 }
 
-int ipu_pre_set_fb_buffer(int id, bool resolve,
+static inline int ipu_pre_set_fb_buffer(int id, bool resolve,
 			  unsigned long fb_paddr,
 			  unsigned int y_res,
 			  unsigned int x_crop,
@@ -147,7 +147,7 @@ int ipu_pre_set_fb_buffer(int id, bool resolve,
 {
 	return -ENODEV;
 }
-int ipu_pre_sdw_update(int id)
+static inline int ipu_pre_sdw_update(int id)
 {
 	return -ENODEV;
 }

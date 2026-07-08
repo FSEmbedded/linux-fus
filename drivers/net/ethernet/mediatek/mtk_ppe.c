@@ -8,8 +8,11 @@
 #include <linux/platform_device.h>
 #include <linux/if_ether.h>
 #include <linux/if_vlan.h>
+
 #include <net/dst_metadata.h>
 #include <net/dsa.h>
+#include <net/ipv6.h>
+
 #include "mtk_eth_soc.h"
 #include "mtk_ppe.h"
 #include "mtk_ppe_regs.h"
@@ -338,7 +341,6 @@ int mtk_foe_entry_set_ipv6_tuple(struct mtk_eth *eth,
 {
 	int type = mtk_get_ib1_pkt_type(eth, entry->ib1);
 	u32 *src, *dest;
-	int i;
 
 	switch (type) {
 	case MTK_PPE_PKT_TYPE_IPV4_DSLITE:
@@ -359,10 +361,8 @@ int mtk_foe_entry_set_ipv6_tuple(struct mtk_eth *eth,
 		return -EINVAL;
 	}
 
-	for (i = 0; i < 4; i++)
-		src[i] = be32_to_cpu(src_addr[i]);
-	for (i = 0; i < 4; i++)
-		dest[i] = be32_to_cpu(dest_addr[i]);
+	ipv6_addr_be32_to_cpu(src, src_addr);
+	ipv6_addr_be32_to_cpu(dest, dest_addr);
 
 	return 0;
 }
@@ -425,7 +425,8 @@ int mtk_foe_entry_set_pppoe(struct mtk_eth *eth, struct mtk_foe_entry *entry,
 }
 
 int mtk_foe_entry_set_wdma(struct mtk_eth *eth, struct mtk_foe_entry *entry,
-			   int wdma_idx, int txq, int bss, int wcid)
+			   int wdma_idx, int txq, int bss, int wcid,
+			   bool amsdu_en)
 {
 	struct mtk_foe_mac_info *l2 = mtk_foe_entry_l2(eth, entry);
 	u32 *ib2 = mtk_foe_entry_ib2(eth, entry);
@@ -437,6 +438,7 @@ int mtk_foe_entry_set_wdma(struct mtk_eth *eth, struct mtk_foe_entry *entry,
 			 MTK_FOE_IB2_WDMA_WINFO_V2;
 		l2->w3info = FIELD_PREP(MTK_FOE_WINFO_WCID_V3, wcid) |
 			     FIELD_PREP(MTK_FOE_WINFO_BSS_V3, bss);
+		l2->amsdu = FIELD_PREP(MTK_FOE_WINFO_AMSDU_EN, amsdu_en);
 		break;
 	case 2:
 		*ib2 &= ~MTK_FOE_IB2_PORT_MG_V2;
@@ -578,7 +580,7 @@ mtk_flow_entry_update_l2(struct mtk_ppe *ppe, struct mtk_flow_entry *entry)
 
 		idle = cur_idle;
 		entry->data.ib1 &= ~ib1_ts_mask;
-		entry->data.ib1 |= hwe->ib1 & ib1_ts_mask;
+		entry->data.ib1 |= ib1 & ib1_ts_mask;
 	}
 }
 
@@ -969,36 +971,6 @@ static void mtk_ppe_init_foe_table(struct mtk_ppe *ppe)
 			hwe->ib1 |= MTK_FOE_IB1_STATIC;
 		}
 	}
-}
-
-void mtk_ppe_update_mtu(struct mtk_ppe *ppe, int mtu)
-{
-	int base;
-	u32 val;
-
-	if (!ppe)
-		return;
-
-	/* The PPE checks output frame size against per-tag-layer MTU limits,
-	 * treating PPPoE and DSA tags just like 802.1Q VLAN tags. The Linux
-	 * device MTU already accounts for PPPoE (PPPOE_SES_HLEN) and DSA tag
-	 * overhead, but 802.1Q VLAN tags are handled transparently without
-	 * being reflected by the lower device MTU being increased by 4.
-	 * Use the maximum MTU across all GMAC interfaces so that PPE output
-	 * frame limits are sufficiently high regardless of which port a flow
-	 * egresses through.
-	 */
-	base = ETH_HLEN + mtu;
-
-	val = FIELD_PREP(MTK_PPE_VLAN_MTU0_NONE, base) |
-	      FIELD_PREP(MTK_PPE_VLAN_MTU0_1TAG, base + VLAN_HLEN);
-	ppe_w32(ppe, MTK_PPE_VLAN_MTU0, val);
-
-	val = FIELD_PREP(MTK_PPE_VLAN_MTU1_2TAG,
-			 base + 2 * VLAN_HLEN) |
-	      FIELD_PREP(MTK_PPE_VLAN_MTU1_3TAG,
-			 base + 3 * VLAN_HLEN);
-	ppe_w32(ppe, MTK_PPE_VLAN_MTU1, val);
 }
 
 void mtk_ppe_start(struct mtk_ppe *ppe)

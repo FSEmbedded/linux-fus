@@ -22,8 +22,8 @@ struct enetc_vf_state {
 };
 
 struct enetc_port_caps {
-	bool half_duplex;
-	bool wol;
+	u32 half_duplex:1;
+	u32 wol:1;
 	int num_vsi;
 	int num_msix;
 	int num_rx_bdr;
@@ -39,7 +39,7 @@ struct enetc_pf_hw_ops {
 	void (*set_si_based_vlan)(struct enetc_hw *hw, int si, u16 vlan, u8 qos);
 	void (*get_si_based_vlan)(struct enetc_hw *hw, int si, u32 *vlan, u32 *qos);
 	void (*set_si_anti_spoofing)(struct enetc_hw *hw, int si, bool en);
-	void (*set_si_vlan_promisc)(struct enetc_hw *hw, char si_map);
+	void (*set_si_vlan_promisc)(struct enetc_hw *hw, int si, bool en);
 	void (*set_si_mac_promisc)(struct enetc_hw *hw, int si, int type, bool en);
 	void (*set_si_mac_hash_filter)(struct enetc_hw *hw, int si, int type, u64 hash);
 	void (*set_si_vlan_hash_filter)(struct enetc_hw *hw, int si, u64 hash);
@@ -51,13 +51,24 @@ struct enetc_pf_hw_ops {
 	void (*set_time_gating)(struct enetc_hw *hw, bool en);
 };
 
+struct enetc_mfe {
+	u8 mac[ETH_ALEN];
+	u16 si_bitmap;
+};
+
 struct enetc_mac_list_entry {
-	struct ntmp_mfe mfe;
+	struct enetc_mfe mfe;
 	struct hlist_node node;
 };
 
+struct enetc_vfe {
+	u16 vid;
+	u8 tpid;
+	u16 si_bitmap;
+};
+
 struct enetc_vlan_list_entry {
-	struct ntmp_vfe vfe;
+	struct enetc_vfe vfe;
 	struct hlist_node node;
 };
 
@@ -70,8 +81,6 @@ struct enetc_pf {
 
 	struct enetc_msg_swbd rxmsg[ENETC_MAX_NUM_VFS];
 	bool vf_link_status_notify[ENETC_MAX_NUM_VFS];
-
-	char vlan_promisc_simap; /* bitmap of SIs in VLAN promisc mode */
 
 	struct mii_bus *mdio; /* saved for cleanup */
 	struct mii_bus *imdio;
@@ -130,6 +139,7 @@ int enetc_pf_set_mac_exact_filter(struct enetc_pf *pf, int si_id,
 				  struct enetc_mac_entry *mac,
 				  int mac_cnt);
 int enetc_pf_send_msg(struct enetc_pf *pf, u32 msg_code, u16 ms_mask);
+void enetc_get_ip_revision(struct enetc_si *si);
 
 static inline void enetc_pf_register_hw_ops(struct enetc_pf *pf,
 					    const struct enetc_pf_hw_ops *hw_ops)

@@ -908,7 +908,11 @@ void ntfs_bad_inode(struct inode *inode, const char *hint)
 
 	ntfs_inode_err(inode, "%s", hint);
 	make_bad_inode(inode);
-	ntfs_set_state(sbi, NTFS_DIRTY_ERROR);
+	/* Avoid recursion if bad inode is $Volume. */
+	if (inode->i_ino != MFT_REC_VOL &&
+	    !(sbi->flags & NTFS_FLAGS_LOG_REPLAYING)) {
+		ntfs_set_state(sbi, NTFS_DIRTY_ERROR);
+	}
 }
 
 /*
@@ -1272,12 +1276,6 @@ int ntfs_read_run_nb(struct ntfs_sb_info *sbi, const struct runs_tree *run,
 
 		} while (len32);
 
-		if (!run) {
-			err = -EINVAL;
-			goto out;
-		}
-
-		/* Get next fragment to read. */
 		vcn_next = vcn + clen;
 		if (!run_get_entry(run, ++idx, &vcn, &lcn, &clen) ||
 		    vcn != vcn_next) {
@@ -1375,14 +1373,7 @@ int ntfs_get_bh(struct ntfs_sb_info *sbi, const struct runs_tree *run, u64 vbo,
 				}
 				if (buffer_locked(bh))
 					__wait_on_buffer(bh);
-
-				lock_buffer(bh);
-				if (!buffer_uptodate(bh))
-				{
-					memset(bh->b_data, 0, blocksize);
-					set_buffer_uptodate(bh);
-				}
-				unlock_buffer(bh);
+				set_buffer_uptodate(bh);
 			} else {
 				bh = ntfs_bread(sb, block);
 				if (!bh) {
@@ -2166,8 +2157,8 @@ int ntfs_insert_security(struct ntfs_sb_info *sbi,
 			if (le32_to_cpu(d_security->size) == new_sec_size &&
 			    d_security->key.hash == hash_key.hash &&
 			    !memcmp(d_security + 1, sd, size_sd)) {
-				*security_id = d_security->key.sec_id;
 				/* Such security already exists. */
+				*security_id = d_security->key.sec_id;
 				err = 0;
 				goto out;
 			}
@@ -2663,10 +2654,10 @@ int ntfs_set_label(struct ntfs_sb_info *sbi, u8 *label, int len)
 {
 	int err;
 	struct ATTRIB *attr;
+	u32 uni_bytes;
 	struct ntfs_inode *ni = sbi->volume.ni;
-	const u8 max_ulen = 0x80; /* TODO: use attrdef to get maximum length */
 	/* Allocate PATH_MAX bytes. */
-	struct cpu_str *uni = kmalloc(PATH_MAX, GFP_KERNEL);
+	struct cpu_str *uni = __getname();
 
 	if (!uni)
 		return -ENOMEM;
@@ -2676,7 +2667,8 @@ int ntfs_set_label(struct ntfs_sb_info *sbi, u8 *label, int len)
 	if (err < 0)
 		goto out;
 
-	if (uni->len > max_ulen) {
+	uni_bytes = uni->len * sizeof(u16);
+	if (uni_bytes > NTFS_LABEL_MAX_LENGTH * sizeof(u16)) {
 		ntfs_warn(sbi->sb, "new label is too long");
 		err = -EFBIG;
 		goto out;
@@ -2687,13 +2679,13 @@ int ntfs_set_label(struct ntfs_sb_info *sbi, u8 *label, int len)
 	/* Ignore any errors. */
 	ni_remove_attr(ni, ATTR_LABEL, NULL, 0, false, NULL);
 
-	err = ni_insert_resident(ni, uni->len * sizeof(u16), ATTR_LABEL, NULL,
-				 0, &attr, NULL, NULL);
+	err = ni_insert_resident(ni, uni_bytes, ATTR_LABEL, NULL, 0, &attr,
+				 NULL, NULL);
 	if (err < 0)
 		goto unlock_out;
 
 	/* write new label in on-disk struct. */
-	memcpy(resident_data(attr), uni->name, uni->len * sizeof(u16));
+	memcpy(resident_data(attr), uni->name, uni_bytes);
 
 	/* update cached value of current label. */
 	if (len >= ARRAY_SIZE(sbi->volume.label))
@@ -2709,6 +2701,6 @@ unlock_out:
 		err = _ni_write_inode(&ni->vfs_inode, 0);
 
 out:
-	kfree(uni);
+	__putname(uni);
 	return err;
 }

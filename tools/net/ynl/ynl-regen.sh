@@ -21,7 +21,7 @@ files=$(git grep --files-with-matches '^/\* YNL-GEN \(kernel\|uapi\|user\)')
 for f in $files; do
     # params:     0       1      2     3
     #         $YAML YNL-GEN kernel $mode
-    params=( $(git grep --no-line-number -B1 -h '/\* YNL-GEN' $f | sed 's@/\*\(.*\)\*/@\1@') )
+    params=( $(git grep -B1 -h '/\* YNL-GEN' $f | sed 's@/\*\(.*\)\*/@\1@') )
     args=$(sed -n 's@/\* YNL-ARG \(.*\) \*/@\1@p' $f)
 
     if [ $f -nt ${params[0]} -a -z "$force" ]; then
@@ -30,8 +30,8 @@ for f in $files; do
     fi
 
     echo -e "\tGEN ${params[2]}\t$f"
-    $TOOL --mode ${params[2]} --${params[3]} --spec $KDIR/${params[0]} \
-	  $args -o $f
+    $TOOL --cmp-out --mode ${params[2]} --${params[3]} \
+	  --spec $KDIR/${params[0]} $args -o $f
 done
 
 popd >>/dev/null

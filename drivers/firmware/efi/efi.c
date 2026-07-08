@@ -32,6 +32,7 @@
 #include <linux/ucs2_string.h>
 #include <linux/memblock.h>
 #include <linux/security.h>
+#include <linux/notifier.h>
 
 #include <asm/early_ioremap.h>
 
@@ -147,7 +148,7 @@ static ssize_t systab_show(struct kobject *kobj,
 	if (efi.smbios != EFI_INVALID_TABLE_ADDR)
 		str += sprintf(str, "SMBIOS=0x%lx\n", efi.smbios);
 
-	if (IS_ENABLED(CONFIG_IA64) || IS_ENABLED(CONFIG_X86))
+	if (IS_ENABLED(CONFIG_X86))
 		str = efi_systab_show_arch(str);
 
 	return str - buf;
@@ -186,6 +187,9 @@ static const struct attribute_group efi_subsys_attr_group = {
 	.attrs = efi_subsys_attrs,
 	.is_visible = efi_attr_is_visible,
 };
+
+struct blocking_notifier_head efivar_ops_nh;
+EXPORT_SYMBOL_GPL(efivar_ops_nh);
 
 static struct efivars generic_efivars;
 static struct efivar_operations generic_ops;
@@ -232,6 +236,18 @@ static void generic_ops_unregister(void)
 
 	efivars_unregister(&generic_efivars);
 }
+
+void efivars_generic_ops_register(void)
+{
+	generic_ops_register();
+}
+EXPORT_SYMBOL_GPL(efivars_generic_ops_register);
+
+void efivars_generic_ops_unregister(void)
+{
+	generic_ops_unregister();
+}
+EXPORT_SYMBOL_GPL(efivars_generic_ops_unregister);
 
 #ifdef CONFIG_EFI_CUSTOM_SSDT_OVERLAYS
 #define EFIVAR_SSDT_NAME_MAX	16UL
@@ -333,7 +349,7 @@ static void __init efi_debugfs_init(void)
 	int i = 0;
 
 	efi_debugfs = debugfs_create_dir("efi", NULL);
-	if (IS_ERR_OR_NULL(efi_debugfs))
+	if (IS_ERR(efi_debugfs))
 		return;
 
 	for_each_efi_memory_desc(md) {
@@ -371,10 +387,20 @@ static void __init efi_debugfs_init(void)
 static inline void efi_debugfs_init(void) {}
 #endif
 
-static int __init efipostcore_init(void)
+/*
+ * We register the efi subsystem with the firmware subsystem and the
+ * efivars subsystem with the efi subsystem, if the system was booted with
+ * EFI.
+ */
+static int __init efisubsys_init(void)
 {
+	int error;
+
 	if (!efi_enabled(EFI_RUNTIME_SERVICES))
 		efi.runtime_supported_mask = 0;
+
+	if (!efi_enabled(EFI_BOOT))
+		return 0;
 
 	if (efi.runtime_supported_mask) {
 		/*
@@ -387,23 +413,9 @@ static int __init efipostcore_init(void)
 			pr_err("Creating efi_rts_wq failed, EFI runtime services disabled.\n");
 			clear_bit(EFI_RUNTIME_SERVICES, &efi.flags);
 			efi.runtime_supported_mask = 0;
+			return 0;
 		}
 	}
-	return 0;
-}
-postcore_initcall(efipostcore_init);
-
-/*
- * We register the efi subsystem with the firmware subsystem and the
- * efivars subsystem with the efi subsystem, if the system was booted with
- * EFI.
- */
-static int __init efisubsys_init(void)
-{
-	int error;
-
-	if (!efi_enabled(EFI_BOOT))
-		return 0;
 
 	if (efi_rt_services_supported(EFI_RT_SUPPORTED_TIME_SERVICES))
 		platform_device_register_simple("rtc-efi", 0, NULL, 0);
@@ -424,6 +436,8 @@ static int __init efisubsys_init(void)
 		efivar_ssdt_load();
 		platform_device_register_simple("efivars", 0, NULL, 0);
 	}
+
+	BLOCKING_INIT_NOTIFIER_HEAD(&efivar_ops_nh);
 
 	error = sysfs_create_group(efi_kobj, &efi_subsys_attr_group);
 	if (error) {
@@ -585,7 +599,8 @@ static const efi_config_table_type_t common_tables[] __initconst = {
 	{EFI_MEMORY_ATTRIBUTES_TABLE_GUID,	&efi_mem_attr_table,	"MEMATTR"	},
 	{LINUX_EFI_RANDOM_SEED_TABLE_GUID,	&efi_rng_seed,		"RNG"		},
 	{LINUX_EFI_TPM_EVENT_LOG_GUID,		&efi.tpm_log,		"TPMEventLog"	},
-	{LINUX_EFI_TPM_FINAL_LOG_GUID,		&efi.tpm_final_log,	"TPMFinalLog"	},
+	{EFI_TCG2_FINAL_EVENTS_TABLE_GUID,	&efi.tpm_final_log,	"TPMFinalLog"	},
+	{EFI_CC_FINAL_EVENTS_TABLE_GUID,	&efi.tpm_final_log,	"CCFinalLog"	},
 	{LINUX_EFI_MEMRESERVE_TABLE_GUID,	&mem_reserve,		"MEMRESERVE"	},
 	{LINUX_EFI_INITRD_MEDIA_GUID,		&initrd,		"INITRD"	},
 	{EFI_RT_PROPERTIES_TABLE_GUID,		&rt_prop,		"RTPROP"	},
@@ -652,13 +667,13 @@ static __init int match_config_table(const efi_guid_t *guid,
 
 static __init void reserve_unaccepted(struct efi_unaccepted_memory *unaccepted)
 {
-	phys_addr_t start, end;
+	phys_addr_t start, size;
 
 	start = PAGE_ALIGN_DOWN(efi.unaccepted);
-	end = PAGE_ALIGN(efi.unaccepted + sizeof(*unaccepted) + unaccepted->size);
+	size = PAGE_ALIGN(sizeof(*unaccepted) + unaccepted->size);
 
-	memblock_add(start, end - start);
-	memblock_reserve(start, end - start);
+	memblock_add(start, size);
+	memblock_reserve(start, size);
 }
 
 int __init efi_config_parse_tables(const efi_config_table_t *config_tables,
@@ -813,7 +828,6 @@ int __init efi_systab_check_header(const efi_table_hdr_t *systab_hdr)
 	return 0;
 }
 
-#ifndef CONFIG_IA64
 static const efi_char16_t *__init map_fw_vendor(unsigned long fw_vendor,
 						size_t size)
 {
@@ -829,10 +843,6 @@ static void __init unmap_fw_vendor(const void *fw_vendor, size_t size)
 {
 	early_memunmap((void *)fw_vendor, size);
 }
-#else
-#define map_fw_vendor(p, s)	__va(p)
-#define unmap_fw_vendor(v, s)
-#endif
 
 void __init efi_systab_report_header(const efi_table_hdr_t *systab_hdr,
 				     unsigned long fw_vendor)
@@ -938,11 +948,6 @@ char * __init efi_md_typeattr_format(char *buf, size_t size,
 }
 
 /*
- * IA64 has a funky EFI memory map that doesn't work the same way as
- * other architectures.
- */
-#ifndef CONFIG_IA64
-/*
  * efi_mem_attributes - lookup memmap attributes for physical address
  * @phys_addr: the physical address to lookup
  *
@@ -989,7 +994,6 @@ int efi_mem_type(unsigned long phys_addr)
 	}
 	return -EINVAL;
 }
-#endif
 
 int efi_status_to_err(efi_status_t status)
 {

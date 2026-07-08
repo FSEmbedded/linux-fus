@@ -44,8 +44,6 @@
 
 #include "bios_parser_common.h"
 
-#include "dc.h"
-
 #define THREE_PERCENT_OF_10000 300
 
 #define LAST_RECORD_TYPE 0xff
@@ -176,11 +174,8 @@ static struct graphics_object_id bios_parser_get_connector_id(
 		return object_id;
 	}
 
-	if (tbl->ucNumberOfObjects <= i) {
-		dm_error("Can't find connector id %d in connector table of size %d.\n",
-			 i, tbl->ucNumberOfObjects);
+	if (tbl->ucNumberOfObjects <= i)
 		return object_id;
-	}
 
 	id = le16_to_cpu(tbl->asObjects[i].usObjectID);
 	object_id = object_id_from_bios_object_id(id);
@@ -1220,60 +1215,6 @@ static enum bp_result bios_parser_get_embedded_panel_info(
 	return BP_RESULT_FAILURE;
 }
 
-static enum bp_result get_embedded_panel_extra_info(
-	struct bios_parser *bp,
-	struct embedded_panel_info *info,
-	const uint32_t table_offset)
-{
-	uint8_t *record = bios_get_image(&bp->base, table_offset, 1);
-	ATOM_PANEL_RESOLUTION_PATCH_RECORD *panel_res_record;
-	ATOM_FAKE_EDID_PATCH_RECORD *fake_edid_record;
-
-	while (*record != ATOM_RECORD_END_TYPE) {
-		switch (*record) {
-		case LCD_MODE_PATCH_RECORD_MODE_TYPE:
-			record += sizeof(ATOM_PATCH_RECORD_MODE);
-			break;
-		case LCD_RTS_RECORD_TYPE:
-			record += sizeof(ATOM_LCD_RTS_RECORD);
-			break;
-		case LCD_CAP_RECORD_TYPE:
-			record += sizeof(ATOM_LCD_MODE_CONTROL_CAP);
-			break;
-		case LCD_FAKE_EDID_PATCH_RECORD_TYPE:
-			fake_edid_record = (ATOM_FAKE_EDID_PATCH_RECORD *)record;
-			if (fake_edid_record->ucFakeEDIDLength) {
-				if (fake_edid_record->ucFakeEDIDLength == 128)
-					info->fake_edid_size =
-						fake_edid_record->ucFakeEDIDLength;
-				else
-					info->fake_edid_size =
-						fake_edid_record->ucFakeEDIDLength * 128;
-
-				info->fake_edid = fake_edid_record->ucFakeEDIDString;
-
-				record += struct_size(fake_edid_record,
-						      ucFakeEDIDString,
-						      info->fake_edid_size);
-			} else {
-				/* empty fake edid record must be 3 bytes long */
-				record += sizeof(ATOM_FAKE_EDID_PATCH_RECORD) + 1;
-			}
-			break;
-		case LCD_PANEL_RESOLUTION_RECORD_TYPE:
-			panel_res_record = (ATOM_PANEL_RESOLUTION_PATCH_RECORD *)record;
-			info->panel_width_mm = panel_res_record->usHSize;
-			info->panel_height_mm = panel_res_record->usVSize;
-			record += sizeof(ATOM_PANEL_RESOLUTION_PATCH_RECORD);
-			break;
-		default:
-			return BP_RESULT_BADBIOSTABLE;
-		}
-	}
-
-	return BP_RESULT_OK;
-}
-
 static enum bp_result get_embedded_panel_info_v1_2(
 	struct bios_parser *bp,
 	struct embedded_panel_info *info)
@@ -1389,10 +1330,6 @@ static enum bp_result get_embedded_panel_info_v1_2(
 
 	if (ATOM_PANEL_MISC_API_ENABLED & lvds->ucLVDS_Misc)
 		info->lcd_timing.misc_info.API_ENABLED = true;
-
-	if (lvds->usExtInfoTableOffset)
-		return get_embedded_panel_extra_info(bp, info,
-			le16_to_cpu(lvds->usExtInfoTableOffset) + DATA_TABLES(LCD_Info));
 
 	return BP_RESULT_OK;
 }
@@ -1518,10 +1455,6 @@ static enum bp_result get_embedded_panel_info_v1_3(
 	info->lcd_timing.misc_info.GREY_LEVEL =
 			(uint32_t) (ATOM_PANEL_MISC_V13_GREY_LEVEL &
 				lvds->ucLCD_Misc) >> ATOM_PANEL_MISC_V13_GREY_LEVEL_SHIFT;
-
-	if (lvds->usExtInfoTableOffset)
-		return get_embedded_panel_extra_info(bp, info,
-			le16_to_cpu(lvds->usExtInfoTableOffset) + DATA_TABLES(LCD_Info));
 
 	return BP_RESULT_OK;
 }
@@ -1804,6 +1737,7 @@ static uint32_t get_ss_entry_number_from_internal_ss_info_tbl_v2_1(
 
 	return 0;
 }
+
 /**
  * get_ss_entry_number_from_internal_ss_info_tbl_V3_1
  * Get Number of SpreadSpectrum Entry from the ASIC_InternalSS_Info table of
@@ -2822,6 +2756,7 @@ static enum bp_result bios_get_board_layout_info(
 	struct board_layout_info *board_layout_info)
 {
 	unsigned int i;
+	struct bios_parser *bp;
 	enum bp_result record_result;
 
 	const unsigned int slot_index_to_vbios_id[MAX_BOARD_SLOTS] = {
@@ -2829,6 +2764,8 @@ static enum bp_result bios_get_board_layout_info(
 		GENERICOBJECT_BRACKET_LAYOUT_ENUM_ID2,
 		0, 0
 	};
+
+	bp = BP_FROM_DCB(dcb);
 
 	if (board_layout_info == NULL) {
 		DC_LOG_DETECTION_EDID_PARSER("Invalid board_layout_info\n");

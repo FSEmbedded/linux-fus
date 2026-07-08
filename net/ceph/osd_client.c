@@ -1611,7 +1611,6 @@ static enum calc_target_result calc_target(struct ceph_osd_client *osdc,
 	struct ceph_pg_pool_info *pi;
 	struct ceph_pg pgid, last_pgid;
 	struct ceph_osds up, acting;
-	bool should_be_paused;
 	bool is_read = t->flags & CEPH_OSD_FLAG_READ;
 	bool is_write = t->flags & CEPH_OSD_FLAG_WRITE;
 	bool force_resend = false;
@@ -1680,16 +1679,10 @@ static enum calc_target_result calc_target(struct ceph_osd_client *osdc,
 				 &last_pgid))
 		force_resend = true;
 
-	should_be_paused = target_should_be_paused(osdc, t, pi);
-	if (t->paused && !should_be_paused) {
+	if (t->paused && !target_should_be_paused(osdc, t, pi)) {
+		t->paused = false;
 		unpaused = true;
 	}
-	if (t->paused != should_be_paused) {
-		dout("%s t %p paused %d -> %d\n", __func__, t, t->paused,
-		     should_be_paused);
-		t->paused = should_be_paused;
-	}
-
 	legacy_change = ceph_pg_compare(&t->pgid, &pgid) ||
 			ceph_osds_changed(&t->acting, &acting,
 					  t->used_replica || any_change);
@@ -4313,9 +4306,6 @@ static void osd_fault(struct ceph_connection *con)
 		goto out_unlock;
 	}
 
-	osd->o_sparse_op_idx = -1;
-	ceph_init_sparse_read(&osd->o_sparse_read);
-
 	if (!reopen_osd(osd))
 		kick_osd_requests(osd);
 	maybe_request_map(osdc);
@@ -5859,8 +5849,6 @@ static inline void convert_extent_map(struct ceph_sparse_read *sr)
 }
 #endif
 
-#define MAX_EXTENTS 4096
-
 static int osd_sparse_read(struct ceph_connection *con,
 			   struct ceph_msg_data_cursor *cursor,
 			   char **pbuf)
@@ -5891,23 +5879,16 @@ next_op:
 
 		if (count > 0) {
 			if (!sr->sr_extent || count > sr->sr_ext_len) {
-				/*
-				 * Apply a hard cap to the number of extents.
-				 * If we have more, assume something is wrong.
-				 */
-				if (count > MAX_EXTENTS) {
-					dout("%s: OSD returned 0x%x extents in a single reply!\n",
-					     __func__, count);
-					return -EREMOTEIO;
-				}
-
 				/* no extent array provided, or too short */
 				kfree(sr->sr_extent);
 				sr->sr_extent = kmalloc_array(count,
 							      sizeof(*sr->sr_extent),
 							      GFP_NOIO);
-				if (!sr->sr_extent)
+				if (!sr->sr_extent) {
+					pr_err("%s: failed to allocate %u extents\n",
+					       __func__, count);
 					return -ENOMEM;
+				}
 				sr->sr_ext_len = count;
 			}
 			ret = count * sizeof(*sr->sr_extent);

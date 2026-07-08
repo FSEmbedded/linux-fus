@@ -1068,7 +1068,7 @@
 #endif
 
 #ifdef CONFIG_PICOCOREMX8MX_SERIAL_CAMERA
-&mipi_csi_1 {
+&mipi_csi {
 	#address-cells = <1>;
 	#size-cells = <0>;
 	status = "okay";
@@ -1111,7 +1111,7 @@
 #endif
 };
 
-&csi1_bridge {
+&csi{
 	status = "okay";
 #if 0
 	port {

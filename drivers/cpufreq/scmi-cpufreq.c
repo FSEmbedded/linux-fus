@@ -15,7 +15,6 @@
 #include <linux/energy_model.h>
 #include <linux/export.h>
 #include <linux/module.h>
-#include <linux/of.h>
 #include <linux/pm_opp.h>
 #include <linux/slab.h>
 #include <linux/scmi_protocol.h>
@@ -31,6 +30,7 @@ struct scmi_data {
 
 static struct scmi_protocol_handle *ph;
 static const struct scmi_perf_proto_ops *perf_ops;
+static struct cpufreq_driver scmi_cpufreq_driver;
 
 static unsigned int scmi_cpufreq_get_rate(unsigned int cpu)
 {
@@ -151,6 +151,35 @@ scmi_get_cpu_power(struct device *cpu_dev, unsigned long *power,
 	return 0;
 }
 
+static int
+scmi_get_rate_limit(u32 domain, bool has_fast_switch)
+{
+	int ret, rate_limit;
+
+	if (has_fast_switch) {
+		/*
+		 * Fast channels are used whenever available,
+		 * so use their rate_limit value if populated.
+		 */
+		ret = perf_ops->fast_switch_rate_limit(ph, domain,
+						       &rate_limit);
+		if (!ret && rate_limit)
+			return rate_limit;
+	}
+
+	ret = perf_ops->rate_limit_get(ph, domain, &rate_limit);
+	if (ret)
+		return 0;
+
+	return rate_limit;
+}
+
+static struct freq_attr *scmi_cpufreq_hw_attr[] = {
+	&cpufreq_freq_attr_scaling_available_freqs,
+	NULL,
+	NULL,
+};
+
 static int scmi_cpufreq_init(struct cpufreq_policy *policy)
 {
 	int ret, nr_opp, domain;
@@ -257,8 +286,24 @@ static int scmi_cpufreq_init(struct cpufreq_policy *policy)
 	policy->fast_switch_possible =
 		perf_ops->fast_switch_possible(ph, domain);
 
+	policy->transition_delay_us =
+		scmi_get_rate_limit(domain, policy->fast_switch_possible);
+
+	if (policy_has_boost_freq(policy)) {
+		ret = cpufreq_enable_boost_support();
+		if (ret) {
+			dev_warn(cpu_dev, "failed to enable boost: %d\n", ret);
+			goto out_free_table;
+		} else {
+			scmi_cpufreq_hw_attr[1] = &cpufreq_freq_attr_scaling_boost_freqs;
+			scmi_cpufreq_driver.boost_enabled = true;
+		}
+	}
+
 	return 0;
 
+out_free_table:
+	dev_pm_opp_free_cpufreq_table(cpu_dev, &freq_table);
 out_free_opp:
 	dev_pm_opp_remove_all_dynamic(cpu_dev);
 
@@ -271,7 +316,7 @@ out_free_priv:
 	return ret;
 }
 
-static int scmi_cpufreq_exit(struct cpufreq_policy *policy)
+static void scmi_cpufreq_exit(struct cpufreq_policy *policy)
 {
 	struct scmi_data *priv = policy->driver_data;
 
@@ -279,8 +324,6 @@ static int scmi_cpufreq_exit(struct cpufreq_policy *policy)
 	dev_pm_opp_remove_all_dynamic(priv->cpu_dev);
 	free_cpumask_var(priv->opp_shared_cpus);
 	kfree(priv);
-
-	return 0;
 }
 
 static void scmi_cpufreq_register_em(struct cpufreq_policy *policy)
@@ -315,7 +358,7 @@ static struct cpufreq_driver scmi_cpufreq_driver = {
 		  CPUFREQ_NEED_INITIAL_FREQ_CHECK |
 		  CPUFREQ_IS_COOLING_DEV,
 	.verify	= cpufreq_generic_frequency_table_verify,
-	.attr	= cpufreq_generic_attr,
+	.attr	= scmi_cpufreq_hw_attr,
 	.target_index	= scmi_cpufreq_set_target,
 	.fast_switch	= scmi_cpufreq_fast_switch,
 	.get	= scmi_cpufreq_get_rate,
@@ -323,49 +366,6 @@ static struct cpufreq_driver scmi_cpufreq_driver = {
 	.exit	= scmi_cpufreq_exit,
 	.register_em	= scmi_cpufreq_register_em,
 };
-
-static bool scmi_dev_used_by_cpus(struct device *scmi_dev)
-{
-	struct device_node *scmi_np = dev_of_node(scmi_dev);
-	struct device_node *cpu_np, *np;
-	struct device *cpu_dev;
-	int cpu, idx;
-
-	if (!scmi_np)
-		return false;
-
-	for_each_possible_cpu(cpu) {
-		cpu_dev = get_cpu_device(cpu);
-		if (!cpu_dev)
-			continue;
-
-		cpu_np = dev_of_node(cpu_dev);
-
-		np = of_parse_phandle(cpu_np, "clocks", 0);
-		of_node_put(np);
-
-		if (np == scmi_np)
-			return true;
-
-		idx = of_property_match_string(cpu_np, "power-domain-names", "perf");
-		np = of_parse_phandle(cpu_np, "power-domains", idx);
-		of_node_put(np);
-
-		if (np == scmi_np)
-			return true;
-	}
-
-	/*
-	 * Older Broadcom STB chips had a "clocks" property for CPU node(s)
-	 * that did not match the SCMI performance protocol node, if we got
-	 * there, it means we had such an older Device Tree, therefore return
-	 * true to preserve backwards compatibility.
-	 */
-	if (of_machine_is_compatible("brcm,brcmstb"))
-		return true;
-
-	return false;
-}
 
 static int scmi_cpufreq_probe(struct scmi_device *sdev)
 {
@@ -375,7 +375,7 @@ static int scmi_cpufreq_probe(struct scmi_device *sdev)
 
 	handle = sdev->handle;
 
-	if (!handle || !scmi_dev_used_by_cpus(dev))
+	if (!handle)
 		return -ENODEV;
 
 	perf_ops = handle->devm_protocol_get(sdev, SCMI_PROTOCOL_PERF, &ph);

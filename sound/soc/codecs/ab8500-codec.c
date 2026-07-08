@@ -2496,13 +2496,13 @@ static int ab8500_codec_probe(struct snd_soc_component *component)
 		return status;
 	}
 	fc = (struct filter_control *)
-		ab8500_filter_controls[AB8500_FILTER_ANC_FIR].private_value;
+		&ab8500_filter_controls[AB8500_FILTER_ANC_FIR].private_value;
 	drvdata->anc_fir_values = (long *)fc->value;
 	fc = (struct filter_control *)
-		ab8500_filter_controls[AB8500_FILTER_ANC_IIR].private_value;
+		&ab8500_filter_controls[AB8500_FILTER_ANC_IIR].private_value;
 	drvdata->anc_iir_values = (long *)fc->value;
 	fc = (struct filter_control *)
-		ab8500_filter_controls[AB8500_FILTER_SID_FIR].private_value;
+		&ab8500_filter_controls[AB8500_FILTER_SID_FIR].private_value;
 	drvdata->sid_fir_values = (long *)fc->value;
 
 	snd_soc_dapm_disable_pin(dapm, "ANC Configure Input");
@@ -2571,4 +2571,5 @@ static struct platform_driver ab8500_codec_platform_driver = {
 };
 module_platform_driver(ab8500_codec_platform_driver);
 
+MODULE_DESCRIPTION("ASoC AB8500 codec driver");
 MODULE_LICENSE("GPL v2");

@@ -15,6 +15,7 @@
 #include <linux/of.h>
 #include <linux/clk.h>
 
+#include <soc/imx/soc.h>
 #include <soc/imx/src.h>
 
 #define REV_B1				0x21
@@ -227,8 +228,8 @@ static void imx8mq_noc_init(void)
 }
 
 #define imx8_revision(dev, soc_rev) \
-	soc_rev ? \
-	devm_kasprintf((dev), GFP_KERNEL, "%d.%d", (soc_rev >> 4) & 0xf,  soc_rev & 0xf) : \
+	(soc_rev) ? \
+	devm_kasprintf((dev), GFP_KERNEL, "%d.%d", ((soc_rev) >> 4) & 0xf, (soc_rev) & 0xf) : \
 	"unknown"
 
 static void imx8m_unregister_soc(void *data)
@@ -283,13 +284,13 @@ static int imx8m_soc_probe(struct platform_device *pdev)
 
 	if (soc_uid_h) {
 		soc_dev_attr->serial_number = devm_kasprintf(dev, GFP_KERNEL, "%016llX%016llX",
-							soc_uid_h, soc_uid);
+							     soc_uid_h, soc_uid);
 	} else {
 		soc_dev_attr->serial_number = devm_kasprintf(dev, GFP_KERNEL, "%016llX", soc_uid);
 	}
-	if (!soc_dev_attr->serial_number) {
+
+	if (!soc_dev_attr->serial_number)
 		return -ENOMEM;
-	}
 
 	soc_dev = soc_device_register(soc_dev_attr);
 	if (IS_ERR(soc_dev))
@@ -349,7 +350,9 @@ static int __init imx8_soc_init(void)
 
 	return 0;
 }
+
 device_initcall(imx8_soc_init);
+MODULE_DESCRIPTION("NXP i.MX8M SoC driver");
 MODULE_LICENSE("GPL");
 
 #define FSL_SIP_SRC                    0xc2000005

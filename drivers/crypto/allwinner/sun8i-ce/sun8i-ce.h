@@ -106,7 +106,6 @@
 #define MAX_SG 8
 
 #define CE_MAX_CLOCKS 4
-#define CE_DMA_TIMEOUT_MS	3000
 
 #define MAXFLOW 4
 
@@ -150,6 +149,7 @@ struct ce_variant {
 	bool hash_t_dlen_in_bits;
 	bool prng_t_dlen_in_bytes;
 	bool trng_t_dlen_in_bytes;
+	bool needs_word_addresses;
 	struct ce_clock ce_clks[CE_MAX_CLOCKS];
 	int esr;
 	unsigned char prng;
@@ -196,6 +196,7 @@ struct sun8i_ce_flow {
 	struct completion complete;
 	int status;
 	dma_addr_t t_phy;
+	int timeout;
 	struct ce_task *tl;
 	void *backup_iv;
 	void *bounce_iv;
@@ -240,6 +241,20 @@ struct sun8i_ce_dev {
 #endif
 #endif
 };
+
+static inline u32 desc_addr_val(struct sun8i_ce_dev *dev, dma_addr_t addr)
+{
+	if (dev->variant->needs_word_addresses)
+		return addr / 4;
+
+	return addr;
+}
+
+static inline __le32 desc_addr_val_le32(struct sun8i_ce_dev *dev,
+					dma_addr_t addr)
+{
+	return cpu_to_le32(desc_addr_val(dev, addr));
+}
 
 /*
  * struct sun8i_cipher_req_ctx - context for a skcipher request

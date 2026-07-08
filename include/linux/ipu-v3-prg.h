@@ -41,17 +41,17 @@ int ipu_prg_wait_buf_ready(unsigned int ipu_id, unsigned int pre_num,
 			   unsigned int hsk_line_num,
 			   int pre_store_out_height);
 #else
-int ipu_prg_config(struct ipu_prg_config *config)
+static inline int ipu_prg_config(struct ipu_prg_config *config)
 {
 	return -ENODEV;
 }
 
-int ipu_prg_disable(unsigned int ipu_id, unsigned int pre_num)
+static inline int ipu_prg_disable(unsigned int ipu_id, unsigned int pre_num)
 {
 	return -ENODEV;
 }
 
-int ipu_prg_wait_buf_ready(unsigned int ipu_id, unsigned int pre_num,
+static inline int ipu_prg_wait_buf_ready(unsigned int ipu_id, unsigned int pre_num,
 			   unsigned int hsk_line_num,
 			   int pre_store_out_height)
 {

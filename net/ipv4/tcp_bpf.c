@@ -10,7 +10,6 @@
 
 #include <net/inet_common.h>
 #include <net/tls.h>
-#include <asm/ioctls.h>
 
 void tcp_eat_skb(struct sock *sk, struct sk_buff *skb)
 {
@@ -31,7 +30,7 @@ void tcp_eat_skb(struct sock *sk, struct sk_buff *skb)
 }
 
 static int bpf_tcp_ingress(struct sock *sk, struct sk_psock *psock,
-			   struct sk_msg *msg, u32 apply_bytes, int flags)
+			   struct sk_msg *msg, u32 apply_bytes)
 {
 	bool apply = apply_bytes;
 	struct scatterlist *sge;
@@ -170,7 +169,7 @@ int tcp_bpf_sendmsg_redir(struct sock *sk, bool ingress,
 	if (unlikely(!psock))
 		return -EPIPE;
 
-	ret = ingress ? bpf_tcp_ingress(sk, psock, msg, bytes, flags) :
+	ret = ingress ? bpf_tcp_ingress(sk, psock, msg, bytes) :
 			tcp_bpf_push_locked(sk, msg, bytes, flags, false);
 	sk_psock_put(sk, psock);
 	return ret;
@@ -227,7 +226,6 @@ static int tcp_bpf_recvmsg_parser(struct sock *sk,
 	int peek = flags & MSG_PEEK;
 	struct sk_psock *psock;
 	struct tcp_sock *tcp;
-	int copied_from_self = 0;
 	int copied = 0;
 	u32 seq;
 
@@ -264,7 +262,7 @@ static int tcp_bpf_recvmsg_parser(struct sock *sk,
 	}
 
 msg_bytes_ready:
-	copied = __sk_msg_recvmsg(sk, psock, msg, len, flags, &copied_from_self);
+	copied = sk_msg_recvmsg(sk, psock, msg, len, flags);
 	/* The typical case for EFAULT is the socket was gracefully
 	 * shutdown with a FIN pkt. So check here the other case is
 	 * some error on copy_page_to_iter which would be unexpected.
@@ -279,7 +277,7 @@ msg_bytes_ready:
 			goto out;
 		}
 	}
-	seq += copied_from_self;
+	seq += copied;
 	if (!copied) {
 		long timeo;
 		int data;
@@ -331,24 +329,6 @@ unlock:
 	release_sock(sk);
 	sk_psock_put(sk, psock);
 	return copied;
-}
-
-static int tcp_bpf_ioctl(struct sock *sk, int cmd, int *karg)
-{
-	bool slow;
-
-	if (cmd != SIOCINQ)
-		return tcp_ioctl(sk, cmd, karg);
-
-	/* works similar as tcp_ioctl */
-	if (sk->sk_state == TCP_LISTEN)
-		return -EINVAL;
-
-	slow = lock_sock_fast(sk);
-	*karg = sk_psock_msg_inq(sk);
-	unlock_sock_fast(sk, slow);
-
-	return 0;
 }
 
 static int tcp_bpf_recvmsg(struct sock *sk, struct msghdr *msg, size_t len,
@@ -629,7 +609,6 @@ static void tcp_bpf_rebuild_protos(struct proto prot[TCP_BPF_NUM_CFGS],
 	prot[TCP_BPF_BASE].close		= sock_map_close;
 	prot[TCP_BPF_BASE].recvmsg		= tcp_bpf_recvmsg;
 	prot[TCP_BPF_BASE].sock_is_readable	= sk_msg_is_readable;
-	prot[TCP_BPF_BASE].ioctl		= tcp_bpf_ioctl;
 
 	prot[TCP_BPF_TX]			= prot[TCP_BPF_BASE];
 	prot[TCP_BPF_TX].sendmsg		= tcp_bpf_sendmsg;
@@ -725,7 +704,7 @@ int tcp_bpf_update_proto(struct sock *sk, struct sk_psock *psock, bool restore)
 			WRITE_ONCE(sk->sk_prot->unhash, psock->saved_unhash);
 			tcp_update_ulp(sk, psock->sk_proto, psock->saved_write_space);
 		} else {
-			WRITE_ONCE(sk->sk_write_space, psock->saved_write_space);
+			sk->sk_write_space = psock->saved_write_space;
 			/* Pairs with lockless read in sk_clone_lock() */
 			sock_replace_proto(sk, psock->sk_proto);
 		}

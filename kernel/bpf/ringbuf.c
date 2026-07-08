@@ -215,8 +215,6 @@ static struct bpf_map *ringbuf_map_alloc(union bpf_attr *attr)
 
 static void bpf_ringbuf_free(struct bpf_ringbuf *rb)
 {
-	irq_work_sync(&rb->work);
-
 	/* copy pages pointer and nr_pages to local variable, as we are going
 	 * to unmap rb itself with vunmap() below
 	 */
@@ -787,8 +785,7 @@ schedule_work_return:
 	/* Prevent the clearing of the busy-bit from being reordered before the
 	 * storing of any rb consumer or producer positions.
 	 */
-	smp_mb__before_atomic();
-	atomic_set(&rb->busy, 0);
+	atomic_set_release(&rb->busy, 0);
 
 	if (flags & BPF_RB_FORCE_WAKEUP)
 		irq_work_queue(&rb->work);

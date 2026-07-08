@@ -88,7 +88,7 @@ struct inet_bind_bucket {
 	unsigned short		fast_sk_family;
 	bool			fast_ipv6_only;
 	struct hlist_node	node;
-	struct hlist_head	owners;
+	struct hlist_head	bhash2;
 };
 
 struct inet_bind2_bucket {
@@ -96,22 +96,17 @@ struct inet_bind2_bucket {
 	int			l3mdev;
 	unsigned short		port;
 #if IS_ENABLED(CONFIG_IPV6)
-	unsigned short		family;
+	unsigned short		addr_type;
+	struct in6_addr		v6_rcv_saddr;
+#define rcv_saddr		v6_rcv_saddr.s6_addr32[3]
+#else
+	__be32			rcv_saddr;
 #endif
-	union {
-#if IS_ENABLED(CONFIG_IPV6)
-		struct in6_addr		v6_rcv_saddr;
-#endif
-		__be32			rcv_saddr;
-	};
 	/* Node in the bhash2 inet_bind_hashbucket chain */
 	struct hlist_node	node;
+	struct hlist_node	bhash_node;
 	/* List of sockets hashed to this bucket */
 	struct hlist_head	owners;
-	/* bhash has twsk in owners, but bhash2 has twsk in
-	 * deathrow not to add a member in struct sock_common.
-	 */
-	struct hlist_head	deathrow;
 };
 
 static inline struct net *ib_net(const struct inet_bind_bucket *ib)
@@ -241,7 +236,7 @@ bool inet_bind_bucket_match(const struct inet_bind_bucket *tb,
 struct inet_bind2_bucket *
 inet_bind2_bucket_create(struct kmem_cache *cachep, struct net *net,
 			 struct inet_bind_hashbucket *head,
-			 unsigned short port, int l3mdev,
+			 struct inet_bind_bucket *tb,
 			 const struct sock *sk);
 
 void inet_bind2_bucket_destroy(struct kmem_cache *cachep,
@@ -278,20 +273,6 @@ inet_bhashfn_portaddr(const struct inet_hashinfo *hinfo, const struct sock *sk,
 	return &hinfo->bhash2[hash & (hinfo->bhash_size - 1)];
 }
 
-static inline bool inet_use_hash2_on_bind(const struct sock *sk)
-{
-#if IS_ENABLED(CONFIG_IPV6)
-	if (sk->sk_family == AF_INET6) {
-		if (ipv6_addr_any(&sk->sk_v6_rcv_saddr))
-			return false;
-
-		if (!ipv6_addr_v4mapped(&sk->sk_v6_rcv_saddr))
-			return true;
-	}
-#endif
-	return sk->sk_rcv_saddr != htonl(INADDR_ANY);
-}
-
 struct inet_bind_hashbucket *
 inet_bhash2_addr_any_hashbucket(const struct sock *sk, const struct net *net, int port);
 
@@ -323,7 +304,7 @@ int __inet_hash(struct sock *sk, struct sock *osk);
 int inet_hash(struct sock *sk);
 void inet_unhash(struct sock *sk);
 
-struct sock *__inet_lookup_listener(struct net *net,
+struct sock *__inet_lookup_listener(const struct net *net,
 				    struct inet_hashinfo *hashinfo,
 				    struct sk_buff *skb, int doff,
 				    const __be32 saddr, const __be16 sport,
@@ -370,7 +351,7 @@ static inline struct sock *inet_lookup_listener(struct net *net,
 				   ((__force __u64)(__be32)(__saddr)))
 #endif /* __BIG_ENDIAN */
 
-static inline bool inet_match(struct net *net, const struct sock *sk,
+static inline bool inet_match(const struct net *net, const struct sock *sk,
 			      const __addrpair cookie, const __portpair ports,
 			      int dif, int sdif)
 {
@@ -387,7 +368,7 @@ static inline bool inet_match(struct net *net, const struct sock *sk,
 /* Sockets in TCP_CLOSE state are _always_ taken out of the hash, so we need
  * not check it for lookups anymore, thanks Alexey. -DaveM
  */
-struct sock *__inet_lookup_established(struct net *net,
+struct sock *__inet_lookup_established(const struct net *net,
 				       struct inet_hashinfo *hashinfo,
 				       const __be32 saddr, const __be16 sport,
 				       const __be32 daddr, const u16 hnum,
@@ -401,13 +382,13 @@ inet_ehashfn_t inet_ehashfn;
 
 INDIRECT_CALLABLE_DECLARE(inet_ehashfn_t udp_ehashfn);
 
-struct sock *inet_lookup_reuseport(struct net *net, struct sock *sk,
+struct sock *inet_lookup_reuseport(const struct net *net, struct sock *sk,
 				   struct sk_buff *skb, int doff,
 				   __be32 saddr, __be16 sport,
 				   __be32 daddr, unsigned short hnum,
 				   inet_ehashfn_t *ehashfn);
 
-struct sock *inet_lookup_run_sk_lookup(struct net *net,
+struct sock *inet_lookup_run_sk_lookup(const struct net *net,
 				       int protocol,
 				       struct sk_buff *skb, int doff,
 				       __be32 saddr, __be16 sport,

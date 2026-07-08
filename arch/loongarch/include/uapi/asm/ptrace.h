@@ -10,6 +10,10 @@
 
 #include <linux/types.h>
 
+#ifndef __KERNEL__
+#include <stdint.h>
+#endif
+
 /*
  * For PTRACE_{POKE,PEEK}USR. 0 - 31 are GPRs,
  * 32 is syscall's original ARG0, 33 is PC, 34 is BADVADDR.
@@ -37,44 +41,44 @@ struct user_pt_regs {
 } __attribute__((aligned(8)));
 
 struct user_fp_state {
-	__u64 fpr[32];
-	__u64 fcc;
-	__u32 fcsr;
+	uint64_t fpr[32];
+	uint64_t fcc;
+	uint32_t fcsr;
 };
 
 struct user_lsx_state {
 	/* 32 registers, 128 bits width per register. */
-	__u64 vregs[32*2];
+	uint64_t vregs[32*2];
 };
 
 struct user_lasx_state {
 	/* 32 registers, 256 bits width per register. */
-	__u64 vregs[32*4];
+	uint64_t vregs[32*4];
 };
 
 struct user_lbt_state {
-	__u64 scr[4];
-	__u32 eflags;
-	__u32 ftop;
+	uint64_t scr[4];
+	uint32_t eflags;
+	uint32_t ftop;
 };
 
 struct user_watch_state {
-	__u64 dbg_info;
+	uint64_t dbg_info;
 	struct {
-		__u64    addr;
-		__u64    mask;
-		__u32    ctrl;
-		__u32    pad;
+		uint64_t    addr;
+		uint64_t    mask;
+		uint32_t    ctrl;
+		uint32_t    pad;
 	} dbg_regs[8];
 };
 
 struct user_watch_state_v2 {
-	__u64 dbg_info;
+	uint64_t dbg_info;
 	struct {
-		__u64    addr;
-		__u64    mask;
-		__u32    ctrl;
-		__u32    pad;
+		uint64_t    addr;
+		uint64_t    mask;
+		uint32_t    ctrl;
+		uint32_t    pad;
 	} dbg_regs[14];
 };
 

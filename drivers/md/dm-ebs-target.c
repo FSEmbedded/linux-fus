@@ -103,7 +103,7 @@ static int __ebs_rw_bvec(struct ebs_c *ec, enum req_op op, struct bio_vec *bv,
 			} else {
 				flush_dcache_page(bv->bv_page);
 				memcpy(ba, pa, cur_len);
-				dm_bufio_mark_buffer_dirty(b);
+				dm_bufio_mark_partial_buffer_dirty(b, buf_off, buf_off + cur_len);
 			}
 
 			dm_bufio_release(b);
@@ -434,7 +434,7 @@ static void ebs_io_hints(struct dm_target *ti, struct queue_limits *limits)
 	limits->logical_block_size = to_bytes(ec->e_bs);
 	limits->physical_block_size = to_bytes(ec->u_bs);
 	limits->alignment_offset = limits->physical_block_size;
-	blk_limits_io_min(limits, limits->logical_block_size);
+	limits->io_min = limits->logical_block_size;
 }
 
 static int ebs_iterate_devices(struct dm_target *ti,
@@ -461,6 +461,6 @@ static struct target_type ebs_target = {
 };
 module_dm(ebs);
 
-MODULE_AUTHOR("Heinz Mauelshagen <dm-devel@redhat.com>");
+MODULE_AUTHOR("Heinz Mauelshagen <dm-devel@lists.linux.dev>");
 MODULE_DESCRIPTION(DM_NAME " emulated block size target");
 MODULE_LICENSE("GPL");

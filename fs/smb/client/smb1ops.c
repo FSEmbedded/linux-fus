@@ -108,7 +108,7 @@ cifs_find_mid(struct TCP_Server_Info *server, char *buffer)
 
 static void
 cifs_add_credits(struct TCP_Server_Info *server,
-		 const struct cifs_credits *credits, const int optype)
+		 struct cifs_credits *credits, const int optype)
 {
 	spin_lock(&server->req_lock);
 	server->credits += credits->value;
@@ -546,7 +546,7 @@ static int cifs_query_path_info(const unsigned int xid,
 	struct cifs_search_info search_info = {};
 	bool non_unicode_wildcard = false;
 
-	data->symlink = false;
+	data->reparse_point = false;
 	data->adjust_tz = false;
 
 	/*
@@ -665,78 +665,20 @@ static int cifs_query_path_info(const unsigned int xid,
 		/* Need to check if this is a symbolic link or not */
 		tmprc = CIFS_open(xid, &oparms, &oplock, NULL);
 		if (tmprc == -EOPNOTSUPP)
-			data->symlink = true;
+			data->reparse_point = true;
 		else if (tmprc == 0)
 			CIFSSMBClose(xid, tcon, fid.netfid);
 	}
 
 #ifdef CONFIG_CIFS_XATTR
 	/*
-	 * For non-symlink WSL reparse points it is required to fetch
-	 * EA $LXMOD which contains in its S_DT part the mandatory file type.
-	 */
-	if (!rc && data->reparse_point) {
-		struct smb2_file_full_ea_info *ea;
-		u32 next = 0;
-
-		ea = (struct smb2_file_full_ea_info *)data->wsl.eas;
-		do {
-			ea = (void *)((u8 *)ea + next);
-			next = le32_to_cpu(ea->next_entry_offset);
-		} while (next);
-		if (le16_to_cpu(ea->ea_value_length)) {
-			ea->next_entry_offset = cpu_to_le32(ALIGN(sizeof(*ea) +
-						ea->ea_name_length + 1 +
-						le16_to_cpu(ea->ea_value_length), 4));
-			ea = (void *)((u8 *)ea + le32_to_cpu(ea->next_entry_offset));
-		}
-
-		rc = CIFSSMBQAllEAs(xid, tcon, full_path, SMB2_WSL_XATTR_MODE,
-				    &ea->ea_data[SMB2_WSL_XATTR_NAME_LEN + 1],
-				    SMB2_WSL_XATTR_MODE_SIZE, cifs_sb);
-		if (rc == SMB2_WSL_XATTR_MODE_SIZE) {
-			ea->next_entry_offset = cpu_to_le32(0);
-			ea->flags = 0;
-			ea->ea_name_length = SMB2_WSL_XATTR_NAME_LEN;
-			ea->ea_value_length = cpu_to_le16(SMB2_WSL_XATTR_MODE_SIZE);
-			memcpy(&ea->ea_data[0], SMB2_WSL_XATTR_MODE, SMB2_WSL_XATTR_NAME_LEN + 1);
-			data->wsl.eas_len += ALIGN(sizeof(*ea) + SMB2_WSL_XATTR_NAME_LEN + 1 +
-						   SMB2_WSL_XATTR_MODE_SIZE, 4);
-			rc = 0;
-		} else if (rc >= 0) {
-			/* It is an error if EA $LXMOD has wrong size. */
-			rc = -EINVAL;
-		} else {
-			/*
-			 * In all other cases ignore error if fetching
-			 * of EA $LXMOD failed. It is needed only for
-			 * non-symlink WSL reparse points and wsl_to_fattr()
-			 * handle the case when EA is missing.
-			 */
-			rc = 0;
-		}
-	}
-
-	/*
 	 * For WSL CHR and BLK reparse points it is required to fetch
 	 * EA $LXDEV which contains major and minor device numbers.
 	 */
 	if (!rc && data->reparse_point) {
 		struct smb2_file_full_ea_info *ea;
-		u32 next = 0;
 
 		ea = (struct smb2_file_full_ea_info *)data->wsl.eas;
-		do {
-			ea = (void *)((u8 *)ea + next);
-			next = le32_to_cpu(ea->next_entry_offset);
-		} while (next);
-		if (le16_to_cpu(ea->ea_value_length)) {
-			ea->next_entry_offset = cpu_to_le32(ALIGN(sizeof(*ea) +
-						ea->ea_name_length + 1 +
-						le16_to_cpu(ea->ea_value_length), 4));
-			ea = (void *)((u8 *)ea + le32_to_cpu(ea->next_entry_offset));
-		}
-
 		rc = CIFSSMBQAllEAs(xid, tcon, full_path, SMB2_WSL_XATTR_DEV,
 				    &ea->ea_data[SMB2_WSL_XATTR_NAME_LEN + 1],
 				    SMB2_WSL_XATTR_DEV_SIZE, cifs_sb);
@@ -746,8 +688,8 @@ static int cifs_query_path_info(const unsigned int xid,
 			ea->ea_name_length = SMB2_WSL_XATTR_NAME_LEN;
 			ea->ea_value_length = cpu_to_le16(SMB2_WSL_XATTR_DEV_SIZE);
 			memcpy(&ea->ea_data[0], SMB2_WSL_XATTR_DEV, SMB2_WSL_XATTR_NAME_LEN + 1);
-			data->wsl.eas_len += ALIGN(sizeof(*ea) + SMB2_WSL_XATTR_NAME_LEN + 1 +
-						   SMB2_WSL_XATTR_MODE_SIZE, 4);
+			data->wsl.eas_len = sizeof(*ea) + SMB2_WSL_XATTR_NAME_LEN + 1 +
+					    SMB2_WSL_XATTR_DEV_SIZE;
 			rc = 0;
 		} else if (rc >= 0) {
 			/* It is an error if EA $LXDEV has wrong size. */
@@ -1346,7 +1288,7 @@ cifs_make_node(unsigned int xid, struct inode *inode,
 	/*
 	 * Check if mounted with mount parm 'sfu' mount parm.
 	 * SFU emulation should work with all servers, but only
-	 * supports block and char device (no socket & fifo),
+	 * supports block and char device, socket & fifo,
 	 * and was used by default in earlier versions of Windows
 	 */
 	if (!(cifs_sb->mnt_cifs_flags & CIFS_MOUNT_UNX_EMUL))

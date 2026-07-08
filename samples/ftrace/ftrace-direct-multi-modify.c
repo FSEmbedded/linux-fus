@@ -22,6 +22,47 @@ void my_direct_func2(unsigned long ip)
 extern void my_tramp1(void *);
 extern void my_tramp2(void *);
 
+#ifdef CONFIG_RISCV
+#include <asm/asm.h>
+
+asm (
+"	.pushsection    .text, \"ax\", @progbits\n"
+"	.type		my_tramp1, @function\n"
+"	.globl		my_tramp1\n"
+"   my_tramp1:\n"
+"       addi	sp,sp,-3*"SZREG"\n"
+"       "REG_S"	a0,0*"SZREG"(sp)\n"
+"       "REG_S"	t0,1*"SZREG"(sp)\n"
+"       "REG_S"	ra,2*"SZREG"(sp)\n"
+"       mv	a0,t0\n"
+"       call	my_direct_func1\n"
+"       "REG_L"	a0,0*"SZREG"(sp)\n"
+"       "REG_L"	t0,1*"SZREG"(sp)\n"
+"       "REG_L"	ra,2*"SZREG"(sp)\n"
+"       addi	sp,sp,3*"SZREG"\n"
+"	jr	t0\n"
+"	.size		my_tramp1, .-my_tramp1\n"
+
+"	.type		my_tramp2, @function\n"
+"	.globl		my_tramp2\n"
+"   my_tramp2:\n"
+"       addi	sp,sp,-3*"SZREG"\n"
+"       "REG_S"	a0,0*"SZREG"(sp)\n"
+"       "REG_S"	t0,1*"SZREG"(sp)\n"
+"       "REG_S"	ra,2*"SZREG"(sp)\n"
+"       mv	a0,t0\n"
+"       call	my_direct_func2\n"
+"       "REG_L"	a0,0*"SZREG"(sp)\n"
+"       "REG_L"	t0,1*"SZREG"(sp)\n"
+"       "REG_L"	ra,2*"SZREG"(sp)\n"
+"       addi	sp,sp,3*"SZREG"\n"
+"	jr	t0\n"
+"	.size		my_tramp2, .-my_tramp2\n"
+"	.popsection\n"
+);
+
+#endif /* CONFIG_RISCV */
+
 #ifdef CONFIG_X86_64
 
 #include <asm/ibt.h>
@@ -158,8 +199,8 @@ asm (
 "	move	$a0, $t0\n"
 "	bl	my_direct_func1\n"
 "	ld.d	$a0, $sp, 0\n"
-"	ld.d	$ra, $sp, 8\n"
-"	ld.d	$t0, $sp, 16\n"
+"	ld.d	$t0, $sp, 8\n"
+"	ld.d	$ra, $sp, 16\n"
 "	addi.d	$sp, $sp, 32\n"
 "	jr	$t0\n"
 "	.size		my_tramp1, .-my_tramp1\n"
@@ -174,8 +215,8 @@ asm (
 "	move	$a0, $t0\n"
 "	bl	my_direct_func2\n"
 "	ld.d	$a0, $sp, 0\n"
-"	ld.d	$ra, $sp, 8\n"
-"	ld.d	$t0, $sp, 16\n"
+"	ld.d	$t0, $sp, 8\n"
+"	ld.d	$ra, $sp, 16\n"
 "	addi.d	$sp, $sp, 32\n"
 "	jr	$t0\n"
 "	.size		my_tramp2, .-my_tramp2\n"

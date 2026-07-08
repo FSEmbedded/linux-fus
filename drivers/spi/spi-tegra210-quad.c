@@ -175,7 +175,7 @@ struct tegra_qspi_client_data {
 
 struct tegra_qspi {
 	struct device				*dev;
-	struct spi_master			*master;
+	struct spi_controller			*host;
 	/* lock to protect data accessed by irq */
 	spinlock_t				lock;
 
@@ -809,12 +809,11 @@ err_out:
 static u32 tegra_qspi_setup_transfer_one(struct spi_device *spi, struct spi_transfer *t,
 					 bool is_first_of_msg)
 {
-	struct tegra_qspi *tqspi = spi_master_get_devdata(spi->master);
+	struct tegra_qspi *tqspi = spi_controller_get_devdata(spi->controller);
 	struct tegra_qspi_client_data *cdata = spi->controller_data;
 	u32 command1, command2, speed = t->speed_hz;
 	u8 bits_per_word = t->bits_per_word;
 	u32 tx_tap = 0, rx_tap = 0;
-	unsigned long flags;
 	int req_mode;
 
 	if (!has_acpi_companion(tqspi->dev) && speed != tqspi->cur_speed) {
@@ -822,12 +821,10 @@ static u32 tegra_qspi_setup_transfer_one(struct spi_device *spi, struct spi_tran
 		tqspi->cur_speed = speed;
 	}
 
-	spin_lock_irqsave(&tqspi->lock, flags);
 	tqspi->cur_pos = 0;
 	tqspi->cur_rx_pos = 0;
 	tqspi->cur_tx_pos = 0;
 	tqspi->curr_xfer = t;
-	spin_unlock_irqrestore(&tqspi->lock, flags);
 
 	if (is_first_of_msg) {
 		tegra_qspi_mask_clear_irq(tqspi);
@@ -873,7 +870,7 @@ static u32 tegra_qspi_setup_transfer_one(struct spi_device *spi, struct spi_tran
 static int tegra_qspi_start_transfer_one(struct spi_device *spi,
 					 struct spi_transfer *t, u32 command1)
 {
-	struct tegra_qspi *tqspi = spi_master_get_devdata(spi->master);
+	struct tegra_qspi *tqspi = spi_controller_get_devdata(spi->controller);
 	unsigned int total_fifo_words;
 	u8 bus_width = 0;
 	int ret;
@@ -928,7 +925,7 @@ static int tegra_qspi_start_transfer_one(struct spi_device *spi,
 static struct tegra_qspi_client_data *tegra_qspi_parse_cdata_dt(struct spi_device *spi)
 {
 	struct tegra_qspi_client_data *cdata;
-	struct tegra_qspi *tqspi = spi_master_get_devdata(spi->master);
+	struct tegra_qspi *tqspi = spi_controller_get_devdata(spi->controller);
 
 	cdata = devm_kzalloc(tqspi->dev, sizeof(*cdata), GFP_KERNEL);
 	if (!cdata)
@@ -944,7 +941,7 @@ static struct tegra_qspi_client_data *tegra_qspi_parse_cdata_dt(struct spi_devic
 
 static int tegra_qspi_setup(struct spi_device *spi)
 {
-	struct tegra_qspi *tqspi = spi_master_get_devdata(spi->master);
+	struct tegra_qspi *tqspi = spi_controller_get_devdata(spi->controller);
 	struct tegra_qspi_client_data *cdata = spi->controller_data;
 	unsigned long flags;
 	u32 val;
@@ -1002,15 +999,13 @@ static void tegra_qspi_handle_error(struct tegra_qspi *tqspi)
 	dev_err(tqspi->dev, "error in transfer, fifo status 0x%08x\n", tqspi->status_reg);
 	tegra_qspi_dump_regs(tqspi);
 	tegra_qspi_flush_fifos(tqspi, true);
-	if (device_reset(tqspi->dev) < 0) {
+	if (device_reset(tqspi->dev) < 0)
 		dev_warn_once(tqspi->dev, "device reset failed\n");
-		tegra_qspi_mask_clear_irq(tqspi);
-	}
 }
 
 static void tegra_qspi_transfer_end(struct spi_device *spi)
 {
-	struct tegra_qspi *tqspi = spi_master_get_devdata(spi->master);
+	struct tegra_qspi *tqspi = spi_controller_get_devdata(spi->controller);
 	int cs_val = (spi->mode & SPI_CS_HIGH) ? 0 : 1;
 
 	if (cs_val)
@@ -1064,7 +1059,6 @@ static int tegra_qspi_combined_seq_xfer(struct tegra_qspi *tqspi,
 	u32 address_value = 0;
 	u32 cmd_config = 0, addr_config = 0;
 	u8 cmd_value = 0, val = 0;
-	unsigned long flags;
 
 	/* Enable Combined sequence mode */
 	val = tegra_qspi_readl(tqspi, QSPI_GLOBAL_CONFIG);
@@ -1151,11 +1145,9 @@ static int tegra_qspi_combined_seq_xfer(struct tegra_qspi *tqspi,
 				}
 
 				/* Reset controller if timeout happens */
-				if (device_reset(tqspi->dev) < 0) {
+				if (device_reset(tqspi->dev) < 0)
 					dev_warn_once(tqspi->dev,
 						      "device reset failed\n");
-					tegra_qspi_mask_clear_irq(tqspi);
-				}
 				ret = -EIO;
 				goto exit;
 			}
@@ -1177,17 +1169,11 @@ static int tegra_qspi_combined_seq_xfer(struct tegra_qspi *tqspi,
 			tegra_qspi_transfer_end(spi);
 			spi_transfer_delay_exec(xfer);
 		}
-		spin_lock_irqsave(&tqspi->lock, flags);
-		tqspi->curr_xfer = NULL;
-		spin_unlock_irqrestore(&tqspi->lock, flags);
 		transfer_phase++;
 	}
 	ret = 0;
 
 exit:
-	spin_lock_irqsave(&tqspi->lock, flags);
-	tqspi->curr_xfer = NULL;
-	spin_unlock_irqrestore(&tqspi->lock, flags);
 	msg->status = ret;
 
 	return ret;
@@ -1200,7 +1186,6 @@ static int tegra_qspi_non_combined_seq_xfer(struct tegra_qspi *tqspi,
 	struct spi_transfer *transfer;
 	bool is_first_msg = true;
 	int ret = 0, val = 0;
-	unsigned long flags;
 
 	msg->status = 0;
 	msg->actual_length = 0;
@@ -1272,10 +1257,6 @@ static int tegra_qspi_non_combined_seq_xfer(struct tegra_qspi *tqspi,
 		msg->actual_length += xfer->len + dummy_bytes;
 
 complete_xfer:
-		spin_lock_irqsave(&tqspi->lock, flags);
-		tqspi->curr_xfer = NULL;
-		spin_unlock_irqrestore(&tqspi->lock, flags);
-
 		if (ret < 0) {
 			tegra_qspi_transfer_end(spi);
 			spi_transfer_delay_exec(xfer);
@@ -1327,10 +1308,10 @@ static bool tegra_qspi_validate_cmb_seq(struct tegra_qspi *tqspi,
 	return true;
 }
 
-static int tegra_qspi_transfer_one_message(struct spi_master *master,
+static int tegra_qspi_transfer_one_message(struct spi_controller *host,
 					   struct spi_message *msg)
 {
-	struct tegra_qspi *tqspi = spi_master_get_devdata(master);
+	struct tegra_qspi *tqspi = spi_controller_get_devdata(host);
 	int ret;
 
 	if (tegra_qspi_validate_cmb_seq(tqspi, msg))
@@ -1338,18 +1319,17 @@ static int tegra_qspi_transfer_one_message(struct spi_master *master,
 	else
 		ret = tegra_qspi_non_combined_seq_xfer(tqspi, msg);
 
-	spi_finalize_current_message(master);
+	spi_finalize_current_message(host);
 
 	return ret;
 }
 
 static irqreturn_t handle_cpu_based_xfer(struct tegra_qspi *tqspi)
 {
-	struct spi_transfer *t;
+	struct spi_transfer *t = tqspi->curr_xfer;
 	unsigned long flags;
 
 	spin_lock_irqsave(&tqspi->lock, flags);
-	t = tqspi->curr_xfer;
 
 	if (tqspi->tx_status ||  tqspi->rx_status) {
 		tegra_qspi_handle_error(tqspi);
@@ -1373,14 +1353,13 @@ static irqreturn_t handle_cpu_based_xfer(struct tegra_qspi *tqspi)
 	tegra_qspi_calculate_curr_xfer_param(tqspi, t);
 	tegra_qspi_start_cpu_based_transfer(tqspi, t);
 exit:
-	tqspi->curr_xfer = NULL;
 	spin_unlock_irqrestore(&tqspi->lock, flags);
 	return IRQ_HANDLED;
 }
 
 static irqreturn_t handle_dma_based_xfer(struct tegra_qspi *tqspi)
 {
-	struct spi_transfer *t;
+	struct spi_transfer *t = tqspi->curr_xfer;
 	unsigned int total_fifo_words;
 	unsigned long flags;
 	long wait_status;
@@ -1417,7 +1396,6 @@ static irqreturn_t handle_dma_based_xfer(struct tegra_qspi *tqspi)
 	}
 
 	spin_lock_irqsave(&tqspi->lock, flags);
-	t = tqspi->curr_xfer;
 
 	if (err) {
 		tegra_qspi_dma_unmap_xfer(tqspi, t);
@@ -1457,30 +1435,6 @@ exit:
 static irqreturn_t tegra_qspi_isr_thread(int irq, void *context_data)
 {
 	struct tegra_qspi *tqspi = context_data;
-	u32 status;
-
-	/*
-	 * Read transfer status to check if interrupt was triggered by transfer
-	 * completion
-	 */
-	status = tegra_qspi_readl(tqspi, QSPI_TRANS_STATUS);
-
-	/*
-	 * Occasionally the IRQ thread takes a long time to wake up (usually
-	 * when the CPU that it's running on is excessively busy) and we have
-	 * already reached the timeout before and cleaned up the timed out
-	 * transfer. Avoid any processing in that case and bail out early.
-	 *
-	 * If no transfer is in progress, check if this was a real interrupt
-	 * that the timeout handler already processed, or a spurious one.
-	 */
-	if (!tqspi->curr_xfer) {
-		/* Spurious interrupt - transfer not ready */
-		if (!(status & QSPI_RDY))
-			return IRQ_NONE;
-		/* Real interrupt, already handled by timeout path */
-		return IRQ_HANDLED;
-	}
 
 	tqspi->status_reg = tegra_qspi_readl(tqspi, QSPI_FIFO_STATUS);
 
@@ -1571,38 +1525,38 @@ MODULE_DEVICE_TABLE(acpi, tegra_qspi_acpi_match);
 
 static int tegra_qspi_probe(struct platform_device *pdev)
 {
-	struct spi_master	*master;
+	struct spi_controller	*host;
 	struct tegra_qspi	*tqspi;
 	struct resource		*r;
 	int ret, qspi_irq;
 	int bus_num;
 
-	master = devm_spi_alloc_master(&pdev->dev, sizeof(*tqspi));
-	if (!master)
+	host = devm_spi_alloc_host(&pdev->dev, sizeof(*tqspi));
+	if (!host)
 		return -ENOMEM;
 
-	platform_set_drvdata(pdev, master);
-	tqspi = spi_master_get_devdata(master);
+	platform_set_drvdata(pdev, host);
+	tqspi = spi_controller_get_devdata(host);
 
-	master->mode_bits = SPI_MODE_0 | SPI_MODE_3 | SPI_CS_HIGH |
-			    SPI_TX_DUAL | SPI_RX_DUAL | SPI_TX_QUAD | SPI_RX_QUAD;
-	master->bits_per_word_mask = SPI_BPW_MASK(32) | SPI_BPW_MASK(16) | SPI_BPW_MASK(8);
-	master->flags = SPI_CONTROLLER_HALF_DUPLEX;
-	master->setup = tegra_qspi_setup;
-	master->transfer_one_message = tegra_qspi_transfer_one_message;
-	master->num_chipselect = 1;
-	master->auto_runtime_pm = true;
+	host->mode_bits = SPI_MODE_0 | SPI_MODE_3 | SPI_CS_HIGH |
+			  SPI_TX_DUAL | SPI_RX_DUAL | SPI_TX_QUAD | SPI_RX_QUAD;
+	host->bits_per_word_mask = SPI_BPW_MASK(32) | SPI_BPW_MASK(16) | SPI_BPW_MASK(8);
+	host->flags = SPI_CONTROLLER_HALF_DUPLEX;
+	host->setup = tegra_qspi_setup;
+	host->transfer_one_message = tegra_qspi_transfer_one_message;
+	host->num_chipselect = 1;
+	host->auto_runtime_pm = true;
 
 	bus_num = of_alias_get_id(pdev->dev.of_node, "spi");
 	if (bus_num >= 0)
-		master->bus_num = bus_num;
+		host->bus_num = bus_num;
 
-	tqspi->master = master;
+	tqspi->host = host;
 	tqspi->dev = &pdev->dev;
 	spin_lock_init(&tqspi->lock);
 
 	tqspi->soc_data = device_get_match_data(&pdev->dev);
-	master->num_chipselect = tqspi->soc_data->cs_count;
+	host->num_chipselect = tqspi->soc_data->cs_count;
 	tqspi->base = devm_platform_get_and_ioremap_resource(pdev, 0, &r);
 	if (IS_ERR(tqspi->base))
 		return PTR_ERR(tqspi->base);
@@ -1663,10 +1617,10 @@ static int tegra_qspi_probe(struct platform_device *pdev)
 		goto exit_pm_disable;
 	}
 
-	master->dev.of_node = pdev->dev.of_node;
-	ret = spi_register_master(master);
+	host->dev.of_node = pdev->dev.of_node;
+	ret = spi_register_controller(host);
 	if (ret < 0) {
-		dev_err(&pdev->dev, "failed to register master: %d\n", ret);
+		dev_err(&pdev->dev, "failed to register host: %d\n", ret);
 		goto exit_free_irq;
 	}
 
@@ -1682,10 +1636,10 @@ exit_pm_disable:
 
 static void tegra_qspi_remove(struct platform_device *pdev)
 {
-	struct spi_master *master = platform_get_drvdata(pdev);
-	struct tegra_qspi *tqspi = spi_master_get_devdata(master);
+	struct spi_controller *host = platform_get_drvdata(pdev);
+	struct tegra_qspi *tqspi = spi_controller_get_devdata(host);
 
-	spi_unregister_master(master);
+	spi_unregister_controller(host);
 	free_irq(tqspi->irq, tqspi);
 	pm_runtime_force_suspend(&pdev->dev);
 	tegra_qspi_deinit_dma(tqspi);
@@ -1693,15 +1647,15 @@ static void tegra_qspi_remove(struct platform_device *pdev)
 
 static int __maybe_unused tegra_qspi_suspend(struct device *dev)
 {
-	struct spi_master *master = dev_get_drvdata(dev);
+	struct spi_controller *host = dev_get_drvdata(dev);
 
-	return spi_master_suspend(master);
+	return spi_controller_suspend(host);
 }
 
 static int __maybe_unused tegra_qspi_resume(struct device *dev)
 {
-	struct spi_master *master = dev_get_drvdata(dev);
-	struct tegra_qspi *tqspi = spi_master_get_devdata(master);
+	struct spi_controller *host = dev_get_drvdata(dev);
+	struct tegra_qspi *tqspi = spi_controller_get_devdata(host);
 	int ret;
 
 	ret = pm_runtime_resume_and_get(dev);
@@ -1714,13 +1668,13 @@ static int __maybe_unused tegra_qspi_resume(struct device *dev)
 	tegra_qspi_writel(tqspi, tqspi->def_command2_reg, QSPI_COMMAND2);
 	pm_runtime_put(dev);
 
-	return spi_master_resume(master);
+	return spi_controller_resume(host);
 }
 
 static int __maybe_unused tegra_qspi_runtime_suspend(struct device *dev)
 {
-	struct spi_master *master = dev_get_drvdata(dev);
-	struct tegra_qspi *tqspi = spi_master_get_devdata(master);
+	struct spi_controller *host = dev_get_drvdata(dev);
+	struct tegra_qspi *tqspi = spi_controller_get_devdata(host);
 
 	/* Runtime pm disabled with ACPI */
 	if (has_acpi_companion(tqspi->dev))
@@ -1735,8 +1689,8 @@ static int __maybe_unused tegra_qspi_runtime_suspend(struct device *dev)
 
 static int __maybe_unused tegra_qspi_runtime_resume(struct device *dev)
 {
-	struct spi_master *master = dev_get_drvdata(dev);
-	struct tegra_qspi *tqspi = spi_master_get_devdata(master);
+	struct spi_controller *host = dev_get_drvdata(dev);
+	struct tegra_qspi *tqspi = spi_controller_get_devdata(host);
 	int ret;
 
 	/* Runtime pm disabled with ACPI */

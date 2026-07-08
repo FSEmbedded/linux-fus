@@ -93,7 +93,9 @@ MODULE_PARM_DESC(hantro_dynamic_clock, "enable or disable dynamic clock rate");
 #define HANTRO_G2_DEC_FIRST_REG            0
 #define HANTRO_G2_DEC_LAST_REG             (HANTRO_G2_DEC_REGS - 1)
 
-#define DEC_IO_SIZE_MAX             (MAX(HANTRO_G2_DEC_REGS, HANTRO_G1_TOTAL_REGS) * 4)
+#define MAX_VAL(a, b) (((a) > (b)) ? (a) : (b))
+
+#define DEC_IO_SIZE_MAX             (MAX_VAL(HANTRO_G2_DEC_REGS, HANTRO_G1_TOTAL_REGS) * 4)
 
 /********************************************************************
  *                                              PORTING SEGMENT
@@ -146,6 +148,8 @@ static struct clk *hantro_clk_g2;
 static struct clk *hantro_clk_bus;
 static struct regulator *hantro_regulator;
 
+static int irq_dec_err_count;
+module_param(irq_dec_err_count, int, 0444);
 static int hantro_dbg = -1;
 module_param(hantro_dbg, int, 0644);
 MODULE_PARM_DESC(hantro_dbg, "Debug level (0-1)");
@@ -157,6 +161,11 @@ MODULE_PARM_DESC(hantro_dbg, "Debug level (0-1)");
 		} \
 	} while (0)
 
+#define PERROR(dev, fmt, arg...)	          \
+	do {                                      \
+		if (hantro_dbg >= 0)              \
+			dev_err(dev, fmt, ##arg); \
+	} while (0)
 
 static int hantrodec_major; /* dynamic allocation */
 
@@ -1732,6 +1741,23 @@ irqreturn_t hantrodec_isr(int irq, void *dev_id)
 			up(&core_suspend_sem[i]);
 
 			atomic_inc(&irq_rx);
+			if (irq_status_dec & HANTRODEC_DEC_ERROR_MASK) {
+				if (irq_status_dec & HANTRODEC_DEC_BUS_ERROR)
+					PERROR(hantro_dev,
+					       "[%d] bus error\n", atomic_read(&irq_rx));
+				if (irq_status_dec & HANTRODEC_DEC_STRM_BUF_EMPTY)
+					PERROR(hantro_dev,
+					       "[%d] stream buffer empty\n", atomic_read(&irq_rx));
+
+				if (irq_status_dec & HANTRODEC_DEC_ASO_DETECTED)
+					PERROR(hantro_dev,
+					       "[%d] detect ASO\n", atomic_read(&irq_rx));
+
+				if (irq_status_dec & HANTRODEC_DEC_STRM_INPUT_ERR)
+					PERROR(hantro_dev,
+					       "[%d] stream input error\n", atomic_read(&irq_rx));
+				irq_dec_err_count++;
+			}
 
 			dec_irq |= (1 << i);
 
@@ -1905,7 +1931,7 @@ out:
 	return err;
 }
 
-static int hantro_dev_remove(struct platform_device *pdev)
+static void hantro_dev_remove(struct platform_device *pdev)
 {
 	hantro_clk_enable(&pdev->dev);
 	pm_runtime_get_sync(&pdev->dev);
@@ -1929,7 +1955,6 @@ static int hantro_dev_remove(struct platform_device *pdev)
 	if (!IS_ERR(hantro_clk_bus))
 		clk_put(hantro_clk_bus);
 
-	return 0;
 }
 
 #ifdef CONFIG_PM

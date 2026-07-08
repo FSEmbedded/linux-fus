@@ -9,6 +9,7 @@
 #include <linux/errno.h>
 #include <linux/err.h>
 #include <linux/kvm_host.h>
+#include <linux/wordpart.h>
 #include <asm/sbi.h>
 #include <asm/kvm_vcpu_sbi.h>
 
@@ -31,6 +32,7 @@ static int kvm_sbi_hsm_vcpu_start(struct kvm_vcpu *vcpu)
 		goto out;
 	}
 
+	spin_lock(&target_vcpu->arch.reset_cntx_lock);
 	reset_cntx = &target_vcpu->arch.guest_reset_context;
 	/* start address */
 	reset_cntx->sepc = cp->a1;
@@ -38,6 +40,8 @@ static int kvm_sbi_hsm_vcpu_start(struct kvm_vcpu *vcpu)
 	reset_cntx->a0 = target_vcpuid;
 	/* private data passed from kernel */
 	reset_cntx->a1 = cp->a2;
+	spin_unlock(&target_vcpu->arch.reset_cntx_lock);
+
 	kvm_make_request(KVM_REQ_VCPU_RESET, target_vcpu);
 
 	__kvm_riscv_vcpu_power_on(target_vcpu);
@@ -106,7 +110,7 @@ static int kvm_sbi_ext_hsm_handler(struct kvm_vcpu *vcpu, struct kvm_run *run,
 		}
 		return 0;
 	case SBI_EXT_HSM_HART_SUSPEND:
-		switch (cp->a0) {
+		switch (lower_32_bits(cp->a0)) {
 		case SBI_HSM_SUSPEND_RET_DEFAULT:
 			kvm_riscv_vcpu_wfi(vcpu);
 			break;

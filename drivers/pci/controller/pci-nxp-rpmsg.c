@@ -62,6 +62,7 @@
 #include <linux/rpmsg.h>
 
 #include "../pci.h"
+#include "pci-host-common.h"
 
 #define NXP_RPMSG_TIMEOUT			500 /* unit: ms */
 
@@ -338,9 +339,9 @@ static int nxp_pci_host_probe(struct platform_device *pdev)
 	return pci_host_common_probe(pdev);
 }
 
-static int nxp_pci_host_remove(struct platform_device *pdev)
+static void nxp_pci_host_remove(struct platform_device *pdev)
 {
-	return pci_host_common_remove(pdev);
+	pci_host_common_remove(pdev);
 }
 
 static struct platform_driver nxp_rpmsg_pci_driver = {
@@ -349,7 +350,7 @@ static struct platform_driver nxp_rpmsg_pci_driver = {
 		.of_match_table = nxp_rpmsg_pci_of_match,
 	},
 	.probe = nxp_pci_host_probe,
-	.remove = nxp_pci_host_remove,
+	.remove_new = nxp_pci_host_remove,
 };
 
 static int __init nxp_rpmsg_driver_init(void)

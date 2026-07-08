@@ -10,8 +10,6 @@
 #include <linux/fs.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
-#include <linux/printk.h>
-#include <linux/string.h>
 #include <linux/wmi.h>
 #include "bioscfg.h"
 #include "../../firmware_attributes_class.h"
@@ -588,7 +586,6 @@ static void release_attributes_data(void)
 static int hp_add_other_attributes(int attr_type)
 {
 	struct kobject *attr_name_kobj;
-	union acpi_object *obj = NULL;
 	int ret;
 	char *attr_name;
 
@@ -648,7 +645,6 @@ err_other_attr_init:
 	kobject_put(attr_name_kobj);
 unlock_drv_mutex:
 	mutex_unlock(&bioscfg_drv.mutex);
-	kfree(obj);
 	return ret;
 }
 
@@ -699,11 +695,6 @@ static int hp_init_bios_package_attribute(enum hp_wmi_data_type attr_type,
 			 ret);
 		kfree(str_value);
 		return ret;
-	}
-
-	if (!str_value || !str_value[0]) {
-		pr_debug("Ignoring attribute with empty name\n");
-		goto pack_attr_exit;
 	}
 
 	/* All duplicate attributes found are ignored */
@@ -792,12 +783,6 @@ static int hp_init_bios_buffer_attribute(enum hp_wmi_data_type attr_type,
 
 	if (ret < 0)
 		goto buff_attr_exit;
-
-	if (strlen(str) == 0) {
-		pr_debug("Ignoring attribute with empty name\n");
-		ret = 0;
-		goto buff_attr_exit;
-	}
 
 	if (attr_type == HPWMI_PASSWORD_TYPE ||
 	    attr_type == HPWMI_SECURE_PLATFORM_TYPE)

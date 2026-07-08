@@ -45,17 +45,16 @@ static void handle_enc_encode_msg(struct venc_vpu_inst *vpu, const void *data)
 static bool vpu_enc_check_ap_inst(struct mtk_vcodec_enc_dev *enc_dev, struct venc_vpu_inst *vpu)
 {
 	struct mtk_vcodec_enc_ctx *ctx;
-	unsigned long flags;
 	int ret = false;
 
-	spin_lock_irqsave(&enc_dev->dev_ctx_lock, flags);
+	mutex_lock(&enc_dev->dev_ctx_lock);
 	list_for_each_entry(ctx, &enc_dev->ctx_list, list) {
 		if (!IS_ERR_OR_NULL(ctx) && ctx->vpu_inst == vpu) {
 			ret = true;
 			break;
 		}
 	}
-	spin_unlock_irqrestore(&enc_dev->dev_ctx_lock, flags);
+	mutex_unlock(&enc_dev->dev_ctx_lock);
 
 	return ret;
 }

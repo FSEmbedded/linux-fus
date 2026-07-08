@@ -92,7 +92,7 @@ fail:
 
 /**
  * verify_table_headers - verify that the tables headers are as expected
- * @tables - array of dfa tables to check (NOT NULL)
+ * @tables: array of dfa tables to check (NOT NULL)
  * @flags: flags controlling what type of accept table are acceptable
  *
  * Assumes dfa has gone through the first pass verification done by unpacking
@@ -160,10 +160,9 @@ static int verify_dfa(struct aa_dfa *dfa)
 	if (state_count == 0)
 		goto out;
 	for (i = 0; i < state_count; i++) {
-		if (DEFAULT_TABLE(dfa)[i] >= state_count) {
-			pr_err("AppArmor DFA default state out of bounds");
+		if (!(BASE_TABLE(dfa)[i] & MATCH_FLAG_DIFF_ENCODE) &&
+		    (DEFAULT_TABLE(dfa)[i] >= state_count))
 			goto out;
-		}
 		if (BASE_TABLE(dfa)[i] & MATCH_FLAGS_INVALID) {
 			pr_err("AppArmor DFA state with invalid match flags");
 			goto out;
@@ -202,30 +201,15 @@ static int verify_dfa(struct aa_dfa *dfa)
 		size_t j, k;
 
 		for (j = i;
-		     ((BASE_TABLE(dfa)[j] & MATCH_FLAG_DIFF_ENCODE) &&
-		      !(BASE_TABLE(dfa)[j] & MARK_DIFF_ENCODE_VERIFIED));
+		     (BASE_TABLE(dfa)[j] & MATCH_FLAG_DIFF_ENCODE) &&
+		     !(BASE_TABLE(dfa)[j] & MARK_DIFF_ENCODE);
 		     j = k) {
-			if (BASE_TABLE(dfa)[j] & MARK_DIFF_ENCODE)
-				/* loop in current chain */
-				goto out;
 			k = DEFAULT_TABLE(dfa)[j];
 			if (j == k)
-				/* self loop */
 				goto out;
+			if (k < j)
+				break;		/* already verified */
 			BASE_TABLE(dfa)[j] |= MARK_DIFF_ENCODE;
-		}
-		/* move mark to verified */
-		for (j = i;
-		     (BASE_TABLE(dfa)[j] & MATCH_FLAG_DIFF_ENCODE);
-		     j = k) {
-			k = DEFAULT_TABLE(dfa)[j];
-			if (j < i)
-				/* jumps to state/chain that has been
-				 * verified
-				 */
-				break;
-			BASE_TABLE(dfa)[j] &= ~MARK_DIFF_ENCODE;
-			BASE_TABLE(dfa)[j] |= MARK_DIFF_ENCODE_VERIFIED;
 		}
 	}
 	error = 0;
@@ -255,7 +239,7 @@ static void dfa_free(struct aa_dfa *dfa)
 
 /**
  * aa_dfa_free_kref - free aa_dfa by kref (called by aa_put_dfa)
- * @kr: kref callback for freeing of a dfa  (NOT NULL)
+ * @kref: kref callback for freeing of a dfa  (NOT NULL)
  */
 void aa_dfa_free_kref(struct kref *kref)
 {
@@ -424,18 +408,13 @@ aa_state_t aa_dfa_match_len(struct aa_dfa *dfa, aa_state_t start,
 	if (dfa->tables[YYTD_ID_EC]) {
 		/* Equivalence class table defined */
 		u8 *equiv = EQUIV_TABLE(dfa);
-		for (; len; len--) {
-			u8 c = equiv[(u8) *str];
-
-			match_char(state, def, base, next, check, c);
-			str++;
-		}
+		for (; len; len--)
+			match_char(state, def, base, next, check,
+				   equiv[(u8) *str++]);
 	} else {
 		/* default is direct to next state */
-		for (; len; len--) {
-			match_char(state, def, base, next, check, (u8) *str);
-			str++;
-		}
+		for (; len; len--)
+			match_char(state, def, base, next, check, (u8) *str++);
 	}
 
 	return state;
@@ -469,18 +448,13 @@ aa_state_t aa_dfa_match(struct aa_dfa *dfa, aa_state_t start, const char *str)
 		/* Equivalence class table defined */
 		u8 *equiv = EQUIV_TABLE(dfa);
 		/* default is direct to next state */
-		while (*str) {
-			u8 c = equiv[(u8) *str];
-
-			match_char(state, def, base, next, check, c);
-			str++;
-		}
+		while (*str)
+			match_char(state, def, base, next, check,
+				   equiv[(u8) *str++]);
 	} else {
 		/* default is direct to next state */
-		while (*str) {
-			match_char(state, def, base, next, check, (u8) *str);
-			str++;
-		}
+		while (*str)
+			match_char(state, def, base, next, check, (u8) *str++);
 	}
 
 	return state;

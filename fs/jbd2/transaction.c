@@ -445,7 +445,7 @@ repeat:
 	read_unlock(&journal->j_state_lock);
 	current->journal_info = handle;
 
-	rwsem_acquire_read(&journal->j_trans_commit_map, 0, 1, _THIS_IP_);
+	rwsem_acquire_read(&journal->j_trans_commit_map, 0, 0, _THIS_IP_);
 	jbd2_journal_free_transaction(new_transaction);
 	/*
 	 * Ensure that no allocations done while the transaction is open are
@@ -1216,10 +1216,24 @@ out:
 int jbd2_journal_get_write_access(handle_t *handle, struct buffer_head *bh)
 {
 	struct journal_head *jh;
+	journal_t *journal;
 	int rc;
 
 	if (is_handle_aborted(handle))
 		return -EROFS;
+
+	journal = handle->h_transaction->t_journal;
+	if (jbd2_check_fs_dev_write_error(journal)) {
+		/*
+		 * If the fs dev has writeback errors, it may have failed
+		 * to async write out metadata buffers in the background.
+		 * In this case, we could read old data from disk and write
+		 * it out again, which may lead to on-disk filesystem
+		 * inconsistency. Aborting journal can avoid it happen.
+		 */
+		jbd2_journal_abort(journal, -EIO);
+		return -EIO;
+	}
 
 	if (jbd2_write_access_granted(handle, bh, false))
 		return 0;
@@ -1274,23 +1288,14 @@ int jbd2_journal_get_create_access(handle_t *handle, struct buffer_head *bh)
 	 * committing transaction's lists, but it HAS to be in Forget state in
 	 * that case: the transaction must have deleted the buffer for it to be
 	 * reused here.
-	 * In the case of file system data inconsistency, for example, if the
-	 * block bitmap of a referenced block is not set, it can lead to the
-	 * situation where a block being committed is allocated and used again.
-	 * As a result, the following condition will not be satisfied, so here
-	 * we directly trigger a JBD abort instead of immediately invoking
-	 * bugon.
 	 */
 	spin_lock(&jh->b_state_lock);
-	if (!(jh->b_transaction == transaction || jh->b_transaction == NULL ||
-	      (jh->b_transaction == journal->j_committing_transaction &&
-	       jh->b_jlist == BJ_Forget)) || jh->b_next_transaction != NULL) {
-		err = -EROFS;
-		spin_unlock(&jh->b_state_lock);
-		jbd2_journal_abort(journal, err);
-		goto out;
-	}
+	J_ASSERT_JH(jh, (jh->b_transaction == transaction ||
+		jh->b_transaction == NULL ||
+		(jh->b_transaction == journal->j_committing_transaction &&
+			  jh->b_jlist == BJ_Forget)));
 
+	J_ASSERT_JH(jh, jh->b_next_transaction == NULL);
 	J_ASSERT_JH(jh, buffer_locked(jh2bh(jh)));
 
 	if (jh->b_transaction == NULL) {
@@ -1658,7 +1663,6 @@ int jbd2_journal_forget(handle_t *handle, struct buffer_head *bh)
 	int drop_reserve = 0;
 	int err = 0;
 	int was_modified = 0;
-	int wait_for_writeback = 0;
 
 	if (is_handle_aborted(handle))
 		return -EROFS;
@@ -1782,22 +1786,18 @@ int jbd2_journal_forget(handle_t *handle, struct buffer_head *bh)
 		}
 
 		/*
-		 * The buffer has not yet been written to disk. We should
-		 * either clear the buffer or ensure that the ongoing I/O
-		 * is completed, and attach this buffer to current
-		 * transaction so that the buffer can be checkpointed only
-		 * after the current transaction commits.
+		 * The buffer is still not written to disk, we should
+		 * attach this buffer to current transaction so that the
+		 * buffer can be checkpointed only after the current
+		 * transaction commits.
 		 */
 		clear_buffer_dirty(bh);
-		wait_for_writeback = 1;
 		__jbd2_journal_file_buffer(jh, transaction, BJ_Forget);
 		spin_unlock(&journal->j_list_lock);
 	}
 drop:
 	__brelse(bh);
 	spin_unlock(&jh->b_state_lock);
-	if (wait_for_writeback)
-		wait_on_buffer(bh);
 	jbd2_journal_put_journal_head(jh);
 	if (drop_reserve) {
 		/* no need to reserve log space for this block -bzzz */

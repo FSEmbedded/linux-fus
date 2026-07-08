@@ -121,7 +121,7 @@ static int bme280_read_uncomp_temperature(struct bme280_t *bme280,
  *  @return Returns the actual temperature
  *
 */
-s32 bme280_compensate_temperature_int32(struct bme280_t *bme280,
+static s32 bme280_compensate_temperature_int32(struct bme280_t *bme280,
 						s32 v_uncomp_temperature_s32)
 {
 	s32 v_x1_u32r = 0;
@@ -216,7 +216,7 @@ static int bme280_read_uncomp_pressure(struct bme280_t *bme280,
  *  @return Return the actual pressure output as u32
  *
 */
-u32 bme280_compensate_pressure_int32(struct bme280_t *bme280,
+static u32 bme280_compensate_pressure_int32(struct bme280_t *bme280,
 						s32 v_uncomp_pressure_s32)
 {
 	s32 v_x1_u32 = 0;
@@ -344,7 +344,7 @@ static int bme280_read_uncomp_humidity(struct bme280_t *bme280,
  *  @return Return the actual relative humidity output as u32
  *
 */
-u32 bme280_compensate_humidity_int32(struct bme280_t *bme280,
+static u32 bme280_compensate_humidity_int32(struct bme280_t *bme280,
 						s32 v_uncomp_humidity_s32)
 {
 	s32 v_x1_u32 = 0;

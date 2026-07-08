@@ -6,7 +6,6 @@
 #include <linux/path.h>
 #include <linux/slab.h>
 #include <linux/fs_struct.h>
-#include <linux/init_task.h>
 #include "internal.h"
 
 /*

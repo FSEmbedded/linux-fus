@@ -226,8 +226,6 @@ int __init efi_memblock_x86_reserve_range(void)
 	if (add_efi_memmap || do_efi_soft_reserve())
 		do_add_efi_memmap();
 
-	efi_fake_memmap_early();
-
 	WARN(efi.memmap.desc_version != 1,
 	     "Unexpected EFI_MEMORY_DESCRIPTOR version %ld",
 	     efi.memmap.desc_version);
@@ -860,7 +858,7 @@ static void __init __efi_enter_virtual_mode(void)
 	}
 
 	efi_check_for_embedded_firmwares();
-	efi_unmap_boot_services();
+	efi_free_boot_services();
 
 	if (!efi_is_mixed())
 		efi_native_runtime_setup();
@@ -949,4 +947,9 @@ umode_t efi_attr_is_visible(struct kobject *kobj, struct attribute *attr, int n)
 			return 0;
 	}
 	return attr->mode;
+}
+
+enum efi_secureboot_mode __x86_ima_efi_boot_mode(void)
+{
+	return boot_params.secure_boot;
 }

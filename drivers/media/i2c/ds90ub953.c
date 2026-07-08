@@ -507,8 +507,6 @@ static int ub953_get_frame_desc(struct v4l2_subdev *sd, unsigned int pad,
 	if (ret)
 		return ret;
 
-	memset(fd, 0, sizeof(*fd));
-
 	fd->type = V4L2_MBUS_FRAME_DESC_TYPE_CSI2;
 
 	state = v4l2_subdev_lock_and_get_active_state(sd);
@@ -568,8 +566,7 @@ static int ub953_set_fmt(struct v4l2_subdev *sd,
 		return v4l2_subdev_get_fmt(sd, state, format);
 
 	/* Set sink format */
-	fmt = v4l2_subdev_state_get_stream_format(state, format->pad,
-						  format->stream);
+	fmt = v4l2_subdev_state_get_format(state, format->pad, format->stream);
 	if (!fmt)
 		return -EINVAL;
 
@@ -586,8 +583,8 @@ static int ub953_set_fmt(struct v4l2_subdev *sd,
 	return 0;
 }
 
-static int ub953_init_cfg(struct v4l2_subdev *sd,
-			  struct v4l2_subdev_state *state)
+static int ub953_init_state(struct v4l2_subdev *sd,
+			    struct v4l2_subdev_state *state)
 {
 	struct v4l2_subdev_route routes[] = {
 		{
@@ -724,7 +721,6 @@ static const struct v4l2_subdev_pad_ops ub953_pad_ops = {
 	.get_frame_desc = ub953_get_frame_desc,
 	.get_fmt = v4l2_subdev_get_fmt,
 	.set_fmt = ub953_set_fmt,
-	.init_cfg = ub953_init_cfg,
 };
 
 static const struct v4l2_subdev_core_ops ub953_subdev_core_ops = {
@@ -736,6 +732,10 @@ static const struct v4l2_subdev_core_ops ub953_subdev_core_ops = {
 static const struct v4l2_subdev_ops ub953_subdev_ops = {
 	.core = &ub953_subdev_core_ops,
 	.pad = &ub953_pad_ops,
+};
+
+static const struct v4l2_subdev_internal_ops ub953_internal_ops = {
+	.init_state = ub953_init_state,
 };
 
 static const struct media_entity_operations ub953_entity_ops = {
@@ -1264,6 +1264,7 @@ static int ub953_subdev_init(struct ub953_data *priv)
 	int ret;
 
 	v4l2_i2c_subdev_init(&priv->sd, priv->client, &ub953_subdev_ops);
+	priv->sd.internal_ops = &ub953_internal_ops;
 
 	priv->sd.flags |= V4L2_SUBDEV_FL_HAS_DEVNODE |
 			  V4L2_SUBDEV_FL_HAS_EVENTS | V4L2_SUBDEV_FL_STREAMS;

@@ -153,7 +153,7 @@ static int rk808_clkout_probe(struct platform_device *pdev)
 	struct rk808_clkout *rk808_clkout;
 	int ret;
 
-	device_set_of_node_from_dev(dev, dev->parent);
+	dev->of_node = pdev->dev.parent->of_node;
 
 	rk808_clkout = devm_kzalloc(dev,
 				    sizeof(*rk808_clkout), GFP_KERNEL);

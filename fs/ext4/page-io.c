@@ -433,7 +433,7 @@ submit_and_retry:
 		io_submit_init_bio(io, bh);
 	if (!bio_add_folio(io->io_bio, io_folio, bh->b_size, bh_offset(bh)))
 		goto submit_and_retry;
-	wbc_account_cgroup_owner(io->io_wbc, &folio->page, bh->b_size);
+	wbc_account_cgroup_owner(io->io_wbc, folio, bh->b_size);
 	io->io_next_block++;
 }
 
@@ -453,7 +453,7 @@ int ext4_bio_write_folio(struct ext4_io_submit *io, struct folio *folio,
 	BUG_ON(folio_test_writeback(folio));
 
 	/*
-	 * Comments copied from block_write_full_page:
+	 * Comments copied from block_write_full_folio:
 	 *
 	 * The folio straddles i_size.  It must be zeroed out on each and every
 	 * writepage invocation because it may be mmapped.  "A file is mapped
@@ -506,15 +506,9 @@ int ext4_bio_write_folio(struct ext4_io_submit *io, struct folio *folio,
 		nr_to_submit++;
 	} while ((bh = bh->b_this_page) != head);
 
-	if (!nr_to_submit) {
-		/*
-		 * We have nothing to submit. Just cycle the folio through
-		 * writeback state to properly update xarray tags.
-		 */
-		__folio_start_writeback(folio, keep_towrite);
-		folio_end_writeback(folio);
+	/* Nothing to submit? Just unlock the folio... */
+	if (!nr_to_submit)
 		return 0;
-	}
 
 	bh = head = folio_buffers(folio);
 

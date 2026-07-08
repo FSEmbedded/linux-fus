@@ -153,7 +153,7 @@ static int lcdif_init(struct mxc_dispdrv_handle *disp,
 	return ret;
 }
 
-void lcdif_deinit(struct mxc_dispdrv_handle *disp)
+static void lcdif_deinit(struct mxc_dispdrv_handle *disp)
 {
 	struct mxc_lcdif_data *lcdif = mxc_dispdrv_getdata(disp);
 	int ret;
@@ -280,7 +280,7 @@ static int mxc_lcdif_probe(struct platform_device *pdev)
 	return ret;
 }
 
-static int mxc_lcdif_remove(struct platform_device *pdev)
+static void mxc_lcdif_remove(struct platform_device *pdev)
 {
 	struct mxc_lcdif_data *lcdif = dev_get_drvdata(&pdev->dev);
 
@@ -291,7 +291,6 @@ static int mxc_lcdif_remove(struct platform_device *pdev)
 	mxc_dispdrv_puthandle(lcdif->disp_lcdif);
 	mxc_dispdrv_unregister(lcdif->disp_lcdif);
 	kfree(lcdif);
-	return 0;
 }
 
 static const struct of_device_id imx_lcd_dt_ids[] = {

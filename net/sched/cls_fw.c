@@ -247,18 +247,8 @@ static int fw_change(struct net *net, struct sk_buff *in_skb,
 	struct nlattr *tb[TCA_FW_MAX + 1];
 	int err;
 
-	if (!opt) {
-		if (handle)
-			return -EINVAL;
-
-		if (tcf_block_shared(tp->chain->block)) {
-			NL_SET_ERR_MSG(extack,
-				       "Must specify mark when attaching fw filter to block");
-			return -EINVAL;
-		}
-
-		return 0; /* Succeed if it is old method. */
-	}
+	if (!opt)
+		return handle ? -EINVAL : 0; /* Succeed if it is old method. */
 
 	err = nla_parse_nested_deprecated(tb, TCA_FW_MAX, opt, fw_policy,
 					  NULL);
@@ -443,6 +433,7 @@ static struct tcf_proto_ops cls_fw_ops __read_mostly = {
 	.bind_class	=	fw_bind_class,
 	.owner		=	THIS_MODULE,
 };
+MODULE_ALIAS_NET_CLS("fw");
 
 static int __init init_fw(void)
 {
@@ -456,4 +447,5 @@ static void __exit exit_fw(void)
 
 module_init(init_fw)
 module_exit(exit_fw)
+MODULE_DESCRIPTION("SKB mark based TC classifier");
 MODULE_LICENSE("GPL");

@@ -11,6 +11,7 @@
 #include <linux/export.h>
 #include <linux/pm_runtime.h>
 #include <linux/pm_wakeirq.h>
+#include <linux/rculist.h>
 #include <trace/events/rpm.h>
 
 #include "../base.h"
@@ -93,6 +94,7 @@ static void update_pm_runtime_accounting(struct device *dev)
 static void __update_runtime_status(struct device *dev, enum rpm_status status)
 {
 	update_pm_runtime_accounting(dev);
+	trace_rpm_status(dev, status);
 	dev->power.runtime_status = status;
 }
 
@@ -1552,32 +1554,6 @@ out:
 }
 EXPORT_SYMBOL_GPL(pm_runtime_enable);
 
-static void pm_runtime_set_suspended_action(void *data)
-{
-	pm_runtime_set_suspended(data);
-}
-
-/**
- * devm_pm_runtime_set_active_enabled - set_active version of devm_pm_runtime_enable.
- *
- * @dev: Device to handle.
- */
-int devm_pm_runtime_set_active_enabled(struct device *dev)
-{
-	int err;
-
-	err = pm_runtime_set_active(dev);
-	if (err)
-		return err;
-
-	err = devm_add_action_or_reset(dev, pm_runtime_set_suspended_action, dev);
-	if (err)
-		return err;
-
-	return devm_pm_runtime_enable(dev);
-}
-EXPORT_SYMBOL_GPL(devm_pm_runtime_set_active_enabled);
-
 static void pm_runtime_disable_action(void *data)
 {
 	pm_runtime_dont_use_autosuspend(data);
@@ -1599,24 +1575,6 @@ int devm_pm_runtime_enable(struct device *dev)
 	return devm_add_action_or_reset(dev, pm_runtime_disable_action, dev);
 }
 EXPORT_SYMBOL_GPL(devm_pm_runtime_enable);
-
-static void pm_runtime_put_noidle_action(void *data)
-{
-	pm_runtime_put_noidle(data);
-}
-
-/**
- * devm_pm_runtime_get_noresume - devres-enabled version of pm_runtime_get_noresume.
- *
- * @dev: Device to handle.
- */
-int devm_pm_runtime_get_noresume(struct device *dev)
-{
-	pm_runtime_get_noresume(dev);
-
-	return devm_add_action_or_reset(dev, pm_runtime_put_noidle_action, dev);
-}
-EXPORT_SYMBOL_GPL(devm_pm_runtime_get_noresume);
 
 /**
  * pm_runtime_forbid - Block runtime PM of a device.
@@ -1827,18 +1785,16 @@ void pm_runtime_init(struct device *dev)
  */
 void pm_runtime_reinit(struct device *dev)
 {
-	if (pm_runtime_enabled(dev))
-		return;
-
-	if (dev->power.runtime_status == RPM_ACTIVE)
-		pm_runtime_set_suspended(dev);
-
-	if (dev->power.irq_safe) {
-		spin_lock_irq(&dev->power.lock);
-		dev->power.irq_safe = 0;
-		spin_unlock_irq(&dev->power.lock);
-		if (dev->parent)
-			pm_runtime_put(dev->parent);
+	if (!pm_runtime_enabled(dev)) {
+		if (dev->power.runtime_status == RPM_ACTIVE)
+			pm_runtime_set_suspended(dev);
+		if (dev->power.irq_safe) {
+			spin_lock_irq(&dev->power.lock);
+			dev->power.irq_safe = 0;
+			spin_unlock_irq(&dev->power.lock);
+			if (dev->parent)
+				pm_runtime_put(dev->parent);
+		}
 	}
 	/*
 	 * Clear power.needs_force_resume in case it has been set by
@@ -1854,7 +1810,6 @@ void pm_runtime_reinit(struct device *dev)
 void pm_runtime_remove(struct device *dev)
 {
 	__pm_runtime_disable(dev, false);
-	flush_work(&dev->power.work);
 	pm_runtime_reinit(dev);
 }
 

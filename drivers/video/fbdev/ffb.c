@@ -37,9 +37,10 @@ static void ffb_imageblit(struct fb_info *, const struct fb_image *);
 static void ffb_fillrect(struct fb_info *, const struct fb_fillrect *);
 static void ffb_copyarea(struct fb_info *, const struct fb_copyarea *);
 static int ffb_sync(struct fb_info *);
-static int ffb_mmap(struct fb_info *, struct vm_area_struct *);
-static int ffb_ioctl(struct fb_info *, unsigned int, unsigned long);
 static int ffb_pan_display(struct fb_var_screeninfo *, struct fb_info *);
+
+static int ffb_sbusfb_mmap(struct fb_info *info, struct vm_area_struct *vma);
+static int ffb_sbusfb_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg);
 
 /*
  *  Frame buffer operations
@@ -47,6 +48,7 @@ static int ffb_pan_display(struct fb_var_screeninfo *, struct fb_info *);
 
 static const struct fb_ops ffb_ops = {
 	.owner			= THIS_MODULE,
+	__FB_DEFAULT_SBUS_OPS_RDWR(ffb),
 	.fb_setcolreg		= ffb_setcolreg,
 	.fb_blank		= ffb_blank,
 	.fb_pan_display		= ffb_pan_display,
@@ -54,11 +56,8 @@ static const struct fb_ops ffb_ops = {
 	.fb_copyarea		= ffb_copyarea,
 	.fb_imageblit		= ffb_imageblit,
 	.fb_sync		= ffb_sync,
-	.fb_mmap		= ffb_mmap,
-	.fb_ioctl		= ffb_ioctl,
-#ifdef CONFIG_COMPAT
-	.fb_compat_ioctl	= sbusfb_compat_ioctl,
-#endif
+	__FB_DEFAULT_SBUS_OPS_IOCTL(ffb),
+	__FB_DEFAULT_SBUS_OPS_MMAP(ffb),
 };
 
 /* Register layout and definitions */
@@ -336,9 +335,6 @@ struct ffb_dac {
 };
 
 #define FFB_DAC_UCTRL		0x1001 /* User Control */
-#define FFB_DAC_UCTRL_OVENAB	0x00000008 /* Overlay Enable */
-#define FFB_DAC_UCTRL_WMODE	0x00000030 /* Window Mode */
-#define FFB_DAC_UCTRL_WM_COMB	0x00000000 /* Window Mode = Combined */
 #define FFB_DAC_UCTRL_MANREV	0x00000f00 /* 4-bit Manufacturing Revision */
 #define FFB_DAC_UCTRL_MANREV_SHIFT 8
 #define FFB_DAC_TGEN		0x6000 /* Timing Generator */
@@ -429,7 +425,7 @@ static void ffb_switch_from_graph(struct ffb_par *par)
 {
 	struct ffb_fbc __iomem *fbc = par->fbc;
 	struct ffb_dac __iomem *dac = par->dac;
-	unsigned long flags, uctrl;
+	unsigned long flags;
 
 	spin_lock_irqsave(&par->lock, flags);
 	FFBWait(par);
@@ -453,15 +449,6 @@ static void ffb_switch_from_graph(struct ffb_par *par)
 	else
 		upa_writel((FFB_DAC_CUR_CTRL_P0 |
 			    FFB_DAC_CUR_CTRL_P1), &dac->value2);
-
-	/* Disable overlay and window modes. */
-	upa_writel(FFB_DAC_UCTRL, &dac->type);
-	uctrl = upa_readl(&dac->value);
-	uctrl &= ~FFB_DAC_UCTRL_WMODE;
-	uctrl |= FFB_DAC_UCTRL_WM_COMB;
-	uctrl &= ~FFB_DAC_UCTRL_OVENAB;
-	upa_writel(FFB_DAC_UCTRL, &dac->type);
-	upa_writel(uctrl, &dac->value);
 
 	spin_unlock_irqrestore(&par->lock, flags);
 }
@@ -723,7 +710,7 @@ static int ffb_blank(int blank, struct fb_info *info)
 	return 0;
 }
 
-static struct sbus_mmap_map ffb_mmap_map[] = {
+static const struct sbus_mmap_map ffb_mmap_map[] = {
 	{
 		.voff	= FFB_SFB8R_VOFF,
 		.poff	= FFB_SFB8R_POFF,
@@ -862,7 +849,7 @@ static struct sbus_mmap_map ffb_mmap_map[] = {
 	{ .size = 0 }
 };
 
-static int ffb_mmap(struct fb_info *info, struct vm_area_struct *vma)
+static int ffb_sbusfb_mmap(struct fb_info *info, struct vm_area_struct *vma)
 {
 	struct ffb_par *par = (struct ffb_par *)info->par;
 
@@ -871,7 +858,7 @@ static int ffb_mmap(struct fb_info *info, struct vm_area_struct *vma)
 				  0, vma);
 }
 
-static int ffb_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg)
+static int ffb_sbusfb_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg)
 {
 	struct ffb_par *par = (struct ffb_par *)info->par;
 
@@ -1066,7 +1053,7 @@ static struct platform_driver ffb_driver = {
 		.of_match_table = ffb_match,
 	},
 	.probe		= ffb_probe,
-	.remove_new	= ffb_remove,
+	.remove		= ffb_remove,
 };
 
 static int __init ffb_init(void)

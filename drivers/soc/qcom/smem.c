@@ -285,7 +285,7 @@ struct qcom_smem {
 	struct smem_partition partitions[SMEM_HOST_COUNT];
 
 	unsigned num_regions;
-	struct smem_region regions[];
+	struct smem_region regions[] __counted_by(num_regions);
 };
 
 static void *
@@ -394,7 +394,7 @@ bool qcom_smem_is_available(void)
 {
 	return !!__smem;
 }
-EXPORT_SYMBOL(qcom_smem_is_available);
+EXPORT_SYMBOL_GPL(qcom_smem_is_available);
 
 static int qcom_smem_alloc_private(struct qcom_smem *smem,
 				   struct smem_partition *part,
@@ -681,8 +681,6 @@ invalid_canary:
 void *qcom_smem_get(unsigned host, unsigned item, size_t *size)
 {
 	struct smem_partition *part;
-	unsigned long flags;
-	int ret;
 	void *ptr = ERR_PTR(-EPROBE_DEFER);
 
 	if (!__smem)
@@ -690,12 +688,6 @@ void *qcom_smem_get(unsigned host, unsigned item, size_t *size)
 
 	if (WARN_ON(item >= __smem->item_count))
 		return ERR_PTR(-EINVAL);
-
-	ret = hwspin_lock_timeout_irqsave(__smem->hwlock,
-					  HWSPINLOCK_TIMEOUT,
-					  &flags);
-	if (ret)
-		return ERR_PTR(ret);
 
 	if (host < SMEM_HOST_COUNT && __smem->partitions[host].virt_base) {
 		part = &__smem->partitions[host];
@@ -707,10 +699,7 @@ void *qcom_smem_get(unsigned host, unsigned item, size_t *size)
 		ptr = qcom_smem_get_global(__smem, item, size);
 	}
 
-	hwspin_unlock_irqrestore(__smem->hwlock, &flags);
-
 	return ptr;
-
 }
 EXPORT_SYMBOL_GPL(qcom_smem_get);
 
@@ -832,6 +821,39 @@ int qcom_smem_get_soc_id(u32 *id)
 }
 EXPORT_SYMBOL_GPL(qcom_smem_get_soc_id);
 
+/**
+ * qcom_smem_get_feature_code() - return the feature code
+ * @code: On success, return the feature code here.
+ *
+ * Look up the feature code identifier from SMEM and return it.
+ *
+ * Return: 0 on success, negative errno on failure.
+ */
+int qcom_smem_get_feature_code(u32 *code)
+{
+	struct socinfo *info;
+	u32 raw_code;
+
+	info = qcom_smem_get(QCOM_SMEM_HOST_ANY, SMEM_HW_SW_BUILD_ID, NULL);
+	if (IS_ERR(info))
+		return PTR_ERR(info);
+
+	/* This only makes sense for socinfo >= 16 */
+	if (__le32_to_cpu(info->fmt) < SOCINFO_VERSION(0, 16))
+		return -EOPNOTSUPP;
+
+	raw_code = __le32_to_cpu(info->feature_code);
+
+	/* Ensure the value makes sense */
+	if (raw_code > SOCINFO_FC_INT_MAX)
+		raw_code = SOCINFO_FC_UNKNOWN;
+
+	*code = raw_code;
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(qcom_smem_get_feature_code);
+
 static int qcom_smem_get_sbl_version(struct qcom_smem *smem)
 {
 	struct smem_header *header;
@@ -870,7 +892,7 @@ static u32 qcom_smem_get_item_count(struct qcom_smem *smem)
 	if (IS_ERR_OR_NULL(ptable))
 		return SMEM_ITEM_COUNT;
 
-	info = (struct smem_info *)&ptable->entry[le32_to_cpu(ptable->num_entries)];
+	info = (struct smem_info *)&ptable->entry[ptable->num_entries];
 	if (memcmp(info->magic, SMEM_INFO_MAGIC, sizeof(info->magic)))
 		return SMEM_ITEM_COUNT;
 
@@ -1164,7 +1186,7 @@ static int qcom_smem_probe(struct platform_device *pdev)
 		return hwlock_id;
 	}
 
-	smem->hwlock = devm_hwspin_lock_request_specific(&pdev->dev, hwlock_id);
+	smem->hwlock = hwspin_lock_request_specific(hwlock_id);
 	if (!smem->hwlock)
 		return -ENXIO;
 
@@ -1189,9 +1211,7 @@ static int qcom_smem_probe(struct platform_device *pdev)
 		smem->item_count = qcom_smem_get_item_count(smem);
 		break;
 	case SMEM_GLOBAL_HEAP_VERSION:
-		ret = qcom_smem_map_global(smem, size);
-		if (ret < 0)
-			return ret;
+		qcom_smem_map_global(smem, size);
 		smem->item_count = SMEM_ITEM_COUNT;
 		break;
 	default:
@@ -1215,13 +1235,12 @@ static int qcom_smem_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int qcom_smem_remove(struct platform_device *pdev)
+static void qcom_smem_remove(struct platform_device *pdev)
 {
 	platform_device_unregister(__smem->socinfo);
 
+	hwspin_lock_free(__smem->hwlock);
 	__smem = NULL;
-
-	return 0;
 }
 
 static const struct of_device_id qcom_smem_of_match[] = {
@@ -1232,7 +1251,7 @@ MODULE_DEVICE_TABLE(of, qcom_smem_of_match);
 
 static struct platform_driver qcom_smem_driver = {
 	.probe = qcom_smem_probe,
-	.remove = qcom_smem_remove,
+	.remove_new = qcom_smem_remove,
 	.driver  = {
 		.name = "qcom-smem",
 		.of_match_table = qcom_smem_of_match,

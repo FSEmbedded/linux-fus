@@ -61,8 +61,8 @@
 #include <linux/hdreg.h>
 #include <linux/reboot.h>
 #include <linux/stringify.h>
-#include <linux/irq.h>
 #include <asm/io.h>
+#include <asm/irq.h>
 #include <asm/processor.h>
 #include <scsi/scsi.h>
 #include <scsi/scsi_host.h>
@@ -77,7 +77,6 @@
 static LIST_HEAD(ipr_ioa_head);
 static unsigned int ipr_log_level = IPR_DEFAULT_LOG_LEVEL;
 static unsigned int ipr_max_speed = 1;
-static int ipr_testmode = 0;
 static unsigned int ipr_fastfail = 0;
 static unsigned int ipr_transop_timeout = 0;
 static unsigned int ipr_debug = 0;
@@ -193,8 +192,6 @@ module_param_named(max_speed, ipr_max_speed, uint, 0);
 MODULE_PARM_DESC(max_speed, "Maximum bus speed (0-2). Default: 1=U160. Speeds: 0=80 MB/s, 1=U160, 2=U320");
 module_param_named(log_level, ipr_log_level, uint, 0);
 MODULE_PARM_DESC(log_level, "Set to 0 - 4 for increasing verbosity of device driver");
-module_param_named(testmode, ipr_testmode, int, 0);
-MODULE_PARM_DESC(testmode, "DANGEROUS!!! Allows unsupported configurations");
 module_param_named(fastfail, ipr_fastfail, int, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(fastfail, "Reduce timeouts and retries");
 module_param_named(transop_timeout, ipr_transop_timeout, int, 0);
@@ -761,12 +758,14 @@ static void ipr_mask_and_clear_interrupts(struct ipr_ioa_cfg *ioa_cfg,
 static int ipr_save_pcix_cmd_reg(struct ipr_ioa_cfg *ioa_cfg)
 {
 	int pcix_cmd_reg = pci_find_capability(ioa_cfg->pdev, PCI_CAP_ID_PCIX);
+	int rc;
 
 	if (pcix_cmd_reg == 0)
 		return 0;
 
-	if (pci_read_config_word(ioa_cfg->pdev, pcix_cmd_reg + PCI_X_CMD,
-				 &ioa_cfg->saved_pcix_cmd_reg) != PCIBIOS_SUCCESSFUL) {
+	rc = pci_read_config_word(ioa_cfg->pdev, pcix_cmd_reg + PCI_X_CMD,
+				  &ioa_cfg->saved_pcix_cmd_reg);
+	if (rc != PCIBIOS_SUCCESSFUL) {
 		dev_err(&ioa_cfg->pdev->dev, "Failed to save PCI-X command register\n");
 		return -EIO;
 	}
@@ -785,10 +784,12 @@ static int ipr_save_pcix_cmd_reg(struct ipr_ioa_cfg *ioa_cfg)
 static int ipr_set_pcix_cmd_reg(struct ipr_ioa_cfg *ioa_cfg)
 {
 	int pcix_cmd_reg = pci_find_capability(ioa_cfg->pdev, PCI_CAP_ID_PCIX);
+	int rc;
 
 	if (pcix_cmd_reg) {
-		if (pci_write_config_word(ioa_cfg->pdev, pcix_cmd_reg + PCI_X_CMD,
-					  ioa_cfg->saved_pcix_cmd_reg) != PCIBIOS_SUCCESSFUL) {
+		rc = pci_write_config_word(ioa_cfg->pdev, pcix_cmd_reg + PCI_X_CMD,
+					   ioa_cfg->saved_pcix_cmd_reg);
+		if (rc != PCIBIOS_SUCCESSFUL) {
 			dev_err(&ioa_cfg->pdev->dev, "Failed to setup PCI-X command register\n");
 			return -EIO;
 		}
@@ -4768,15 +4769,17 @@ static void ipr_slave_destroy(struct scsi_device *sdev)
 }
 
 /**
- * ipr_slave_configure - Configure a SCSI device
+ * ipr_device_configure - Configure a SCSI device
  * @sdev:	scsi device struct
+ * @lim:	queue limits
  *
  * This function configures the specified scsi device.
  *
  * Return value:
  * 	0 on success
  **/
-static int ipr_slave_configure(struct scsi_device *sdev)
+static int ipr_device_configure(struct scsi_device *sdev,
+		struct queue_limits *lim)
 {
 	struct ipr_ioa_cfg *ioa_cfg = (struct ipr_ioa_cfg *) sdev->host->hostdata;
 	struct ipr_resource_entry *res;
@@ -4797,7 +4800,7 @@ static int ipr_slave_configure(struct scsi_device *sdev)
 			sdev->no_report_opcodes = 1;
 			blk_queue_rq_timeout(sdev->request_queue,
 					     IPR_VSET_RW_TIMEOUT);
-			blk_queue_max_hw_sectors(sdev->request_queue, IPR_VSET_MAX_SECTORS);
+			lim->max_hw_sectors = IPR_VSET_MAX_SECTORS;
 		}
 		spin_unlock_irqrestore(ioa_cfg->host->host_lock, lock_flags);
 
@@ -6396,7 +6399,7 @@ static const struct scsi_host_template driver_template = {
 	.eh_device_reset_handler = ipr_eh_dev_reset,
 	.eh_host_reset_handler = ipr_eh_host_reset,
 	.slave_alloc = ipr_slave_alloc,
-	.slave_configure = ipr_slave_configure,
+	.device_configure = ipr_device_configure,
 	.slave_destroy = ipr_slave_destroy,
 	.scan_finished = ipr_scan_finished,
 	.target_destroy = ipr_target_destroy,
@@ -6411,45 +6414,6 @@ static const struct scsi_host_template driver_template = {
 	.sdev_groups = ipr_dev_groups,
 	.proc_name = IPR_NAME,
 };
-
-#ifdef CONFIG_PPC_PSERIES
-static const u16 ipr_blocked_processors[] = {
-	PVR_NORTHSTAR,
-	PVR_PULSAR,
-	PVR_POWER4,
-	PVR_ICESTAR,
-	PVR_SSTAR,
-	PVR_POWER4p,
-	PVR_630,
-	PVR_630p
-};
-
-/**
- * ipr_invalid_adapter - Determine if this adapter is supported on this hardware
- * @ioa_cfg:	ioa cfg struct
- *
- * Adapters that use Gemstone revision < 3.1 do not work reliably on
- * certain pSeries hardware. This function determines if the given
- * adapter is in one of these confgurations or not.
- *
- * Return value:
- * 	1 if adapter is not supported / 0 if adapter is supported
- **/
-static int ipr_invalid_adapter(struct ipr_ioa_cfg *ioa_cfg)
-{
-	int i;
-
-	if ((ioa_cfg->type == 0x5702) && (ioa_cfg->pdev->revision < 4)) {
-		for (i = 0; i < ARRAY_SIZE(ipr_blocked_processors); i++) {
-			if (pvr_version_is(ipr_blocked_processors[i]))
-				return 1;
-		}
-	}
-	return 0;
-}
-#else
-#define ipr_invalid_adapter(ioa_cfg) 0
-#endif
 
 /**
  * ipr_ioa_bringdown_done - IOA bring down completion.
@@ -7381,19 +7345,6 @@ static int ipr_ioafp_page0_inquiry(struct ipr_cmnd *ipr_cmd)
 	type[4] = '\0';
 	ioa_cfg->type = simple_strtoul((char *)type, NULL, 16);
 
-	if (ipr_invalid_adapter(ioa_cfg)) {
-		dev_err(&ioa_cfg->pdev->dev,
-			"Adapter not supported in this hardware configuration.\n");
-
-		if (!ipr_testmode) {
-			ioa_cfg->reset_retries += IPR_NUM_RESET_RELOAD_RETRIES;
-			ipr_initiate_ioa_reset(ioa_cfg, IPR_SHUTDOWN_NONE);
-			list_add_tail(&ipr_cmd->queue,
-					&ioa_cfg->hrrq->hrrq_free_q);
-			return IPR_RC_JOB_RETURN;
-		}
-	}
-
 	ipr_cmd->job_step = ipr_ioafp_page3_inquiry;
 
 	ipr_ioafp_inquiry(ipr_cmd, 1, 0,
@@ -7893,30 +7844,6 @@ static int ipr_dump_mailbox_wait(struct ipr_cmnd *ipr_cmd)
 }
 
 /**
- * ipr_set_affinity_nobalance
- * @ioa_cfg:	ipr_ioa_cfg struct for an ipr device
- * @flag:	bool
- *	true: ensable "IRQ_NO_BALANCING" bit for msix interrupt
- *	false: disable "IRQ_NO_BALANCING" bit for msix interrupt
- * Description: This function will be called to disable/enable
- *	"IRQ_NO_BALANCING" to avoid irqbalance daemon
- *	kicking in during adapter reset.
- **/
-static void ipr_set_affinity_nobalance(struct ipr_ioa_cfg *ioa_cfg, bool flag)
-{
-	int irq, i;
-
-	for (i = 0; i < ioa_cfg->nvectors; i++) {
-		irq = pci_irq_vector(ioa_cfg->pdev, i);
-
-		if (flag)
-			irq_set_status_flags(irq, IRQ_NO_BALANCING);
-		else
-			irq_clear_status_flags(irq, IRQ_NO_BALANCING);
-	}
-}
-
-/**
  * ipr_reset_restore_cfg_space - Restore PCI config space.
  * @ipr_cmd:	ipr command struct
  *
@@ -7940,7 +7867,6 @@ static int ipr_reset_restore_cfg_space(struct ipr_cmnd *ipr_cmd)
 		return IPR_RC_JOB_CONTINUE;
 	}
 
-	ipr_set_affinity_nobalance(ioa_cfg, false);
 	ipr_fail_all_ops(ioa_cfg);
 
 	if (ioa_cfg->sis64) {
@@ -8020,7 +7946,6 @@ static int ipr_reset_start_bist(struct ipr_cmnd *ipr_cmd)
 		rc = pci_write_config_byte(ioa_cfg->pdev, PCI_BIST, PCI_BIST_START);
 
 	if (rc == PCIBIOS_SUCCESSFUL) {
-		ipr_set_affinity_nobalance(ioa_cfg, true);
 		ipr_cmd->job_step = ipr_reset_bist_done;
 		ipr_reset_start_timer(ipr_cmd, IPR_WAIT_FOR_BIST_TIMEOUT);
 		rc = IPR_RC_JOB_RETURN;
@@ -9540,7 +9465,7 @@ static int ipr_probe_ioa(struct pci_dev *pdev,
 		ipr_number_of_msix = IPR_MAX_MSIX_VECTORS;
 	}
 
-	irq_flag = PCI_IRQ_LEGACY;
+	irq_flag = PCI_IRQ_INTX;
 	if (ioa_cfg->ipr_chip->has_msi)
 		irq_flag |= PCI_IRQ_MSI | PCI_IRQ_MSIX;
 	rc = pci_alloc_irq_vectors(pdev, 1, ipr_number_of_msix, irq_flag);

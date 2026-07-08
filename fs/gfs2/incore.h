@@ -218,19 +218,17 @@ struct gfs2_glock_operations {
 	int (*go_sync) (struct gfs2_glock *gl);
 	int (*go_xmote_bh)(struct gfs2_glock *gl);
 	void (*go_inval) (struct gfs2_glock *gl, int flags);
-	int (*go_demote_ok) (const struct gfs2_glock *gl);
 	int (*go_instantiate) (struct gfs2_glock *gl);
 	int (*go_held)(struct gfs2_holder *gh);
 	void (*go_dump)(struct seq_file *seq, const struct gfs2_glock *gl,
 			const char *fs_id_buf);
 	void (*go_callback)(struct gfs2_glock *gl, bool remote);
-	void (*go_free)(struct gfs2_glock *gl);
+	void (*go_unlocked)(struct gfs2_glock *gl);
 	const int go_subclass;
 	const int go_type;
 	const unsigned long go_flags;
 #define GLOF_ASPACE 1 /* address space attached */
 #define GLOF_LVB    2 /* Lock Value Block attached */
-#define GLOF_LRU    4 /* LRU managed */
 #define GLOF_NONDISK   8 /* not I/O related */
 };
 
@@ -322,16 +320,18 @@ enum {
 	GLF_DIRTY			= 6,
 	GLF_LFLUSH			= 7,
 	GLF_INVALIDATE_IN_PROGRESS	= 8,
-	GLF_REPLY_PENDING		= 9,
+	GLF_HAVE_REPLY			= 9,
 	GLF_INITIAL			= 10,
-	GLF_FROZEN			= 11,
+	GLF_HAVE_FROZEN_REPLY		= 11,
 	GLF_INSTANTIATE_IN_PROG		= 12, /* instantiate happening now */
 	GLF_LRU				= 13,
 	GLF_OBJECT			= 14, /* Used only for tracing */
 	GLF_BLOCKING			= 15,
-	GLF_FREEING			= 16, /* Wait for glock to be freed */
+	GLF_UNLOCKED			= 16, /* Wait for glock to be unlocked */
 	GLF_TRY_TO_EVICT		= 17, /* iopen glocks only */
 	GLF_VERIFY_DELETE		= 18, /* iopen glocks only */
+	GLF_PENDING_REPLY		= 19,
+	GLF_DEFER_DELETE		= 20, /* iopen glocks only */
 };
 
 struct gfs2_glock {
@@ -378,7 +378,6 @@ enum {
 	GIF_SW_PAGED		= 3,
 	GIF_FREE_VFS_INODE      = 5,
 	GIF_GLOP_PENDING	= 6,
-	GIF_DEFERRED_DELETE	= 7,
 };
 
 struct gfs2_inode {
@@ -772,6 +771,7 @@ struct gfs2_sbd {
 
 	/* Workqueue stuff */
 
+	struct workqueue_struct *sd_glock_wq;
 	struct workqueue_struct *sd_delete_wq;
 
 	/* Daemon stuff */
@@ -783,7 +783,6 @@ struct gfs2_sbd {
 
 	struct list_head sd_quota_list;
 	atomic_t sd_quota_count;
-	struct mutex sd_quota_mutex;
 	struct mutex sd_quota_sync_mutex;
 	wait_queue_head_t sd_quota_wait;
 
@@ -795,7 +794,7 @@ struct gfs2_sbd {
 
 	/* Log stuff */
 
-	struct address_space sd_aspace;
+	struct inode *sd_inode;
 
 	spinlock_t sd_log_lock;
 
@@ -850,6 +849,13 @@ struct gfs2_sbd {
 	struct dentry *debugfs_dir;    /* debugfs directory */
 	unsigned long sd_glock_dqs_held;
 };
+
+#define GFS2_BAD_INO 1
+
+static inline struct address_space *gfs2_aspace(struct gfs2_sbd *sdp)
+{
+	return sdp->sd_inode->i_mapping;
+}
 
 static inline void gfs2_glstats_inc(struct gfs2_glock *gl, int which)
 {

@@ -24,9 +24,7 @@
 #include <device/mali_kbase_device.h>
 #include <mali_kbase.h>
 
-#if MALI_USE_CSF
 #define DTB_SET_SIZE 2
-#endif
 
 static bool read_setting_valid(unsigned int prod_model, unsigned int id, unsigned int read_setting)
 {
@@ -49,6 +47,12 @@ static bool read_setting_valid(unsigned int prod_model, unsigned int id, unsigne
 		break;
 	case SYSC_ALLOC_ID_R_VL:
 		if (prod_model == GPU_ID_PRODUCT_TTIX)
+			return false;
+		break;
+	case SYSC_ALLOC_ID_R_RT:
+	case SYSC_ALLOC_ID_R_NE_A:
+	case SYSC_ALLOC_ID_R_NE_N:
+		if (prod_model < GPU_ID_MODEL_MAKE(14, 0))
 			return false;
 		break;
 	default:
@@ -74,7 +78,6 @@ static bool read_setting_valid(unsigned int prod_model, unsigned int id, unsigne
 static bool write_setting_valid(unsigned int prod_model, unsigned int id,
 				unsigned int write_setting)
 {
-	CSTD_UNUSED(prod_model);
 	switch (id) {
 	/* Valid ID - fall through all */
 	case SYSC_ALLOC_ID_W_OTHER:
@@ -93,6 +96,12 @@ static bool write_setting_valid(unsigned int prod_model, unsigned int id,
 	case SYSC_ALLOC_ID_W_TIB_DS_AFBCH:
 	case SYSC_ALLOC_ID_W_TIB_DS_AFBCB:
 	case SYSC_ALLOC_ID_W_LSC:
+		break;
+	case SYSC_ALLOC_ID_W_RT:
+	case SYSC_ALLOC_ID_W_NE_A:
+	case SYSC_ALLOC_ID_W_NE_N:
+		if (prod_model < GPU_ID_MODEL_MAKE(14, 0))
+			return false;
 		break;
 	default:
 		return false;
@@ -153,7 +162,6 @@ int kbase_pbha_record_settings(struct kbase_device *kbdev, bool runtime, unsigne
 		unsigned int const sysc_alloc_num = id / sizeof(u32);
 		u32 modified_reg;
 
-#if MALI_USE_CSF
 		if (runtime) {
 			uint i;
 
@@ -164,9 +172,6 @@ int kbase_pbha_record_settings(struct kbase_device *kbdev, bool runtime, unsigne
 					kbase_reg_read32(kbdev, GPU_SYSC_ALLOC_OFFSET(i));
 			kbase_pm_context_idle(kbdev);
 		}
-#else
-		CSTD_UNUSED(runtime);
-#endif /* MALI_USE_CSF */
 
 		modified_reg = kbdev->sysc_alloc[sysc_alloc_num];
 
@@ -213,7 +218,6 @@ int kbase_pbha_record_settings(struct kbase_device *kbdev, bool runtime, unsigne
 
 void kbase_pbha_write_settings(struct kbase_device *kbdev)
 {
-#if MALI_USE_CSF
 	if (kbasep_pbha_supported(kbdev)) {
 		uint i;
 
@@ -238,12 +242,8 @@ void kbase_pbha_write_settings(struct kbase_device *kbdev)
 		kbase_reg_write32(kbdev, GPU_SYSC_PBHA_OVERRIDE_OFFSET(reg_index),
 				  pbha_override_val);
 	}
-#else
-	CSTD_UNUSED(kbdev);
-#endif /* MALI_USE_CSF */
 }
 
-#if MALI_USE_CSF
 static int kbase_pbha_read_int_id_override_property(struct kbase_device *kbdev,
 						    const struct device_node *pbha_node)
 {
@@ -365,11 +365,9 @@ static int kbase_pbha_read_mma_wa_id_property(struct kbase_device *kbdev,
 	kbdev->mma_wa_id = mma_wa_id;
 	return 0;
 }
-#endif /* MALI_USE_CSF */
 
 int kbase_pbha_read_dtb(struct kbase_device *kbdev)
 {
-#if MALI_USE_CSF
 	const struct device_node *pbha_node;
 	int err;
 
@@ -393,7 +391,4 @@ int kbase_pbha_read_dtb(struct kbase_device *kbdev)
 	err = kbase_pbha_read_mma_wa_id_property(kbdev, pbha_node);
 
 	return err;
-#else
-	return 0;
-#endif
 }

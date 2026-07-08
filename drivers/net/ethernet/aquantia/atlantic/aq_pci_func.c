@@ -200,7 +200,7 @@ unsigned int aq_pci_func_get_irq_type(struct aq_nic_s *self)
 	if (self->pdev->msi_enabled)
 		return AQ_HW_IRQ_MSI;
 
-	return AQ_HW_IRQ_LEGACY;
+	return AQ_HW_IRQ_INTX;
 }
 
 static void aq_pci_free_irq_vectors(struct aq_nic_s *self)
@@ -298,11 +298,8 @@ static int aq_pci_probe(struct pci_dev *pdev,
 
 	numvecs += AQ_HW_SERVICE_IRQS;
 	/*enable interrupts */
-#if !AQ_CFG_FORCE_LEGACY_INT
-	err = pci_alloc_irq_vectors(self->pdev, 1, numvecs,
-				    PCI_IRQ_MSIX | PCI_IRQ_MSI |
-				    PCI_IRQ_LEGACY);
-
+#if !AQ_CFG_FORCE_INTX
+	err = pci_alloc_irq_vectors(self->pdev, 1, numvecs, PCI_IRQ_ALL_TYPES);
 	if (err < 0)
 		goto err_hwinit;
 	numvecs = err;
@@ -374,7 +371,7 @@ static void aq_pci_shutdown(struct pci_dev *pdev)
 	pci_disable_device(pdev);
 
 	if (system_state == SYSTEM_POWER_OFF) {
-		pci_wake_from_d3(pdev, self->aq_hw->aq_nic_cfg->wol);
+		pci_wake_from_d3(pdev, false);
 		pci_set_power_state(pdev, PCI_D3hot);
 	}
 }

@@ -675,7 +675,7 @@ struct fec_enet_private {
 	unsigned int itr_clk_rate;
 
 	/* tx lpi eee mode */
-	struct ethtool_eee eee;
+	struct ethtool_keee eee;
 	unsigned int clk_ref_rate;
 
 	/* ptp clock period in ns*/
@@ -686,7 +686,6 @@ struct fec_enet_private {
 	unsigned int reload_period;
 	int pps_enable;
 	unsigned int next_counter;
-	bool perout_enable;
 	struct hrtimer perout_timer;
 	u64 perout_stime;
 

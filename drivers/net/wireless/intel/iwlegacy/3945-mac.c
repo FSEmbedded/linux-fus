@@ -2813,7 +2813,7 @@ out_release_irq:
 }
 
 static void
-il3945_mac_stop(struct ieee80211_hw *hw)
+il3945_mac_stop(struct ieee80211_hw *hw, bool suspend)
 {
 	struct il_priv *il = hw->priv;
 
@@ -3262,9 +3262,7 @@ il3945_store_measurement(struct device *d, struct device_attribute *attr,
 
 	D_INFO("Invoking measurement of type %d on " "channel %d (for '%s')\n",
 	       type, params.channel, buf);
-	mutex_lock(&il->mutex);
 	il3945_get_measurement(il, &params, type);
-	mutex_unlock(&il->mutex);
 
 	return count;
 }
@@ -3434,6 +3432,10 @@ static const struct attribute_group il3945_attribute_group = {
 };
 
 static struct ieee80211_ops il3945_mac_ops __ro_after_init = {
+	.add_chanctx = ieee80211_emulate_add_chanctx,
+	.remove_chanctx = ieee80211_emulate_remove_chanctx,
+	.change_chanctx = ieee80211_emulate_change_chanctx,
+	.switch_vif_chanctx = ieee80211_emulate_switch_vif_chanctx,
 	.tx = il3945_mac_tx,
 	.wake_tx_queue = ieee80211_handle_wake_tx_queue,
 	.start = il3945_mac_start,

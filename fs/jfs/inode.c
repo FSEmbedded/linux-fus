@@ -59,15 +59,9 @@ struct inode *jfs_iget(struct super_block *sb, unsigned long ino)
 			 */
 			inode->i_link[inode->i_size] = '\0';
 		}
-	} else if (S_ISCHR(inode->i_mode) || S_ISBLK(inode->i_mode) ||
-		   S_ISFIFO(inode->i_mode) || S_ISSOCK(inode->i_mode)) {
+	} else {
 		inode->i_op = &jfs_file_inode_operations;
 		init_special_inode(inode, inode->i_mode, inode->i_rdev);
-	} else {
-		printk(KERN_DEBUG "JFS: Invalid file type 0%04o for inode %lu.\n",
-		       inode->i_mode, inode->i_ino);
-		iget_failed(inode);
-		return ERR_PTR(-EIO);
 	}
 	unlock_new_inode(inode);
 	return inode;
@@ -298,11 +292,11 @@ static void jfs_write_failed(struct address_space *mapping, loff_t to)
 
 static int jfs_write_begin(struct file *file, struct address_space *mapping,
 				loff_t pos, unsigned len,
-				struct page **pagep, void **fsdata)
+				struct folio **foliop, void **fsdata)
 {
 	int ret;
 
-	ret = block_write_begin(mapping, pos, len, pagep, jfs_get_block);
+	ret = block_write_begin(mapping, pos, len, foliop, jfs_get_block);
 	if (unlikely(ret))
 		jfs_write_failed(mapping, pos + len);
 
@@ -310,12 +304,12 @@ static int jfs_write_begin(struct file *file, struct address_space *mapping,
 }
 
 static int jfs_write_end(struct file *file, struct address_space *mapping,
-		loff_t pos, unsigned len, unsigned copied, struct page *page,
+		loff_t pos, unsigned len, unsigned copied, struct folio *folio,
 		void *fsdata)
 {
 	int ret;
 
-	ret = generic_write_end(file, mapping, pos, len, copied, page, fsdata);
+	ret = generic_write_end(file, mapping, pos, len, copied, folio, fsdata);
 	if (ret < len)
 		jfs_write_failed(mapping, pos + len);
 	return ret;
@@ -399,7 +393,7 @@ void jfs_truncate_nolock(struct inode *ip, loff_t length)
 			break;
 		}
 
-		ip->i_mtime = inode_set_ctime_current(ip);
+		inode_set_mtime_to_ts(ip, inode_set_ctime_current(ip));
 		mark_inode_dirty(ip);
 
 		txCommit(tid, 1, &ip, 0);

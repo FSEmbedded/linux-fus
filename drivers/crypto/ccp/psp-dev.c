@@ -19,6 +19,7 @@
 #include "tee-dev.h"
 #include "platform-access.h"
 #include "dbc.h"
+#include "hsti.h"
 
 struct psp_device *psp_master;
 
@@ -78,6 +79,30 @@ unlock:
 	return ret;
 }
 
+int psp_extended_mailbox_cmd(struct psp_device *psp, unsigned int timeout_msecs,
+			     struct psp_ext_request *req)
+{
+	unsigned int reg;
+	int ret;
+
+	print_hex_dump_debug("->psp ", DUMP_PREFIX_OFFSET, 16, 2, req,
+			     req->header.payload_size, false);
+
+	ret = psp_mailbox_command(psp, PSP_CMD_TEE_EXTENDED_CMD, (void *)req,
+				  timeout_msecs, &reg);
+	if (ret) {
+		return ret;
+	} else if (FIELD_GET(PSP_CMDRESP_STS, reg)) {
+		req->header.status = FIELD_GET(PSP_CMDRESP_STS, reg);
+		return -EIO;
+	}
+
+	print_hex_dump_debug("<-psp ", DUMP_PREFIX_OFFSET, 16, 2, req,
+			     req->header.payload_size, false);
+
+	return 0;
+}
+
 static struct psp_device *psp_alloc_struct(struct sp_device *sp)
 {
 	struct device *dev = sp->dev;
@@ -130,13 +155,7 @@ static unsigned int psp_get_capability(struct psp_device *psp)
 		dev_notice(psp->dev, "psp: unable to access the device: you might be running a broken BIOS.\n");
 		return -ENODEV;
 	}
-	psp->capability = val;
-
-	/* Detect if TSME and SME are both enabled */
-	if (psp->capability & PSP_CAPABILITY_PSP_SECURITY_REPORTING &&
-	    psp->capability & (PSP_SECURITY_TSME_STATUS << PSP_CAPABILITY_PSP_SECURITY_OFFSET) &&
-	    cc_platform_has(CC_ATTR_HOST_MEM_ENCRYPT))
-		dev_notice(psp->dev, "psp: Both TSME and SME are active, SME is unnecessary when TSME is active.\n");
+	psp->capability.raw = val;
 
 	return 0;
 }
@@ -144,7 +163,7 @@ static unsigned int psp_get_capability(struct psp_device *psp)
 static int psp_check_sev_support(struct psp_device *psp)
 {
 	/* Check if device supports SEV feature */
-	if (!(psp->capability & PSP_CAPABILITY_SEV)) {
+	if (!psp->capability.sev) {
 		dev_dbg(psp->dev, "psp does not support SEV\n");
 		return -ENODEV;
 	}
@@ -155,29 +174,12 @@ static int psp_check_sev_support(struct psp_device *psp)
 static int psp_check_tee_support(struct psp_device *psp)
 {
 	/* Check if device supports TEE feature */
-	if (!(psp->capability & PSP_CAPABILITY_TEE)) {
+	if (!psp->capability.tee) {
 		dev_dbg(psp->dev, "psp does not support TEE\n");
 		return -ENODEV;
 	}
 
 	return 0;
-}
-
-static void psp_init_platform_access(struct psp_device *psp)
-{
-	int ret;
-
-	ret = platform_access_dev_init(psp);
-	if (ret) {
-		dev_warn(psp->dev, "platform access init failed: %d\n", ret);
-		return;
-	}
-
-	/* dbc must come after platform access as it tests the feature */
-	ret = dbc_dev_init(psp);
-	if (ret)
-		dev_warn(psp->dev, "failed to init dynamic boost control: %d\n",
-			 ret);
 }
 
 static int psp_init(struct psp_device *psp)
@@ -196,8 +198,24 @@ static int psp_init(struct psp_device *psp)
 			return ret;
 	}
 
-	if (psp->vdata->platform_access)
-		psp_init_platform_access(psp);
+	if (psp->vdata->platform_access) {
+		ret = platform_access_dev_init(psp);
+		if (ret)
+			return ret;
+	}
+
+	/* dbc must come after platform access as it tests the feature */
+	if (PSP_FEATURE(psp, DBC) ||
+	    psp->capability.dbc_thru_ext) {
+		ret = dbc_dev_init(psp);
+		if (ret)
+			return ret;
+	}
+
+	/* HSTI uses platform access on some systems. */
+	ret = psp_init_hsti(psp);
+	if (ret)
+		return ret;
 
 	return 0;
 }
@@ -311,17 +329,6 @@ struct psp_device *psp_get_master_device(void)
 	struct sp_device *sp = sp_get_psp_master_device();
 
 	return sp ? sp->psp_data : NULL;
-}
-
-int psp_restore(struct sp_device *sp)
-{
-	struct psp_device *psp = sp->psp_data;
-	int ret = 0;
-
-	if (psp->tee_data)
-		ret = tee_restore(psp);
-
-	return ret;
 }
 
 void psp_pci_init(void)

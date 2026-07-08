@@ -2498,13 +2498,12 @@ reg_disable:
 	return ret;
 }
 
-static int at91_adc_remove(struct platform_device *pdev)
+static void at91_adc_remove(struct platform_device *pdev)
 {
 	struct iio_dev *indio_dev = platform_get_drvdata(pdev);
 	struct at91_adc_state *st = iio_priv(indio_dev);
 
 	iio_device_unregister(indio_dev);
-	cancel_work_sync(&st->touch_st.workq);
 
 	at91_adc_dma_disable(st);
 
@@ -2514,8 +2513,6 @@ static int at91_adc_remove(struct platform_device *pdev)
 
 	regulator_disable(st->vref);
 	regulator_disable(st->reg);
-
-	return 0;
 }
 
 static int at91_adc_suspend(struct device *dev)
@@ -2640,7 +2637,7 @@ MODULE_DEVICE_TABLE(of, at91_adc_dt_match);
 
 static struct platform_driver at91_adc_driver = {
 	.probe = at91_adc_probe,
-	.remove = at91_adc_remove,
+	.remove_new = at91_adc_remove,
 	.driver = {
 		.name = "at91-sama5d2_adc",
 		.of_match_table = at91_adc_dt_match,

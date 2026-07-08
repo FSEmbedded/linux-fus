@@ -28,11 +28,6 @@ static void nft_osf_eval(const struct nft_expr *expr, struct nft_regs *regs,
 	struct nf_osf_data data;
 	struct tcphdr _tcph;
 
-	if (nft_pf(pkt) != NFPROTO_IPV4) {
-		regs->verdict.code = NFT_BREAK;
-		return;
-	}
-
 	if (pkt->tprot != IPPROTO_TCP) {
 		regs->verdict.code = NFT_BREAK;
 		return;
@@ -68,7 +63,6 @@ static int nft_osf_init(const struct nft_ctx *ctx,
 {
 	struct nft_osf *priv = nft_expr_priv(expr);
 	u32 flags;
-	int err;
 	u8 ttl;
 
 	if (!tb[NFTA_OSF_DREG])
@@ -88,13 +82,9 @@ static int nft_osf_init(const struct nft_ctx *ctx,
 		priv->flags = flags;
 	}
 
-	err = nft_parse_register_store(ctx, tb[NFTA_OSF_DREG], &priv->dreg,
-				       NULL, NFT_DATA_VALUE,
-				       NFT_OSF_MAXGENRELEN);
-	if (err < 0)
-		return err;
-
-	return 0;
+	return nft_parse_register_store(ctx, tb[NFTA_OSF_DREG], &priv->dreg,
+					NULL, NFT_DATA_VALUE,
+					NFT_OSF_MAXGENRELEN);
 }
 
 static int nft_osf_dump(struct sk_buff *skb,
@@ -124,6 +114,7 @@ static int nft_osf_validate(const struct nft_ctx *ctx,
 
 	switch (ctx->family) {
 	case NFPROTO_IPV4:
+	case NFPROTO_IPV6:
 	case NFPROTO_INET:
 		hooks = (1 << NF_INET_LOCAL_IN) |
 			(1 << NF_INET_PRE_ROUTING) |

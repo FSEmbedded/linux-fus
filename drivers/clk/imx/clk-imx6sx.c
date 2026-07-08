@@ -8,6 +8,7 @@
 #include <linux/clk.h>
 #include <linux/clkdev.h>
 #include <linux/clk-provider.h>
+#include <linux/clk/imx.h>
 #include <linux/err.h>
 #include <linux/init.h>
 #include <linux/io.h>
@@ -165,6 +166,7 @@ static void __init imx6sx_clocks_init(struct device_node *ccm_node)
 {
 	struct device_node *np;
 	void __iomem *base;
+	bool lcdif1_assigned_clk;
 
 	clk_hw_data = kzalloc(struct_size(clk_hw_data, hws,
 					  IMX6SX_CLK_CLK_END), GFP_KERNEL);
@@ -598,10 +600,16 @@ static void __init imx6sx_clocks_init(struct device_node *ccm_node)
 
 	/* Set LDB parent to PLL5 ### */
 	clk_set_parent(hws[IMX6SX_CLK_LDB_DI0_SEL]->clk, hws[IMX6SX_CLK_PLL5_VIDEO_DIV]->clk);
+	np = of_find_node_by_path("/soc/bus@2200000/spba-bus@2240000/lcdif@2220000");
+	lcdif1_assigned_clk = of_find_property(np, "assigned-clock-parents", NULL);
 
-	/* set parent clock for LCDIF1 pixel clock */
-	clk_set_parent(hws[IMX6SX_CLK_LCDIF1_PRE_SEL]->clk, hws[IMX6SX_CLK_PLL5_VIDEO_DIV]->clk);
-	clk_set_parent(hws[IMX6SX_CLK_LCDIF1_SEL]->clk, hws[IMX6SX_CLK_LCDIF1_PODF]->clk);
+	/* Set parent clock for LCDIF1 pixel clock if not done via devicetree */
+	if (!lcdif1_assigned_clk) {
+		clk_set_parent(hws[IMX6SX_CLK_LCDIF1_PRE_SEL]->clk,
+			       hws[IMX6SX_CLK_PLL5_VIDEO_DIV]->clk);
+		clk_set_parent(hws[IMX6SX_CLK_LCDIF1_SEL]->clk,
+			       hws[IMX6SX_CLK_LCDIF1_PODF]->clk);
+	}
 
 	/* Set the parent clks of PCIe lvds1 and pcie_axi to be pcie ref, axi */
 	if (clk_set_parent(hws[IMX6SX_CLK_LVDS1_SEL]->clk, hws[IMX6SX_CLK_PCIE_REF_125M]->clk))

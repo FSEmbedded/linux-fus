@@ -53,7 +53,7 @@ static const struct regmap_config pca9450_regmap_config = {
 	.val_bits = 8,
 	.volatile_table = &pca9450_volatile_regs,
 	.max_register = PCA9450_MAX_REGISTER - 1,
-	.cache_type = REGCACHE_RBTREE,
+	.cache_type = REGCACHE_MAPLE,
 };
 
 /*
@@ -111,6 +111,14 @@ static const struct linear_range pca9450_dvs_buck_volts[] = {
  * 0.65 to 2.2375V (12.5mV step)
  */
 static const struct linear_range pca9450_trim_dvs_buck_volts[] = {
+	REGULATOR_LINEAR_RANGE(650000, 0x00, 0x7F, 12500),
+};
+
+/*
+ * BUCK1/3
+ * 0.65 to 2.2375V (12.5mV step)
+ */
+static const struct linear_range pca9451a_dvs_buck_volts[] = {
 	REGULATOR_LINEAR_RANGE(650000, 0x00, 0x7F, 12500),
 };
 
@@ -691,8 +699,8 @@ static const struct pca9450_regulator_desc pca9451a_regulators[] = {
 			.ops = &pca9450_dvs_buck_regulator_ops,
 			.type = REGULATOR_VOLTAGE,
 			.n_voltages = PCA9450_BUCK1_VOLTAGE_NUM,
-			.linear_ranges = pca9450_dvs_buck_volts,
-			.n_linear_ranges = ARRAY_SIZE(pca9450_dvs_buck_volts),
+			.linear_ranges = pca9451a_dvs_buck_volts,
+			.n_linear_ranges = ARRAY_SIZE(pca9451a_dvs_buck_volts),
 			.vsel_reg = PCA9450_REG_BUCK1OUT_DVS0,
 			.vsel_mask = BUCK1OUT_DVS0_MASK,
 			.enable_reg = PCA9450_REG_BUCK1CTRL,
@@ -1048,7 +1056,7 @@ static int pca9450_i2c_probe(struct i2c_client *i2c)
 	if (pca9450->irq) {
 		ret = devm_request_threaded_irq(pca9450->dev, pca9450->irq, NULL,
 						pca9450_irq_handler,
-						(IRQF_TRIGGER_LOW | IRQF_ONESHOT),
+						(IRQF_TRIGGER_FALLING | IRQF_ONESHOT),
 						"pca9450-irq", pca9450);
 		if (ret != 0) {
 			dev_err(pca9450->dev, "Failed to request IRQ: %d\n",

@@ -286,11 +286,14 @@ static int imx8m_blk_ctrl_probe(struct platform_device *pdev)
 
 		domain->power_dev =
 			dev_pm_domain_attach_by_name(dev, data->gpc_name);
-		if (IS_ERR(domain->power_dev)) {
-			dev_err_probe(dev, PTR_ERR(domain->power_dev),
+		if (IS_ERR_OR_NULL(domain->power_dev)) {
+			if (!domain->power_dev)
+				ret = -ENODEV;
+			else
+				ret = PTR_ERR(domain->power_dev);
+			dev_err_probe(dev, ret,
 				      "failed to attach power domain \"%s\"\n",
 				      data->gpc_name);
-			ret = PTR_ERR(domain->power_dev);
 			goto cleanup_pds;
 		}
 
@@ -376,14 +379,14 @@ cleanup_pds:
 	return ret;
 }
 
-static int imx8m_blk_ctrl_remove(struct platform_device *pdev)
+static void imx8m_blk_ctrl_remove(struct platform_device *pdev)
 {
 	struct imx8m_blk_ctrl *bc = dev_get_drvdata(&pdev->dev);
 	int i;
 
 	of_genpd_del_provider(pdev->dev.of_node);
 
-	for (i = 0; i < bc->onecell_data.num_domains; i++) {
+	for (i = 0; bc->onecell_data.num_domains; i++) {
 		struct imx8m_blk_ctrl_domain *domain = &bc->domains[i];
 
 		pm_genpd_remove(&domain->genpd);
@@ -393,8 +396,6 @@ static int imx8m_blk_ctrl_remove(struct platform_device *pdev)
 	dev_pm_genpd_remove_notifier(bc->bus_power_dev);
 
 	dev_pm_domain_detach(bc->bus_power_dev, true);
-
-	return 0;
 }
 
 #ifdef CONFIG_PM_SLEEP
@@ -591,10 +592,10 @@ static const struct imx8m_blk_ctrl_domain_data imx8mp_vpu_blk_ctl_domain_data[] 
 		},
 	},
 	[IMX8MP_VPUBLK_PD_VC8000E] = {
-		.name = "vpublk-h1",
-		.clk_names = (const char *[]){ "h1", },
+		.name = "vpublk-vc8000e",
+		.clk_names = (const char *[]){ "vc8000e", },
 		.num_clks = 1,
-		.gpc_name = "h1",
+		.gpc_name = "vc8000e",
 		.rst_mask = BIT(2),
 		.clk_mask = BIT(2),
 		.noc_data = {
@@ -750,15 +751,6 @@ static const struct imx8m_blk_ctrl_data imx8mn_disp_blk_ctl_dev_data = {
 	.domains = imx8mn_disp_blk_ctl_domain_data,
 	.num_domains = ARRAY_SIZE(imx8mn_disp_blk_ctl_domain_data),
 };
-
-#define LCDIF_ARCACHE_CTRL	0x4c
-#define  LCDIF_1_RD_HURRY	GENMASK(15, 13)
-#define  LCDIF_0_RD_HURRY	GENMASK(12, 10)
-
-#define ISI_CACHE_CTRL		0x50
-#define  ISI_V_WR_HURRY		GENMASK(28, 26)
-#define  ISI_U_WR_HURRY		GENMASK(25, 23)
-#define  ISI_Y_WR_HURRY		GENMASK(22, 20)
 
 static int imx8mp_media_power_notifier(struct notifier_block *nb,
 				unsigned long action, void *data)
@@ -1002,25 +994,22 @@ static int imx8mq_vpu_power_notifier(struct notifier_block *nb,
 	return NOTIFY_OK;
 }
 
-/*
- * For i.MX8MQ, the ADB in the VPUMIX domain has no separate reset and clock
- * enable bits, but is ungated and reset together with the VPUs.
- * Resetting G1 or G2 separately may led to system hang.
- * Remove the rst_mask and clk_mask from the domain data of G1 and G2,
- * Let imx8mq_vpu_power_notifier() do really vpu reset.
- */
 static const struct imx8m_blk_ctrl_domain_data imx8mq_vpu_blk_ctl_domain_data[] = {
 	[IMX8MQ_VPUBLK_PD_G1] = {
 		.name = "vpublk-g1",
 		.clk_names = (const char *[]){ "g1", },
 		.num_clks = 1,
 		.gpc_name = "g1",
+		.rst_mask = BIT(1),
+		.clk_mask = BIT(1),
 	},
 	[IMX8MQ_VPUBLK_PD_G2] = {
 		.name = "vpublk-g2",
 		.clk_names = (const char *[]){ "g2", },
 		.num_clks = 1,
 		.gpc_name = "g2",
+		.rst_mask = BIT(0),
+		.clk_mask = BIT(0),
 	},
 };
 
@@ -1058,7 +1047,7 @@ MODULE_DEVICE_TABLE(of, imx8m_blk_ctrl_of_match);
 
 static struct platform_driver imx8m_blk_ctrl_driver = {
 	.probe = imx8m_blk_ctrl_probe,
-	.remove = imx8m_blk_ctrl_remove,
+	.remove_new = imx8m_blk_ctrl_remove,
 	.driver = {
 		.name = "imx8m-blk-ctrl",
 		.pm = &imx8m_blk_ctrl_pm_ops,

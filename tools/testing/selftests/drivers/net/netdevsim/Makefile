@@ -10,12 +10,9 @@ TEST_PROGS = devlink.sh \
 	fib.sh \
 	hw_stats_l3.sh \
 	nexthop.sh \
+	peer.sh \
 	psample.sh \
 	tc-mq-visibility.sh \
 	udp_tunnel_nic.sh \
-
-TEST_FILES := \
-	ethtool-common.sh
-# end of TEST_FILES
 
 include ../../../lib.mk

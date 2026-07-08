@@ -1161,7 +1161,7 @@ static void gpmi_nfc_compute_timings(struct gpmi_nand_data *this,
 			      (use_half_period ? BM_GPMI_CTRL1_HALF_PERIOD : 0);
 }
 
-void gpmi_nfc_apply_timings(struct gpmi_nand_data *this)
+static void gpmi_nfc_apply_timings(struct gpmi_nand_data *this)
 {
 	struct gpmi_nfc_hardware_timing *hw = &this->hw;
 	struct resources *r = &this->resources;
@@ -2452,7 +2452,7 @@ static void gpmi_fus_exit(struct gpmi_nand_data *priv)
 	priv->page_buffer_virt	= NULL;
 }
 
-int gpmi_setup_data_interface(struct nand_chip *chip, int chipnr,
+static int gpmi_setup_data_interface(struct nand_chip *chip, int chipnr,
 			      const struct nand_interface_config *conf)
 {
 	struct gpmi_nand_data *this = nand_get_controller_data(chip);
@@ -2731,7 +2731,7 @@ exit_acquire_resources:
 	return ret;
 }
 
-static int gpmi_nand_fus_remove(struct platform_device *pdev)
+static void gpmi_nand_fus_remove(struct platform_device *pdev)
 {
 	struct gpmi_nand_data *this = platform_get_drvdata(pdev);
 
@@ -2739,7 +2739,6 @@ static int gpmi_nand_fus_remove(struct platform_device *pdev)
 	gpmi_fus_exit(this);
 	pm_runtime_disable(this->dev);
 	release_resources(this);
-	return 0;
 }
 
 static int gpmi_nand_fus_pm_suspend(struct device *dev)
@@ -2791,7 +2790,7 @@ static int gpmi_nand_fus_pm_resume(struct device *dev)
 	return 0;
 }
 
-int gpmi_nand_fus_runtime_suspend(struct device *dev)
+static int gpmi_nand_fus_runtime_suspend(struct device *dev)
 {
 	struct gpmi_nand_data *this = dev_get_drvdata(dev);
 
@@ -2802,7 +2801,7 @@ int gpmi_nand_fus_runtime_suspend(struct device *dev)
 	return 0;
 }
 
-int gpmi_nand_fus_runtime_resume(struct device *dev)
+static int gpmi_nand_fus_runtime_resume(struct device *dev)
 {
 	struct gpmi_nand_data *this = dev_get_drvdata(dev);
 	int ret;

@@ -31,7 +31,7 @@
 
 /**
  * may_change_ptraced_domain - check if can change profile on ptraced task
- * @cred: cred of task changing domain
+ * @to_cred: cred of task changing domain
  * @to_label: profile to change to  (NOT NULL)
  * @info: message if there is an error
  *
@@ -272,6 +272,7 @@ static int label_match(struct aa_profile *profile, struct aa_label *label,
  * @stack: whether this is a stacking request
  * @request: requested perms
  * @start: state to start matching in
+ * @perms: Returns computed perms (NOT NULL)
  *
  *
  * Returns: permission set
@@ -366,11 +367,11 @@ out:
 
 /**
  * find_attach - do attachment search for unconfined processes
- * @bprm - binprm structure of transitioning task
+ * @bprm: binprm structure of transitioning task
  * @ns: the current namespace  (NOT NULL)
- * @head - profile list to walk  (NOT NULL)
- * @name - to match against  (NOT NULL)
- * @info - info message if there was an error (NOT NULL)
+ * @head: profile list to walk  (NOT NULL)
+ * @name: to match against  (NOT NULL)
+ * @info: info message if there was an error (NOT NULL)
  *
  * Do a linear search on the profiles in the list.  There is a matching
  * preference where an exact match is preferred over a name which uses
@@ -508,6 +509,7 @@ static const char *next_name(int xtype, const char *name)
  * @name: returns: name tested to find label (NOT NULL)
  *
  * Returns: refcounted label, or NULL on failure (MAYBE NULL)
+ *          @name will always be set with the last name tried
  */
 struct aa_label *x_table_lookup(struct aa_profile *profile, u32 xindex,
 				const char **name)
@@ -517,6 +519,7 @@ struct aa_label *x_table_lookup(struct aa_profile *profile, u32 xindex,
 	struct aa_label *label = NULL;
 	u32 xtype = xindex & AA_X_TYPE_MASK;
 	int index = xindex & AA_X_INDEX_MASK;
+	const char *next;
 
 	AA_BUG(!name);
 
@@ -524,25 +527,27 @@ struct aa_label *x_table_lookup(struct aa_profile *profile, u32 xindex,
 	/* TODO: move lookup parsing to unpack time so this is a straight
 	 *       index into the resultant label
 	 */
-	for (*name = rules->file->trans.table[index]; !label && *name;
-	     *name = next_name(xtype, *name)) {
+	for (next = rules->file->trans.table[index]; next;
+	     next = next_name(xtype, next)) {
+		const char *lookup = (*next == '&') ? next + 1 : next;
+		*name = next;
 		if (xindex & AA_X_CHILD) {
-			struct aa_profile *new_profile;
-			/* release by caller */
-			new_profile = aa_find_child(profile, *name);
-			if (new_profile)
-				label = &new_profile->label;
+			/* TODO: switich to parse to get stack of child */
+			struct aa_profile *new = aa_find_child(profile, lookup);
+
+			if (new)
+				/* release by caller */
+				return &new->label;
 			continue;
 		}
-		label = aa_label_parse(&profile->label, *name, GFP_KERNEL,
+		label = aa_label_parse(&profile->label, lookup, GFP_KERNEL,
 				       true, false);
-		if (IS_ERR(label))
-			label = NULL;
+		if (!IS_ERR_OR_NULL(label))
+			/* release by caller */
+			return label;
 	}
 
-	/* released by caller */
-
-	return label;
+	return NULL;
 }
 
 /**
@@ -552,6 +557,7 @@ struct aa_label *x_table_lookup(struct aa_profile *profile, u32 xindex,
  * @name: name to lookup (NOT NULL)
  * @xindex: index into x transition table
  * @lookupname: returns: name used in lookup if one was specified (NOT NULL)
+ * @info: info message if there was an error (NOT NULL)
  *
  * find label for a transition index
  *
@@ -566,9 +572,9 @@ static struct aa_label *x_to_label(struct aa_profile *profile,
 	struct aa_ruleset *rules = list_first_entry(&profile->rules,
 						    typeof(*rules), list);
 	struct aa_label *new = NULL;
+	struct aa_label *stack = NULL;
 	struct aa_ns *ns = profile->ns;
 	u32 xtype = xindex & AA_X_TYPE_MASK;
-	const char *stack = NULL;
 
 	switch (xtype) {
 	case AA_X_NONE:
@@ -577,13 +583,14 @@ static struct aa_label *x_to_label(struct aa_profile *profile,
 		break;
 	case AA_X_TABLE:
 		/* TODO: fix when perm mapping done at unload */
-		stack = rules->file->trans.table[xindex & AA_X_INDEX_MASK];
-		if (*stack != '&') {
-			/* released by caller */
-			new = x_table_lookup(profile, xindex, lookupname);
-			stack = NULL;
+		/* released by caller
+		 * if null for both stack and direct want to try fallback
+		 */
+		new = x_table_lookup(profile, xindex, lookupname);
+		if (!new || **lookupname != '&')
 			break;
-		}
+		stack = new;
+		new = NULL;
 		fallthrough;	/* to X_NAME */
 	case AA_X_NAME:
 		if (xindex & AA_X_CHILD)
@@ -598,6 +605,7 @@ static struct aa_label *x_to_label(struct aa_profile *profile,
 		break;
 	}
 
+	/* fallback transition check */
 	if (!new) {
 		if (xindex & AA_X_INHERIT) {
 			/* (p|c|n)ix - don't change profile but do
@@ -616,12 +624,12 @@ static struct aa_label *x_to_label(struct aa_profile *profile,
 		/* base the stack on post domain transition */
 		struct aa_label *base = new;
 
-		new = aa_label_parse(base, stack, GFP_KERNEL, true, false);
-		if (IS_ERR(new))
-			new = NULL;
+		new = aa_label_merge(base, stack, GFP_KERNEL);
+		/* null on error */
 		aa_put_label(base);
 	}
 
+	aa_put_label(stack);
 	/* released by caller */
 	return new;
 }
@@ -1309,6 +1317,8 @@ static int change_profile_perms_wrapper(const char *op, const char *name,
 	return error;
 }
 
+static const char *stack_msg = "change_profile unprivileged unconfined converted to stacking";
+
 /**
  * aa_change_profile - perform a one-way profile transition
  * @fqname: name of profile may include namespace (NOT NULL)
@@ -1366,6 +1376,28 @@ int aa_change_profile(const char *fqname, int flags)
 			op = OP_STACK;
 		else
 			op = OP_CHANGE_PROFILE;
+	}
+
+	/* This should move to a per profile test. Requires pushing build
+	 * into callback
+	 */
+	if (!stack && unconfined(label) &&
+	    label == &labels_ns(label)->unconfined->label &&
+	    aa_unprivileged_unconfined_restricted &&
+	    /* TODO: refactor so this check is a fn */
+	    cap_capable(current_cred(), &init_user_ns, CAP_MAC_OVERRIDE,
+			CAP_OPT_NOAUDIT)) {
+		/* regardless of the request in this case apparmor
+		 * stacks against unconfined so admin set policy can't be
+		 * by-passed
+		 */
+		stack = true;
+		perms.audit = request;
+		(void) fn_for_each_in_ns(label, profile,
+				aa_audit_file(subj_cred, profile, &perms, op,
+					      request, auditname, NULL, target,
+					      GLOBAL_ROOT_UID, stack_msg, 0));
+		perms.audit = 0;
 	}
 
 	if (*fqname == '&') {
@@ -1475,7 +1507,7 @@ check:
 		}
 
 		/* full transition will be built in exec path */
-		error = aa_set_current_onexec(target, stack);
+		aa_set_current_onexec(target, stack);
 	}
 
 audit:

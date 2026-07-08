@@ -1042,13 +1042,13 @@ static int b44_change_mtu(struct net_device *dev, int new_mtu)
 		/* We'll just catch it later when the
 		 * device is up'd.
 		 */
-		dev->mtu = new_mtu;
+		WRITE_ONCE(dev->mtu, new_mtu);
 		return 0;
 	}
 
 	spin_lock_irq(&bp->lock);
 	b44_halt(bp);
-	dev->mtu = new_mtu;
+	WRITE_ONCE(dev->mtu, new_mtu);
 	b44_init_rings(bp);
 	b44_init_hw(bp, B44_FULL_RESET);
 	spin_unlock_irq(&bp->lock);
@@ -1788,9 +1788,6 @@ static int b44_nway_reset(struct net_device *dev)
 	struct b44 *bp = netdev_priv(dev);
 	u32 bmcr;
 	int r;
-
-	if (bp->flags & B44_FLAG_EXTERNAL_PHY)
-		return phy_ethtool_nway_reset(dev);
 
 	spin_lock_irq(&bp->lock);
 	b44_readphy(bp, MII_BMCR, &bmcr);

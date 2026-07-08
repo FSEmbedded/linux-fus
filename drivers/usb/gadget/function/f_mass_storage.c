@@ -180,7 +180,6 @@
 #include <linux/kthread.h>
 #include <linux/sched/signal.h>
 #include <linux/limits.h>
-#include <linux/overflow.h>
 #include <linux/pagemap.h>
 #include <linux/rwsem.h>
 #include <linux/slab.h>
@@ -189,7 +188,7 @@
 #include <linux/freezer.h>
 #include <linux/module.h>
 #include <linux/uaccess.h>
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 
 #include <linux/usb/ch9.h>
 #include <linux/usb/gadget.h>
@@ -1854,15 +1853,8 @@ static int check_command_size_in_blocks(struct fsg_common *common,
 		int cmnd_size, enum data_direction data_dir,
 		unsigned int mask, int needs_medium, const char *name)
 {
-	if (common->curlun) {
-		if (check_shl_overflow(common->data_size_from_cmnd,
-				       common->curlun->blkbits,
-				       &common->data_size_from_cmnd)) {
-			common->phase_error = 1;
-			return -EINVAL;
-		}
-	}
-
+	if (common->curlun)
+		common->data_size_from_cmnd <<= common->curlun->blkbits;
 	return check_command(common, cmnd_size, data_dir,
 			mask, needs_medium, name);
 }
@@ -3058,7 +3050,7 @@ static int fsg_bind(struct usb_configuration *c, struct usb_function *f)
 	if (!common->thread_task) {
 		common->state = FSG_STATE_NORMAL;
 		common->thread_task =
-			kthread_create(fsg_main_thread, common, "file-storage");
+			kthread_run(fsg_main_thread, common, "file-storage");
 		if (IS_ERR(common->thread_task)) {
 			ret = PTR_ERR(common->thread_task);
 			common->thread_task = NULL;
@@ -3067,7 +3059,6 @@ static int fsg_bind(struct usb_configuration *c, struct usb_function *f)
 		}
 		DBG(common, "I/O thread pid: %d\n",
 		    task_pid_nr(common->thread_task));
-		wake_up_process(common->thread_task);
 	}
 
 	fsg->gadget = gadget;
@@ -3585,6 +3576,7 @@ static struct usb_function *fsg_alloc(struct usb_function_instance *fi)
 }
 
 DECLARE_USB_FUNCTION_INIT(mass_storage, fsg_alloc_inst, fsg_alloc);
+MODULE_DESCRIPTION("Mass Storage USB Composite Function");
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Michal Nazarewicz");
 

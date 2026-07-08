@@ -418,12 +418,12 @@ static int pxafb_adjust_timing(struct pxafb_info *fbi,
 	var->yres = max_t(int, var->yres, MIN_YRES);
 
 	if (!(fbi->lccr0 & LCCR0_LCDT)) {
-		var->hsync_len = clamp(var->hsync_len, 1, 64);
-		var->vsync_len = clamp(var->vsync_len, 1, 64);
-		var->left_margin  = clamp(var->left_margin,  1, 255);
-		var->right_margin = clamp(var->right_margin, 1, 255);
-		var->upper_margin = clamp(var->upper_margin, 1, 255);
-		var->lower_margin = clamp(var->lower_margin, 1, 255);
+		clamp_val(var->hsync_len, 1, 64);
+		clamp_val(var->vsync_len, 1, 64);
+		clamp_val(var->left_margin,  1, 255);
+		clamp_val(var->right_margin, 1, 255);
+		clamp_val(var->upper_margin, 1, 255);
+		clamp_val(var->lower_margin, 1, 255);
 	}
 
 	/* make sure each line is aligned on word boundary */
@@ -2171,7 +2171,7 @@ static int of_get_pxafb_mode_info(struct device *dev,
 	u32 bus_width;
 	int ret, i;
 
-	np = of_graph_get_next_endpoint(dev->of_node, NULL);
+	np = of_graph_get_endpoint_by_regs(dev->of_node, 0, -1);
 	if (!np) {
 		dev_err(dev, "could not find endpoint\n");
 		return -EINVAL;
@@ -2427,7 +2427,7 @@ MODULE_DEVICE_TABLE(of, pxafb_of_dev_id);
 
 static struct platform_driver pxafb_driver = {
 	.probe		= pxafb_probe,
-	.remove_new 	= pxafb_remove,
+	.remove		= pxafb_remove,
 	.driver		= {
 		.name	= "pxa2xx-fb",
 		.of_match_table = pxafb_of_dev_id,

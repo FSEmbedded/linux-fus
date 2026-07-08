@@ -31,7 +31,6 @@
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
 #include <crypto/hash.h>
-#include <crypto/utils.h>
 #include <linux/types.h>
 #include <linux/kernel.h>
 #include <linux/ip.h>
@@ -1797,7 +1796,7 @@ struct sctp_association *sctp_unpack_cookie(
 		}
 	}
 
-	if (crypto_memneq(digest, cookie->signature, SCTP_SIGNATURE_SIZE)) {
+	if (memcmp(digest, cookie->signature, SCTP_SIGNATURE_SIZE)) {
 		*error = -SCTP_IERROR_BAD_SIG;
 		goto fail;
 	}
@@ -3304,7 +3303,7 @@ struct sctp_chunk *sctp_process_asconf(struct sctp_association *asoc,
 
 	/* Process the TLVs contained within the ASCONF chunk. */
 	sctp_walk_params(param, addip) {
-		/* Skip preceeding address parameters. */
+		/* Skip preceding address parameters. */
 		if (param.p->type == SCTP_PARAM_IPV4_ADDRESS ||
 		    param.p->type == SCTP_PARAM_IPV6_ADDRESS)
 			continue;

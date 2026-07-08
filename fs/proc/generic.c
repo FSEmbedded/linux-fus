@@ -202,8 +202,8 @@ int proc_alloc_inum(unsigned int *inum)
 {
 	int i;
 
-	i = ida_simple_get(&proc_inum_ida, 0, UINT_MAX - PROC_DYNAMIC_FIRST + 1,
-			   GFP_KERNEL);
+	i = ida_alloc_max(&proc_inum_ida, UINT_MAX - PROC_DYNAMIC_FIRST,
+			  GFP_KERNEL);
 	if (i < 0)
 		return i;
 
@@ -213,7 +213,7 @@ int proc_alloc_inum(unsigned int *inum)
 
 void proc_free_inum(unsigned int inum)
 {
-	ida_simple_remove(&proc_inum_ida, inum - PROC_DYNAMIC_FIRST);
+	ida_free(&proc_inum_ida, inum - PROC_DYNAMIC_FIRST);
 }
 
 static int proc_misc_d_revalidate(struct dentry *dentry, unsigned int flags)
@@ -486,9 +486,9 @@ struct proc_dir_entry *proc_symlink(const char *name,
 			  (S_IFLNK | S_IRUGO | S_IWUGO | S_IXUGO),1);
 
 	if (ent) {
-		ent->data = kmalloc((ent->size=strlen(dest))+1, GFP_KERNEL);
+		ent->size = strlen(dest);
+		ent->data = kmemdup(dest, ent->size + 1, GFP_KERNEL);
 		if (ent->data) {
-			strcpy((char*)ent->data,dest);
 			ent->proc_iops = &proc_link_inode_operations;
 			ent = proc_register(parent, ent);
 		} else {
@@ -694,12 +694,6 @@ void pde_put(struct proc_dir_entry *pde)
 	}
 }
 
-static void pde_erase(struct proc_dir_entry *pde, struct proc_dir_entry *parent)
-{
-	rb_erase(&pde->subdir_node, &parent->subdir);
-	RB_CLEAR_NODE(&pde->subdir_node);
-}
-
 /*
  * Remove a /proc entry and free it if it's not currently in use.
  */
@@ -722,7 +716,7 @@ void remove_proc_entry(const char *name, struct proc_dir_entry *parent)
 			WARN(1, "removing permanent /proc entry '%s'", de->name);
 			de = NULL;
 		} else {
-			pde_erase(de, parent);
+			rb_erase(&de->subdir_node, &parent->subdir);
 			if (S_ISDIR(de->mode))
 				parent->nlink--;
 		}
@@ -766,7 +760,7 @@ int remove_proc_subtree(const char *name, struct proc_dir_entry *parent)
 			root->parent->name, root->name);
 		return -EINVAL;
 	}
-	pde_erase(root, parent);
+	rb_erase(&root->subdir_node, &parent->subdir);
 
 	de = root;
 	while (1) {
@@ -778,7 +772,7 @@ int remove_proc_subtree(const char *name, struct proc_dir_entry *parent)
 					next->parent->name, next->name);
 				return -EINVAL;
 			}
-			pde_erase(next, de);
+			rb_erase(&next->subdir_node, &de->subdir);
 			de = next;
 			continue;
 		}

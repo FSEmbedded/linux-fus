@@ -224,8 +224,7 @@ int ncsi_aen_handler(struct ncsi_dev_priv *ndp, struct sk_buff *skb)
 	if (!nah) {
 		netdev_warn(ndp->ndev.dev, "Invalid AEN (0x%x) received\n",
 			    h->type);
-		ret = -ENOENT;
-		goto out;
+		return -ENOENT;
 	}
 
 	ret = ncsi_validate_aen_pkt(h, nah->payload);

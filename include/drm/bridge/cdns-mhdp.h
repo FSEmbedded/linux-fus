@@ -884,7 +884,8 @@ int cdns_mhdp_mailbox_validate_receive(struct cdns_mhdp_device *mhdp,
 					      u16 req_size);
 void cdns_mhdp_infoframe_set(struct cdns_mhdp_device *mhdp,
 			     u8 entry_id, u8 packet_len, u8 *packet, u8 packet_type);
-void cdns_mhdp_infoframe_clean(struct cdns_mhdp_device *mhdp, u8 entry_id);
+void cdns_mhdp_infoframe_remove(struct cdns_mhdp_device *mhdp,
+				u8 entry_id, u8 packet_type);
 int cdns_hdmi_get_edid_block(void *data, u8 *edid, u32 block, size_t length);
 int cdns_hdmi_scdc_read(struct cdns_mhdp_device *mhdp, u8 addr, u8 *data);
 int cdns_hdmi_scdc_write(struct cdns_mhdp_device *mhdp, u8 addr, u8 value);
@@ -918,9 +919,7 @@ int cdns_hdmi_set_plugged_cb(struct cdns_mhdp_device *mhdp, hdmi_codec_plugged_c
 			     struct device *codec_dev);
 
 /* CEC */
-#ifdef CONFIG_DRM_CDNS_HDMI_CEC
 int cdns_mhdp_register_cec_driver(struct cdns_mhdp_cec *cec);
 int cdns_mhdp_unregister_cec_driver(struct cdns_mhdp_cec *cec);
-#endif
 
 #endif /* CDNS_MHDP_H_ */

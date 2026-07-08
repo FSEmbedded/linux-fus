@@ -8,6 +8,7 @@
 #include <linux/iopoll.h>
 #include <linux/interrupt.h>
 #include <linux/notifier.h>
+#include <linux/soc/qcom/qcom_aoss.h>
 #include "msm_drv.h"
 #include "a6xx_hfi.h"
 
@@ -97,21 +98,17 @@ struct a6xx_gmu {
 	struct notifier_block pd_nb;
 	struct completion pd_gate;
 
-/* To check if we can trigger sleep seq at PDC. Cleared in a6xx_rpmh_stop() */
-#define GMU_STATUS_FW_START	0
-/* To track if PDC sleep seq was done */
-#define GMU_STATUS_PDC_SLEEP	1
-	unsigned long status;
+	struct qmp *qmp;
 };
 
 static inline u32 gmu_read(struct a6xx_gmu *gmu, u32 offset)
 {
-	return msm_readl(gmu->mmio + (offset << 2));
+	return readl(gmu->mmio + (offset << 2));
 }
 
 static inline void gmu_write(struct a6xx_gmu *gmu, u32 offset, u32 value)
 {
-	msm_writel(value, gmu->mmio + (offset << 2));
+	writel(value, gmu->mmio + (offset << 2));
 }
 
 static inline void
@@ -134,8 +131,8 @@ static inline u64 gmu_read64(struct a6xx_gmu *gmu, u32 lo, u32 hi)
 {
 	u64 val;
 
-	val = (u64) msm_readl(gmu->mmio + (lo << 2));
-	val |= ((u64) msm_readl(gmu->mmio + (hi << 2)) << 32);
+	val = (u64) readl(gmu->mmio + (lo << 2));
+	val |= ((u64) readl(gmu->mmio + (hi << 2)) << 32);
 
 	return val;
 }
@@ -146,12 +143,12 @@ static inline u64 gmu_read64(struct a6xx_gmu *gmu, u32 lo, u32 hi)
 
 static inline u32 gmu_read_rscc(struct a6xx_gmu *gmu, u32 offset)
 {
-	return msm_readl(gmu->rscc + (offset << 2));
+	return readl(gmu->rscc + (offset << 2));
 }
 
 static inline void gmu_write_rscc(struct a6xx_gmu *gmu, u32 offset, u32 value)
 {
-	msm_writel(value, gmu->rscc + (offset << 2));
+	writel(value, gmu->rscc + (offset << 2));
 }
 
 #define gmu_poll_timeout_rscc(gmu, addr, val, cond, interval, timeout) \

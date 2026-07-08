@@ -13,7 +13,7 @@
  * All policy is validated before it is used.
  */
 
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 #include <kunit/visibility.h>
 #include <linux/ctype.h>
 #include <linux/errno.h>
@@ -90,10 +90,10 @@ void __aa_loaddata_update(struct aa_loaddata *data, long revision)
 		struct inode *inode;
 
 		inode = d_inode(data->dents[AAFS_LOADDATA_DIR]);
-		inode->i_mtime = inode_set_ctime_current(inode);
+		inode_set_mtime_to_ts(inode, inode_set_ctime_current(inode));
 
 		inode = d_inode(data->dents[AAFS_LOADDATA_REVISION]);
-		inode->i_mtime = inode_set_ctime_current(inode);
+		inode_set_mtime_to_ts(inode, inode_set_ctime_current(inode));
 	}
 }
 
@@ -108,8 +108,22 @@ bool aa_rawdata_eq(struct aa_loaddata *l, struct aa_loaddata *r)
 	return memcmp(l->data, r->data, r->compressed_size ?: r->size) == 0;
 }
 
-static void do_loaddata_free(struct aa_loaddata *d)
+/*
+ * need to take the ns mutex lock which is NOT safe most places that
+ * put_loaddata is called, so we have to delay freeing it
+ */
+static void do_loaddata_free(struct work_struct *work)
 {
+	struct aa_loaddata *d = container_of(work, struct aa_loaddata, work);
+	struct aa_ns *ns = aa_get_ns(d->ns);
+
+	if (ns) {
+		mutex_lock_nested(&ns->lock, ns->level);
+		__aa_fs_remove_rawdata(d);
+		mutex_unlock(&ns->lock);
+		aa_put_ns(ns);
+	}
+
 	kfree_sensitive(d->hash);
 	kfree_sensitive(d->name);
 	kvfree(d->data);
@@ -118,38 +132,10 @@ static void do_loaddata_free(struct aa_loaddata *d)
 
 void aa_loaddata_kref(struct kref *kref)
 {
-	struct aa_loaddata *d = container_of(kref, struct aa_loaddata,
-					     count.count);
-
-	do_loaddata_free(d);
-}
-
-/*
- * need to take the ns mutex lock which is NOT safe most places that
- * put_loaddata is called, so we have to delay freeing it
- */
-static void do_ploaddata_rmfs(struct work_struct *work)
-{
-	struct aa_loaddata *d = container_of(work, struct aa_loaddata, work);
-	struct aa_ns *ns = aa_get_ns(d->ns);
-
-	if (ns) {
-		mutex_lock_nested(&ns->lock, ns->level);
-		/* remove fs ref to loaddata */
-		__aa_fs_remove_rawdata(d);
-		mutex_unlock(&ns->lock);
-		aa_put_ns(ns);
-	}
-	/* called by dropping last pcount, so drop its associated icount */
-	aa_put_i_loaddata(d);
-}
-
-void aa_ploaddata_kref(struct kref *kref)
-{
-	struct aa_loaddata *d = container_of(kref, struct aa_loaddata, pcount);
+	struct aa_loaddata *d = container_of(kref, struct aa_loaddata, count);
 
 	if (d) {
-		INIT_WORK(&d->work, do_ploaddata_rmfs);
+		INIT_WORK(&d->work, do_loaddata_free);
 		schedule_work(&d->work);
 	}
 }
@@ -166,9 +152,7 @@ struct aa_loaddata *aa_loaddata_alloc(size_t size)
 		kfree(d);
 		return ERR_PTR(-ENOMEM);
 	}
-	kref_init(&d->count.count);
-	d->count.reftype = REF_RAWDATA;
-	kref_init(&d->pcount);
+	kref_init(&d->count);
 	INIT_LIST_HEAD(&d->list);
 
 	return d;
@@ -699,10 +683,8 @@ static ssize_t unpack_perms_table(struct aa_ext *e, struct aa_perms **perms)
 		if (!aa_unpack_array(e, NULL, &size))
 			goto fail_reset;
 		*perms = kcalloc(size, sizeof(struct aa_perms), GFP_KERNEL);
-		if (!*perms) {
-			e->pos = pos;
-			return -ENOMEM;
-		}
+		if (!*perms)
+			goto fail_reset;
 		for (i = 0; i < size; i++) {
 			if (!unpack_perm(e, version, &(*perms)[i]))
 				goto fail;
@@ -765,44 +747,42 @@ static int unpack_pdb(struct aa_ext *e, struct aa_policydb **policy,
 			*info = "missing required dfa";
 			goto fail;
 		}
-		goto out;
+	} else {
+		/*
+		 * only unpack the following if a dfa is present
+		 *
+		 * sadly start was given different names for file and policydb
+		 * but since it is optional we can try both
+		 */
+		if (!aa_unpack_u32(e, &pdb->start[0], "start"))
+			/* default start state */
+			pdb->start[0] = DFA_START;
+		if (!aa_unpack_u32(e, &pdb->start[AA_CLASS_FILE], "dfa_start")) {
+			/* default start state for xmatch and file dfa */
+			pdb->start[AA_CLASS_FILE] = DFA_START;
+		}	/* setup class index */
+		for (i = AA_CLASS_FILE + 1; i <= AA_CLASS_LAST; i++) {
+			pdb->start[i] = aa_dfa_next(pdb->dfa, pdb->start[0],
+						    i);
+		}
 	}
 
 	/*
-	 * only unpack the following if a dfa is present
-	 *
-	 * sadly start was given different names for file and policydb
-	 * but since it is optional we can try both
+	 * Unfortunately due to a bug in earlier userspaces, a
+	 * transition table may be present even when the dfa is
+	 * not. For compatibility reasons unpack and discard.
 	 */
-	if (!aa_unpack_u32(e, &pdb->start[0], "start"))
-		/* default start state */
-		pdb->start[0] = DFA_START;
-	if (!aa_unpack_u32(e, &pdb->start[AA_CLASS_FILE], "dfa_start")) {
-		/* default start state for xmatch and file dfa */
-		pdb->start[AA_CLASS_FILE] = DFA_START;
-	}
-
-	size_t state_count = pdb->dfa->tables[YYTD_ID_BASE]->td_lolen;
-
-	if (pdb->start[0] >= state_count ||
-	    pdb->start[AA_CLASS_FILE] >= state_count) {
-		*info = "invalid dfa start state";
-		goto fail;
-	}
-
-	/* setup class index */
-	for (i = AA_CLASS_FILE + 1; i <= AA_CLASS_LAST; i++) {
-		pdb->start[i] = aa_dfa_next(pdb->dfa, pdb->start[0],
-					       i);
-	}
 	if (!unpack_trans_table(e, &pdb->trans) && required_trans) {
 		*info = "failed to unpack profile transition table";
 		goto fail;
 	}
 
+	if (!pdb->dfa && pdb->trans.table)
+		aa_free_str_table(&pdb->trans);
+
 	/* TODO: move compat mapping here, requires dfa merging first */
 	/* TODO: move verify here, it has to be done after compat mappings */
-out:
+
 	*policy = pdb;
 	return 0;
 
@@ -1053,8 +1033,10 @@ static struct aa_profile *unpack_profile(struct aa_ext *e, char **ns_name)
 		}
 	} else if (rules->policy->dfa &&
 		   rules->policy->start[AA_CLASS_FILE]) {
+		aa_put_pdb(rules->file);
 		rules->file = aa_get_pdb(rules->policy);
 	} else {
+		aa_put_pdb(rules->file);
 		rules->file = aa_get_pdb(nullpdb);
 	}
 	error = -EPROTO;
@@ -1148,6 +1130,7 @@ static int verify_header(struct aa_ext *e, int required, const char **ns)
 {
 	int error = -EPROTONOSUPPORT;
 	const char *name = NULL;
+	*ns = NULL;
 
 	/* get the interface version */
 	if (!aa_unpack_u32(e, &e->version, "version")) {
@@ -1191,7 +1174,7 @@ static int verify_header(struct aa_ext *e, int required, const char **ns)
 /**
  * verify_dfa_accept_index - verify accept indexes are in range of perms table
  * @dfa: the dfa to check accept indexes are in range
- * table_size: the permission table size the indexes should be within
+ * @table_size: the permission table size the indexes should be within
  */
 static bool verify_dfa_accept_index(struct aa_dfa *dfa, int table_size)
 {

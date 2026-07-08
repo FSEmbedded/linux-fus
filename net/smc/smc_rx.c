@@ -42,10 +42,10 @@ static void smc_rx_wake_up(struct sock *sk)
 	if (skwq_has_sleeper(wq))
 		wake_up_interruptible_sync_poll(&wq->wait, EPOLLIN | EPOLLPRI |
 						EPOLLRDNORM | EPOLLRDBAND);
-	sk_wake_async(sk, SOCK_WAKE_WAITD, POLL_IN);
+	sk_wake_async_rcu(sk, SOCK_WAKE_WAITD, POLL_IN);
 	if ((sk->sk_shutdown == SHUTDOWN_MASK) ||
 	    (sk->sk_state == SMC_CLOSED))
-		sk_wake_async(sk, SOCK_WAKE_WAITD, POLL_HUP);
+		sk_wake_async_rcu(sk, SOCK_WAKE_WAITD, POLL_HUP);
 	rcu_read_unlock();
 }
 
@@ -135,16 +135,9 @@ out:
 	sock_put(sk);
 }
 
-static bool smc_rx_pipe_buf_get(struct pipe_inode_info *pipe,
-				struct pipe_buffer *buf)
-{
-	/* smc_spd_priv in buf->private is not shareable; disallow cloning. */
-	return false;
-}
-
 static const struct pipe_buf_operations smc_pipe_ops = {
 	.release = smc_rx_pipe_buf_release,
-	.get	 = smc_rx_pipe_buf_get,
+	.get = generic_pipe_buf_get
 };
 
 static void smc_rx_spd_release(struct splice_pipe_desc *spd,

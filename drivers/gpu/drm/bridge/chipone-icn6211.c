@@ -197,7 +197,7 @@ static const struct regmap_config chipone_regmap_config = {
 	.val_bits = 8,
 	.rd_table = &chipone_dsi_readable_table,
 	.wr_table = &chipone_dsi_writeable_table,
-	.cache_type = REGCACHE_RBTREE,
+	.cache_type = REGCACHE_MAPLE,
 	.max_register = MIPI_ATE_STATUS(1),
 };
 
@@ -757,9 +757,7 @@ static int chipone_i2c_probe(struct i2c_client *client)
 	dev_set_drvdata(dev, icn);
 	i2c_set_clientdata(client, icn);
 
-	ret = devm_drm_bridge_add(dev, &icn->bridge);
-	if (ret)
-		return ret;
+	drm_bridge_add(&icn->bridge);
 
 	return chipone_dsi_host_attach(icn);
 }
@@ -783,7 +781,6 @@ static struct mipi_dsi_driver chipone_dsi_driver = {
 	.remove = chipone_dsi_remove,
 	.driver = {
 		.name = "chipone-icn6211",
-		.owner = THIS_MODULE,
 		.of_match_table = chipone_of_match,
 	},
 };

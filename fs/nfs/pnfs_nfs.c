@@ -351,53 +351,6 @@ void pnfs_generic_recover_commit_reqs(struct list_head *dst,
 }
 EXPORT_SYMBOL_GPL(pnfs_generic_recover_commit_reqs);
 
-static struct nfs_page *
-pnfs_bucket_search_commit_reqs(struct pnfs_commit_bucket *buckets,
-			       unsigned int nbuckets, struct folio *folio)
-{
-	struct nfs_page *req;
-	struct pnfs_commit_bucket *b;
-	unsigned int i;
-
-	/* Linearly search the commit lists for each bucket until a matching
-	 * request is found */
-	for (i = 0, b = buckets; i < nbuckets; i++, b++) {
-		list_for_each_entry(req, &b->written, wb_list) {
-			if (nfs_page_to_folio(req) == folio)
-				return req->wb_head;
-		}
-		list_for_each_entry(req, &b->committing, wb_list) {
-			if (nfs_page_to_folio(req) == folio)
-				return req->wb_head;
-		}
-	}
-	return NULL;
-}
-
-/* pnfs_generic_search_commit_reqs - Search lists in @cinfo for the head request
- *				   for @folio
- * @cinfo - commit info for current inode
- * @folio - page to search for matching head request
- *
- * Return: the head request if one is found, otherwise %NULL.
- */
-struct nfs_page *pnfs_generic_search_commit_reqs(struct nfs_commit_info *cinfo,
-						 struct folio *folio)
-{
-	struct pnfs_ds_commit_info *fl_cinfo = cinfo->ds;
-	struct pnfs_commit_array *array;
-	struct nfs_page *req;
-
-	list_for_each_entry(array, &fl_cinfo->commits, cinfo_list) {
-		req = pnfs_bucket_search_commit_reqs(array->buckets,
-						     array->nbuckets, folio);
-		if (req)
-			return req;
-	}
-	return NULL;
-}
-EXPORT_SYMBOL_GPL(pnfs_generic_search_commit_reqs);
-
 static struct pnfs_layout_segment *
 pnfs_bucket_get_committing(struct list_head *head,
 			   struct pnfs_commit_bucket *bucket,
@@ -537,7 +490,7 @@ pnfs_generic_commit_pagelist(struct inode *inode, struct list_head *mds_pages,
 			nfs_initiate_commit(NFS_CLIENT(inode), data,
 					    NFS_PROTO(data->inode),
 					    data->mds_ops, how,
-					    RPC_TASK_CRED_NOREF);
+					    RPC_TASK_CRED_NOREF, NULL);
 		} else {
 			nfs_init_commit(data, NULL, data->lseg, cinfo);
 			initiate_commit(data, how);
@@ -914,10 +867,7 @@ static int _nfs4_pnfs_v4_ds_connect(struct nfs_server *mds_srv,
 				 u32 minor_version)
 {
 	struct nfs_client *clp = ERR_PTR(-EIO);
-	struct nfs_client *mds_clp = mds_srv->nfs_client;
-	enum xprtsec_policies xprtsec_policy = mds_clp->cl_xprtsec.policy;
 	struct nfs4_pnfs_ds_addr *da;
-	int ds_proto;
 	int status = 0;
 
 	dprintk("--> %s DS %s\n", __func__, ds->ds_remotestr);
@@ -945,8 +895,12 @@ static int _nfs4_pnfs_v4_ds_connect(struct nfs_server *mds_srv,
 				.data = &xprtdata,
 			};
 
-			if (xprt_args.ident == XPRT_TRANSPORT_TCP &&
-			    clp->cl_proto == XPRT_TRANSPORT_TCP_TLS) {
+			if (da->da_transport != clp->cl_proto &&
+					clp->cl_proto != XPRT_TRANSPORT_TCP_TLS)
+				continue;
+			if (da->da_transport == XPRT_TRANSPORT_TCP &&
+				mds_srv->nfs_client->cl_proto ==
+					XPRT_TRANSPORT_TCP_TLS) {
 				struct sockaddr *addr =
 					(struct sockaddr *)&da->da_addr;
 				struct sockaddr_in *sin =
@@ -977,10 +931,7 @@ static int _nfs4_pnfs_v4_ds_connect(struct nfs_server *mds_srv,
 				xprt_args.ident = XPRT_TRANSPORT_TCP_TLS;
 				xprt_args.servername = servername;
 			}
-			if (xprt_args.ident != clp->cl_proto)
-				continue;
-			if (xprt_args.dstaddr->sa_family !=
-			    clp->cl_addr.ss_family)
+			if (da->da_addr.ss_family != clp->cl_addr.ss_family)
 				continue;
 
 			/**
@@ -994,14 +945,15 @@ static int _nfs4_pnfs_v4_ds_connect(struct nfs_server *mds_srv,
 			if (xprtdata.cred)
 				put_cred(xprtdata.cred);
 		} else {
-			ds_proto = da->da_transport;
-			if (ds_proto == XPRT_TRANSPORT_TCP &&
-			    xprtsec_policy != RPC_XPRTSEC_NONE)
-				ds_proto = XPRT_TRANSPORT_TCP_TLS;
-
-			clp = nfs4_set_ds_client(mds_srv, &da->da_addr,
-						 da->da_addrlen, ds_proto,
-						 timeo, retrans, minor_version);
+			if (da->da_transport == XPRT_TRANSPORT_TCP &&
+				mds_srv->nfs_client->cl_proto ==
+					XPRT_TRANSPORT_TCP_TLS)
+				da->da_transport = XPRT_TRANSPORT_TCP_TLS;
+			clp = nfs4_set_ds_client(mds_srv,
+						&da->da_addr,
+						da->da_addrlen,
+						da->da_transport, timeo,
+						retrans, minor_version);
 			if (IS_ERR(clp))
 				continue;
 
@@ -1012,6 +964,7 @@ static int _nfs4_pnfs_v4_ds_connect(struct nfs_server *mds_srv,
 				clp = ERR_PTR(-EIO);
 				continue;
 			}
+
 		}
 	}
 

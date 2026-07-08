@@ -61,8 +61,6 @@ enum mmc_drv_op {
 	MMC_DRV_OP_GET_EXT_CSD,
 };
 
-#define	MQRQ_XFER_SINGLE_BLOCK		BIT(0)
-
 struct mmc_queue_req {
 	struct mmc_blk_request	brq;
 	struct scatterlist	*sg;
@@ -71,7 +69,6 @@ struct mmc_queue_req {
 	void			*drv_op_data;
 	unsigned int		ioc_count;
 	int			retries;
-	u32			flags;
 };
 
 struct mmc_queue {
@@ -97,7 +94,8 @@ struct mmc_queue {
 	struct work_struct	complete_work;
 };
 
-struct gendisk *mmc_init_queue(struct mmc_queue *mq, struct mmc_card *card);
+struct gendisk *mmc_init_queue(struct mmc_queue *mq, struct mmc_card *card,
+		unsigned int features);
 extern void mmc_cleanup_queue(struct mmc_queue *);
 extern void mmc_queue_suspend(struct mmc_queue *);
 extern void mmc_queue_resume(struct mmc_queue *);

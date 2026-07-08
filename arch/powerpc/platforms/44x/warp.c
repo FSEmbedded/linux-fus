@@ -8,6 +8,7 @@
 #include <linux/err.h>
 #include <linux/init.h>
 #include <linux/of_platform.h>
+#include <linux/platform_device.h>
 #include <linux/kthread.h>
 #include <linux/leds.h>
 #include <linux/i2c.h>
@@ -291,8 +292,6 @@ static int pika_dtm_thread(void __iomem *fpga)
 		set_current_state(TASK_INTERRUPTIBLE);
 		schedule_timeout(HZ);
 	}
-
-	put_device(&client->dev);
 
 	return 0;
 }

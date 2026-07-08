@@ -42,19 +42,16 @@ static void usb_api_blocking_completion(struct urb *urb)
 
 
 /*
- * Starts urb and waits for completion or timeout.
- * Whether or not the wait is killable depends on the flag passed in.
- * For example, compare usb_bulk_msg() and usb_bulk_msg_killable().
- *
- * For non-killable waits, we enforce a maximum limit on the timeout value.
+ * Starts urb and waits for completion or timeout. Note that this call
+ * is NOT interruptible. Many device driver i/o requests should be
+ * interruptible and therefore these drivers should implement their
+ * own interruptible routines.
  */
-static int usb_start_wait_urb(struct urb *urb, int timeout, int *actual_length,
-		bool killable)
+static int usb_start_wait_urb(struct urb *urb, int timeout, int *actual_length)
 {
 	struct api_context ctx;
 	unsigned long expire;
 	int retval;
-	long rc;
 
 	init_completion(&ctx.done);
 	urb->context = &ctx;
@@ -63,24 +60,13 @@ static int usb_start_wait_urb(struct urb *urb, int timeout, int *actual_length,
 	if (unlikely(retval))
 		goto out;
 
-	if (!killable && (timeout <= 0 || timeout > USB_MAX_SYNCHRONOUS_TIMEOUT))
-		timeout = USB_MAX_SYNCHRONOUS_TIMEOUT;
-	expire = (timeout > 0) ? msecs_to_jiffies(timeout) : MAX_SCHEDULE_TIMEOUT;
-	if (killable)
-		rc = wait_for_completion_killable_timeout(&ctx.done, expire);
-	else
-		rc = wait_for_completion_timeout(&ctx.done, expire);
-	if (rc <= 0) {
+	expire = timeout ? msecs_to_jiffies(timeout) : MAX_SCHEDULE_TIMEOUT;
+	if (!wait_for_completion_timeout(&ctx.done, expire)) {
 		usb_kill_urb(urb);
-		if (ctx.status != -ENOENT)
-			retval = ctx.status;
-		else if (rc == 0)
-			retval = -ETIMEDOUT;
-		else
-			retval = rc;
+		retval = (ctx.status == -ENOENT ? -ETIMEDOUT : ctx.status);
 
 		dev_dbg(&urb->dev->dev,
-			"%s timed out or killed on ep%d%s len=%u/%u\n",
+			"%s timed out on ep%d%s len=%u/%u\n",
 			current->comm,
 			usb_endpoint_num(&urb->ep->desc),
 			usb_urb_dir_in(urb) ? "in" : "out",
@@ -114,7 +100,7 @@ static int usb_internal_control_msg(struct usb_device *usb_dev,
 	usb_fill_control_urb(urb, usb_dev, pipe, (unsigned char *)cmd, data,
 			     len, usb_api_blocking_completion, NULL);
 
-	retv = usb_start_wait_urb(urb, timeout, &length, false);
+	retv = usb_start_wait_urb(urb, timeout, &length);
 	if (retv < 0)
 		return retv;
 	else
@@ -131,7 +117,8 @@ static int usb_internal_control_msg(struct usb_device *usb_dev,
  * @index: USB message index value
  * @data: pointer to the data to send
  * @size: length in bytes of the data to send
- * @timeout: time in msecs to wait for the message to complete before timing out
+ * @timeout: time in msecs to wait for the message to complete before timing
+ *	out (if 0 the wait is forever)
  *
  * Context: task context, might sleep.
  *
@@ -186,7 +173,8 @@ EXPORT_SYMBOL_GPL(usb_control_msg);
  * @index: USB message index value
  * @driver_data: pointer to the data to send
  * @size: length in bytes of the data to send
- * @timeout: time in msecs to wait for the message to complete before timing out
+ * @timeout: time in msecs to wait for the message to complete before timing
+ *	out (if 0 the wait is forever)
  * @memflags: the flags for memory allocation for buffers
  *
  * Context: !in_interrupt ()
@@ -244,7 +232,8 @@ EXPORT_SYMBOL_GPL(usb_control_msg_send);
  * @index: USB message index value
  * @driver_data: pointer to the data to be filled in by the message
  * @size: length in bytes of the data to be received
- * @timeout: time in msecs to wait for the message to complete before timing out
+ * @timeout: time in msecs to wait for the message to complete before timing
+ *	out (if 0 the wait is forever)
  * @memflags: the flags for memory allocation for buffers
  *
  * Context: !in_interrupt ()
@@ -315,7 +304,8 @@ EXPORT_SYMBOL_GPL(usb_control_msg_recv);
  * @len: length in bytes of the data to send
  * @actual_length: pointer to a location to put the actual length transferred
  *	in bytes
- * @timeout: time in msecs to wait for the message to complete before timing out
+ * @timeout: time in msecs to wait for the message to complete before
+ *	timing out (if 0 the wait is forever)
  *
  * Context: task context, might sleep.
  *
@@ -347,7 +337,8 @@ EXPORT_SYMBOL_GPL(usb_interrupt_msg);
  * @len: length in bytes of the data to send
  * @actual_length: pointer to a location to put the actual length transferred
  *	in bytes
- * @timeout: time in msecs to wait for the message to complete before timing out
+ * @timeout: time in msecs to wait for the message to complete before
+ *	timing out (if 0 the wait is forever)
  *
  * Context: task context, might sleep.
  *
@@ -394,58 +385,9 @@ int usb_bulk_msg(struct usb_device *usb_dev, unsigned int pipe,
 		usb_fill_bulk_urb(urb, usb_dev, pipe, data, len,
 				usb_api_blocking_completion, NULL);
 
-	return usb_start_wait_urb(urb, timeout, actual_length, false);
+	return usb_start_wait_urb(urb, timeout, actual_length);
 }
 EXPORT_SYMBOL_GPL(usb_bulk_msg);
-
-/**
- * usb_bulk_msg_killable - Builds a bulk urb, sends it off and waits for completion in a killable state
- * @usb_dev: pointer to the usb device to send the message to
- * @pipe: endpoint "pipe" to send the message to
- * @data: pointer to the data to send
- * @len: length in bytes of the data to send
- * @actual_length: pointer to a location to put the actual length transferred
- *	in bytes
- * @timeout: time in msecs to wait for the message to complete before
- *	timing out (if <= 0, the wait is as long as possible)
- *
- * Context: task context, might sleep.
- *
- * This function is just like usb_blk_msg(), except that it waits in a
- * killable state and there is no limit on the timeout length.
- *
- * Return:
- * If successful, 0. Otherwise a negative error number. The number of actual
- * bytes transferred will be stored in the @actual_length parameter.
- *
- */
-int usb_bulk_msg_killable(struct usb_device *usb_dev, unsigned int pipe,
-		 void *data, int len, int *actual_length, int timeout)
-{
-	struct urb *urb;
-	struct usb_host_endpoint *ep;
-
-	ep = usb_pipe_endpoint(usb_dev, pipe);
-	if (!ep || len < 0)
-		return -EINVAL;
-
-	urb = usb_alloc_urb(0, GFP_KERNEL);
-	if (!urb)
-		return -ENOMEM;
-
-	if ((ep->desc.bmAttributes & USB_ENDPOINT_XFERTYPE_MASK) ==
-			USB_ENDPOINT_XFER_INT) {
-		pipe = (pipe & ~(3 << 30)) | (PIPE_INTERRUPT << 30);
-		usb_fill_int_urb(urb, usb_dev, pipe, data, len,
-				usb_api_blocking_completion, NULL,
-				ep->desc.bInterval);
-	} else
-		usb_fill_bulk_urb(urb, usb_dev, pipe, data, len,
-				usb_api_blocking_completion, NULL);
-
-	return usb_start_wait_urb(urb, timeout, actual_length, true);
-}
-EXPORT_SYMBOL_GPL(usb_bulk_msg_killable);
 
 /*-------------------------------------------------------------------*/
 
@@ -1256,6 +1198,8 @@ EXPORT_SYMBOL_GPL(usb_get_status);
  * same status code used to report a true stall.
  *
  * This call is synchronous, and may not be used in an interrupt context.
+ * If a thread in your driver uses this call, make sure your disconnect()
+ * method can wait for it to complete.
  *
  * Return: Zero on success, or else the status code returned by the
  * underlying usb_control_msg() call.
@@ -1574,7 +1518,8 @@ void usb_enable_interface(struct usb_device *dev,
  * This call is synchronous, and may not be used in an interrupt context.
  * Also, drivers must not change altsettings while urbs are scheduled for
  * endpoints in that interface; all such urbs must first be completed
- * (perhaps forced by unlinking).
+ * (perhaps forced by unlinking). If a thread in your driver uses this call,
+ * make sure your disconnect() method can wait for it to complete.
  *
  * Return: Zero on success, or else the status code returned by the
  * underlying usb_control_msg() call.
@@ -1907,7 +1852,7 @@ static int usb_if_uevent(const struct device *dev, struct kobj_uevent_env *env)
 	return 0;
 }
 
-struct device_type usb_if_device_type = {
+const struct device_type usb_if_device_type = {
 	.name =		"usb_interface",
 	.release =	usb_release_interface,
 	.uevent =	usb_if_uevent,
@@ -2486,7 +2431,7 @@ int cdc_parse_cdc_header(struct usb_cdc_parsed_header *hdr,
 			break;
 		case USB_CDC_MBIM_EXTENDED_TYPE:
 			if (elength < sizeof(struct usb_cdc_mbim_extended_desc))
-				goto next_desc;
+				break;
 			hdr->usb_cdc_mbim_extended_desc =
 				(struct usb_cdc_mbim_extended_desc *)buffer;
 			break;

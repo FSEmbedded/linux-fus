@@ -145,11 +145,6 @@ destroy_skel:
 skel_open_load_failure:
 	close(pipe_c2p[0]);
 	close(pipe_p2c[1]);
-	/*
-	 * Child is either about to exit cleanly or stuck in case of errors.
-	 * Nudge it to exit.
-	 */
-	kill(pid, SIGKILL);
 	wait(NULL);
 }
 
@@ -185,7 +180,7 @@ static void test_send_signal_nmi(bool signal_thread)
 	pmu_fd = syscall(__NR_perf_event_open, &attr, 0 /* pid */,
 			 -1 /* cpu */, -1 /* group_fd */, 0 /* flags */);
 	if (pmu_fd == -1) {
-		if (errno == ENOENT) {
+		if (errno == ENOENT || errno == EOPNOTSUPP) {
 			printf("%s:SKIP:no PERF_COUNT_HW_CPU_CYCLES\n",
 			       __func__);
 			test__skip();

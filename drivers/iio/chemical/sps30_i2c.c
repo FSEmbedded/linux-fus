@@ -6,7 +6,7 @@
  *
  * I2C slave address: 0x69
  */
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 #include <linux/crc8.h>
 #include <linux/delay.h>
 #include <linux/device.h>
@@ -171,7 +171,7 @@ static int sps30_i2c_read_meas(struct sps30_state *state, __be32 *meas, size_t n
 	if (!sps30_i2c_meas_ready(state))
 		return -ETIMEDOUT;
 
-	return sps30_i2c_command(state, SPS30_I2C_READ_MEAS, NULL, 0, meas, sizeof(*meas) * num);
+	return sps30_i2c_command(state, SPS30_I2C_READ_MEAS, NULL, 0, meas, sizeof(num) * num);
 }
 
 static int sps30_i2c_clean_fan(struct sps30_state *state)

@@ -319,6 +319,27 @@ arch___test_and_change_bit(unsigned long nr, volatile unsigned long *addr)
 	return test_and_change_bit(nr, addr);
 }
 
+static inline bool xor_unlock_is_negative_byte(unsigned long mask,
+		volatile unsigned long *p)
+{
+#ifdef CONFIG_COLDFIRE
+	__asm__ __volatile__ ("eorl %1, %0"
+		: "+m" (*p)
+		: "d" (mask)
+		: "memory");
+	return *p & (1 << 7);
+#else
+	char result;
+	char *cp = (char *)p + 3;	/* m68k is big-endian */
+
+	__asm__ __volatile__ ("eor.b %1, %2; smi %0"
+		: "=d" (result)
+		: "di" (mask), "o" (*cp)
+		: "memory");
+	return result;
+#endif
+}
+
 /*
  *	The true 68020 and more advanced processors support the "bfffo"
  *	instruction for finding bits. ColdFire and simple 68000 parts
@@ -329,12 +350,12 @@ arch___test_and_change_bit(unsigned long nr, volatile unsigned long *addr)
 #include <asm-generic/bitops/ffz.h>
 #else
 
-static inline unsigned long find_first_zero_bit(const unsigned long *vaddr,
-						unsigned long size)
+static inline int find_first_zero_bit(const unsigned long *vaddr,
+				      unsigned size)
 {
 	const unsigned long *p = vaddr;
-	unsigned long res = 32;
-	unsigned long words;
+	int res = 32;
+	unsigned int words;
 	unsigned long num;
 
 	if (!size)
@@ -355,9 +376,8 @@ out:
 }
 #define find_first_zero_bit find_first_zero_bit
 
-static inline unsigned long find_next_zero_bit(const unsigned long *vaddr,
-					       unsigned long size,
-					       unsigned long offset)
+static inline int find_next_zero_bit(const unsigned long *vaddr, int size,
+				     int offset)
 {
 	const unsigned long *p = vaddr + (offset >> 5);
 	int bit = offset & 31UL, res;
@@ -386,12 +406,11 @@ static inline unsigned long find_next_zero_bit(const unsigned long *vaddr,
 }
 #define find_next_zero_bit find_next_zero_bit
 
-static inline unsigned long find_first_bit(const unsigned long *vaddr,
-					   unsigned long size)
+static inline int find_first_bit(const unsigned long *vaddr, unsigned size)
 {
 	const unsigned long *p = vaddr;
-	unsigned long res = 32;
-	unsigned long words;
+	int res = 32;
+	unsigned int words;
 	unsigned long num;
 
 	if (!size)
@@ -412,9 +431,8 @@ out:
 }
 #define find_first_bit find_first_bit
 
-static inline unsigned long find_next_bit(const unsigned long *vaddr,
-					  unsigned long size,
-					  unsigned long offset)
+static inline int find_next_bit(const unsigned long *vaddr, int size,
+				int offset)
 {
 	const unsigned long *p = vaddr + (offset >> 5);
 	int bit = offset & 31UL, res;

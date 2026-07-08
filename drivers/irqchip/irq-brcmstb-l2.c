@@ -118,7 +118,7 @@ out:
 	chained_irq_exit(chip, desc);
 }
 
-static void brcmstb_l2_intc_suspend(struct irq_data *d)
+static void __brcmstb_l2_intc_suspend(struct irq_data *d, bool save)
 {
 	struct irq_chip_generic *gc = irq_data_get_irq_chip_data(d);
 	struct irq_chip_type *ct = irq_data_get_chip_type(d);
@@ -127,7 +127,8 @@ static void brcmstb_l2_intc_suspend(struct irq_data *d)
 
 	irq_gc_lock_irqsave(gc, flags);
 	/* Save the current mask */
-	b->saved_mask = irq_reg_readl(gc, ct->regs.mask);
+	if (save)
+		b->saved_mask = irq_reg_readl(gc, ct->regs.mask);
 
 	if (b->can_wake) {
 		/* Program the wakeup mask */
@@ -135,6 +136,16 @@ static void brcmstb_l2_intc_suspend(struct irq_data *d)
 		irq_reg_writel(gc, gc->wake_active, ct->regs.enable);
 	}
 	irq_gc_unlock_irqrestore(gc, flags);
+}
+
+static void brcmstb_l2_intc_shutdown(struct irq_data *d)
+{
+	__brcmstb_l2_intc_suspend(d, false);
+}
+
+static void brcmstb_l2_intc_suspend(struct irq_data *d)
+{
+	__brcmstb_l2_intc_suspend(d, true);
 }
 
 static void brcmstb_l2_intc_resume(struct irq_data *d)
@@ -157,8 +168,10 @@ static void brcmstb_l2_intc_resume(struct irq_data *d)
 	irq_gc_unlock_irqrestore(gc, flags);
 }
 
-static int brcmstb_l2_intc_of_init(struct device_node *np, struct device_node *parent,
-				   const struct brcmstb_intc_init_params *init_params)
+static int __init brcmstb_l2_intc_of_init(struct device_node *np,
+					  struct device_node *parent,
+					  const struct brcmstb_intc_init_params
+					  *init_params)
 {
 	unsigned int clr = IRQ_NOREQUEST | IRQ_NOPROBE | IRQ_NOAUTOEN;
 	unsigned int set = 0;
@@ -250,7 +263,7 @@ static int brcmstb_l2_intc_of_init(struct device_node *np, struct device_node *p
 
 	ct->chip.irq_suspend = brcmstb_l2_intc_suspend;
 	ct->chip.irq_resume = brcmstb_l2_intc_resume;
-	ct->chip.irq_pm_shutdown = brcmstb_l2_intc_suspend;
+	ct->chip.irq_pm_shutdown = brcmstb_l2_intc_shutdown;
 
 	if (data->can_wake) {
 		/* This IRQ chip can wake the system, set all child interrupts
@@ -274,12 +287,14 @@ out_free:
 	return ret;
 }
 
-static int brcmstb_l2_edge_intc_of_init(struct device_node *np, struct device_node *parent)
+static int __init brcmstb_l2_edge_intc_of_init(struct device_node *np,
+	struct device_node *parent)
 {
 	return brcmstb_l2_intc_of_init(np, parent, &l2_edge_intc_init);
 }
 
-static int brcmstb_l2_lvl_intc_of_init(struct device_node *np, struct device_node *parent)
+static int __init brcmstb_l2_lvl_intc_of_init(struct device_node *np,
+	struct device_node *parent)
 {
 	return brcmstb_l2_intc_of_init(np, parent, &l2_lvl_intc_init);
 }

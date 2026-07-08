@@ -197,7 +197,7 @@ static int bt656if_init(struct mxc_dispdrv_handle *disp,
 	return ret;
 }
 
-void bt656if_deinit(struct mxc_dispdrv_handle *disp)
+static void bt656if_deinit(struct mxc_dispdrv_handle *disp)
 {
 	/*TODO*/
 }
@@ -287,14 +287,13 @@ static int mxc_bt656if_probe(struct platform_device *pdev)
 	return ret;
 }
 
-static int mxc_bt656if_remove(struct platform_device *pdev)
+static void mxc_bt656if_remove(struct platform_device *pdev)
 {
 	struct mxc_bt656if_data *bt656if = dev_get_drvdata(&pdev->dev);
 
 	mxc_dispdrv_puthandle(bt656if->disp_bt656if);
 	mxc_dispdrv_unregister(bt656if->disp_bt656if);
 	kfree(bt656if);
-	return 0;
 }
 
 static const struct of_device_id imx_bt656_dt_ids[] = {

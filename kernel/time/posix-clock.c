@@ -129,7 +129,6 @@ static int posix_clock_open(struct inode *inode, struct file *fp)
 		goto out;
 	}
 	pccontext->clk = clk;
-	pccontext->fp = fp;
 	if (clk->ops.open) {
 		err = clk->ops.open(pccontext, fp->f_mode);
 		if (err) {
@@ -169,7 +168,6 @@ static int posix_clock_release(struct inode *inode, struct file *fp)
 
 static const struct file_operations posix_clock_file_operations = {
 	.owner		= THIS_MODULE,
-	.llseek		= no_llseek,
 	.read		= posix_clock_read,
 	.poll		= posix_clock_poll,
 	.unlocked_ioctl	= posix_clock_ioctl,
@@ -253,7 +251,7 @@ static int pc_clock_adjtime(clockid_t id, struct __kernel_timex *tx)
 	if (err)
 		return err;
 
-	if (tx->modes && (cd.fp->f_mode & FMODE_WRITE) == 0) {
+	if ((cd.fp->f_mode & FMODE_WRITE) == 0) {
 		err = -EACCES;
 		goto out;
 	}

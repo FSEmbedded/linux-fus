@@ -9,7 +9,7 @@
  * Some ideas are from marvell/cesa.c and s5p-sss.c driver.
  */
 
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 #include <crypto/internal/hash.h>
 #include <linux/device.h>
 #include <linux/err.h>
@@ -252,7 +252,7 @@ static void rk_hash_unprepare(struct crypto_engine *engine, void *breq)
 	struct rk_ahash_rctx *rctx = ahash_request_ctx(areq);
 	struct rk_crypto_info *rkc = rctx->dev;
 
-	dma_unmap_sg(rkc->dev, areq->src, sg_nents(areq->src), DMA_TO_DEVICE);
+	dma_unmap_sg(rkc->dev, areq->src, rctx->nrsg, DMA_TO_DEVICE);
 }
 
 static int rk_hash_run(struct crypto_engine *engine, void *breq)
@@ -393,7 +393,6 @@ struct rk_crypto_tmp rk_ahash_sha1 = {
 					       CRYPTO_ALG_NEED_FALLBACK,
 				  .cra_blocksize = SHA1_BLOCK_SIZE,
 				  .cra_ctxsize = sizeof(struct rk_ahash_ctx),
-				  .cra_alignmask = 3,
 				  .cra_module = THIS_MODULE,
 			}
 		}
@@ -426,7 +425,6 @@ struct rk_crypto_tmp rk_ahash_sha256 = {
 					       CRYPTO_ALG_NEED_FALLBACK,
 				  .cra_blocksize = SHA256_BLOCK_SIZE,
 				  .cra_ctxsize = sizeof(struct rk_ahash_ctx),
-				  .cra_alignmask = 3,
 				  .cra_module = THIS_MODULE,
 			}
 		}
@@ -459,7 +457,6 @@ struct rk_crypto_tmp rk_ahash_md5 = {
 					       CRYPTO_ALG_NEED_FALLBACK,
 				  .cra_blocksize = SHA1_BLOCK_SIZE,
 				  .cra_ctxsize = sizeof(struct rk_ahash_ctx),
-				  .cra_alignmask = 3,
 				  .cra_module = THIS_MODULE,
 			}
 		}

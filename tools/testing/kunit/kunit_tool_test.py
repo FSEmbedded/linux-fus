@@ -331,6 +331,22 @@ class KUnitParserTest(unittest.TestCase):
 			kunit_parser.parse_run_tests(file.readlines())
 		self.print_mock.assert_any_call(StrContains('suite (1 subtest)'))
 
+	def test_parse_attributes(self):
+		ktap_log = test_data_path('test_parse_attributes.log')
+		with open(ktap_log) as file:
+			result = kunit_parser.parse_run_tests(file.readlines())
+
+		# Test should pass with no errors
+		self.assertEqual(result.counts, kunit_parser.TestCounts(passed=1, errors=0))
+		self.assertEqual(kunit_parser.TestStatus.SUCCESS, result.status)
+
+		# Ensure suite header is parsed correctly
+		self.print_mock.assert_any_call(StrContains('suite (1 subtest)'))
+
+		# Ensure attributes in correct test log
+		self.assertContains('# module: example', result.subtests[0].log)
+		self.assertContains('# test.speed: slow', result.subtests[0].subtests[0].log)
+
 	def test_show_test_output_on_failure(self):
 		output = """
 		KTAP version 1
@@ -460,32 +476,6 @@ class LinuxSourceTreeTest(unittest.TestCase):
 
 			with open(kunit_kernel.get_outfile_path(build_dir), 'rt') as outfile:
 				self.assertEqual(outfile.read(), 'hi\nbye\n', msg='Missing some output')
-
-	def test_run_kernel_args_not_mutated(self):
-		"""Verify run_kernel() copies args so callers can reuse them."""
-		start_calls = []
-
-		def fake_start(start_args, unused_build_dir):
-			start_calls.append(list(start_args))
-			return subprocess.Popen(['printf', 'KTAP version 1\n'],
-						text=True, stdout=subprocess.PIPE)
-
-		with tempfile.TemporaryDirectory('') as build_dir:
-			tree = kunit_kernel.LinuxSourceTree(build_dir,
-					kunitconfig_paths=[os.devnull])
-			with mock.patch.object(tree._ops, 'start', side_effect=fake_start), \
-			     mock.patch.object(kunit_kernel.subprocess, 'call'):
-				kernel_args = ['mem=1G']
-				for _ in tree.run_kernel(args=kernel_args, build_dir=build_dir,
-							 filter_glob='suite.test1'):
-					pass
-				for _ in tree.run_kernel(args=kernel_args, build_dir=build_dir,
-							 filter_glob='suite.test2'):
-					pass
-				self.assertEqual(kernel_args, ['mem=1G'],
-					'run_kernel() should not modify caller args')
-				self.assertIn('kunit.filter_glob=suite.test1', start_calls[0])
-				self.assertIn('kunit.filter_glob=suite.test2', start_calls[1])
 
 	def test_build_reconfig_no_config(self):
 		with tempfile.TemporaryDirectory('') as build_dir:

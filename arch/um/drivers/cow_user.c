@@ -15,12 +15,6 @@
 #include "cow.h"
 #include "cow_sys.h"
 
-/*
- * arch/um/Makefile remaps strrchr to kernel_strrchr; call the kernel
- * name directly to avoid glibc >= 2.43's C23 strrchr macro.
- */
-char *kernel_strrchr(const char *, int);
-
 #define PATH_LEN_V1 256
 
 /* unsigned time_t works until year 2106 */
@@ -159,7 +153,7 @@ static int absolutize(char *to, int size, char *from)
 			   errno);
 		return -1;
 	}
-	slash = kernel_strrchr(from, '/');
+	slash = strrchr(from, '/');
 	if (slash != NULL) {
 		*slash = '\0';
 		if (chdir(from)) {

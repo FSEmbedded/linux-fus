@@ -25,6 +25,7 @@
 #include "kfd_topology.h"
 #include <linux/file.h>
 #include <uapi/linux/kfd_ioctl.h>
+#include <uapi/linux/kfd_sysfs.h>
 
 #define MAX_WATCH_ADDRESSES	4
 
@@ -400,25 +401,27 @@ static int kfd_dbg_get_dev_watch_id(struct kfd_process_device *pdd, int *watch_i
 	return -ENOMEM;
 }
 
-static void kfd_dbg_clear_dev_watch_id(struct kfd_process_device *pdd, u32 watch_id)
+static void kfd_dbg_clear_dev_watch_id(struct kfd_process_device *pdd, int watch_id)
 {
 	spin_lock(&pdd->dev->watch_points_lock);
 
 	/* process owns device watch point so safe to clear */
-	if (pdd->alloc_watch_ids & BIT(watch_id)) {
-		pdd->alloc_watch_ids &= ~BIT(watch_id);
-		pdd->dev->alloc_watch_ids &= ~BIT(watch_id);
+	if ((pdd->alloc_watch_ids >> watch_id) & 0x1) {
+		pdd->alloc_watch_ids &= ~(0x1 << watch_id);
+		pdd->dev->alloc_watch_ids &= ~(0x1 << watch_id);
 	}
 
 	spin_unlock(&pdd->dev->watch_points_lock);
 }
 
-static bool kfd_dbg_owns_dev_watch_id(struct kfd_process_device *pdd, u32 watch_id)
+static bool kfd_dbg_owns_dev_watch_id(struct kfd_process_device *pdd, int watch_id)
 {
 	bool owns_watch_id = false;
 
 	spin_lock(&pdd->dev->watch_points_lock);
-	owns_watch_id = pdd->alloc_watch_ids & BIT(watch_id);
+	owns_watch_id = watch_id < MAX_WATCH_ADDRESSES &&
+			((pdd->alloc_watch_ids >> watch_id) & 0x1);
+
 	spin_unlock(&pdd->dev->watch_points_lock);
 
 	return owns_watch_id;
@@ -428,9 +431,6 @@ int kfd_dbg_trap_clear_dev_address_watch(struct kfd_process_device *pdd,
 					uint32_t watch_id)
 {
 	int r;
-
-	if (watch_id >= MAX_WATCH_ADDRESSES)
-		return -EINVAL;
 
 	if (!kfd_dbg_owns_dev_watch_id(pdd, watch_id))
 		return -EINVAL;
@@ -468,9 +468,6 @@ int kfd_dbg_trap_set_dev_address_watch(struct kfd_process_device *pdd,
 
 	if (r)
 		return r;
-
-	if (*watch_id >= MAX_WATCH_ADDRESSES)
-		return -EINVAL;
 
 	if (!pdd->dev->kfd->shared_resources.enable_mes) {
 		r = debug_lock_and_unmap(pdd->dev->dqm);
@@ -519,14 +516,24 @@ int kfd_dbg_trap_set_flags(struct kfd_process *target, uint32_t *flags)
 	int i, r = 0, rewind_count = 0;
 
 	for (i = 0; i < target->n_pdds; i++) {
-		if (!kfd_dbg_is_per_vmid_supported(target->pdds[i]->dev) &&
+		struct kfd_topology_device *topo_dev =
+				kfd_topology_device_by_id(target->pdds[i]->dev->id);
+		uint32_t caps = topo_dev->node_props.capability;
+
+		if (!(caps & HSA_CAP_TRAP_DEBUG_PRECISE_MEMORY_OPERATIONS_SUPPORTED) &&
 			(*flags & KFD_DBG_TRAP_FLAG_SINGLE_MEM_OP)) {
+			*flags = prev_flags;
+			return -EACCES;
+		}
+
+		if (!(caps & HSA_CAP_TRAP_DEBUG_PRECISE_ALU_OPERATIONS_SUPPORTED) &&
+		    (*flags & KFD_DBG_TRAP_FLAG_SINGLE_ALU_OP)) {
 			*flags = prev_flags;
 			return -EACCES;
 		}
 	}
 
-	target->dbg_flags = *flags & KFD_DBG_TRAP_FLAG_SINGLE_MEM_OP;
+	target->dbg_flags = *flags;
 	*flags = prev_flags;
 	for (i = 0; i < target->n_pdds; i++) {
 		struct kfd_process_device *pdd = target->pdds[i];
@@ -1041,11 +1048,13 @@ int kfd_dbg_trap_device_snapshot(struct kfd_process *target,
 		uint32_t *entry_size)
 {
 	struct kfd_dbg_device_info_entry device_info;
-	uint32_t tmp_entry_size = *entry_size, tmp_num_devices;
+	uint32_t tmp_entry_size, tmp_num_devices;
 	int i, r = 0;
 
 	if (!(target && user_info && number_of_device_infos && entry_size))
 		return -EINVAL;
+
+	tmp_entry_size = *entry_size;
 
 	tmp_num_devices = min_t(size_t, *number_of_device_infos, target->n_pdds);
 	*number_of_device_infos = target->n_pdds;

@@ -194,15 +194,7 @@ void hci_uart_init_work(struct work_struct *work)
 	err = hci_register_dev(hu->hdev);
 	if (err < 0) {
 		BT_ERR("Can't register HCI device");
-
-		percpu_down_write(&hu->proto_lock);
 		clear_bit(HCI_UART_PROTO_READY, &hu->flags);
-		percpu_up_write(&hu->proto_lock);
-
-		/* Safely cancel work after clearing flags */
-		cancel_work_sync(&hu->write_work);
-
-		/* Close protocol before freeing hdev */
 		hu->proto->close(hu);
 		hdev = hu->hdev;
 		hu->hdev = NULL;
@@ -271,11 +263,7 @@ static int hci_uart_open(struct hci_dev *hdev)
 /* Close device */
 static int hci_uart_close(struct hci_dev *hdev)
 {
-	struct hci_uart *hu = hci_get_drvdata(hdev);
-
 	BT_DBG("hdev %p", hdev);
-
-	cancel_work_sync(&hu->write_work);
 
 	hci_uart_flush(hdev);
 	hdev->flush = NULL;
@@ -503,7 +491,7 @@ static int hci_uart_tty_open(struct tty_struct *tty)
 	if (tty->ops->write == NULL)
 		return -EOPNOTSUPP;
 
-	hu = kzalloc(sizeof(struct hci_uart), GFP_KERNEL);
+	hu = kzalloc(sizeof(*hu), GFP_KERNEL);
 	if (!hu) {
 		BT_ERR("Can't allocate control structure");
 		return -ENFILE;
@@ -521,6 +509,9 @@ static int hci_uart_tty_open(struct tty_struct *tty)
 	/* disable alignment support by default */
 	hu->alignment = 1;
 	hu->padding = 0;
+
+	/* Use serial port speed as oper_speed */
+	hu->oper_speed = tty->termios.c_ospeed;
 
 	INIT_WORK(&hu->init_ready, hci_uart_init_work);
 	INIT_WORK(&hu->write_work, hci_uart_write_work);
@@ -540,7 +531,6 @@ static void hci_uart_tty_close(struct tty_struct *tty)
 {
 	struct hci_uart *hu = tty->disc_data;
 	struct hci_dev *hdev;
-	bool proto_ready;
 
 	BT_DBG("tty %p", tty);
 
@@ -550,38 +540,24 @@ static void hci_uart_tty_close(struct tty_struct *tty)
 	if (!hu)
 		return;
 
-	/* Wait for init_ready to finish to prevent registration races */
-	cancel_work_sync(&hu->init_ready);
+	hdev = hu->hdev;
+	if (hdev)
+		hci_uart_close(hdev);
 
-	proto_ready = test_bit(HCI_UART_PROTO_READY, &hu->flags);
-	if (proto_ready) {
+	if (test_bit(HCI_UART_PROTO_READY, &hu->flags)) {
 		percpu_down_write(&hu->proto_lock);
 		clear_bit(HCI_UART_PROTO_READY, &hu->flags);
 		percpu_up_write(&hu->proto_lock);
-	}
 
-	/*
-	 * Unconditionally cancel write_work AFTER clearing PROTO_READY.
-	 * This ensures that concurrent protocol timers cannot requeue
-	 * write_work via hci_uart_tx_wakeup(), permanently preventing
-	 * double-free races and UAFs.
-	 */
-	cancel_work_sync(&hu->write_work);
+		cancel_work_sync(&hu->init_ready);
+		cancel_work_sync(&hu->write_work);
 
-	hdev = hu->hdev;
-	if (hdev)
-		hci_uart_close(hdev); /* proto->flush is safely skipped */
-
-	if (proto_ready) {
 		if (hdev) {
 			if (test_bit(HCI_UART_REGISTERED, &hu->flags))
 				hci_unregister_dev(hdev);
-		}
-		/* Close protocol before freeing hdev (intrinsically purges queues) */
-		hu->proto->close(hu);
-
-		if (hdev)
 			hci_free_dev(hdev);
+		}
+		hu->proto->close(hu);
 	}
 	clear_bit(HCI_UART_PROTO_SET, &hu->flags);
 
@@ -649,11 +625,10 @@ static void hci_uart_tty_receive(struct tty_struct *tty, const u8 *data,
 	 * tty caller
 	 */
 	hu->proto->recv(hu, data, count);
+	percpu_up_read(&hu->proto_lock);
 
 	if (hu->hdev)
 		hu->hdev->stat.byte_rx += count;
-
-	percpu_up_read(&hu->proto_lock);
 
 	tty_unthrottle(tty);
 }
@@ -710,20 +685,11 @@ static int hci_uart_register_dev(struct hci_uart *hu)
 		return err;
 	}
 
-	set_bit(HCI_UART_PROTO_INIT, &hu->flags);
-
 	if (test_bit(HCI_UART_INIT_PENDING, &hu->hdev_flags))
 		return 0;
 
 	if (hci_register_dev(hdev) < 0) {
 		BT_ERR("Can't register HCI device");
-		percpu_down_write(&hu->proto_lock);
-		clear_bit(HCI_UART_PROTO_INIT, &hu->flags);
-		percpu_up_write(&hu->proto_lock);
-		/* Cancel work after clearing flags */
-		cancel_work_sync(&hu->write_work);
-
-		/* Close protocol before freeing hdev */
 		hu->proto->close(hu);
 		hu->hdev = NULL;
 		hci_free_dev(hdev);
@@ -745,6 +711,8 @@ static int hci_uart_set_proto(struct hci_uart *hu, int id)
 		return -EPROTONOSUPPORT;
 
 	hu->proto = p;
+
+	set_bit(HCI_UART_PROTO_INIT, &hu->flags);
 
 	err = hci_uart_register_dev(hu);
 	if (err) {
@@ -914,7 +882,9 @@ static int __init hci_uart_init(void)
 #ifdef CONFIG_BT_HCIUART_MRVL
 	mrvl_init();
 #endif
-
+#ifdef CONFIG_BT_HCIUART_AML
+	aml_init();
+#endif
 	return 0;
 }
 
@@ -950,7 +920,9 @@ static void __exit hci_uart_exit(void)
 #ifdef CONFIG_BT_HCIUART_MRVL
 	mrvl_deinit();
 #endif
-
+#ifdef CONFIG_BT_HCIUART_AML
+	aml_deinit();
+#endif
 	tty_unregister_ldisc(&hci_uart_ldisc);
 }
 

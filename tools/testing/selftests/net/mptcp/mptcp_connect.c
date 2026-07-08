@@ -696,14 +696,8 @@ static int copyfd_io_poll(int infd, int peerfd, int outfd,
 
 				bw = do_rnd_write(peerfd, winfo->buf + winfo->off, winfo->len);
 				if (bw < 0) {
-					/* expected reset, continue to read */
-					if (cfg_rcv_trunc &&
-					    (errno == ECONNRESET ||
-					     errno == EPIPE)) {
-						fds.events &= ~POLLOUT;
-						continue;
-					}
-
+					if (cfg_rcv_trunc)
+						return 0;
 					perror("write");
 					return 111;
 				}
@@ -729,10 +723,8 @@ static int copyfd_io_poll(int infd, int peerfd, int outfd,
 		}
 
 		if (fds.revents & (POLLERR | POLLNVAL)) {
-			if (cfg_rcv_trunc) {
-				fds.events &= ~(POLLERR | POLLNVAL);
-				continue;
-			}
+			if (cfg_rcv_trunc)
+				return 0;
 			fprintf(stderr, "Unexpected revents: "
 				"POLLERR/POLLNVAL(%x)\n", fds.revents);
 			return 5;
@@ -1427,7 +1419,7 @@ static void parse_opts(int argc, char **argv)
 			 */
 			if (cfg_truncate < 0) {
 				cfg_rcv_trunc = true;
-				signal(SIGPIPE, SIG_IGN);
+				signal(SIGPIPE, handle_signal);
 			}
 			break;
 		case 'j':

@@ -59,7 +59,7 @@ int ptrace_access_vm(struct task_struct *tsk, unsigned long addr,
 		return 0;
 	}
 
-	ret = __access_remote_vm(mm, addr, buf, len, gup_flags);
+	ret = access_remote_vm(mm, addr, buf, len, gup_flags);
 	mmput(mm);
 
 	return ret;
@@ -145,19 +145,8 @@ void __ptrace_unlink(struct task_struct *child)
 	 */
 	if (!(child->flags & PF_EXITING) &&
 	    (child->signal->flags & SIGNAL_STOP_STOPPED ||
-	     child->signal->group_stop_count)) {
+	     child->signal->group_stop_count))
 		child->jobctl |= JOBCTL_STOP_PENDING;
-
-		/*
-		 * This is only possible if this thread was cloned by the
-		 * traced task running in the stopped group, set the signal
-		 * for the future reports.
-		 * FIXME: we should change ptrace_init_task() to handle this
-		 * case.
-		 */
-		if (!(child->jobctl & JOBCTL_STOP_SIGMASK))
-			child->jobctl |= SIGSTOP;
-	}
 
 	/*
 	 * If transition to TASK_STOPPED is pending or in TASK_TRACED, kick
@@ -283,24 +272,11 @@ static bool ptrace_has_cap(struct user_namespace *ns, unsigned int mode)
 	return ns_capable(ns, CAP_SYS_PTRACE);
 }
 
-static bool task_still_dumpable(struct task_struct *task, unsigned int mode)
-{
-	struct mm_struct *mm = task->mm;
-	if (mm) {
-		if (get_dumpable(mm) == SUID_DUMP_USER)
-			return true;
-		return ptrace_has_cap(mm->user_ns, mode);
-	}
-
-	if (task->user_dumpable)
-		return true;
-	return ptrace_has_cap(&init_user_ns, mode);
-}
-
 /* Returns 0 on success, -errno on denial. */
 static int __ptrace_may_access(struct task_struct *task, unsigned int mode)
 {
 	const struct cred *cred = current_cred(), *tcred;
+	struct mm_struct *mm;
 	kuid_t caller_uid;
 	kgid_t caller_gid;
 
@@ -361,8 +337,11 @@ ok:
 	 * Pairs with a write barrier in commit_creds().
 	 */
 	smp_rmb();
-	if (!task_still_dumpable(task, mode))
-		return -EPERM;
+	mm = task->mm;
+	if (mm &&
+	    ((get_dumpable(mm) != SUID_DUMP_USER) &&
+	     !ptrace_has_cap(mm->user_ns, mode)))
+	    return -EPERM;
 
 	return security_ptrace_access_check(task, mode);
 }
@@ -396,10 +375,13 @@ static int check_ptrace_options(unsigned long data)
 	return 0;
 }
 
-static inline void ptrace_set_stopped(struct task_struct *task)
+static inline void ptrace_set_stopped(struct task_struct *task, bool seize)
 {
 	guard(spinlock)(&task->sighand->siglock);
 
+	/* SEIZE doesn't trap tracee on attach */
+	if (!seize)
+		send_signal_locked(SIGSTOP, SEND_SIG_PRIV, task, PIDTYPE_PID);
 	/*
 	 * If the task is already STOPPED, set JOBCTL_TRAP_STOP and
 	 * TRAPPING, and kick it so that it transits to TRACED.  TRAPPING
@@ -478,14 +460,8 @@ static int ptrace_attach(struct task_struct *task, long request,
 				return -EPERM;
 
 			task->ptrace = flags;
-
 			ptrace_link(task, current);
-
-			/* SEIZE doesn't trap tracee on attach */
-			if (!seize)
-				send_sig_info(SIGSTOP, SEND_SIG_PRIV, task);
-
-			ptrace_set_stopped(task);
+			ptrace_set_stopped(task, seize);
 		}
 	}
 

@@ -232,7 +232,7 @@ static int kmb_ocs_dma_prepare(struct ahash_request *req)
 	struct device *dev = rctx->hcu_dev->dev;
 	unsigned int remainder = 0;
 	unsigned int total;
-	int nents;
+	size_t nents;
 	size_t count;
 	int rc;
 	int i;
@@ -252,9 +252,6 @@ static int kmb_ocs_dma_prepare(struct ahash_request *req)
 
 	/* Determine the number of scatter gather list entries to process. */
 	nents = sg_nents_for_len(req->src, rctx->sg_data_total - remainder);
-
-	if (nents < 0)
-		return nents;
 
 	/* If there are entries to process, map them. */
 	if (nents) {
@@ -1159,25 +1156,19 @@ static const struct of_device_id kmb_ocs_hcu_of_match[] = {
 	},
 	{}
 };
+MODULE_DEVICE_TABLE(of, kmb_ocs_hcu_of_match);
 
-static int kmb_ocs_hcu_remove(struct platform_device *pdev)
+static void kmb_ocs_hcu_remove(struct platform_device *pdev)
 {
-	struct ocs_hcu_dev *hcu_dev;
-	int rc;
-
-	hcu_dev = platform_get_drvdata(pdev);
-	if (!hcu_dev)
-		return -ENODEV;
+	struct ocs_hcu_dev *hcu_dev = platform_get_drvdata(pdev);
 
 	crypto_engine_unregister_ahashes(ocs_hcu_algs, ARRAY_SIZE(ocs_hcu_algs));
 
-	rc = crypto_engine_exit(hcu_dev->engine);
+	crypto_engine_exit(hcu_dev->engine);
 
 	spin_lock_bh(&ocs_hcu.lock);
 	list_del(&hcu_dev->list);
 	spin_unlock_bh(&ocs_hcu.lock);
-
-	return rc;
 }
 
 static int kmb_ocs_hcu_probe(struct platform_device *pdev)
@@ -1258,7 +1249,7 @@ list_del:
 /* The OCS driver is a platform device. */
 static struct platform_driver kmb_ocs_hcu_driver = {
 	.probe = kmb_ocs_hcu_probe,
-	.remove = kmb_ocs_hcu_remove,
+	.remove_new = kmb_ocs_hcu_remove,
 	.driver = {
 			.name = DRV_NAME,
 			.of_match_table = kmb_ocs_hcu_of_match,

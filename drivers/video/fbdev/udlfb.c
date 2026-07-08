@@ -23,7 +23,7 @@
 #include <linux/vmalloc.h>
 #include <linux/slab.h>
 #include <linux/delay.h>
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 #include <video/udlfb.h>
 #include "edid.h"
 
@@ -321,35 +321,17 @@ static int dlfb_set_video_mode(struct dlfb_data *dlfb,
 	return retval;
 }
 
-static void dlfb_vm_open(struct vm_area_struct *vma)
-{
-	struct dlfb_data *dlfb = vma->vm_private_data;
-
-	atomic_inc(&dlfb->mmap_count);
-}
-
-static void dlfb_vm_close(struct vm_area_struct *vma)
-{
-	struct dlfb_data *dlfb = vma->vm_private_data;
-
-	atomic_dec(&dlfb->mmap_count);
-}
-
-static const struct vm_operations_struct dlfb_vm_ops = {
-	.open  = dlfb_vm_open,
-	.close = dlfb_vm_close,
-};
-
 static int dlfb_ops_mmap(struct fb_info *info, struct vm_area_struct *vma)
 {
 	unsigned long start = vma->vm_start;
 	unsigned long size = vma->vm_end - vma->vm_start;
 	unsigned long offset = vma->vm_pgoff << PAGE_SHIFT;
 	unsigned long page, pos;
-	struct dlfb_data *dlfb = info->par;
 
 	if (info->fbdefio)
 		return fb_deferred_io_mmap(info, vma);
+
+	vma->vm_page_prot = pgprot_decrypted(vma->vm_page_prot);
 
 	if (vma->vm_pgoff > (~0UL >> PAGE_SHIFT))
 		return -EINVAL;
@@ -376,9 +358,6 @@ static int dlfb_ops_mmap(struct fb_info *info, struct vm_area_struct *vma)
 			size = 0;
 	}
 
-	vma->vm_ops = &dlfb_vm_ops;
-	vma->vm_private_data = dlfb;
-	atomic_inc(&dlfb->mmap_count);
 	return 0;
 }
 
@@ -739,68 +718,6 @@ static void dlfb_offload_damage(struct dlfb_data *dlfb, int x, int y, int width,
 }
 
 /*
- * Path triggered by usermode clients who write to filesystem
- * e.g. cat filename > /dev/fb1
- * Not used by X Windows or text-mode console. But useful for testing.
- * Slow because of extra copy and we must assume all pixels dirty.
- */
-static ssize_t dlfb_ops_write(struct fb_info *info, const char __user *buf,
-			  size_t count, loff_t *ppos)
-{
-	ssize_t result;
-	struct dlfb_data *dlfb = info->par;
-	u32 offset = (u32) *ppos;
-
-	result = fb_sys_write(info, buf, count, ppos);
-
-	if (result > 0) {
-		int start = max((int)(offset / info->fix.line_length), 0);
-		int lines = min((u32)((result / info->fix.line_length) + 1),
-				(u32)info->var.yres);
-
-		dlfb_handle_damage(dlfb, 0, start, info->var.xres,
-			lines);
-	}
-
-	return result;
-}
-
-/* hardware has native COPY command (see libdlo), but not worth it for fbcon */
-static void dlfb_ops_copyarea(struct fb_info *info,
-				const struct fb_copyarea *area)
-{
-
-	struct dlfb_data *dlfb = info->par;
-
-	sys_copyarea(info, area);
-
-	dlfb_offload_damage(dlfb, area->dx, area->dy,
-			area->width, area->height);
-}
-
-static void dlfb_ops_imageblit(struct fb_info *info,
-				const struct fb_image *image)
-{
-	struct dlfb_data *dlfb = info->par;
-
-	sys_imageblit(info, image);
-
-	dlfb_offload_damage(dlfb, image->dx, image->dy,
-			image->width, image->height);
-}
-
-static void dlfb_ops_fillrect(struct fb_info *info,
-			  const struct fb_fillrect *rect)
-{
-	struct dlfb_data *dlfb = info->par;
-
-	sys_fillrect(info, rect);
-
-	dlfb_offload_damage(dlfb, rect->dx, rect->dy, rect->width,
-			      rect->height);
-}
-
-/*
  * NOTE: fb_defio.c is holding info->fbdefio.mutex
  *   Touching ANY framebuffer memory that triggers a page fault
  *   in fb_defio will cause a deadlock, when it also tries to
@@ -1101,9 +1018,6 @@ static int dlfb_ops_check_var(struct fb_var_screeninfo *var,
 	struct fb_videomode mode;
 	struct dlfb_data *dlfb = info->par;
 
-	if (!var->pixclock)
-		return -EINVAL;
-
 	/* set device-specific elements of var unrelated to mode */
 	dlfb_var_color_format(var);
 
@@ -1212,14 +1126,31 @@ static int dlfb_ops_blank(int blank_mode, struct fb_info *info)
 	return 0;
 }
 
+static void dlfb_ops_damage_range(struct fb_info *info, off_t off, size_t len)
+{
+	struct dlfb_data *dlfb = info->par;
+	int start = max((int)(off / info->fix.line_length), 0);
+	int lines = min((u32)((len / info->fix.line_length) + 1), (u32)info->var.yres);
+
+	dlfb_handle_damage(dlfb, 0, start, info->var.xres, lines);
+}
+
+static void dlfb_ops_damage_area(struct fb_info *info, u32 x, u32 y, u32 width, u32 height)
+{
+	struct dlfb_data *dlfb = info->par;
+
+	dlfb_offload_damage(dlfb, x, y, width, height);
+}
+
+FB_GEN_DEFAULT_DEFERRED_SYSMEM_OPS(dlfb_ops,
+				   dlfb_ops_damage_range,
+				   dlfb_ops_damage_area)
+
 static const struct fb_ops dlfb_ops = {
 	.owner = THIS_MODULE,
-	.fb_read = fb_sys_read,
-	.fb_write = dlfb_ops_write,
+	__FB_DEFAULT_DEFERRED_OPS_RDWR(dlfb_ops),
 	.fb_setcolreg = dlfb_ops_setcolreg,
-	.fb_fillrect = dlfb_ops_fillrect,
-	.fb_copyarea = dlfb_ops_copyarea,
-	.fb_imageblit = dlfb_ops_imageblit,
+	__FB_DEFAULT_DEFERRED_OPS_DRAW(dlfb_ops),
 	.fb_mmap = dlfb_ops_mmap,
 	.fb_ioctl = dlfb_ops_ioctl,
 	.fb_open = dlfb_ops_open,
@@ -1242,6 +1173,7 @@ static void dlfb_deferred_vfree(struct dlfb_data *dlfb, void *mem)
 
 /*
  * Assumes &info->lock held by caller
+ * Assumes no active clients have framebuffer open
  */
 static int dlfb_realloc_framebuffer(struct dlfb_data *dlfb, struct fb_info *info, u32 new_len)
 {
@@ -1253,13 +1185,6 @@ static int dlfb_realloc_framebuffer(struct dlfb_data *dlfb, struct fb_info *info
 	new_len = PAGE_ALIGN(new_len);
 
 	if (new_len > old_len) {
-		if (atomic_read(&dlfb->mmap_count) > 0) {
-			dev_warn(info->dev,
-				"refusing realloc: %d active mmaps\n",
-				atomic_read(&dlfb->mmap_count));
-			return -EBUSY;
-		}
-
 		/*
 		 * Alloc system memory for virtual framebuffer
 		 */

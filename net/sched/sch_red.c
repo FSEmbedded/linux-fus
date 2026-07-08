@@ -89,20 +89,17 @@ static int red_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 	case RED_PROB_MARK:
 		qdisc_qstats_overlimit(sch);
 		if (!red_use_ecn(q)) {
-			WRITE_ONCE(q->stats.prob_drop,
-				   q->stats.prob_drop + 1);
+			q->stats.prob_drop++;
 			goto congestion_drop;
 		}
 
 		if (INET_ECN_set_ce(skb)) {
-			WRITE_ONCE(q->stats.prob_mark,
-				   q->stats.prob_mark + 1);
+			q->stats.prob_mark++;
 			skb = tcf_qevent_handle(&q->qe_mark, sch, skb, to_free, &ret);
 			if (!skb)
 				return NET_XMIT_CN | ret;
 		} else if (!red_use_nodrop(q)) {
-			WRITE_ONCE(q->stats.prob_drop,
-				   q->stats.prob_drop + 1);
+			q->stats.prob_drop++;
 			goto congestion_drop;
 		}
 
@@ -112,20 +109,17 @@ static int red_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 	case RED_HARD_MARK:
 		qdisc_qstats_overlimit(sch);
 		if (red_use_harddrop(q) || !red_use_ecn(q)) {
-			WRITE_ONCE(q->stats.forced_drop,
-				   q->stats.forced_drop + 1);
+			q->stats.forced_drop++;
 			goto congestion_drop;
 		}
 
 		if (INET_ECN_set_ce(skb)) {
-			WRITE_ONCE(q->stats.forced_mark,
-				   q->stats.forced_mark + 1);
+			q->stats.forced_mark++;
 			skb = tcf_qevent_handle(&q->qe_mark, sch, skb, to_free, &ret);
 			if (!skb)
 				return NET_XMIT_CN | ret;
 		} else if (!red_use_nodrop(q)) {
-			WRITE_ONCE(q->stats.forced_drop,
-				   q->stats.forced_drop + 1);
+			q->stats.forced_drop++;
 			goto congestion_drop;
 		}
 
@@ -139,8 +133,7 @@ static int red_enqueue(struct sk_buff *skb, struct Qdisc *sch,
 		sch->qstats.backlog += len;
 		sch->q.qlen++;
 	} else if (net_xmit_drop_count(ret)) {
-		WRITE_ONCE(q->stats.pdrop,
-			   q->stats.pdrop + 1);
+		q->stats.pdrop++;
 		qdisc_qstats_drop(sch);
 	}
 	return ret;
@@ -160,7 +153,7 @@ static struct sk_buff *red_dequeue(struct Qdisc *sch)
 	struct red_sched_data *q = qdisc_priv(sch);
 	struct Qdisc *child = q->qdisc;
 
-	skb = qdisc_dequeue_peeked(child);
+	skb = child->dequeue(child);
 	if (skb) {
 		qdisc_bstats_update(sch, skb);
 		qdisc_qstats_backlog_dec(sch, skb);
@@ -468,13 +461,9 @@ static int red_dump_stats(struct Qdisc *sch, struct gnet_dump *d)
 		dev->netdev_ops->ndo_setup_tc(dev, TC_SETUP_QDISC_RED,
 					      &hw_stats_request);
 	}
-	st.early = READ_ONCE(q->stats.prob_drop) +
-		   READ_ONCE(q->stats.forced_drop);
-
-	st.pdrop = READ_ONCE(q->stats.pdrop);
-
-	st.marked = READ_ONCE(q->stats.prob_mark) +
-		    READ_ONCE(q->stats.forced_mark);
+	st.early = q->stats.prob_drop + q->stats.forced_drop;
+	st.pdrop = q->stats.pdrop;
+	st.marked = q->stats.prob_mark + q->stats.forced_mark;
 
 	return gnet_stats_copy_app(d, &st, sizeof(st));
 }
@@ -559,6 +548,7 @@ static struct Qdisc_ops red_qdisc_ops __read_mostly = {
 	.dump_stats	=	red_dump_stats,
 	.owner		=	THIS_MODULE,
 };
+MODULE_ALIAS_NET_SCH("red");
 
 static int __init red_module_init(void)
 {
@@ -574,3 +564,4 @@ module_init(red_module_init)
 module_exit(red_module_exit)
 
 MODULE_LICENSE("GPL");
+MODULE_DESCRIPTION("Random Early Detection qdisc");

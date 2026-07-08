@@ -259,7 +259,7 @@ static int cgroup_storage_get_next_key(struct bpf_map *_map, void *key,
 			goto enoent;
 
 		storage = list_next_entry(storage, list_map);
-		if (list_entry_is_head(storage, &map->list, list_map))
+		if (!storage)
 			goto enoent;
 	} else {
 		storage = list_first_entry(&map->list,
@@ -431,7 +431,7 @@ static void cgroup_storage_seq_show_elem(struct bpf_map *map, void *key,
 		seq_puts(m, ": ");
 		btf_type_seq_show(map->btf, map->btf_value_type_id,
 				  &READ_ONCE(storage->buf)->data[0], m);
-		seq_puts(m, "\n");
+		seq_putc(m, '\n');
 	} else {
 		seq_puts(m, ": {\n");
 		for_each_possible_cpu(cpu) {
@@ -439,7 +439,7 @@ static void cgroup_storage_seq_show_elem(struct bpf_map *map, void *key,
 			btf_type_seq_show(map->btf, map->btf_value_type_id,
 					  per_cpu_ptr(storage->percpu_buf, cpu),
 					  m);
-			seq_puts(m, "\n");
+			seq_putc(m, '\n');
 		}
 		seq_puts(m, "}\n");
 	}

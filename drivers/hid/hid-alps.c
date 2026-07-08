@@ -8,7 +8,7 @@
 #include <linux/input.h>
 #include <linux/input/mt.h>
 #include <linux/module.h>
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 #include "hid-ids.h"
 
 /* ALPS Device Product ID */
@@ -436,9 +436,6 @@ static int alps_raw_event(struct hid_device *hdev,
 {
 	int ret = 0;
 	struct alps_dev *hdata = hid_get_drvdata(hdev);
-
-	if (!(hdev->claimed & HID_CLAIMED_INPUT) || !hdata->input)
-		return 0;
 
 	switch (hdev->product) {
 	case HID_PRODUCT_ID_T4_BTNLESS:

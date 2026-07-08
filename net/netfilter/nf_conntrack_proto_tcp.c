@@ -14,7 +14,7 @@
 #include <linux/skbuff.h>
 #include <linux/ipv6.h>
 #include <net/ip6_checksum.h>
-#include <asm/unaligned.h>
+#include <linux/unaligned.h>
 
 #include <net/tcp.h>
 
@@ -837,7 +837,8 @@ static bool tcp_error(const struct tcphdr *th,
 
 static noinline bool tcp_new(struct nf_conn *ct, const struct sk_buff *skb,
 			     unsigned int dataoff,
-			     const struct tcphdr *th)
+			     const struct tcphdr *th,
+			     const struct nf_hook_state *state)
 {
 	enum tcp_conntrack new_state;
 	struct net *net = nf_ct_net(ct);
@@ -848,7 +849,7 @@ static noinline bool tcp_new(struct nf_conn *ct, const struct sk_buff *skb,
 
 	/* Invalid: delete conntrack */
 	if (new_state >= TCP_CONNTRACK_MAX) {
-		pr_debug("nf_ct_tcp: invalid new deleting.\n");
+		tcp_error_log(skb, state, "invalid new");
 		return false;
 	}
 
@@ -982,7 +983,7 @@ int nf_conntrack_tcp_packet(struct nf_conn *ct,
 	if (tcp_error(th, skb, dataoff, state))
 		return -NF_ACCEPT;
 
-	if (!nf_ct_is_confirmed(ct) && !tcp_new(ct, skb, dataoff, th))
+	if (!nf_ct_is_confirmed(ct) && !tcp_new(ct, skb, dataoff, th, state))
 		return -NF_ACCEPT;
 
 	spin_lock_bh(&ct->lock);
@@ -1384,9 +1385,9 @@ nla_put_failure:
 }
 
 static const struct nla_policy tcp_nla_policy[CTA_PROTOINFO_TCP_MAX+1] = {
-	[CTA_PROTOINFO_TCP_STATE]	    = NLA_POLICY_MAX(NLA_U8, TCP_CONNTRACK_SYN_SENT2),
-	[CTA_PROTOINFO_TCP_WSCALE_ORIGINAL] = NLA_POLICY_MAX(NLA_U8, TCP_MAX_WSCALE),
-	[CTA_PROTOINFO_TCP_WSCALE_REPLY]    = NLA_POLICY_MAX(NLA_U8, TCP_MAX_WSCALE),
+	[CTA_PROTOINFO_TCP_STATE]	    = { .type = NLA_U8 },
+	[CTA_PROTOINFO_TCP_WSCALE_ORIGINAL] = { .type = NLA_U8 },
+	[CTA_PROTOINFO_TCP_WSCALE_REPLY]    = { .type = NLA_U8 },
 	[CTA_PROTOINFO_TCP_FLAGS_ORIGINAL]  = { .len = sizeof(struct nf_ct_tcp_flags) },
 	[CTA_PROTOINFO_TCP_FLAGS_REPLY]	    = { .len = sizeof(struct nf_ct_tcp_flags) },
 };
@@ -1412,6 +1413,10 @@ static int nlattr_to_tcp(struct nlattr *cda[], struct nf_conn *ct)
 					  tcp_nla_policy, NULL);
 	if (err < 0)
 		return err;
+
+	if (tb[CTA_PROTOINFO_TCP_STATE] &&
+	    nla_get_u8(tb[CTA_PROTOINFO_TCP_STATE]) >= TCP_CONNTRACK_MAX)
+		return -EINVAL;
 
 	spin_lock_bh(&ct->lock);
 	if (tb[CTA_PROTOINFO_TCP_STATE])

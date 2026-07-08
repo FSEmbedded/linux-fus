@@ -107,6 +107,9 @@ static int zpci_set_irq(struct zpci_dev *zdev)
 	else
 		rc = zpci_set_airq(zdev);
 
+	if (!rc)
+		zdev->irqs_registered = 1;
+
 	return rc;
 }
 
@@ -119,6 +122,9 @@ static int zpci_clear_irq(struct zpci_dev *zdev)
 		rc = zpci_clear_directed_irq(zdev);
 	else
 		rc = zpci_clear_airq(zdev);
+
+	if (!rc)
+		zdev->irqs_registered = 0;
 
 	return rc;
 }
@@ -421,7 +427,8 @@ bool arch_restore_msi_irqs(struct pci_dev *pdev)
 {
 	struct zpci_dev *zdev = to_zpci(pdev);
 
-	zpci_set_irq(zdev);
+	if (!zdev->irqs_registered)
+		zpci_set_irq(zdev);
 	return true;
 }
 

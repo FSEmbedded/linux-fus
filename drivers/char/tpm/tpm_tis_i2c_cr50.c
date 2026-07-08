@@ -235,7 +235,7 @@ out:
  * @len:	Number of bytes to write.
  *
  * The provided address is prepended to the data in 'buffer', the
- * cobined address+data is sent to the TPM, then wait for TPM to
+ * combined address+data is sent to the TPM, then wait for TPM to
  * indicate it is done writing.
  *
  * Return:
@@ -671,7 +671,6 @@ MODULE_DEVICE_TABLE(of, of_cr50_i2c_match);
 /**
  * tpm_cr50_i2c_probe() - Driver probe function.
  * @client:	I2C client information.
- * @id:		I2C device id.
  *
  * Return:
  * - 0:		Success.
@@ -713,7 +712,8 @@ static int tpm_cr50_i2c_probe(struct i2c_client *client)
 
 	if (client->irq > 0) {
 		rc = devm_request_irq(dev, client->irq, tpm_cr50_i2c_int_handler,
-				      IRQF_TRIGGER_FALLING | IRQF_NO_AUTOEN,
+				      IRQF_TRIGGER_FALLING | IRQF_ONESHOT |
+				      IRQF_NO_AUTOEN,
 				      dev->driver->name, chip);
 		if (rc < 0) {
 			dev_err(dev, "Failed to probe IRQ %d\n", client->irq);

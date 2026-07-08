@@ -37,8 +37,9 @@
 #
 # server / client nomenclature relative to ns-A
 
-# Kselftest framework requirement - SKIP code is 4.
-ksft_skip=4
+source lib.sh
+
+PATH=$PWD:$PWD/tools/testing/selftests/net:$PATH
 
 VERBOSE=0
 
@@ -82,14 +83,6 @@ MCAST=ff02::1
 NSA_LINKIP6=
 NSB_LINKIP6=
 
-NSA=ns-A
-NSB=ns-B
-NSC=ns-C
-
-NSA_CMD="ip netns exec ${NSA}"
-NSB_CMD="ip netns exec ${NSB}"
-NSC_CMD="ip netns exec ${NSC}"
-
 which ping6 > /dev/null 2>&1 && ping6=$(which ping6) || ping6=$(which ping)
 
 # Check if FIPS mode is enabled
@@ -107,6 +100,7 @@ log_test()
 	local rc=$1
 	local expected=$2
 	local msg="$3"
+	local ans
 
 	[ "${VERBOSE}" = "1" ] && echo
 
@@ -116,19 +110,20 @@ log_test()
 	else
 		nfail=$((nfail+1))
 		printf "TEST: %-70s  [FAIL]\n" "${msg}"
+		echo "    expected rc $expected; actual rc $rc"
 		if [ "${PAUSE_ON_FAIL}" = "yes" ]; then
 			echo
 			echo "hit enter to continue, 'q' to quit"
-			read a
-			[ "$a" = "q" ] && exit 1
+			read ans
+			[ "$ans" = "q" ] && exit 1
 		fi
 	fi
 
 	if [ "${PAUSE}" = "yes" ]; then
 		echo
 		echo "hit enter to continue, 'q' to quit"
-		read a
-		[ "$a" = "q" ] && exit 1
+		read ans
+		[ "$ans" = "q" ] && exit 1
 	fi
 
 	kill_procs
@@ -194,7 +189,16 @@ show_hint()
 kill_procs()
 {
 	killall nettest ping ping6 >/dev/null 2>&1
-	slowwait 2 sh -c 'test -z "$(pgrep '"'^(nettest|ping|ping6)$'"')"'
+	sleep 1
+}
+
+set_ping_group()
+{
+	if [ "$VERBOSE" = "1" ]; then
+		echo "COMMAND: ${NSA_CMD} sysctl -q -w net.ipv4.ping_group_range='0 2147483647'"
+	fi
+
+	${NSA_CMD} sysctl -q -w net.ipv4.ping_group_range='0 2147483647'
 }
 
 do_run_cmd()
@@ -406,9 +410,6 @@ create_ns()
 	local addr=$2
 	local addr6=$3
 
-	ip netns add ${ns}
-
-	ip -netns ${ns} link set lo up
 	if [ "${addr}" != "-" ]; then
 		ip -netns ${ns} addr add dev lo ${addr}
 	fi
@@ -423,8 +424,6 @@ create_ns()
 	ip netns exec ${ns} sysctl -qw net.ipv6.conf.all.keep_addr_on_down=1
 	ip netns exec ${ns} sysctl -qw net.ipv6.conf.all.forwarding=1
 	ip netns exec ${ns} sysctl -qw net.ipv6.conf.default.forwarding=1
-	ip netns exec ${ns} sysctl -qw net.ipv6.conf.default.accept_dad=0
-	ip netns exec ${ns} sysctl -qw net.ipv6.conf.all.accept_dad=0
 }
 
 # create veth pair to connect namespaces and apply addresses.
@@ -469,13 +468,12 @@ cleanup()
 		ip -netns ${NSA} link del dev ${NSA_DEV}
 
 		ip netns pids ${NSA} | xargs kill 2>/dev/null
-		ip netns del ${NSA}
+		cleanup_ns ${NSA}
 	fi
 
 	ip netns pids ${NSB} | xargs kill 2>/dev/null
-	ip netns del ${NSB}
 	ip netns pids ${NSC} | xargs kill 2>/dev/null
-	ip netns del ${NSC} >/dev/null 2>&1
+	cleanup_ns ${NSB} ${NSC}
 }
 
 cleanup_vrf_dup()
@@ -489,6 +487,8 @@ setup_vrf_dup()
 {
 	# some VRF tests use ns-C which has the same config as
 	# ns-B but for a device NOT in the VRF
+	setup_ns NSC
+	NSC_CMD="ip netns exec ${NSC}"
 	create_ns ${NSC} "-" "-"
 	connect_ns ${NSA} ${NSA_DEV2} ${NSA_IP}/24 ${NSA_IP6}/64 \
 		   ${NSC} ${NSC_DEV} ${NSB_IP}/24 ${NSB_IP6}/64
@@ -504,6 +504,10 @@ setup()
 
 	log_debug "Configuring network namespaces"
 	set -e
+
+	setup_ns NSA NSB
+	NSA_CMD="ip netns exec ${NSA}"
+	NSB_CMD="ip netns exec ${NSB}"
 
 	create_ns ${NSA} ${NSA_LO_IP}/32 ${NSA_LO_IP6}/128
 	create_ns ${NSB} ${NSB_LO_IP}/32 ${NSB_LO_IP6}/128
@@ -547,6 +551,10 @@ setup_lla_only()
 	log_debug "Configuring network namespaces"
 	set -e
 
+	setup_ns NSA NSB NSC
+	NSA_CMD="ip netns exec ${NSA}"
+	NSB_CMD="ip netns exec ${NSB}"
+	NSC_CMD="ip netns exec ${NSC}"
 	create_ns ${NSA} "-" "-"
 	create_ns ${NSB} "-" "-"
 	create_ns ${NSC} "-" "-"
@@ -841,14 +849,14 @@ ipv4_ping()
 	set_sysctl net.ipv4.raw_l3mdev_accept=1 2>/dev/null
 	ipv4_ping_novrf
 	setup
-	set_sysctl net.ipv4.ping_group_range='0 2147483647' 2>/dev/null
+	set_ping_group
 	ipv4_ping_novrf
 
 	log_subsection "With VRF"
 	setup "yes"
 	ipv4_ping_vrf
 	setup "yes"
-	set_sysctl net.ipv4.ping_group_range='0 2147483647' 2>/dev/null
+	set_ping_group
 	ipv4_ping_vrf
 }
 
@@ -867,7 +875,7 @@ ipv4_tcp_md5_novrf()
 	# basic use case
 	log_start
 	run_cmd nettest -s -M ${MD5_PW} -m ${NSB_IP} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest -r ${NSA_IP} -X ${MD5_PW}
 	log_test $? 0 "MD5: Single address config"
 
@@ -875,7 +883,7 @@ ipv4_tcp_md5_novrf()
 	log_start
 	show_hint "Should timeout due to MD5 mismatch"
 	run_cmd nettest -s &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest -r ${NSA_IP} -X ${MD5_PW}
 	log_test $? 2 "MD5: Server no config, client uses password"
 
@@ -883,7 +891,7 @@ ipv4_tcp_md5_novrf()
 	log_start
 	show_hint "Should timeout since client uses wrong password"
 	run_cmd nettest -s -M ${MD5_PW} -m ${NSB_IP} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest -r ${NSA_IP} -X ${MD5_WRONG_PW}
 	log_test $? 2 "MD5: Client uses wrong password"
 
@@ -891,7 +899,7 @@ ipv4_tcp_md5_novrf()
 	log_start
 	show_hint "Should timeout due to MD5 mismatch"
 	run_cmd nettest -s -M ${MD5_PW} -m ${NSB_LO_IP} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest -r ${NSA_IP} -X ${MD5_PW}
 	log_test $? 2 "MD5: Client address does not match address configured with password"
 
@@ -902,7 +910,7 @@ ipv4_tcp_md5_novrf()
 	# client in prefix
 	log_start
 	run_cmd nettest -s -M ${MD5_PW} -m ${NS_NET} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest  -r ${NSA_IP} -X ${MD5_PW}
 	log_test $? 0 "MD5: Prefix config"
 
@@ -910,7 +918,7 @@ ipv4_tcp_md5_novrf()
 	log_start
 	show_hint "Should timeout since client uses wrong password"
 	run_cmd nettest -s -M ${MD5_PW} -m ${NS_NET} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest -r ${NSA_IP} -X ${MD5_WRONG_PW}
 	log_test $? 2 "MD5: Prefix config, client uses wrong password"
 
@@ -918,7 +926,7 @@ ipv4_tcp_md5_novrf()
 	log_start
 	show_hint "Should timeout due to MD5 mismatch"
 	run_cmd nettest -s -M ${MD5_PW} -m ${NS_NET} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest -c ${NSB_LO_IP} -r ${NSA_IP} -X ${MD5_PW}
 	log_test $? 2 "MD5: Prefix config, client address not in configured prefix"
 }
@@ -935,7 +943,7 @@ ipv4_tcp_md5()
 	# basic use case
 	log_start
 	run_cmd nettest -s -I ${VRF} -M ${MD5_PW} -m ${NSB_IP} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest -r ${NSA_IP} -X ${MD5_PW}
 	log_test $? 0 "MD5: VRF: Single address config"
 
@@ -943,7 +951,7 @@ ipv4_tcp_md5()
 	log_start
 	show_hint "Should timeout since server does not have MD5 auth"
 	run_cmd nettest -s -I ${VRF} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest -r ${NSA_IP} -X ${MD5_PW}
 	log_test $? 2 "MD5: VRF: Server no config, client uses password"
 
@@ -951,7 +959,7 @@ ipv4_tcp_md5()
 	log_start
 	show_hint "Should timeout since client uses wrong password"
 	run_cmd nettest -s -I ${VRF} -M ${MD5_PW} -m ${NSB_IP} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest -r ${NSA_IP} -X ${MD5_WRONG_PW}
 	log_test $? 2 "MD5: VRF: Client uses wrong password"
 
@@ -959,7 +967,7 @@ ipv4_tcp_md5()
 	log_start
 	show_hint "Should timeout since server config differs from client"
 	run_cmd nettest -s -I ${VRF} -M ${MD5_PW} -m ${NSB_LO_IP} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest -r ${NSA_IP} -X ${MD5_PW}
 	log_test $? 2 "MD5: VRF: Client address does not match address configured with password"
 
@@ -970,7 +978,7 @@ ipv4_tcp_md5()
 	# client in prefix
 	log_start
 	run_cmd nettest -s -I ${VRF} -M ${MD5_PW} -m ${NS_NET} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest  -r ${NSA_IP} -X ${MD5_PW}
 	log_test $? 0 "MD5: VRF: Prefix config"
 
@@ -978,7 +986,7 @@ ipv4_tcp_md5()
 	log_start
 	show_hint "Should timeout since client uses wrong password"
 	run_cmd nettest -s -I ${VRF} -M ${MD5_PW} -m ${NS_NET} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest -r ${NSA_IP} -X ${MD5_WRONG_PW}
 	log_test $? 2 "MD5: VRF: Prefix config, client uses wrong password"
 
@@ -986,7 +994,7 @@ ipv4_tcp_md5()
 	log_start
 	show_hint "Should timeout since client address is outside of prefix"
 	run_cmd nettest -s -I ${VRF} -M ${MD5_PW} -m ${NS_NET} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest -c ${NSB_LO_IP} -r ${NSA_IP} -X ${MD5_PW}
 	log_test $? 2 "MD5: VRF: Prefix config, client address not in configured prefix"
 
@@ -997,14 +1005,14 @@ ipv4_tcp_md5()
 	log_start
 	run_cmd nettest -s -I ${VRF} -M ${MD5_PW} -m ${NSB_IP} &
 	run_cmd nettest -s -M ${MD5_WRONG_PW} -m ${NSB_IP} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest  -r ${NSA_IP} -X ${MD5_PW}
 	log_test $? 0 "MD5: VRF: Single address config in default VRF and VRF, conn in VRF"
 
 	log_start
 	run_cmd nettest -s -I ${VRF} -M ${MD5_PW} -m ${NSB_IP} &
 	run_cmd nettest -s -M ${MD5_WRONG_PW} -m ${NSB_IP} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsc nettest  -r ${NSA_IP} -X ${MD5_WRONG_PW}
 	log_test $? 0 "MD5: VRF: Single address config in default VRF and VRF, conn in default VRF"
 
@@ -1012,7 +1020,7 @@ ipv4_tcp_md5()
 	show_hint "Should timeout since client in default VRF uses VRF password"
 	run_cmd nettest -s -I ${VRF} -M ${MD5_PW} -m ${NSB_IP} &
 	run_cmd nettest -s -M ${MD5_WRONG_PW} -m ${NSB_IP} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsc nettest -r ${NSA_IP} -X ${MD5_PW}
 	log_test $? 2 "MD5: VRF: Single address config in default VRF and VRF, conn in default VRF with VRF pw"
 
@@ -1020,21 +1028,21 @@ ipv4_tcp_md5()
 	show_hint "Should timeout since client in VRF uses default VRF password"
 	run_cmd nettest -s -I ${VRF} -M ${MD5_PW} -m ${NSB_IP} &
 	run_cmd nettest -s -M ${MD5_WRONG_PW} -m ${NSB_IP} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest -r ${NSA_IP} -X ${MD5_WRONG_PW}
 	log_test $? 2 "MD5: VRF: Single address config in default VRF and VRF, conn in VRF with default VRF pw"
 
 	log_start
 	run_cmd nettest -s -I ${VRF} -M ${MD5_PW} -m ${NS_NET} &
 	run_cmd nettest -s -M ${MD5_WRONG_PW} -m ${NS_NET} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest  -r ${NSA_IP} -X ${MD5_PW}
 	log_test $? 0 "MD5: VRF: Prefix config in default VRF and VRF, conn in VRF"
 
 	log_start
 	run_cmd nettest -s -I ${VRF} -M ${MD5_PW} -m ${NS_NET} &
 	run_cmd nettest -s -M ${MD5_WRONG_PW} -m ${NS_NET} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsc nettest  -r ${NSA_IP} -X ${MD5_WRONG_PW}
 	log_test $? 0 "MD5: VRF: Prefix config in default VRF and VRF, conn in default VRF"
 
@@ -1042,7 +1050,7 @@ ipv4_tcp_md5()
 	show_hint "Should timeout since client in default VRF uses VRF password"
 	run_cmd nettest -s -I ${VRF} -M ${MD5_PW} -m ${NS_NET} &
 	run_cmd nettest -s -M ${MD5_WRONG_PW} -m ${NS_NET} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsc nettest -r ${NSA_IP} -X ${MD5_PW}
 	log_test $? 2 "MD5: VRF: Prefix config in default VRF and VRF, conn in default VRF with VRF pw"
 
@@ -1050,7 +1058,7 @@ ipv4_tcp_md5()
 	show_hint "Should timeout since client in VRF uses default VRF password"
 	run_cmd nettest -s -I ${VRF} -M ${MD5_PW} -m ${NS_NET} &
 	run_cmd nettest -s -M ${MD5_WRONG_PW} -m ${NS_NET} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest -r ${NSA_IP} -X ${MD5_WRONG_PW}
 	log_test $? 2 "MD5: VRF: Prefix config in default VRF and VRF, conn in VRF with default VRF pw"
 
@@ -1074,14 +1082,14 @@ test_ipv4_md5_vrf__vrf_server__no_bind_ifindex()
 	log_start
 	show_hint "Simulates applications using VRF without TCP_MD5SIG_FLAG_IFINDEX"
 	run_cmd nettest -s -I ${VRF} -M ${MD5_PW} -m ${NS_NET} --no-bind-key-ifindex &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest -r ${NSA_IP} -X ${MD5_PW}
 	log_test $? 0 "MD5: VRF: VRF-bound server, unbound key accepts connection"
 
 	log_start
 	show_hint "Binding both the socket and the key is not required but it works"
 	run_cmd nettest -s -I ${VRF} -M ${MD5_PW} -m ${NS_NET} --force-bind-key-ifindex &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest -r ${NSA_IP} -X ${MD5_PW}
 	log_test $? 0 "MD5: VRF: VRF-bound server, bound key accepts connection"
 }
@@ -1095,25 +1103,25 @@ test_ipv4_md5_vrf__global_server__bind_ifindex0()
 
 	log_start
 	run_cmd nettest -s -M ${MD5_PW} -m ${NS_NET} --force-bind-key-ifindex &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest -r ${NSA_IP} -X ${MD5_PW}
 	log_test $? 2 "MD5: VRF: Global server, Key bound to ifindex=0 rejects VRF connection"
 
 	log_start
 	run_cmd nettest -s -M ${MD5_PW} -m ${NS_NET} --force-bind-key-ifindex &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsc nettest -r ${NSA_IP} -X ${MD5_PW}
 	log_test $? 0 "MD5: VRF: Global server, key bound to ifindex=0 accepts non-VRF connection"
 	log_start
 
 	run_cmd nettest -s -M ${MD5_PW} -m ${NS_NET} --no-bind-key-ifindex &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest -r ${NSA_IP} -X ${MD5_PW}
 	log_test $? 0 "MD5: VRF: Global server, key not bound to ifindex accepts VRF connection"
 
 	log_start
 	run_cmd nettest -s -M ${MD5_PW} -m ${NS_NET} --no-bind-key-ifindex &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsc nettest -r ${NSA_IP} -X ${MD5_PW}
 	log_test $? 0 "MD5: VRF: Global server, key not bound to ifindex accepts non-VRF connection"
 
@@ -1185,7 +1193,7 @@ ipv4_tcp_novrf()
 	do
 		log_start
 		run_cmd nettest -s &
-		wait_local_port_listen ${NSA} 12345 tcp
+		sleep 1
 		run_cmd_nsb nettest -r ${a}
 		log_test_addr ${a} $? 0 "Global server"
 	done
@@ -1193,7 +1201,7 @@ ipv4_tcp_novrf()
 	a=${NSA_IP}
 	log_start
 	run_cmd nettest -s -I ${NSA_DEV} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest -r ${a}
 	log_test_addr ${a} $? 0 "Device server"
 
@@ -1213,13 +1221,13 @@ ipv4_tcp_novrf()
 	do
 		log_start
 		run_cmd_nsb nettest -s &
-		wait_local_port_listen ${NSB} 12345 tcp
+		sleep 1
 		run_cmd nettest -r ${a} -0 ${NSA_IP}
 		log_test_addr ${a} $? 0 "Client"
 
 		log_start
 		run_cmd_nsb nettest -s &
-		wait_local_port_listen ${NSB} 12345 tcp
+		sleep 1
 		run_cmd nettest -r ${a} -d ${NSA_DEV}
 		log_test_addr ${a} $? 0 "Client, device bind"
 
@@ -1241,7 +1249,7 @@ ipv4_tcp_novrf()
 	do
 		log_start
 		run_cmd nettest -s &
-		wait_local_port_listen ${NSA} 12345 tcp
+		sleep 1
 		run_cmd nettest -r ${a} -0 ${a} -1 ${a}
 		log_test_addr ${a} $? 0 "Global server, local connection"
 	done
@@ -1249,7 +1257,7 @@ ipv4_tcp_novrf()
 	a=${NSA_IP}
 	log_start
 	run_cmd nettest -s -I ${NSA_DEV} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd nettest -r ${a} -0 ${a}
 	log_test_addr ${a} $? 0 "Device server, unbound client, local connection"
 
@@ -1258,7 +1266,7 @@ ipv4_tcp_novrf()
 		log_start
 		show_hint "Should fail 'Connection refused' since addresses on loopback are out of device scope"
 		run_cmd nettest -s -I ${NSA_DEV} &
-		wait_local_port_listen ${NSA} 12345 tcp
+		sleep 1
 		run_cmd nettest -r ${a}
 		log_test_addr ${a} $? 1 "Device server, unbound client, local connection"
 	done
@@ -1266,7 +1274,7 @@ ipv4_tcp_novrf()
 	a=${NSA_IP}
 	log_start
 	run_cmd nettest -s &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd nettest -r ${a} -0 ${a} -d ${NSA_DEV}
 	log_test_addr ${a} $? 0 "Global server, device client, local connection"
 
@@ -1275,7 +1283,7 @@ ipv4_tcp_novrf()
 		log_start
 		show_hint "Should fail 'No route to host' since addresses on loopback are out of device scope"
 		run_cmd nettest -s &
-		wait_local_port_listen ${NSA} 12345 tcp
+		sleep 1
 		run_cmd nettest -r ${a} -d ${NSA_DEV}
 		log_test_addr ${a} $? 1 "Global server, device client, local connection"
 	done
@@ -1283,7 +1291,7 @@ ipv4_tcp_novrf()
 	a=${NSA_IP}
 	log_start
 	run_cmd nettest -s -I ${NSA_DEV} -3 ${NSA_DEV} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd nettest  -d ${NSA_DEV} -r ${a} -0 ${a}
 	log_test_addr ${a} $? 0 "Device server, device client, local connection"
 
@@ -1315,19 +1323,19 @@ ipv4_tcp_vrf()
 		log_start
 		show_hint "Should fail 'Connection refused' since global server with VRF is disabled"
 		run_cmd nettest -s &
-		wait_local_port_listen ${NSA} 12345 tcp
+		sleep 1
 		run_cmd_nsb nettest -r ${a}
 		log_test_addr ${a} $? 1 "Global server"
 
 		log_start
 		run_cmd nettest -s -I ${VRF} -3 ${VRF} &
-		wait_local_port_listen ${NSA} 12345 tcp
+		sleep 1
 		run_cmd_nsb nettest -r ${a}
 		log_test_addr ${a} $? 0 "VRF server"
 
 		log_start
 		run_cmd nettest -s -I ${NSA_DEV} -3 ${NSA_DEV} &
-		wait_local_port_listen ${NSA} 12345 tcp
+		sleep 1
 		run_cmd_nsb nettest -r ${a}
 		log_test_addr ${a} $? 0 "Device server"
 
@@ -1344,7 +1352,7 @@ ipv4_tcp_vrf()
 	log_start
 	show_hint "Should fail 'Connection refused' since global server with VRF is disabled"
 	run_cmd nettest -s &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd nettest -r ${a} -d ${NSA_DEV}
 	log_test_addr ${a} $? 1 "Global server, local connection"
 
@@ -1366,14 +1374,14 @@ ipv4_tcp_vrf()
 		log_start
 		show_hint "client socket should be bound to VRF"
 		run_cmd nettest -s -3 ${VRF} &
-		wait_local_port_listen ${NSA} 12345 tcp
+		sleep 1
 		run_cmd_nsb nettest -r ${a}
 		log_test_addr ${a} $? 0 "Global server"
 
 		log_start
 		show_hint "client socket should be bound to VRF"
 		run_cmd nettest -s -I ${VRF} -3 ${VRF} &
-		wait_local_port_listen ${NSA} 12345 tcp
+		sleep 1
 		run_cmd_nsb nettest -r ${a}
 		log_test_addr ${a} $? 0 "VRF server"
 
@@ -1388,7 +1396,7 @@ ipv4_tcp_vrf()
 	log_start
 	show_hint "client socket should be bound to device"
 	run_cmd nettest -s -I ${NSA_DEV} -3 ${NSA_DEV} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest -r ${a}
 	log_test_addr ${a} $? 0 "Device server"
 
@@ -1398,7 +1406,7 @@ ipv4_tcp_vrf()
 		log_start
 		show_hint "Should fail 'Connection refused' since client is not bound to VRF"
 		run_cmd nettest -s -I ${VRF} &
-		wait_local_port_listen ${NSA} 12345 tcp
+		sleep 1
 		run_cmd nettest -r ${a}
 		log_test_addr ${a} $? 1 "Global server, local connection"
 	done
@@ -1410,13 +1418,13 @@ ipv4_tcp_vrf()
 	do
 		log_start
 		run_cmd_nsb nettest -s &
-		wait_local_port_listen ${NSB} 12345 tcp
+		sleep 1
 		run_cmd nettest -r ${a} -d ${VRF}
 		log_test_addr ${a} $? 0 "Client, VRF bind"
 
 		log_start
 		run_cmd_nsb nettest -s &
-		wait_local_port_listen ${NSB} 12345 tcp
+		sleep 1
 		run_cmd nettest -r ${a} -d ${NSA_DEV}
 		log_test_addr ${a} $? 0 "Client, device bind"
 
@@ -1435,7 +1443,7 @@ ipv4_tcp_vrf()
 	do
 		log_start
 		run_cmd nettest -s -I ${VRF} -3 ${VRF} &
-		wait_local_port_listen ${NSA} 12345 tcp
+		sleep 1
 		run_cmd nettest -r ${a} -d ${VRF} -0 ${a}
 		log_test_addr ${a} $? 0 "VRF server, VRF client, local connection"
 	done
@@ -1443,26 +1451,26 @@ ipv4_tcp_vrf()
 	a=${NSA_IP}
 	log_start
 	run_cmd nettest -s -I ${VRF} -3 ${VRF} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd nettest -r ${a} -d ${NSA_DEV} -0 ${a}
 	log_test_addr ${a} $? 0 "VRF server, device client, local connection"
 
 	log_start
 	show_hint "Should fail 'No route to host' since client is out of VRF scope"
 	run_cmd nettest -s -I ${VRF} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd nettest -r ${a}
 	log_test_addr ${a} $? 1 "VRF server, unbound client, local connection"
 
 	log_start
 	run_cmd nettest -s -I ${NSA_DEV} -3 ${NSA_DEV} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd nettest -r ${a} -d ${VRF} -0 ${a}
 	log_test_addr ${a} $? 0 "Device server, VRF client, local connection"
 
 	log_start
 	run_cmd nettest -s -I ${NSA_DEV} -3 ${NSA_DEV} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd nettest -r ${a} -d ${NSA_DEV} -0 ${a}
 	log_test_addr ${a} $? 0 "Device server, device client, local connection"
 }
@@ -1501,7 +1509,7 @@ ipv4_udp_novrf()
 	do
 		log_start
 		run_cmd nettest -D -s -3 ${NSA_DEV} &
-		wait_local_port_listen ${NSA} 12345 udp
+		sleep 1
 		run_cmd_nsb nettest -D -r ${a}
 		log_test_addr ${a} $? 0 "Global server"
 
@@ -1514,7 +1522,7 @@ ipv4_udp_novrf()
 	a=${NSA_IP}
 	log_start
 	run_cmd nettest -D -I ${NSA_DEV} -s -3 ${NSA_DEV} &
-	wait_local_port_listen ${NSA} 12345 udp
+	sleep 1
 	run_cmd_nsb nettest -D -r ${a}
 	log_test_addr ${a} $? 0 "Device server"
 
@@ -1525,31 +1533,31 @@ ipv4_udp_novrf()
 	do
 		log_start
 		run_cmd_nsb nettest -D -s &
-		wait_local_port_listen ${NSB} 12345 udp
+		sleep 1
 		run_cmd nettest -D -r ${a} -0 ${NSA_IP}
 		log_test_addr ${a} $? 0 "Client"
 
 		log_start
 		run_cmd_nsb nettest -D -s &
-		wait_local_port_listen ${NSB} 12345 udp
+		sleep 1
 		run_cmd nettest -D -r ${a} -d ${NSA_DEV} -0 ${NSA_IP}
 		log_test_addr ${a} $? 0 "Client, device bind"
 
 		log_start
 		run_cmd_nsb nettest -D -s &
-		wait_local_port_listen ${NSB} 12345 udp
+		sleep 1
 		run_cmd nettest -D -r ${a} -d ${NSA_DEV} -C -0 ${NSA_IP}
 		log_test_addr ${a} $? 0 "Client, device send via cmsg"
 
 		log_start
 		run_cmd_nsb nettest -D -s &
-		wait_local_port_listen ${NSB} 12345 udp
+		sleep 1
 		run_cmd nettest -D -r ${a} -d ${NSA_DEV} -S -0 ${NSA_IP}
 		log_test_addr ${a} $? 0 "Client, device bind via IP_UNICAST_IF"
 
 		log_start
 		run_cmd_nsb nettest -D -s &
-		wait_local_port_listen ${NSB} 12345 udp
+		sleep 1
 		run_cmd nettest -D -r ${a} -d ${NSA_DEV} -S -0 ${NSA_IP} -U
 		log_test_addr ${a} $? 0 "Client, device bind via IP_UNICAST_IF, with connect()"
 
@@ -1572,7 +1580,7 @@ ipv4_udp_novrf()
 	do
 		log_start
 		run_cmd nettest -D -s &
-		wait_local_port_listen ${NSA} 12345 udp
+		sleep 1
 		run_cmd nettest -D -r ${a} -0 ${a} -1 ${a}
 		log_test_addr ${a} $? 0 "Global server, local connection"
 	done
@@ -1580,7 +1588,7 @@ ipv4_udp_novrf()
 	a=${NSA_IP}
 	log_start
 	run_cmd nettest -s -D -I ${NSA_DEV} -3 ${NSA_DEV} &
-	wait_local_port_listen ${NSA} 12345 udp
+	sleep 1
 	run_cmd nettest -D -r ${a}
 	log_test_addr ${a} $? 0 "Device server, unbound client, local connection"
 
@@ -1589,7 +1597,7 @@ ipv4_udp_novrf()
 		log_start
 		show_hint "Should fail 'Connection refused' since address is out of device scope"
 		run_cmd nettest -s -D -I ${NSA_DEV} &
-		wait_local_port_listen ${NSA} 12345 udp
+		sleep 1
 		run_cmd nettest -D -r ${a}
 		log_test_addr ${a} $? 1 "Device server, unbound client, local connection"
 	done
@@ -1597,25 +1605,25 @@ ipv4_udp_novrf()
 	a=${NSA_IP}
 	log_start
 	run_cmd nettest -s -D &
-	wait_local_port_listen ${NSA} 12345 udp
+	sleep 1
 	run_cmd nettest -D -d ${NSA_DEV} -r ${a}
 	log_test_addr ${a} $? 0 "Global server, device client, local connection"
 
 	log_start
 	run_cmd nettest -s -D &
-	wait_local_port_listen ${NSA} 12345 udp
+	sleep 1
 	run_cmd nettest -D -d ${NSA_DEV} -C -r ${a}
 	log_test_addr ${a} $? 0 "Global server, device send via cmsg, local connection"
 
 	log_start
 	run_cmd nettest -s -D &
-	wait_local_port_listen ${NSA} 12345 udp
+	sleep 1
 	run_cmd nettest -D -d ${NSA_DEV} -S -r ${a}
 	log_test_addr ${a} $? 0 "Global server, device client via IP_UNICAST_IF, local connection"
 
 	log_start
 	run_cmd nettest -s -D &
-	wait_local_port_listen ${NSA} 12345 udp
+	sleep 1
 	run_cmd nettest -D -d ${NSA_DEV} -S -r ${a} -U
 	log_test_addr ${a} $? 0 "Global server, device client via IP_UNICAST_IF, local connection, with connect()"
 
@@ -1628,28 +1636,28 @@ ipv4_udp_novrf()
 		log_start
 		show_hint "Should fail since addresses on loopback are out of device scope"
 		run_cmd nettest -D -s &
-		wait_local_port_listen ${NSA} 12345 udp
+		sleep 1
 		run_cmd nettest -D -r ${a} -d ${NSA_DEV}
 		log_test_addr ${a} $? 2 "Global server, device client, local connection"
 
 		log_start
 		show_hint "Should fail since addresses on loopback are out of device scope"
 		run_cmd nettest -D -s &
-		wait_local_port_listen ${NSA} 12345 udp
+		sleep 1
 		run_cmd nettest -D -r ${a} -d ${NSA_DEV} -C
 		log_test_addr ${a} $? 1 "Global server, device send via cmsg, local connection"
 
 		log_start
 		show_hint "Should fail since addresses on loopback are out of device scope"
 		run_cmd nettest -D -s &
-		wait_local_port_listen ${NSA} 12345 udp
+		sleep 1
 		run_cmd nettest -D -r ${a} -d ${NSA_DEV} -S
 		log_test_addr ${a} $? 1 "Global server, device client via IP_UNICAST_IF, local connection"
 
 		log_start
 		show_hint "Should fail since addresses on loopback are out of device scope"
 		run_cmd nettest -D -s &
-		wait_local_port_listen ${NSA} 12345 udp
+		sleep 1
 		run_cmd nettest -D -r ${a} -d ${NSA_DEV} -S -U
 		log_test_addr ${a} $? 1 "Global server, device client via IP_UNICAST_IF, local connection, with connect()"
 
@@ -1659,7 +1667,7 @@ ipv4_udp_novrf()
 	a=${NSA_IP}
 	log_start
 	run_cmd nettest -D -s -I ${NSA_DEV} -3 ${NSA_DEV} &
-	wait_local_port_listen ${NSA} 12345 udp
+	sleep 1
 	run_cmd nettest -D -d ${NSA_DEV} -r ${a} -0 ${a}
 	log_test_addr ${a} $? 0 "Device server, device client, local conn"
 
@@ -1701,19 +1709,19 @@ ipv4_udp_vrf()
 		log_start
 		show_hint "Fails because ingress is in a VRF and global server is disabled"
 		run_cmd nettest -D -s &
-		wait_local_port_listen ${NSA} 12345 udp
+		sleep 1
 		run_cmd_nsb nettest -D -r ${a}
 		log_test_addr ${a} $? 1 "Global server"
 
 		log_start
 		run_cmd nettest -D -I ${VRF} -s -3 ${NSA_DEV} &
-		wait_local_port_listen ${NSA} 12345 udp
+		sleep 1
 		run_cmd_nsb nettest -D -r ${a}
 		log_test_addr ${a} $? 0 "VRF server"
 
 		log_start
 		run_cmd nettest -D -I ${NSA_DEV} -s -3 ${NSA_DEV} &
-		wait_local_port_listen ${NSA} 12345 udp
+		sleep 1
 		run_cmd_nsb nettest -D -r ${a}
 		log_test_addr ${a} $? 0 "Enslaved device server"
 
@@ -1725,7 +1733,7 @@ ipv4_udp_vrf()
 		log_start
 		show_hint "Should fail 'Connection refused' since global server is out of scope"
 		run_cmd nettest -D -s &
-		wait_local_port_listen ${NSA} 12345 udp
+		sleep 1
 		run_cmd nettest -D -d ${VRF} -r ${a}
 		log_test_addr ${a} $? 1 "Global server, VRF client, local connection"
 	done
@@ -1733,26 +1741,26 @@ ipv4_udp_vrf()
 	a=${NSA_IP}
 	log_start
 	run_cmd nettest -s -D -I ${VRF} -3 ${NSA_DEV} &
-	wait_local_port_listen ${NSA} 12345 udp
+	sleep 1
 	run_cmd nettest -D -d ${VRF} -r ${a}
 	log_test_addr ${a} $? 0 "VRF server, VRF client, local conn"
 
 	log_start
 	run_cmd nettest -s -D -I ${VRF} -3 ${NSA_DEV} &
-	wait_local_port_listen ${NSA} 12345 udp
+	sleep 1
 	run_cmd nettest -D -d ${NSA_DEV} -r ${a}
 	log_test_addr ${a} $? 0 "VRF server, enslaved device client, local connection"
 
 	a=${NSA_IP}
 	log_start
 	run_cmd nettest -s -D -I ${NSA_DEV} -3 ${NSA_DEV} &
-	wait_local_port_listen ${NSA} 12345 udp
+	sleep 1
 	run_cmd nettest -D -d ${VRF} -r ${a}
 	log_test_addr ${a} $? 0 "Enslaved device server, VRF client, local conn"
 
 	log_start
 	run_cmd nettest -s -D -I ${NSA_DEV} -3 ${NSA_DEV} &
-	wait_local_port_listen ${NSA} 12345 udp
+	sleep 1
 	run_cmd nettest -D -d ${NSA_DEV} -r ${a}
 	log_test_addr ${a} $? 0 "Enslaved device server, device client, local conn"
 
@@ -1767,19 +1775,19 @@ ipv4_udp_vrf()
 	do
 		log_start
 		run_cmd nettest -D -s -3 ${NSA_DEV} &
-		wait_local_port_listen ${NSA} 12345 udp
+		sleep 1
 		run_cmd_nsb nettest -D -r ${a}
 		log_test_addr ${a} $? 0 "Global server"
 
 		log_start
 		run_cmd nettest -D -I ${VRF} -s -3 ${NSA_DEV} &
-		wait_local_port_listen ${NSA} 12345 udp
+		sleep 1
 		run_cmd_nsb nettest -D -r ${a}
 		log_test_addr ${a} $? 0 "VRF server"
 
 		log_start
 		run_cmd nettest -D -I ${NSA_DEV} -s -3 ${NSA_DEV} &
-		wait_local_port_listen ${NSA} 12345 udp
+		sleep 1
 		run_cmd_nsb nettest -D -r ${a}
 		log_test_addr ${a} $? 0 "Enslaved device server"
 
@@ -1794,13 +1802,13 @@ ipv4_udp_vrf()
 	#
 	log_start
 	run_cmd_nsb nettest -D -s &
-	wait_local_port_listen ${NSB} 12345 udp
+	sleep 1
 	run_cmd nettest -d ${VRF} -D -r ${NSB_IP} -1 ${NSA_IP}
 	log_test $? 0 "VRF client"
 
 	log_start
 	run_cmd_nsb nettest -D -s &
-	wait_local_port_listen ${NSB} 12345 udp
+	sleep 1
 	run_cmd nettest -d ${NSA_DEV} -D -r ${NSB_IP} -1 ${NSA_IP}
 	log_test $? 0 "Enslaved device client"
 
@@ -1821,31 +1829,31 @@ ipv4_udp_vrf()
 	a=${NSA_IP}
 	log_start
 	run_cmd nettest -D -s -3 ${NSA_DEV} &
-	wait_local_port_listen ${NSA} 12345 udp
+	sleep 1
 	run_cmd nettest -D -d ${VRF} -r ${a}
 	log_test_addr ${a} $? 0 "Global server, VRF client, local conn"
 
 	log_start
 	run_cmd nettest -s -D -I ${VRF} -3 ${NSA_DEV} &
-	wait_local_port_listen ${NSA} 12345 udp
+	sleep 1
 	run_cmd nettest -D -d ${VRF} -r ${a}
 	log_test_addr ${a} $? 0 "VRF server, VRF client, local conn"
 
 	log_start
 	run_cmd nettest -s -D -I ${VRF} -3 ${NSA_DEV} &
-	wait_local_port_listen ${NSA} 12345 udp
+	sleep 1
 	run_cmd nettest -D -d ${NSA_DEV} -r ${a}
 	log_test_addr ${a} $? 0 "VRF server, device client, local conn"
 
 	log_start
 	run_cmd nettest -s -D -I ${NSA_DEV} -3 ${NSA_DEV} &
-	wait_local_port_listen ${NSA} 12345 udp
+	sleep 1
 	run_cmd nettest -D -d ${VRF} -r ${a}
 	log_test_addr ${a} $? 0 "Enslaved device server, VRF client, local conn"
 
 	log_start
 	run_cmd nettest -s -D -I ${NSA_DEV} -3 ${NSA_DEV} &
-	wait_local_port_listen ${NSA} 12345 udp
+	sleep 1
 	run_cmd nettest -D -d ${NSA_DEV} -r ${a}
 	log_test_addr ${a} $? 0 "Enslaved device server, device client, local conn"
 
@@ -1853,7 +1861,7 @@ ipv4_udp_vrf()
 	do
 		log_start
 		run_cmd nettest -D -s -3 ${VRF} &
-		wait_local_port_listen ${NSA} 12345 udp
+		sleep 1
 		run_cmd nettest -D -d ${VRF} -r ${a}
 		log_test_addr ${a} $? 0 "Global server, VRF client, local conn"
 	done
@@ -1862,7 +1870,7 @@ ipv4_udp_vrf()
 	do
 		log_start
 		run_cmd nettest -s -D -I ${VRF} -3 ${VRF} &
-		wait_local_port_listen ${NSA} 12345 udp
+		sleep 1
 		run_cmd nettest -D -d ${VRF} -r ${a}
 		log_test_addr ${a} $? 0 "VRF server, VRF client, local conn"
 	done
@@ -2059,12 +2067,12 @@ ipv4_addr_bind()
 
 	log_subsection "No VRF"
 	setup
-	set_sysctl net.ipv4.ping_group_range='0 2147483647' 2>/dev/null
+	set_ping_group
 	ipv4_addr_bind_novrf
 
 	log_subsection "With VRF"
 	setup "yes"
-	set_sysctl net.ipv4.ping_group_range='0 2147483647' 2>/dev/null
+	set_ping_group
 	ipv4_addr_bind_vrf
 }
 
@@ -2085,7 +2093,7 @@ ipv4_rt()
 	do
 		log_start
 		run_cmd nettest ${varg} -s &
-		wait_local_port_listen ${NSA} 12345 tcp
+		sleep 1
 		run_cmd_nsb nettest ${varg} -r ${a} &
 		sleep 3
 		run_cmd ip link del ${VRF}
@@ -2099,7 +2107,7 @@ ipv4_rt()
 	do
 		log_start
 		run_cmd nettest ${varg} -s -I ${VRF} &
-		wait_local_port_listen ${NSA} 12345 tcp
+		sleep 1
 		run_cmd_nsb nettest ${varg} -r ${a} &
 		sleep 3
 		run_cmd ip link del ${VRF}
@@ -2112,7 +2120,7 @@ ipv4_rt()
 	a=${NSA_IP}
 	log_start
 	run_cmd nettest ${varg} -s -I ${NSA_DEV} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest ${varg} -r ${a} &
 	sleep 3
 	run_cmd ip link del ${VRF}
@@ -2126,7 +2134,7 @@ ipv4_rt()
 	#
 	log_start
 	run_cmd_nsb nettest ${varg} -s &
-	wait_local_port_listen ${NSB} 12345 tcp
+	sleep 1
 	run_cmd nettest ${varg} -d ${VRF} -r ${NSB_IP} &
 	sleep 3
 	run_cmd ip link del ${VRF}
@@ -2137,7 +2145,7 @@ ipv4_rt()
 
 	log_start
 	run_cmd_nsb nettest ${varg} -s &
-	wait_local_port_listen ${NSB} 12345 tcp
+	sleep 1
 	run_cmd nettest ${varg} -d ${NSA_DEV} -r ${NSB_IP} &
 	sleep 3
 	run_cmd ip link del ${VRF}
@@ -2153,7 +2161,7 @@ ipv4_rt()
 	do
 		log_start
 		run_cmd nettest ${varg} -s &
-		wait_local_port_listen ${NSA} 12345 tcp
+		sleep 1
 		run_cmd nettest ${varg} -d ${VRF} -r ${a} &
 		sleep 3
 		run_cmd ip link del ${VRF}
@@ -2167,7 +2175,7 @@ ipv4_rt()
 	do
 		log_start
 		run_cmd nettest ${varg} -I ${VRF} -s &
-		wait_local_port_listen ${NSA} 12345 tcp
+		sleep 1
 		run_cmd nettest ${varg} -d ${VRF} -r ${a} &
 		sleep 3
 		run_cmd ip link del ${VRF}
@@ -2181,7 +2189,7 @@ ipv4_rt()
 	log_start
 
 	run_cmd nettest ${varg} -s &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd nettest ${varg} -d ${NSA_DEV} -r ${a} &
 	sleep 3
 	run_cmd ip link del ${VRF}
@@ -2192,7 +2200,7 @@ ipv4_rt()
 
 	log_start
 	run_cmd nettest ${varg} -I ${VRF} -s &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd nettest ${varg} -d ${NSA_DEV} -r ${a} &
 	sleep 3
 	run_cmd ip link del ${VRF}
@@ -2203,7 +2211,7 @@ ipv4_rt()
 
 	log_start
 	run_cmd nettest ${varg} -I ${NSA_DEV} -s &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd nettest ${varg} -d ${NSA_DEV} -r ${a} &
 	sleep 3
 	run_cmd ip link del ${VRF}
@@ -2527,14 +2535,14 @@ ipv6_ping()
 	setup
 	ipv6_ping_novrf
 	setup
-	set_sysctl net.ipv4.ping_group_range='0 2147483647' 2>/dev/null
+	set_ping_group
 	ipv6_ping_novrf
 
 	log_subsection "With VRF"
 	setup "yes"
 	ipv6_ping_vrf
 	setup "yes"
-	set_sysctl net.ipv4.ping_group_range='0 2147483647' 2>/dev/null
+	set_ping_group
 	ipv6_ping_vrf
 }
 
@@ -2553,7 +2561,7 @@ ipv6_tcp_md5_novrf()
 	# basic use case
 	log_start
 	run_cmd nettest -6 -s -M ${MD5_PW} -m ${NSB_IP6} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest -6 -r ${NSA_IP6} -X ${MD5_PW}
 	log_test $? 0 "MD5: Single address config"
 
@@ -2561,7 +2569,7 @@ ipv6_tcp_md5_novrf()
 	log_start
 	show_hint "Should timeout due to MD5 mismatch"
 	run_cmd nettest -6 -s &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest -6 -r ${NSA_IP6} -X ${MD5_PW}
 	log_test $? 2 "MD5: Server no config, client uses password"
 
@@ -2569,7 +2577,7 @@ ipv6_tcp_md5_novrf()
 	log_start
 	show_hint "Should timeout since client uses wrong password"
 	run_cmd nettest -6 -s -M ${MD5_PW} -m ${NSB_IP6} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest -6 -r ${NSA_IP6} -X ${MD5_WRONG_PW}
 	log_test $? 2 "MD5: Client uses wrong password"
 
@@ -2577,7 +2585,7 @@ ipv6_tcp_md5_novrf()
 	log_start
 	show_hint "Should timeout due to MD5 mismatch"
 	run_cmd nettest -6 -s -M ${MD5_PW} -m ${NSB_LO_IP6} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest -6 -r ${NSA_IP6} -X ${MD5_PW}
 	log_test $? 2 "MD5: Client address does not match address configured with password"
 
@@ -2588,7 +2596,7 @@ ipv6_tcp_md5_novrf()
 	# client in prefix
 	log_start
 	run_cmd nettest -6 -s -M ${MD5_PW} -m ${NS_NET6} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest -6 -r ${NSA_IP6} -X ${MD5_PW}
 	log_test $? 0 "MD5: Prefix config"
 
@@ -2596,7 +2604,7 @@ ipv6_tcp_md5_novrf()
 	log_start
 	show_hint "Should timeout since client uses wrong password"
 	run_cmd nettest -6 -s -M ${MD5_PW} -m ${NS_NET6} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest -6 -r ${NSA_IP6} -X ${MD5_WRONG_PW}
 	log_test $? 2 "MD5: Prefix config, client uses wrong password"
 
@@ -2604,7 +2612,7 @@ ipv6_tcp_md5_novrf()
 	log_start
 	show_hint "Should timeout due to MD5 mismatch"
 	run_cmd nettest -6 -s -M ${MD5_PW} -m ${NS_NET6} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest -6 -c ${NSB_LO_IP6} -r ${NSA_IP6} -X ${MD5_PW}
 	log_test $? 2 "MD5: Prefix config, client address not in configured prefix"
 }
@@ -2621,7 +2629,7 @@ ipv6_tcp_md5()
 	# basic use case
 	log_start
 	run_cmd nettest -6 -s -I ${VRF} -M ${MD5_PW} -m ${NSB_IP6} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest -6 -r ${NSA_IP6} -X ${MD5_PW}
 	log_test $? 0 "MD5: VRF: Single address config"
 
@@ -2629,7 +2637,7 @@ ipv6_tcp_md5()
 	log_start
 	show_hint "Should timeout since server does not have MD5 auth"
 	run_cmd nettest -6 -s -I ${VRF} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest -6 -r ${NSA_IP6} -X ${MD5_PW}
 	log_test $? 2 "MD5: VRF: Server no config, client uses password"
 
@@ -2637,7 +2645,7 @@ ipv6_tcp_md5()
 	log_start
 	show_hint "Should timeout since client uses wrong password"
 	run_cmd nettest -6 -s -I ${VRF} -M ${MD5_PW} -m ${NSB_IP6} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest -6 -r ${NSA_IP6} -X ${MD5_WRONG_PW}
 	log_test $? 2 "MD5: VRF: Client uses wrong password"
 
@@ -2645,7 +2653,7 @@ ipv6_tcp_md5()
 	log_start
 	show_hint "Should timeout since server config differs from client"
 	run_cmd nettest -6 -s -I ${VRF} -M ${MD5_PW} -m ${NSB_LO_IP6} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest -6 -r ${NSA_IP6} -X ${MD5_PW}
 	log_test $? 2 "MD5: VRF: Client address does not match address configured with password"
 
@@ -2656,7 +2664,7 @@ ipv6_tcp_md5()
 	# client in prefix
 	log_start
 	run_cmd nettest -6 -s -I ${VRF} -M ${MD5_PW} -m ${NS_NET6} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest -6 -r ${NSA_IP6} -X ${MD5_PW}
 	log_test $? 0 "MD5: VRF: Prefix config"
 
@@ -2664,7 +2672,7 @@ ipv6_tcp_md5()
 	log_start
 	show_hint "Should timeout since client uses wrong password"
 	run_cmd nettest -6 -s -I ${VRF} -M ${MD5_PW} -m ${NS_NET6} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest -6 -r ${NSA_IP6} -X ${MD5_WRONG_PW}
 	log_test $? 2 "MD5: VRF: Prefix config, client uses wrong password"
 
@@ -2672,7 +2680,7 @@ ipv6_tcp_md5()
 	log_start
 	show_hint "Should timeout since client address is outside of prefix"
 	run_cmd nettest -6 -s -I ${VRF} -M ${MD5_PW} -m ${NS_NET6} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest -6 -c ${NSB_LO_IP6} -r ${NSA_IP6} -X ${MD5_PW}
 	log_test $? 2 "MD5: VRF: Prefix config, client address not in configured prefix"
 
@@ -2683,14 +2691,14 @@ ipv6_tcp_md5()
 	log_start
 	run_cmd nettest -6 -s -I ${VRF} -M ${MD5_PW} -m ${NSB_IP6} &
 	run_cmd nettest -6 -s -M ${MD5_WRONG_PW} -m ${NSB_IP6} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest -6 -r ${NSA_IP6} -X ${MD5_PW}
 	log_test $? 0 "MD5: VRF: Single address config in default VRF and VRF, conn in VRF"
 
 	log_start
 	run_cmd nettest -6 -s -I ${VRF} -M ${MD5_PW} -m ${NSB_IP6} &
 	run_cmd nettest -6 -s -M ${MD5_WRONG_PW} -m ${NSB_IP6} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsc nettest -6 -r ${NSA_IP6} -X ${MD5_WRONG_PW}
 	log_test $? 0 "MD5: VRF: Single address config in default VRF and VRF, conn in default VRF"
 
@@ -2698,7 +2706,7 @@ ipv6_tcp_md5()
 	show_hint "Should timeout since client in default VRF uses VRF password"
 	run_cmd nettest -6 -s -I ${VRF} -M ${MD5_PW} -m ${NSB_IP6} &
 	run_cmd nettest -6 -s -M ${MD5_WRONG_PW} -m ${NSB_IP6} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsc nettest -6 -r ${NSA_IP6} -X ${MD5_PW}
 	log_test $? 2 "MD5: VRF: Single address config in default VRF and VRF, conn in default VRF with VRF pw"
 
@@ -2706,21 +2714,21 @@ ipv6_tcp_md5()
 	show_hint "Should timeout since client in VRF uses default VRF password"
 	run_cmd nettest -6 -s -I ${VRF} -M ${MD5_PW} -m ${NSB_IP6} &
 	run_cmd nettest -6 -s -M ${MD5_WRONG_PW} -m ${NSB_IP6} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest -6 -r ${NSA_IP6} -X ${MD5_WRONG_PW}
 	log_test $? 2 "MD5: VRF: Single address config in default VRF and VRF, conn in VRF with default VRF pw"
 
 	log_start
 	run_cmd nettest -6 -s -I ${VRF} -M ${MD5_PW} -m ${NS_NET6} &
 	run_cmd nettest -6 -s -M ${MD5_WRONG_PW} -m ${NS_NET6} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest -6 -r ${NSA_IP6} -X ${MD5_PW}
 	log_test $? 0 "MD5: VRF: Prefix config in default VRF and VRF, conn in VRF"
 
 	log_start
 	run_cmd nettest -6 -s -I ${VRF} -M ${MD5_PW} -m ${NS_NET6} &
 	run_cmd nettest -6 -s -M ${MD5_WRONG_PW} -m ${NS_NET6} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsc nettest -6 -r ${NSA_IP6} -X ${MD5_WRONG_PW}
 	log_test $? 0 "MD5: VRF: Prefix config in default VRF and VRF, conn in default VRF"
 
@@ -2728,7 +2736,7 @@ ipv6_tcp_md5()
 	show_hint "Should timeout since client in default VRF uses VRF password"
 	run_cmd nettest -6 -s -I ${VRF} -M ${MD5_PW} -m ${NS_NET6} &
 	run_cmd nettest -6 -s -M ${MD5_WRONG_PW} -m ${NS_NET6} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsc nettest -6 -r ${NSA_IP6} -X ${MD5_PW}
 	log_test $? 2 "MD5: VRF: Prefix config in default VRF and VRF, conn in default VRF with VRF pw"
 
@@ -2736,7 +2744,7 @@ ipv6_tcp_md5()
 	show_hint "Should timeout since client in VRF uses default VRF password"
 	run_cmd nettest -6 -s -I ${VRF} -M ${MD5_PW} -m ${NS_NET6} &
 	run_cmd nettest -6 -s -M ${MD5_WRONG_PW} -m ${NS_NET6} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest -6 -r ${NSA_IP6} -X ${MD5_WRONG_PW}
 	log_test $? 2 "MD5: VRF: Prefix config in default VRF and VRF, conn in VRF with default VRF pw"
 
@@ -2764,7 +2772,7 @@ ipv6_tcp_novrf()
 	do
 		log_start
 		run_cmd nettest -6 -s &
-		wait_local_port_listen ${NSA} 12345 tcp
+		sleep 1
 		run_cmd_nsb nettest -6 -r ${a}
 		log_test_addr ${a} $? 0 "Global server"
 	done
@@ -2785,7 +2793,7 @@ ipv6_tcp_novrf()
 	do
 		log_start
 		run_cmd_nsb nettest -6 -s &
-		wait_local_port_listen ${NSB} 12345 tcp
+		sleep 1
 		run_cmd nettest -6 -r ${a}
 		log_test_addr ${a} $? 0 "Client"
 	done
@@ -2794,7 +2802,7 @@ ipv6_tcp_novrf()
 	do
 		log_start
 		run_cmd_nsb nettest -6 -s &
-		wait_local_port_listen ${NSB} 12345 tcp
+		sleep 1
 		run_cmd nettest -6 -r ${a} -d ${NSA_DEV}
 		log_test_addr ${a} $? 0 "Client, device bind"
 	done
@@ -2814,7 +2822,7 @@ ipv6_tcp_novrf()
 	do
 		log_start
 		run_cmd nettest -6 -s &
-		wait_local_port_listen ${NSA} 12345 tcp
+		sleep 1
 		run_cmd nettest -6 -r ${a}
 		log_test_addr ${a} $? 0 "Global server, local connection"
 	done
@@ -2822,7 +2830,7 @@ ipv6_tcp_novrf()
 	a=${NSA_IP6}
 	log_start
 	run_cmd nettest -6 -s -I ${NSA_DEV} -3 ${NSA_DEV} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd nettest -6 -r ${a} -0 ${a}
 	log_test_addr ${a} $? 0 "Device server, unbound client, local connection"
 
@@ -2831,7 +2839,7 @@ ipv6_tcp_novrf()
 		log_start
 		show_hint "Should fail 'Connection refused' since addresses on loopback are out of device scope"
 		run_cmd nettest -6 -s -I ${NSA_DEV} &
-		wait_local_port_listen ${NSA} 12345 tcp
+		sleep 1
 		run_cmd nettest -6 -r ${a}
 		log_test_addr ${a} $? 1 "Device server, unbound client, local connection"
 	done
@@ -2839,7 +2847,7 @@ ipv6_tcp_novrf()
 	a=${NSA_IP6}
 	log_start
 	run_cmd nettest -6 -s &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd nettest -6 -r ${a} -d ${NSA_DEV} -0 ${a}
 	log_test_addr ${a} $? 0 "Global server, device client, local connection"
 
@@ -2848,7 +2856,7 @@ ipv6_tcp_novrf()
 		log_start
 		show_hint "Should fail 'Connection refused' since addresses on loopback are out of device scope"
 		run_cmd nettest -6 -s &
-		wait_local_port_listen ${NSA} 12345 tcp
+		sleep 1
 		run_cmd nettest -6 -r ${a} -d ${NSA_DEV}
 		log_test_addr ${a} $? 1 "Global server, device client, local connection"
 	done
@@ -2857,7 +2865,7 @@ ipv6_tcp_novrf()
 	do
 		log_start
 		run_cmd nettest -6 -s -I ${NSA_DEV} -3 ${NSA_DEV} &
-		wait_local_port_listen ${NSA} 12345 tcp
+		sleep 1
 		run_cmd nettest -6  -d ${NSA_DEV} -r ${a}
 		log_test_addr ${a} $? 0 "Device server, device client, local conn"
 	done
@@ -2890,7 +2898,7 @@ ipv6_tcp_vrf()
 		log_start
 		show_hint "Should fail 'Connection refused' since global server with VRF is disabled"
 		run_cmd nettest -6 -s &
-		wait_local_port_listen ${NSA} 12345 tcp
+		sleep 1
 		run_cmd_nsb nettest -6 -r ${a}
 		log_test_addr ${a} $? 1 "Global server"
 	done
@@ -2899,7 +2907,7 @@ ipv6_tcp_vrf()
 	do
 		log_start
 		run_cmd nettest -6 -s -I ${VRF} -3 ${VRF} &
-		wait_local_port_listen ${NSA} 12345 tcp
+		sleep 1
 		run_cmd_nsb nettest -6 -r ${a}
 		log_test_addr ${a} $? 0 "VRF server"
 	done
@@ -2908,7 +2916,7 @@ ipv6_tcp_vrf()
 	a=${NSA_LINKIP6}%${NSB_DEV}
 	log_start
 	run_cmd nettest -6 -s -I ${VRF} -3 ${NSA_DEV} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest -6 -r ${a}
 	log_test_addr ${a} $? 0 "VRF server"
 
@@ -2916,7 +2924,7 @@ ipv6_tcp_vrf()
 	do
 		log_start
 		run_cmd nettest -6 -s -I ${NSA_DEV} -3 ${NSA_DEV} &
-		wait_local_port_listen ${NSA} 12345 tcp
+		sleep 1
 		run_cmd_nsb nettest -6 -r ${a}
 		log_test_addr ${a} $? 0 "Device server"
 	done
@@ -2935,7 +2943,7 @@ ipv6_tcp_vrf()
 	log_start
 	show_hint "Should fail 'Connection refused' since global server with VRF is disabled"
 	run_cmd nettest -6 -s &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd nettest -6 -r ${a} -d ${NSA_DEV}
 	log_test_addr ${a} $? 1 "Global server, local connection"
 
@@ -2956,7 +2964,7 @@ ipv6_tcp_vrf()
 	do
 		log_start
 		run_cmd nettest -6 -s -3 ${VRF} &
-		wait_local_port_listen ${NSA} 12345 tcp
+		sleep 1
 		run_cmd_nsb nettest -6 -r ${a}
 		log_test_addr ${a} $? 0 "Global server"
 	done
@@ -2965,7 +2973,7 @@ ipv6_tcp_vrf()
 	do
 		log_start
 		run_cmd nettest -6 -s -I ${VRF} -3 ${VRF} &
-		wait_local_port_listen ${NSA} 12345 tcp
+		sleep 1
 		run_cmd_nsb nettest -6 -r ${a}
 		log_test_addr ${a} $? 0 "VRF server"
 	done
@@ -2974,13 +2982,13 @@ ipv6_tcp_vrf()
 	a=${NSA_LINKIP6}%${NSB_DEV}
 	log_start
 	run_cmd nettest -6 -s -3 ${NSA_DEV} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest -6 -r ${a}
 	log_test_addr ${a} $? 0 "Global server"
 
 	log_start
 	run_cmd nettest -6 -s -I ${VRF} -3 ${NSA_DEV} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd_nsb nettest -6 -r ${a}
 	log_test_addr ${a} $? 0 "VRF server"
 
@@ -2988,7 +2996,7 @@ ipv6_tcp_vrf()
 	do
 		log_start
 		run_cmd nettest -6 -s -I ${NSA_DEV} -3 ${NSA_DEV} &
-		wait_local_port_listen ${NSA} 12345 tcp
+		sleep 1
 		run_cmd_nsb nettest -6 -r ${a}
 		log_test_addr ${a} $? 0 "Device server"
 	done
@@ -3008,7 +3016,7 @@ ipv6_tcp_vrf()
 		log_start
 		show_hint "Fails 'Connection refused' since client is not in VRF"
 		run_cmd nettest -6 -s -I ${VRF} &
-		wait_local_port_listen ${NSA} 12345 tcp
+		sleep 1
 		run_cmd nettest -6 -r ${a}
 		log_test_addr ${a} $? 1 "Global server, local connection"
 	done
@@ -3021,7 +3029,7 @@ ipv6_tcp_vrf()
 	do
 		log_start
 		run_cmd_nsb nettest -6 -s &
-		wait_local_port_listen ${NSB} 12345 tcp
+		sleep 1
 		run_cmd nettest -6 -r ${a} -d ${VRF}
 		log_test_addr ${a} $? 0 "Client, VRF bind"
 	done
@@ -3030,7 +3038,7 @@ ipv6_tcp_vrf()
 	log_start
 	show_hint "Fails since VRF device does not allow linklocal addresses"
 	run_cmd_nsb nettest -6 -s &
-	wait_local_port_listen ${NSB} 12345 tcp
+	sleep 1
 	run_cmd nettest -6 -r ${a} -d ${VRF}
 	log_test_addr ${a} $? 1 "Client, VRF bind"
 
@@ -3038,7 +3046,7 @@ ipv6_tcp_vrf()
 	do
 		log_start
 		run_cmd_nsb nettest -6 -s &
-		wait_local_port_listen ${NSB} 12345 tcp
+		sleep 1
 		run_cmd nettest -6 -r ${a} -d ${NSA_DEV}
 		log_test_addr ${a} $? 0 "Client, device bind"
 	done
@@ -3063,7 +3071,7 @@ ipv6_tcp_vrf()
 	do
 		log_start
 		run_cmd nettest -6 -s -I ${VRF} -3 ${VRF} &
-		wait_local_port_listen ${NSA} 12345 tcp
+		sleep 1
 		run_cmd nettest -6 -r ${a} -d ${VRF} -0 ${a}
 		log_test_addr ${a} $? 0 "VRF server, VRF client, local connection"
 	done
@@ -3071,7 +3079,7 @@ ipv6_tcp_vrf()
 	a=${NSA_IP6}
 	log_start
 	run_cmd nettest -6 -s -I ${VRF} -3 ${VRF} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd nettest -6 -r ${a} -d ${NSA_DEV} -0 ${a}
 	log_test_addr ${a} $? 0 "VRF server, device client, local connection"
 
@@ -3079,13 +3087,13 @@ ipv6_tcp_vrf()
 	log_start
 	show_hint "Should fail since unbound client is out of VRF scope"
 	run_cmd nettest -6 -s -I ${VRF} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd nettest -6 -r ${a}
 	log_test_addr ${a} $? 1 "VRF server, unbound client, local connection"
 
 	log_start
 	run_cmd nettest -6 -s -I ${NSA_DEV} -3 ${NSA_DEV} &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd nettest -6 -r ${a} -d ${VRF} -0 ${a}
 	log_test_addr ${a} $? 0 "Device server, VRF client, local connection"
 
@@ -3093,7 +3101,7 @@ ipv6_tcp_vrf()
 	do
 		log_start
 		run_cmd nettest -6 -s -I ${NSA_DEV} -3 ${NSA_DEV} &
-		wait_local_port_listen ${NSA} 12345 tcp
+		sleep 1
 		run_cmd nettest -6 -r ${a} -d ${NSA_DEV} -0 ${a}
 		log_test_addr ${a} $? 0 "Device server, device client, local connection"
 	done
@@ -3133,13 +3141,13 @@ ipv6_udp_novrf()
 	do
 		log_start
 		run_cmd nettest -6 -D -s -3 ${NSA_DEV} &
-		wait_local_port_listen ${NSA} 12345 udp
+		sleep 1
 		run_cmd_nsb nettest -6 -D -r ${a}
 		log_test_addr ${a} $? 0 "Global server"
 
 		log_start
 		run_cmd nettest -6 -D -I ${NSA_DEV} -s -3 ${NSA_DEV} &
-		wait_local_port_listen ${NSA} 12345 udp
+		sleep 1
 		run_cmd_nsb nettest -6 -D -r ${a}
 		log_test_addr ${a} $? 0 "Device server"
 	done
@@ -3147,7 +3155,7 @@ ipv6_udp_novrf()
 	a=${NSA_LO_IP6}
 	log_start
 	run_cmd nettest -6 -D -s -3 ${NSA_DEV} &
-	wait_local_port_listen ${NSA} 12345 udp
+	sleep 1
 	run_cmd_nsb nettest -6 -D -r ${a}
 	log_test_addr ${a} $? 0 "Global server"
 
@@ -3157,7 +3165,7 @@ ipv6_udp_novrf()
 	#log_start
 	#show_hint "Should fail since loopback address is out of scope"
 	#run_cmd nettest -6 -D -I ${NSA_DEV} -s -3 ${NSA_DEV} &
-	wait_local_port_listen ${NSA} 12345 udp
+	#sleep 1
 	#run_cmd_nsb nettest -6 -D -r ${a}
 	#log_test_addr ${a} $? 1 "Device server"
 
@@ -3177,25 +3185,25 @@ ipv6_udp_novrf()
 	do
 		log_start
 		run_cmd_nsb nettest -6 -D -s &
-		wait_local_port_listen ${NSB} 12345 udp
+		sleep 1
 		run_cmd nettest -6 -D -r ${a} -0 ${NSA_IP6}
 		log_test_addr ${a} $? 0 "Client"
 
 		log_start
 		run_cmd_nsb nettest -6 -D -s &
-		wait_local_port_listen ${NSB} 12345 udp
+		sleep 1
 		run_cmd nettest -6 -D -r ${a} -d ${NSA_DEV} -0 ${NSA_IP6}
 		log_test_addr ${a} $? 0 "Client, device bind"
 
 		log_start
 		run_cmd_nsb nettest -6 -D -s &
-		wait_local_port_listen ${NSB} 12345 udp
+		sleep 1
 		run_cmd nettest -6 -D -r ${a} -d ${NSA_DEV} -C -0 ${NSA_IP6}
 		log_test_addr ${a} $? 0 "Client, device send via cmsg"
 
 		log_start
 		run_cmd_nsb nettest -6 -D -s &
-		wait_local_port_listen ${NSB} 12345 udp
+		sleep 1
 		run_cmd nettest -6 -D -r ${a} -d ${NSA_DEV} -S -0 ${NSA_IP6}
 		log_test_addr ${a} $? 0 "Client, device bind via IPV6_UNICAST_IF"
 
@@ -3217,7 +3225,7 @@ ipv6_udp_novrf()
 	do
 		log_start
 		run_cmd nettest -6 -D -s &
-		wait_local_port_listen ${NSA} 12345 udp
+		sleep 1
 		run_cmd nettest -6 -D -r ${a} -0 ${a} -1 ${a}
 		log_test_addr ${a} $? 0 "Global server, local connection"
 	done
@@ -3225,7 +3233,7 @@ ipv6_udp_novrf()
 	a=${NSA_IP6}
 	log_start
 	run_cmd nettest -6 -s -D -I ${NSA_DEV} -3 ${NSA_DEV} &
-	wait_local_port_listen ${NSA} 12345 udp
+	sleep 1
 	run_cmd nettest -6 -D -r ${a}
 	log_test_addr ${a} $? 0 "Device server, unbound client, local connection"
 
@@ -3234,7 +3242,7 @@ ipv6_udp_novrf()
 		log_start
 		show_hint "Should fail 'Connection refused' since address is out of device scope"
 		run_cmd nettest -6 -s -D -I ${NSA_DEV} &
-		wait_local_port_listen ${NSA} 12345 udp
+		sleep 1
 		run_cmd nettest -6 -D -r ${a}
 		log_test_addr ${a} $? 1 "Device server, local connection"
 	done
@@ -3242,19 +3250,19 @@ ipv6_udp_novrf()
 	a=${NSA_IP6}
 	log_start
 	run_cmd nettest -6 -s -D &
-	wait_local_port_listen ${NSA} 12345 udp
+	sleep 1
 	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${a}
 	log_test_addr ${a} $? 0 "Global server, device client, local connection"
 
 	log_start
 	run_cmd nettest -6 -s -D &
-	wait_local_port_listen ${NSA} 12345 udp
+	sleep 1
 	run_cmd nettest -6 -D -d ${NSA_DEV} -C -r ${a}
 	log_test_addr ${a} $? 0 "Global server, device send via cmsg, local connection"
 
 	log_start
 	run_cmd nettest -6 -s -D &
-	wait_local_port_listen ${NSA} 12345 udp
+	sleep 1
 	run_cmd nettest -6 -D -d ${NSA_DEV} -S -r ${a}
 	log_test_addr ${a} $? 0 "Global server, device client via IPV6_UNICAST_IF, local connection"
 
@@ -3263,28 +3271,28 @@ ipv6_udp_novrf()
 		log_start
 		show_hint "Should fail 'No route to host' since addresses on loopback are out of device scope"
 		run_cmd nettest -6 -D -s &
-		wait_local_port_listen ${NSA} 12345 udp
+		sleep 1
 		run_cmd nettest -6 -D -r ${a} -d ${NSA_DEV}
 		log_test_addr ${a} $? 1 "Global server, device client, local connection"
 
 		log_start
 		show_hint "Should fail 'No route to host' since addresses on loopback are out of device scope"
 		run_cmd nettest -6 -D -s &
-		wait_local_port_listen ${NSA} 12345 udp
+		sleep 1
 		run_cmd nettest -6 -D -r ${a} -d ${NSA_DEV} -C
 		log_test_addr ${a} $? 1 "Global server, device send via cmsg, local connection"
 
 		log_start
 		show_hint "Should fail 'No route to host' since addresses on loopback are out of device scope"
 		run_cmd nettest -6 -D -s &
-		wait_local_port_listen ${NSA} 12345 udp
+		sleep 1
 		run_cmd nettest -6 -D -r ${a} -d ${NSA_DEV} -S
 		log_test_addr ${a} $? 1 "Global server, device client via IP_UNICAST_IF, local connection"
 
 		log_start
 		show_hint "Should fail 'No route to host' since addresses on loopback are out of device scope"
 		run_cmd nettest -6 -D -s &
-		wait_local_port_listen ${NSA} 12345 udp
+		sleep 1
 		run_cmd nettest -6 -D -r ${a} -d ${NSA_DEV} -S -U
 		log_test_addr ${a} $? 1 "Global server, device client via IP_UNICAST_IF, local connection, with connect()"
 	done
@@ -3292,7 +3300,7 @@ ipv6_udp_novrf()
 	a=${NSA_IP6}
 	log_start
 	run_cmd nettest -6 -D -s -I ${NSA_DEV} -3 ${NSA_DEV} &
-	wait_local_port_listen ${NSA} 12345 udp
+	sleep 1
 	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${a} -0 ${a}
 	log_test_addr ${a} $? 0 "Device server, device client, local conn"
 
@@ -3306,7 +3314,7 @@ ipv6_udp_novrf()
 	run_cmd_nsb ip -6 ro add ${NSA_IP6}/128 dev ${NSB_DEV}
 	log_start
 	run_cmd nettest -6 -s -D &
-	wait_local_port_listen ${NSA} 12345 udp
+	sleep 1
 	run_cmd_nsb nettest -6 -D -r ${NSA_IP6}
 	log_test $? 0 "UDP in - LLA to GUA"
 
@@ -3330,7 +3338,7 @@ ipv6_udp_vrf()
 		log_start
 		show_hint "Should fail 'Connection refused' since global server is disabled"
 		run_cmd nettest -6 -D -s &
-		wait_local_port_listen ${NSA} 12345 udp
+		sleep 1
 		run_cmd_nsb nettest -6 -D -r ${a}
 		log_test_addr ${a} $? 1 "Global server"
 	done
@@ -3339,7 +3347,7 @@ ipv6_udp_vrf()
 	do
 		log_start
 		run_cmd nettest -6 -D -I ${VRF} -s -3 ${NSA_DEV} &
-		wait_local_port_listen ${NSA} 12345 udp
+		sleep 1
 		run_cmd_nsb nettest -6 -D -r ${a}
 		log_test_addr ${a} $? 0 "VRF server"
 	done
@@ -3348,7 +3356,7 @@ ipv6_udp_vrf()
 	do
 		log_start
 		run_cmd nettest -6 -D -I ${NSA_DEV} -s -3 ${NSA_DEV} &
-		wait_local_port_listen ${NSA} 12345 udp
+		sleep 1
 		run_cmd_nsb nettest -6 -D -r ${a}
 		log_test_addr ${a} $? 0 "Enslaved device server"
 	done
@@ -3370,7 +3378,7 @@ ipv6_udp_vrf()
 		log_start
 		show_hint "Should fail 'Connection refused' since global server is disabled"
 		run_cmd nettest -6 -D -s &
-		wait_local_port_listen ${NSA} 12345 udp
+		sleep 1
 		run_cmd nettest -6 -D -d ${VRF} -r ${a}
 		log_test_addr ${a} $? 1 "Global server, VRF client, local conn"
 	done
@@ -3379,7 +3387,7 @@ ipv6_udp_vrf()
 	do
 		log_start
 		run_cmd nettest -6 -D -I ${VRF} -s &
-		wait_local_port_listen ${NSA} 12345 udp
+		sleep 1
 		run_cmd nettest -6 -D -d ${VRF} -r ${a}
 		log_test_addr ${a} $? 0 "VRF server, VRF client, local conn"
 	done
@@ -3388,25 +3396,25 @@ ipv6_udp_vrf()
 	log_start
 	show_hint "Should fail 'Connection refused' since global server is disabled"
 	run_cmd nettest -6 -D -s &
-	wait_local_port_listen ${NSA} 12345 udp
+	sleep 1
 	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${a}
 	log_test_addr ${a} $? 1 "Global server, device client, local conn"
 
 	log_start
 	run_cmd nettest -6 -D -I ${VRF} -s -3 ${NSA_DEV} &
-	wait_local_port_listen ${NSA} 12345 udp
+	sleep 1
 	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${a}
 	log_test_addr ${a} $? 0 "VRF server, device client, local conn"
 
 	log_start
 	run_cmd nettest -6 -D -I ${NSA_DEV} -s -3 ${NSA_DEV} &
-	wait_local_port_listen ${NSA} 12345 udp
+	sleep 1
 	run_cmd nettest -6 -D -d ${VRF} -r ${a}
 	log_test_addr ${a} $? 0 "Enslaved device server, VRF client, local conn"
 
 	log_start
 	run_cmd nettest -6 -D -I ${NSA_DEV} -s -3 ${NSA_DEV} &
-	wait_local_port_listen ${NSA} 12345 udp
+	sleep 1
 	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${a}
 	log_test_addr ${a} $? 0 "Enslaved device server, device client, local conn"
 
@@ -3421,7 +3429,7 @@ ipv6_udp_vrf()
 	do
 		log_start
 		run_cmd nettest -6 -D -s -3 ${NSA_DEV} &
-		wait_local_port_listen ${NSA} 12345 udp
+		sleep 1
 		run_cmd_nsb nettest -6 -D -r ${a}
 		log_test_addr ${a} $? 0 "Global server"
 	done
@@ -3430,7 +3438,7 @@ ipv6_udp_vrf()
 	do
 		log_start
 		run_cmd nettest -6 -D -I ${VRF} -s -3 ${NSA_DEV} &
-		wait_local_port_listen ${NSA} 12345 udp
+		sleep 1
 		run_cmd_nsb nettest -6 -D -r ${a}
 		log_test_addr ${a} $? 0 "VRF server"
 	done
@@ -3439,7 +3447,7 @@ ipv6_udp_vrf()
 	do
 		log_start
 		run_cmd nettest -6 -D -I ${NSA_DEV} -s -3 ${NSA_DEV} &
-		wait_local_port_listen ${NSA} 12345 udp
+		sleep 1
 		run_cmd_nsb nettest -6 -D -r ${a}
 		log_test_addr ${a} $? 0 "Enslaved device server"
 	done
@@ -3457,7 +3465,7 @@ ipv6_udp_vrf()
 	#
 	log_start
 	run_cmd_nsb nettest -6 -D -s &
-	wait_local_port_listen ${NSB} 12345 udp
+	sleep 1
 	run_cmd nettest -6 -D -d ${VRF} -r ${NSB_IP6}
 	log_test $? 0 "VRF client"
 
@@ -3468,7 +3476,7 @@ ipv6_udp_vrf()
 
 	log_start
 	run_cmd_nsb nettest -6 -D -s &
-	wait_local_port_listen ${NSB} 12345 udp
+	sleep 1
 	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${NSB_IP6}
 	log_test $? 0 "Enslaved device client"
 
@@ -3483,13 +3491,13 @@ ipv6_udp_vrf()
 	a=${NSA_IP6}
 	log_start
 	run_cmd nettest -6 -D -s -3 ${NSA_DEV} &
-	wait_local_port_listen ${NSA} 12345 udp
+	sleep 1
 	run_cmd nettest -6 -D -d ${VRF} -r ${a}
 	log_test_addr ${a} $? 0 "Global server, VRF client, local conn"
 
 	#log_start
 	run_cmd nettest -6 -D -I ${VRF} -s -3 ${NSA_DEV} &
-	wait_local_port_listen ${NSA} 12345 udp
+	sleep 1
 	run_cmd nettest -6 -D -d ${VRF} -r ${a}
 	log_test_addr ${a} $? 0 "VRF server, VRF client, local conn"
 
@@ -3497,13 +3505,13 @@ ipv6_udp_vrf()
 	a=${VRF_IP6}
 	log_start
 	run_cmd nettest -6 -D -s -3 ${VRF} &
-	wait_local_port_listen ${NSA} 12345 udp
+	sleep 1
 	run_cmd nettest -6 -D -d ${VRF} -r ${a}
 	log_test_addr ${a} $? 0 "Global server, VRF client, local conn"
 
 	log_start
 	run_cmd nettest -6 -D -I ${VRF} -s -3 ${VRF} &
-	wait_local_port_listen ${NSA} 12345 udp
+	sleep 1
 	run_cmd nettest -6 -D -d ${VRF} -r ${a}
 	log_test_addr ${a} $? 0 "VRF server, VRF client, local conn"
 
@@ -3519,25 +3527,25 @@ ipv6_udp_vrf()
 	a=${NSA_IP6}
 	log_start
 	run_cmd nettest -6 -D -s -3 ${NSA_DEV} &
-	wait_local_port_listen ${NSA} 12345 udp
+	sleep 1
 	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${a}
 	log_test_addr ${a} $? 0 "Global server, device client, local conn"
 
 	log_start
 	run_cmd nettest -6 -D -I ${VRF} -s -3 ${NSA_DEV} &
-	wait_local_port_listen ${NSA} 12345 udp
+	sleep 1
 	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${a}
 	log_test_addr ${a} $? 0 "VRF server, device client, local conn"
 
 	log_start
 	run_cmd nettest -6 -D -I ${NSA_DEV} -s -3 ${NSA_DEV} &
-	wait_local_port_listen ${NSA} 12345 udp
+	sleep 1
 	run_cmd nettest -6 -D -d ${VRF} -r ${a}
 	log_test_addr ${a} $? 0 "Device server, VRF client, local conn"
 
 	log_start
 	run_cmd nettest -6 -D -I ${NSA_DEV} -s -3 ${NSA_DEV} &
-	wait_local_port_listen ${NSA} 12345 udp
+	sleep 1
 	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${a}
 	log_test_addr ${a} $? 0 "Device server, device client, local conn"
 
@@ -3549,7 +3557,7 @@ ipv6_udp_vrf()
 	# link local addresses
 	log_start
 	run_cmd nettest -6 -D -s &
-	wait_local_port_listen ${NSA} 12345 udp
+	sleep 1
 	run_cmd_nsb nettest -6 -D -d ${NSB_DEV} -r ${NSA_LINKIP6}
 	log_test $? 0 "Global server, linklocal IP"
 
@@ -3560,7 +3568,7 @@ ipv6_udp_vrf()
 
 	log_start
 	run_cmd_nsb nettest -6 -D -s &
-	wait_local_port_listen ${NSB} 12345 udp
+	sleep 1
 	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${NSB_LINKIP6}
 	log_test $? 0 "Enslaved device client, linklocal IP"
 
@@ -3571,7 +3579,7 @@ ipv6_udp_vrf()
 
 	log_start
 	run_cmd nettest -6 -D -s &
-	wait_local_port_listen ${NSA} 12345 udp
+	sleep 1
 	run_cmd nettest -6 -D -d ${NSA_DEV} -r ${NSA_LINKIP6}
 	log_test $? 0 "Enslaved device client, local conn - linklocal IP"
 
@@ -3584,7 +3592,7 @@ ipv6_udp_vrf()
 	run_cmd_nsb ip -6 ro add ${NSA_IP6}/128 dev ${NSB_DEV}
 	log_start
 	run_cmd nettest -6 -s -D &
-	wait_local_port_listen ${NSA} 12345 udp
+	sleep 1
 	run_cmd_nsb nettest -6 -D -r ${NSA_IP6}
 	log_test $? 0 "UDP in - LLA to GUA"
 
@@ -3763,7 +3771,7 @@ ipv6_rt()
 	do
 		log_start
 		run_cmd nettest ${varg} -s &
-		wait_local_port_listen ${NSA} 12345 tcp
+		sleep 1
 		run_cmd_nsb nettest ${varg} -r ${a} &
 		sleep 3
 		run_cmd ip link del ${VRF}
@@ -3777,7 +3785,7 @@ ipv6_rt()
 	do
 		log_start
 		run_cmd nettest ${varg} -I ${VRF} -s &
-		wait_local_port_listen ${NSA} 12345 tcp
+		sleep 1
 		run_cmd_nsb nettest ${varg} -r ${a} &
 		sleep 3
 		run_cmd ip link del ${VRF}
@@ -3791,7 +3799,7 @@ ipv6_rt()
 	do
 		log_start
 		run_cmd nettest ${varg} -I ${NSA_DEV} -s &
-		wait_local_port_listen ${NSA} 12345 tcp
+		sleep 1
 		run_cmd_nsb nettest ${varg} -r ${a} &
 		sleep 3
 		run_cmd ip link del ${VRF}
@@ -3806,7 +3814,7 @@ ipv6_rt()
 	#
 	log_start
 	run_cmd_nsb nettest ${varg} -s &
-	wait_local_port_listen ${NSB} 12345 tcp
+	sleep 1
 	run_cmd nettest ${varg} -d ${VRF} -r ${NSB_IP6} &
 	sleep 3
 	run_cmd ip link del ${VRF}
@@ -3817,7 +3825,7 @@ ipv6_rt()
 
 	log_start
 	run_cmd_nsb nettest ${varg} -s &
-	wait_local_port_listen ${NSB} 12345 tcp
+	sleep 1
 	run_cmd nettest ${varg} -d ${NSA_DEV} -r ${NSB_IP6} &
 	sleep 3
 	run_cmd ip link del ${VRF}
@@ -3834,7 +3842,7 @@ ipv6_rt()
 	do
 		log_start
 		run_cmd nettest ${varg} -s &
-		wait_local_port_listen ${NSA} 12345 tcp
+		sleep 1
 		run_cmd nettest ${varg} -d ${VRF} -r ${a} &
 		sleep 3
 		run_cmd ip link del ${VRF}
@@ -3848,7 +3856,7 @@ ipv6_rt()
 	do
 		log_start
 		run_cmd nettest ${varg} -I ${VRF} -s &
-		wait_local_port_listen ${NSA} 12345 tcp
+		sleep 1
 		run_cmd nettest ${varg} -d ${VRF} -r ${a} &
 		sleep 3
 		run_cmd ip link del ${VRF}
@@ -3861,7 +3869,7 @@ ipv6_rt()
 	a=${NSA_IP6}
 	log_start
 	run_cmd nettest ${varg} -s &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd nettest ${varg} -d ${NSA_DEV} -r ${a} &
 	sleep 3
 	run_cmd ip link del ${VRF}
@@ -3872,7 +3880,7 @@ ipv6_rt()
 
 	log_start
 	run_cmd nettest ${varg} -I ${VRF} -s &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd nettest ${varg} -d ${NSA_DEV} -r ${a} &
 	sleep 3
 	run_cmd ip link del ${VRF}
@@ -3883,7 +3891,7 @@ ipv6_rt()
 
 	log_start
 	run_cmd nettest ${varg} -I ${NSA_DEV} -s &
-	wait_local_port_listen ${NSA} 12345 tcp
+	sleep 1
 	run_cmd nettest ${varg} -d ${NSA_DEV} -r ${a} &
 	sleep 3
 	run_cmd ip link del ${VRF}
@@ -3942,7 +3950,7 @@ netfilter_tcp_reset()
 	do
 		log_start
 		run_cmd nettest -s &
-		wait_local_port_listen ${NSA} 12345 tcp
+		sleep 1
 		run_cmd_nsb nettest -r ${a}
 		log_test_addr ${a} $? 1 "Global server, reject with TCP-reset on Rx"
 	done
@@ -3960,7 +3968,7 @@ netfilter_icmp()
 	do
 		log_start
 		run_cmd nettest ${arg} -s &
-		wait_local_port_listen ${NSA} 12345 tcp
+		sleep 1
 		run_cmd_nsb nettest ${arg} -r ${a}
 		log_test_addr ${a} $? 1 "Global ${stype} server, Rx reject icmp-port-unreach"
 	done
@@ -3999,7 +4007,7 @@ netfilter_tcp6_reset()
 	do
 		log_start
 		run_cmd nettest -6 -s &
-		wait_local_port_listen ${NSA} 12345 tcp
+		sleep 1
 		run_cmd_nsb nettest -6 -r ${a}
 		log_test_addr ${a} $? 1 "Global server, reject with TCP-reset on Rx"
 	done
@@ -4017,7 +4025,7 @@ netfilter_icmp6()
 	do
 		log_start
 		run_cmd nettest -6 -s ${arg} &
-		wait_local_port_listen ${NSA} 12345 tcp
+		sleep 1
 		run_cmd_nsb nettest -6 ${arg} -r ${a}
 		log_test_addr ${a} $? 1 "Global ${stype} server, Rx reject icmp-port-unreach"
 	done
@@ -4213,12 +4221,12 @@ use_case_snat_on_vrf()
 	run_cmd ip6tables -t nat -A POSTROUTING -p tcp -m tcp --dport ${port} -j SNAT --to-source ${NSA_LO_IP6} -o ${VRF}
 
 	run_cmd_nsb nettest -s -l ${NSB_IP} -p ${port} &
-	wait_local_port_listen ${NSB} ${port} tcp
+	sleep 1
 	run_cmd nettest -d ${VRF} -r ${NSB_IP} -p ${port}
 	log_test $? 0 "IPv4 TCP connection over VRF with SNAT"
 
 	run_cmd_nsb nettest -6 -s -l ${NSB_IP6} -p ${port} &
-	wait_local_port_listen ${NSB} ${port} tcp
+	sleep 1
 	run_cmd nettest -6 -d ${VRF} -r ${NSB_IP6} -p ${port}
 	log_test $? 0 "IPv6 TCP connection over VRF with SNAT"
 
@@ -4296,14 +4304,7 @@ elif [ "$TESTS" = "ipv6" ]; then
 	TESTS="$TESTS_IPV6"
 fi
 
-# nettest can be run from PATH or from same directory as this selftest
-if ! which nettest >/dev/null; then
-	PATH=$PWD:$PATH
-	if ! which nettest >/dev/null; then
-		echo "'nettest' command not found; skipping tests"
-		exit $ksft_skip
-	fi
-fi
+check_gen_prog "nettest"
 
 declare -i nfail=0
 declare -i nsuccess=0

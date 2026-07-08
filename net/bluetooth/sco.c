@@ -238,7 +238,7 @@ static int sco_chan_add(struct sco_conn *conn, struct sock *sk,
 	int err = 0;
 
 	sco_conn_lock(conn);
-	if (conn->sk || sco_pi(sk)->conn)
+	if (conn->sk)
 		err = -EBUSY;
 	else
 		__sco_chan_add(conn, sk, parent);
@@ -277,7 +277,8 @@ static int sco_connect(struct sock *sk)
 	}
 
 	hcon = hci_connect_sco(hdev, type, &sco_pi(sk)->dst,
-			       sco_pi(sk)->setting, &sco_pi(sk)->codec);
+			       sco_pi(sk)->setting, &sco_pi(sk)->codec,
+			       sk->sk_sndtimeo);
 	if (IS_ERR(hcon)) {
 		err = PTR_ERR(hcon);
 		goto unlock;
@@ -292,20 +293,9 @@ static int sco_connect(struct sock *sk)
 
 	lock_sock(sk);
 
-	/* Recheck state after reacquiring the socket lock, as another
-	 * thread may have changed it (e.g., closed the socket).
-	 */
-	if (sk->sk_state != BT_OPEN && sk->sk_state != BT_BOUND) {
-		release_sock(sk);
-		hci_conn_drop(hcon);
-		err = -EBADFD;
-		goto unlock;
-	}
-
 	err = sco_chan_add(conn, sk, NULL);
 	if (err) {
 		release_sock(sk);
-		hci_conn_drop(hcon);
 		goto unlock;
 	}
 
@@ -349,7 +339,7 @@ static void sco_recv_frame(struct sco_conn *conn, struct sk_buff *skb)
 	struct sock *sk;
 
 	sco_conn_lock(conn);
-	sk = sco_sock_hold(conn);
+	sk = conn->sk;
 	sco_conn_unlock(conn);
 
 	if (!sk)
@@ -358,15 +348,11 @@ static void sco_recv_frame(struct sco_conn *conn, struct sk_buff *skb)
 	BT_DBG("sk %p len %u", sk, skb->len);
 
 	if (sk->sk_state != BT_CONNECTED)
-		goto drop_put;
+		goto drop;
 
-	if (!sock_queue_rcv_skb(sk, skb)) {
-		sock_put(sk);
+	if (!sock_queue_rcv_skb(sk, skb))
 		return;
-	}
 
-drop_put:
-	sock_put(sk);
 drop:
 	kfree_skb(skb);
 }
@@ -432,8 +418,6 @@ static void sco_sock_cleanup_listen(struct sock *parent)
 	while ((sk = bt_accept_dequeue(parent, NULL))) {
 		sco_sock_close(sk);
 		sco_sock_kill(sk);
-		/* Drop the reference handed back by bt_accept_dequeue(). */
-		sock_put(sk);
 	}
 
 	parent->sk_state  = BT_CLOSED;
@@ -449,13 +433,6 @@ static void sco_sock_kill(struct sock *sk)
 		return;
 
 	BT_DBG("sk %p state %d", sk, sk->sk_state);
-
-	/* Sock is dead, so set conn->sk to NULL to avoid possible UAF */
-	if (sco_pi(sk)->conn) {
-		sco_conn_lock(sco_pi(sk)->conn);
-		sco_pi(sk)->conn->sk = NULL;
-		sco_conn_unlock(sco_pi(sk)->conn);
-	}
 
 	/* Kill poor orphan */
 	bt_sock_unlink(&sco_sk_list, sk);
@@ -614,18 +591,13 @@ static int sco_sock_connect(struct socket *sock, struct sockaddr *addr, int alen
 	    addr->sa_family != AF_BLUETOOTH)
 		return -EINVAL;
 
-	lock_sock(sk);
-
-	if (sk->sk_state != BT_OPEN && sk->sk_state != BT_BOUND) {
-		release_sock(sk);
+	if (sk->sk_state != BT_OPEN && sk->sk_state != BT_BOUND)
 		return -EBADFD;
-	}
 
-	if (sk->sk_type != SOCK_SEQPACKET) {
-		release_sock(sk);
-		return -EINVAL;
-	}
+	if (sk->sk_type != SOCK_SEQPACKET)
+		err = -EINVAL;
 
+	lock_sock(sk);
 	/* Set destination address and psm */
 	bacpy(&sco_pi(sk)->dst, &sa->sco_bdaddr);
 	release_sock(sk);
@@ -684,7 +656,7 @@ done:
 }
 
 static int sco_sock_accept(struct socket *sock, struct socket *newsock,
-			   int flags, bool kern)
+			   struct proto_accept_arg *arg)
 {
 	DEFINE_WAIT_FUNC(wait, woken_wake_function);
 	struct sock *sk = sock->sk, *ch;
@@ -693,7 +665,7 @@ static int sco_sock_accept(struct socket *sock, struct socket *newsock,
 
 	lock_sock(sk);
 
-	timeo = sock_rcvtimeo(sk, flags & O_NONBLOCK);
+	timeo = sock_rcvtimeo(sk, arg->flags & O_NONBLOCK);
 
 	BT_DBG("sk %p timeo %ld", sk, timeo);
 
@@ -706,13 +678,8 @@ static int sco_sock_accept(struct socket *sock, struct socket *newsock,
 		}
 
 		ch = bt_accept_dequeue(sk, newsock);
-		if (ch) {
-			/* Drop the bridging ref from bt_accept_dequeue();
-			 * the grafted socket keeps ch alive from here.
-			 */
-			sock_put(ch);
+		if (ch)
 			break;
-		}
 
 		if (!timeo) {
 			err = -EAGAIN;
@@ -889,7 +856,7 @@ static int sco_sock_setsockopt(struct socket *sock, int level, int optname,
 			break;
 		}
 
-		err = bt_copy_from_sockptr(&opt, sizeof(opt), optval, optlen);
+		err = copy_safe_from_sockptr(&opt, sizeof(opt), optval, optlen);
 		if (err)
 			break;
 
@@ -908,8 +875,8 @@ static int sco_sock_setsockopt(struct socket *sock, int level, int optname,
 
 		voice.setting = sco_pi(sk)->setting;
 
-		err = bt_copy_from_sockptr(&voice, sizeof(voice), optval,
-					   optlen);
+		err = copy_safe_from_sockptr(&voice, sizeof(voice), optval,
+					     optlen);
 		if (err)
 			break;
 
@@ -932,7 +899,7 @@ static int sco_sock_setsockopt(struct socket *sock, int level, int optname,
 		break;
 
 	case BT_PKT_STATUS:
-		err = bt_copy_from_sockptr(&opt, sizeof(opt), optval, optlen);
+		err = copy_safe_from_sockptr(&opt, sizeof(opt), optval, optlen);
 		if (err)
 			break;
 
@@ -975,7 +942,8 @@ static int sco_sock_setsockopt(struct socket *sock, int level, int optname,
 			break;
 		}
 
-		err = bt_copy_from_sockptr(buffer, optlen, optval, optlen);
+		err = copy_struct_from_sockptr(buffer, sizeof(buffer), optval,
+					       optlen);
 		if (err) {
 			hci_dev_put(hdev);
 			break;

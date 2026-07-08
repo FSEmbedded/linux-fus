@@ -179,7 +179,6 @@ void __init check_bugs32(void)
 static inline int cpu_has_confreg(void)
 {
 #ifdef CONFIG_CPU_R3000
-	extern unsigned long r3k_cache_size(unsigned long);
 	unsigned long size1, size2;
 	unsigned long cfg = read_c0_conf();
 
@@ -208,14 +207,11 @@ static inline void set_elf_base_platform(const char *plat)
 
 static inline void cpu_probe_vmbits(struct cpuinfo_mips *c)
 {
-	int vmbits = 31;
-
-	if (cpu_has_64bits) {
-		write_c0_entryhi_64(0x3fffffffffffe000ULL);
-		back_to_back_c0_hazard();
-		vmbits = fls64(read_c0_entryhi_64() & 0x3fffffffffffe000ULL);
-	}
-	c->vmbits = vmbits;
+#ifdef __NEED_VMBITS_PROBE
+	write_c0_entryhi(0x3fffffffffffe000ULL);
+	back_to_back_c0_hazard();
+	c->vmbits = fls64(read_c0_entryhi() & 0x3fffffffffffe000ULL);
+#endif
 }
 
 static void set_isa(struct cpuinfo_mips *c, unsigned int isa)
@@ -1142,7 +1138,7 @@ static inline void cpu_probe_legacy(struct cpuinfo_mips *c, unsigned int cpu)
 		 * This processor doesn't have an MMU, so it's not
 		 * "real easy" to run Linux on it. It is left purely
 		 * for documentation.  Commented out because it shares
-		 * it's c0_prid id number with the TX3900.
+		 * its c0_prid id number with the TX3900.
 		 */
 		c->cputype = CPU_R4650;
 		__cpu_name[cpu] = "R4650";

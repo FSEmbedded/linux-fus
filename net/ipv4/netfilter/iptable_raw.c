@@ -100,11 +100,12 @@ static int __init iptable_raw_init(void)
 
 static void __exit iptable_raw_fini(void)
 {
-	xt_unregister_template(&packet_raw);
 	unregister_pernet_subsys(&iptable_raw_net_ops);
 	kfree(rawtable_ops);
+	xt_unregister_template(&packet_raw);
 }
 
 module_init(iptable_raw_init);
 module_exit(iptable_raw_fini);
 MODULE_LICENSE("GPL");
+MODULE_DESCRIPTION("iptables legacy raw table");

@@ -270,9 +270,9 @@ nogood:
 
 		strcpy(names, fl->img->name);
 #ifdef CONFIG_MTD_REDBOOT_PARTS_READONLY
-		if (!strcmp(names, "RedBoot") ||
-		    !strcmp(names, "RedBoot config") ||
-		    !strcmp(names, "FIS directory")) {
+		if (!memcmp(names, "RedBoot", 8) ||
+		    !memcmp(names, "RedBoot config", 15) ||
+		    !memcmp(names, "FIS directory", 14)) {
 			parts[i].mask_flags = MTD_WRITEABLE;
 		}
 #endif

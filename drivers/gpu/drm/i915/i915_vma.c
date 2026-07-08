@@ -29,6 +29,7 @@
 #include "display/intel_display.h"
 #include "display/intel_frontbuffer.h"
 #include "gem/i915_gem_lmem.h"
+#include "gem/i915_gem_object_frontbuffer.h"
 #include "gem/i915_gem_tiling.h"
 #include "gt/intel_engine.h"
 #include "gt/intel_engine_heartbeat.h"
@@ -112,8 +113,16 @@ static int __i915_vma_active(struct i915_active *ref)
 	 * Exclude global GTT VMA from holding a GT wakeref
 	 * while active, otherwise GPU never goes idle.
 	 */
-	if (!i915_vma_is_ggtt(vma))
-		intel_gt_pm_get(vma->vm->gt);
+	if (!i915_vma_is_ggtt(vma)) {
+		/*
+		 * Since we and our _retire() counterpart can be
+		 * called asynchronously, storing a wakeref tracking
+		 * handle inside struct i915_vma is not safe, and
+		 * there is no other good place for that.  Hence,
+		 * use untracked variants of intel_gt_pm_get/put().
+		 */
+		intel_gt_pm_get_untracked(vma->vm->gt);
+	}
 
 	return 0;
 }
@@ -127,7 +136,7 @@ static void __i915_vma_retire(struct i915_active *ref)
 		 * Since we can be called from atomic contexts,
 		 * use an async variant of intel_gt_pm_put().
 		 */
-		intel_gt_pm_put_async(vma->vm->gt);
+		intel_gt_pm_put_async_untracked(vma->vm->gt);
 	}
 
 	i915_vma_put(vma);
@@ -1586,20 +1595,8 @@ err_unlock:
 err_vma_res:
 	i915_vma_resource_free(vma_res);
 err_fence:
-	if (work) {
-		/*
-		 * When pinning VMA to GGTT on CHV or BXT with VTD enabled,
-		 * commit VMA binding asynchronously to avoid risk of lock
-		 * inversion among reservation_ww locks held here and
-		 * cpu_hotplug_lock acquired from stop_machine(), which we
-		 * wrap around GGTT updates when running in those environments.
-		 */
-		if (i915_vma_is_ggtt(vma) &&
-		    intel_vm_no_concurrent_access_wa(vma->vm->i915))
-			dma_fence_work_commit(&work->base);
-		else
-			dma_fence_work_commit_imm(&work->base);
-	}
+	if (work)
+		dma_fence_work_commit_imm(&work->base);
 err_rpm:
 	intel_runtime_pm_put(&vma->vm->i915->runtime_pm, wakeref);
 
@@ -1779,8 +1776,6 @@ static void release_references(struct i915_vma *vma, struct intel_gt *gt,
 	if (vm_ddestroy)
 		i915_vm_resv_put(vma->vm);
 
-	/* Wait for async active retire */
-	i915_active_wait(&vma->active);
 	i915_active_fini(&vma->active);
 	GEM_WARN_ON(vma->resource);
 	i915_vma_free(vma);

@@ -30,20 +30,6 @@
 		regulator-max-microvolt = <3300000>;
 	};
 
-	reg_usdhc2_vqmmc: regulator-usdhc2-vqmmc {
-		compatible = "regulator-gpio";
-		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_reg_usdhc2_vqmmc>;
-		regulator-name = "V_SD2";
-		regulator-min-microvolt = <1800000>;
-		regulator-max-microvolt = <3300000>;
-		gpios = <&gpio1 4 GPIO_ACTIVE_HIGH>;
-		states = <1800000 0x1>,
-			 <3300000 0x0>;
-		vin-supply = <&ldo5_reg>;
-		status = "disabled";
-	};
-
 	reserved-memory {
 		#address-cells = <2>;
 		#size-cells = <2>;
@@ -74,11 +60,15 @@
 	flash0: flash@0 {
 		compatible = "jedec,spi-nor";
 		reg = <0>;
-		#address-cells = <1>;
-		#size-cells = <1>;
 		spi-max-frequency = <84000000>;
 		spi-tx-bus-width = <1>;
 		spi-rx-bus-width = <4>;
+
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+		};
 	};
 };
 
@@ -233,8 +223,9 @@
 	};
 };
 
-&usdhc2 {
-	vqmmc-supply = <&reg_usdhc2_vqmmc>;
+&mipi_dsi {
+	vddcore-supply = <&ldo4_reg>;
+	vddio-supply = <&ldo3_reg>;
 };
 
 &usdhc3 {
@@ -284,15 +275,11 @@
 	};
 
 	pinctrl_pmic: pmicgrp {
-		fsl,pins = <MX8MN_IOMUXC_GPIO1_IO08_GPIO1_IO8	0x1c4>;
+		fsl,pins = <MX8MN_IOMUXC_GPIO1_IO08_GPIO1_IO8	0x84>;
 	};
 
 	pinctrl_reg_usdhc2_vmmc: regusdhc2vmmcgrp {
 		fsl,pins = <MX8MN_IOMUXC_SD2_RESET_B_GPIO2_IO19		0x84>;
-	};
-
-	pinctrl_reg_usdhc2_vqmmc: regusdhc2vqmmcgrp {
-		fsl,pins = <MX8MN_IOMUXC_GPIO1_IO04_GPIO1_IO4		0xc0>;
 	};
 
 	pinctrl_usdhc3: usdhc3grp {

@@ -397,7 +397,7 @@
 };
 
 /* Secure Enclave */
-&ele_mu {
+&ele_fw2 {
 	memory-region = <&ele_reserved>;
 };
 

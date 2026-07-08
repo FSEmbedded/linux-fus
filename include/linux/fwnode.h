@@ -9,11 +9,16 @@
 #ifndef _LINUX_FWNODE_H_
 #define _LINUX_FWNODE_H_
 
-#include <linux/types.h>
-#include <linux/list.h>
 #include <linux/bits.h>
-#include <linux/bitops.h>
 #include <linux/err.h>
+#include <linux/list.h>
+#include <linux/types.h>
+
+enum dev_dma_attr {
+	DEV_DMA_NOT_SUPPORTED,
+	DEV_DMA_NON_COHERENT,
+	DEV_DMA_COHERENT,
+};
 
 struct fwnode_operations;
 struct device;
@@ -32,20 +37,22 @@ struct device;
  *		suppliers. Only enforce ordering with suppliers that have
  *		drivers.
  */
-#define FWNODE_FLAG_LINKS_ADDED			0
-#define FWNODE_FLAG_NOT_DEVICE			1
-#define FWNODE_FLAG_INITIALIZED			2
-#define FWNODE_FLAG_NEEDS_CHILD_BOUND_ON_ADD	3
-#define FWNODE_FLAG_BEST_EFFORT			4
-#define FWNODE_FLAG_VISITED			5
+#define FWNODE_FLAG_LINKS_ADDED			BIT(0)
+#define FWNODE_FLAG_NOT_DEVICE			BIT(1)
+#define FWNODE_FLAG_INITIALIZED			BIT(2)
+#define FWNODE_FLAG_NEEDS_CHILD_BOUND_ON_ADD	BIT(3)
+#define FWNODE_FLAG_BEST_EFFORT			BIT(4)
+#define FWNODE_FLAG_VISITED			BIT(5)
 
 struct fwnode_handle {
 	struct fwnode_handle *secondary;
 	const struct fwnode_operations *ops;
+
+	/* The below is used solely by device links, don't use otherwise */
 	struct device *dev;
 	struct list_head suppliers;
 	struct list_head consumers;
-	unsigned long flags;
+	u8 flags;
 };
 
 /*
@@ -188,39 +195,13 @@ struct fwnode_operations {
 		if (fwnode_has_op(fwnode, op))				\
 			(fwnode)->ops->op(fwnode, ## __VA_ARGS__);	\
 	} while (false)
-#define get_dev_from_fwnode(fwnode)	get_device((fwnode)->dev)
 
 static inline void fwnode_init(struct fwnode_handle *fwnode,
 			       const struct fwnode_operations *ops)
 {
-	fwnode->secondary = NULL;
 	fwnode->ops = ops;
 	INIT_LIST_HEAD(&fwnode->consumers);
 	INIT_LIST_HEAD(&fwnode->suppliers);
-}
-
-static inline void fwnode_set_flag(struct fwnode_handle *fwnode,
-				   unsigned int bit)
-{
-	set_bit(bit, &fwnode->flags);
-}
-
-static inline void fwnode_clear_flag(struct fwnode_handle *fwnode,
-				     unsigned int bit)
-{
-	clear_bit(bit, &fwnode->flags);
-}
-
-static inline void fwnode_assign_flag(struct fwnode_handle *fwnode,
-				      unsigned int bit, bool value)
-{
-	assign_bit(bit, &fwnode->flags, value);
-}
-
-static inline bool fwnode_test_flag(struct fwnode_handle *fwnode,
-				    unsigned int bit)
-{
-	return test_bit(bit, &fwnode->flags);
 }
 
 static inline void fwnode_dev_initialized(struct fwnode_handle *fwnode,
@@ -229,12 +210,16 @@ static inline void fwnode_dev_initialized(struct fwnode_handle *fwnode,
 	if (IS_ERR_OR_NULL(fwnode))
 		return;
 
-	fwnode_assign_flag(fwnode, FWNODE_FLAG_INITIALIZED, initialized);
+	if (initialized)
+		fwnode->flags |= FWNODE_FLAG_INITIALIZED;
+	else
+		fwnode->flags &= ~FWNODE_FLAG_INITIALIZED;
 }
 
-extern bool fw_devlink_is_strict(void);
-int fwnode_link_add(struct fwnode_handle *con, struct fwnode_handle *sup);
+int fwnode_link_add(struct fwnode_handle *con, struct fwnode_handle *sup,
+		    u8 flags);
 void fwnode_links_purge(struct fwnode_handle *fwnode);
 void fw_devlink_purge_absent_suppliers(struct fwnode_handle *fwnode);
+bool fw_devlink_is_strict(void);
 
 #endif

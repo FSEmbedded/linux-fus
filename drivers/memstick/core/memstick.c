@@ -38,13 +38,12 @@ static int memstick_dev_match(struct memstick_dev *card,
 	return 0;
 }
 
-static int memstick_bus_match(struct device *dev, struct device_driver *drv)
+static int memstick_bus_match(struct device *dev, const struct device_driver *drv)
 {
 	struct memstick_dev *card = container_of(dev, struct memstick_dev,
 						 dev);
-	struct memstick_driver *ms_drv = container_of(drv,
-						      struct memstick_driver,
-						      driver);
+	const struct memstick_driver *ms_drv = container_of_const(drv, struct memstick_driver,
+								  driver);
 	struct memstick_device_id *ids = ms_drv->id_table;
 
 	if (ids) {
@@ -164,7 +163,7 @@ static struct attribute *memstick_dev_attrs[] = {
 };
 ATTRIBUTE_GROUPS(memstick_dev);
 
-static struct bus_type memstick_bus_type = {
+static const struct bus_type memstick_bus_type = {
 	.name           = "memstick",
 	.dev_groups	= memstick_dev_groups,
 	.match          = memstick_bus_match,
@@ -367,9 +366,7 @@ int memstick_set_rw_addr(struct memstick_dev *card)
 {
 	card->next_request = h_memstick_set_rw_addr;
 	memstick_new_req(card->host);
-	if (!wait_for_completion_timeout(&card->mrq_complete,
-			msecs_to_jiffies(500)))
-		card->current_mrq.error = -ETIMEDOUT;
+	wait_for_completion(&card->mrq_complete);
 
 	return card->current_mrq.error;
 }
@@ -403,9 +400,7 @@ static struct memstick_dev *memstick_alloc_card(struct memstick_host *host)
 
 		card->next_request = h_memstick_read_dev_id;
 		memstick_new_req(host);
-		if (!wait_for_completion_timeout(&card->mrq_complete,
-				msecs_to_jiffies(500)))
-			card->current_mrq.error = -ETIMEDOUT;
+		wait_for_completion(&card->mrq_complete);
 
 		if (card->current_mrq.error)
 			goto err_out;
