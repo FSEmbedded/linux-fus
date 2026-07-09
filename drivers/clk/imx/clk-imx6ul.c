@@ -72,7 +72,7 @@ static const char *cko_sels[] = { "cko1", "cko2", };
 static struct clk_hw **hws;
 static struct clk_hw_onecell_data *clk_hw_data;
 
-static const struct clk_div_table clk_enet_div_table[] = {
+static const struct clk_div_table clk_enet_ref_table[] = {
 	{ .val = 0, .div = 20, },
 	{ .val = 1, .div = 10, },
 	{ .val = 2, .div = 5, },
@@ -118,20 +118,11 @@ static u32 share_count_esai;
 static inline int clk_on_imx6ul(void)
 {
 	return of_machine_is_compatible("fsl,imx6ul");
-/* ### FIXME: the following code would be faster but we have no access to
- * arch/arm/mach-imx/mxc.h.
- */
-
-	//return cpu_is_imx6ul();
 }
 
 static inline int clk_on_imx6ull(void)
 {
 	return of_machine_is_compatible("fsl,imx6ull");
-/* ### FIXME: the following code would be faster but we have no access to
- * arch/arm/mach-imx/mxc.h.
- */
-	//return cpu_is_imx6ull();
 }
 
 static void __init imx6ul_clocks_init(struct device_node *ccm_node)
@@ -200,7 +191,7 @@ static void __init imx6ul_clocks_init(struct device_node *ccm_node)
 	hws[IMX6UL_CLK_PLL3_USB_OTG]	= imx_clk_hw_gate("pll3_usb_otg",	"pll3_bypass", base + 0x10, 13);
 	hws[IMX6UL_CLK_PLL4_AUDIO]	= imx_clk_hw_gate("pll4_audio",	"pll4_bypass", base + 0x70, 13);
 	hws[IMX6UL_CLK_PLL5_VIDEO]	= imx_clk_hw_gate("pll5_video",	"pll5_bypass", base + 0xa0, 13);
-	//hws[IMX6UL_CLK_PLL6_ENET]	= imx_clk_hw_fixed_factor("pll6_enet",	"pll6_bypass", 1, 1);
+	hws[IMX6UL_CLK_PLL6_ENET]	= imx_clk_hw_fixed_factor("pll6_enet",	"pll6_bypass", 1, 1);
 	hws[IMX6UL_CLK_PLL7_USB_HOST]	= imx_clk_hw_gate("pll7_usb_host",	"pll7_bypass", base + 0x20, 13);
 
 	/*
@@ -229,15 +220,15 @@ static void __init imx6ul_clocks_init(struct device_node *ccm_node)
 	hws[IMX6UL_CLK_PLL3_PFD2] = imx_clk_hw_pfd("pll3_pfd2_508m", "pll3_usb_otg", base + 0xf0,	 2);
 	hws[IMX6UL_CLK_PLL3_PFD3] = imx_clk_hw_pfd("pll3_pfd3_454m", "pll3_usb_otg", base + 0xf0,	 3);
 
-	hws[IMX6UL_CLK_ENET_DIV] = clk_hw_register_divider_table(NULL, "enet_div", "pll6_bypass", 0,
-			base + 0xe0, 0, 2, 0, clk_enet_div_table, &imx_ccm_lock);
-	hws[IMX6UL_CLK_ENET2_DIV] = clk_hw_register_divider_table(NULL, "enet2_div", "pll6_bypass", 0,
-			base + 0xe0, 2, 2, 0, clk_enet_div_table, &imx_ccm_lock);
+	hws[IMX6UL_CLK_ENET_REF] = clk_hw_register_divider_table(NULL, "enet1_ref", "pll6_enet", 0,
+			base + 0xe0, 0, 2, 0, clk_enet_ref_table, &imx_ccm_lock);
+	hws[IMX6UL_CLK_ENET2_REF] = clk_hw_register_divider_table(NULL, "enet2_ref", "pll6_enet", 0,
+			base + 0xe0, 2, 2, 0, clk_enet_ref_table, &imx_ccm_lock);
 
-	hws[IMX6UL_CLK_ENET_REF] = imx_clk_hw_gate("enet_ref", "enet_div", base + 0xe0, 13);
-	hws[IMX6UL_CLK_ENET2_REF] = imx_clk_hw_gate("enet2_ref", "enet2_div", base + 0xe0, 20);
-	hws[IMX6UL_CLK_ENET_PTP_DIV]	= imx_clk_hw_fixed_factor("enet_ptp_div", "pll6_bypass", 1, 20);
-	hws[IMX6UL_CLK_ENET_PTP]	= imx_clk_hw_gate("enet_ptp", "enet_ptp_div", base + 0xe0, 21);
+	hws[IMX6UL_CLK_ENET1_REF_125M] = imx_clk_hw_gate("enet1_ref_125m", "enet1_ref", base + 0xe0, 13);
+	hws[IMX6UL_CLK_ENET2_REF_125M] = imx_clk_hw_gate("enet2_ref_125m", "enet2_ref", base + 0xe0, 20);
+	hws[IMX6UL_CLK_ENET_PTP_REF]	= imx_clk_hw_fixed_factor("enet_ptp_ref", "pll6_enet", 1, 20);
+	hws[IMX6UL_CLK_ENET_PTP]	= imx_clk_hw_gate("enet_ptp", "enet_ptp_ref", base + 0xe0, 21);
 
 	hws[IMX6UL_CLK_PLL4_POST_DIV]  = clk_hw_register_divider_table(NULL, "pll4_post_div", "pll4_audio",
 		 CLK_SET_RATE_PARENT | CLK_SET_RATE_GATE, base + 0x70, 19, 2, 0, post_div_table, &imx_ccm_lock);
@@ -533,8 +524,8 @@ static void __init imx6ul_clocks_init(struct device_node *ccm_node)
 	/* set perclk to from OSC */
 	clk_set_parent(hws[IMX6UL_CLK_PERCLK_SEL]->clk, hws[IMX6UL_CLK_OSC]->clk);
 
-	clk_set_rate(hws[IMX6UL_CLK_ENET_DIV]->clk, 50000000);
-	clk_set_rate(hws[IMX6UL_CLK_ENET2_DIV]->clk, 50000000);
+	clk_set_rate(hws[IMX6UL_CLK_ENET_REF]->clk, 50000000);
+	clk_set_rate(hws[IMX6UL_CLK_ENET2_REF]->clk, 50000000);
 	clk_set_rate(hws[IMX6UL_CLK_CSI]->clk, 24000000);
 
         /* Set the UART parent if needed */

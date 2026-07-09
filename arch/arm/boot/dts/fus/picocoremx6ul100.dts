@@ -631,7 +631,7 @@ wvga {					\
 		ethphy0: ethernet-phy@0 {
 			compatible = "ethernet-phy-ieee802.3-c22";
 			reg = <0>;
-			clocks = <&clks IMX6UL_CLK_ENET_REF>;
+			clocks = <&clks IMX6UL_CLK_ENET1_REF_125M>;
 			clock-names = "rmii-ref";
 		};
 
@@ -639,7 +639,7 @@ wvga {					\
 		ethphy1: ethernet-phy@3 {
 			compatible = "ethernet-phy-ieee802.3-c22";
 			reg = <3>;
-			clocks = <&clks IMX6UL_CLK_ENET2_REF>;
+			clocks = <&clks IMX6UL_CLK_ENET2_REF_125M>;
 			clock-names = "rmii-ref";
 		};
 #endif
@@ -666,7 +666,7 @@ wvga {					\
 		ethphy1: ethernet-phy@3 {
 			compatible = "ethernet-phy-ieee802.3-c22";
 			reg = <3>;
-			clocks = <&clks IMX6UL_CLK_ENET2_REF>;
+			clocks = <&clks IMX6UL_CLK_ENET2_REF_125M>;
 			clock-names = "rmii-ref";
 		};
 	};
@@ -702,7 +702,7 @@ wvga {					\
 #if (CONFIG_PICOCOREMX6UL100_LCDIF0 == DISPLAY_LVDS)
 	/* LVDS CHIP address: 0x2D */
 	lt9211@2d {
-		compatible = "lontium,lt9211-fus";
+		compatible = "lontium,lt9211";
 		reg = <0x2d>;
 		reset-gpios = <&gpio3 4 GPIO_ACTIVE_HIGH>;
 
