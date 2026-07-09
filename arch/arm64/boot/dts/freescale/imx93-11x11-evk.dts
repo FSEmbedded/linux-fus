@@ -16,6 +16,25 @@
 	model = "NXP i.MX93 11X11 EVK board";
 	compatible = "fsl,imx93-11x11-evk", "fsl,imx93";
 
+	aliases {
+		ethernet0 = &fec;
+		ethernet1 = &eqos;
+		gpio0 = &gpio1;
+		gpio1 = &gpio2;
+		gpio2 = &gpio3;
+		i2c0 = &lpi2c1;
+		i2c1 = &lpi2c2;
+		i2c2 = &lpi2c3;
+		mmc0 = &usdhc1;
+		mmc1 = &usdhc2;
+		rtc0 = &bbnsm_rtc;
+		serial0 = &lpuart1;
+		serial1 = &lpuart2;
+		serial2 = &lpuart3;
+		serial3 = &lpuart4;
+		serial4 = &lpuart5;
+	};
+
 	chosen {
 		stdout-path = &lpuart1;
 	};
@@ -115,6 +134,32 @@
 		regulator-max-microvolt = <1800000>;
 	};
 
+	reg_audio_pwr: regulator-audio-pwr {
+		compatible = "regulator-fixed";
+		regulator-name = "audio-pwr";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		gpio = <&adp5585 1 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+	};
+
+	reg_can2_standby: regulator-can2-standby {
+		compatible = "regulator-fixed";
+		regulator-name = "can2-stby";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		gpio = <&adp5585 6 GPIO_ACTIVE_LOW>;
+	};
+
+	reg_m2_pwr: regulator-m2-pwr {
+		compatible = "regulator-fixed";
+		regulator-name = "M.2-power";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		gpio = <&pcal6524 13 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+	};
+
 	reg_usdhc2_vmmc: regulator-usdhc2 {
 		compatible = "regulator-fixed";
 		pinctrl-names = "default";
@@ -125,6 +170,28 @@
 		gpio = <&gpio3 7 GPIO_ACTIVE_HIGH>;
 		off-on-delay-us = <12000>;
 		enable-active-high;
+	};
+
+	reg_usdhc3_vmmc: regulator-usdhc3 {
+		compatible = "regulator-fixed";
+		regulator-name = "WLAN_EN";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		vin-supply = <&reg_m2_pwr>;
+		gpio = <&pcal6524 20 GPIO_ACTIVE_HIGH>;
+		/*
+		 * IW612 wifi chip needs more delay than other wifi chips to complete
+		 * the host interface initialization after power up, otherwise the
+		 * internal state of IW612 may be unstable, resulting in the failure of
+		 * the SDIO3.0 switch voltage.
+		 */
+		startup-delay-us = <20000>;
+		enable-active-high;
+	};
+
+	usdhc3_pwrseq: usdhc3_pwrseq {
+		compatible = "mmc-pwrseq-simple";
+		reset-gpios = <&pcal6524 12 GPIO_ACTIVE_LOW>;
 	};
 
 	backlight_lvds: backlight-lvds {
@@ -273,6 +340,22 @@
 		};
 	};
 
+	sound-wm8962 {
+		compatible = "fsl,imx-audio-wm8962";
+		model = "wm8962-audio";
+		audio-cpu = <&sai3>;
+		audio-codec = <&wm8962>;
+		hp-det-gpio = <&pcal6524 4 GPIO_ACTIVE_HIGH>;
+		audio-routing =
+			"Headphone Jack", "HPOUTL",
+			"Headphone Jack", "HPOUTR",
+			"Ext Spk", "SPKOUTL",
+			"Ext Spk", "SPKOUTR",
+			"AMIC", "MICBIAS",
+			"IN3R", "AMIC",
+			"IN1R", "AMIC";
+	};
+
 	sound-xcvr {
 		compatible = "fsl,imx-audio-card";
 		model = "imx-audio-xcvr";
@@ -361,7 +444,6 @@
 
 		ethphy2: ethernet-phy@2 {
 			reg = <2>;
-			eee-broken-1000t;
 			reset-gpios = <&pcal6524 16 GPIO_ACTIVE_LOW>;
 			reset-assert-us = <10000>;
 			reset-deassert-us = <80000>;
@@ -371,34 +453,19 @@
 };
 
 &flexcan2 {
-	pinctrl-names = "default", "sleep";
+	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan2>;
-	pinctrl-1 = <&pinctrl_flexcan2_sleep>;
-	xceiver-supply = <&reg_can2_stby>;
+	xceiver-supply = <&reg_can2_standby>;
 	status = "okay";
 };
 
-&lcdif {
-	status = "okay";
-	assigned-clock-rates = <445333333>, <148444444>, <400000000>, <133333333>;
-};
-
-&lpm {
-	soc-supply = <&buck1>;
-	status = "okay";
-};
-
-/*
- * When add, delete or change any target device setting in &lpi2c1,
- * please synchronize the changes to the &i3c1 bus in imx93-11x11-evk-i3c.dts.
- */
 &lpi2c1 {
 	clock-frequency = <400000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_lpi2c1>;
 	status = "okay";
 
-	codec: wm8962@1a {
+	wm8962: codec@1a {
 		compatible = "wlf,wm8962";
 		reg = <0x1a>;
 		clocks = <&clk IMX93_CLK_SAI3_GATE>;
@@ -420,20 +487,6 @@
 		>;
 	};
 
-	adv7535: hdmi@3d {
-		compatible = "adi,adv7535";
-		reg = <0x3d>;
-		adi,addr-cec = <0x3b>;
-		adi,dsi-lanes = <4>;
-		status = "okay";
-
-		port {
-			adv7535_to_dsi: endpoint {
-				remote-endpoint = <&dsi_to_adv7535>;
-			};
-		};
-	};
-
 	inertial-meter@6a {
 		compatible = "st,lsm6dso";
 		reg = <0x6a>;
@@ -442,9 +495,8 @@
 
 &lpi2c2 {
 	clock-frequency = <400000>;
-	pinctrl-names = "default", "sleep";
+	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_lpi2c2>;
-	pinctrl-1 = <&pinctrl_lpi2c2>;
 	status = "okay";
 
 	pcal6524: gpio@22 {
@@ -491,7 +543,7 @@
 				regulator-ramp-delay = <3125>;
 			};
 
-			buck4: BUCK4{
+			buck4: BUCK4 {
 				regulator-name = "BUCK4";
 				regulator-min-microvolt = <1620000>;
 				regulator-max-microvolt = <3400000>;
@@ -499,7 +551,7 @@
 				regulator-always-on;
 			};
 
-			buck5: BUCK5{
+			buck5: BUCK5 {
 				regulator-name = "BUCK5";
 				regulator-min-microvolt = <1620000>;
 				regulator-max-microvolt = <3400000>;
@@ -558,63 +610,12 @@
 	pinctrl-0 = <&pinctrl_lpi2c3>;
 	status = "okay";
 
-	adp5585_isp: io-expander-isp@34 {
+	adp5585_isp: io-expander@34 {
 		compatible = "adi,adp5585-01", "adi,adp5585";
 		reg = <0x34>;
 		gpio-controller;
 		#gpio-cells = <2>;
 		#pwm-cells = <3>;
-	};
-
-	ap1302: ap1302_mipi@3c {
-		compatible = "onnn,ap1302";
-		reg = <0x3c>;
-		clocks = <&clk IMX93_CLK_24M>;
-		reset-gpios   = <&adp5585 0 GPIO_ACTIVE_LOW>;
-		isp_en-gpios  = <&adp5585_isp 2 GPIO_ACTIVE_HIGH>;
-		orientation = <2>;
-		rotation = <0>;
-		DVDD-supply   = <&reg_dvdd_1v2>;
-		VDDIO_HMISC-supply  = <&reg_hmisc_vddio>;
-		VDDIO_SMISC-supply   = <&reg_hmisc_vddio>;
-		status = "okay";
-
-		ports {
-			#address-cells = <1>;
-			#size-cells = <0>;
-
-			port@0 {
-				reg = <0>;
-			};
-
-			port@1 {
-				reg = <1>;
-			};
-
-			port@2 {
-				reg = <2>;
-
-				isp_out: endpoint {
-					remote-endpoint = <&mipi_csi_in>;
-					data-lanes = <1 2>;
-				};
-			};
-		};
-
-		sensors {
-			#address-cells = <1>;
-			#size-cells = <0>;
-
-			onnn,model = "onnn,ar0144";
-
-			sensor@0 {
-				reg = <0>;
-
-				vdd-supply = <&reg_dvdd_1v2>;
-				vddio-supply = <&reg_vddio_1v8>;
-				vaa-supply = <&reg_avdd_2v8>;
-			};
-		};
 	};
 
 	ptn5110: tcpc@50 {
@@ -705,10 +706,6 @@
 	bluetooth {
 		compatible = "nxp,88w8987-bt";
 	};
-};
-
-&media_blk_ctrl {
-	status = "okay";
 };
 
 &micfil {
@@ -826,16 +823,12 @@
 	non-removable;
 	wakeup-source;
 	status = "okay";
-
-	wifi_wake_host {
-		compatible = "nxp,wifi-wake-host";
-		interrupt-parent = <&gpio3>;
-		interrupts = <26 IRQ_TYPE_LEVEL_LOW>;
-		interrupt-names = "host-wake";
-	};
 };
 
 &wdog3 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_wdog>;
+	fsl,ext-reset-output;
 	status = "okay";
 };
 
@@ -934,13 +927,6 @@
 			MX93_PAD_GPIO_IO27__CAN2_RX	0x139e
 		>;
 	};
-	pinctrl_flexcan2_sleep: flexcan2sleepgrp {
-		fsl,pins = <
-			MX93_PAD_GPIO_IO25__GPIO2_IO25  0x31e
-			MX93_PAD_GPIO_IO27__GPIO2_IO27	0x31e
-		>;
-	};
-
 
 	pinctrl_uart1: uart1grp {
 		fsl,pins = <
@@ -1076,6 +1062,26 @@
 		>;
 	};
 
+	pinctrl_sai3: sai3grp {
+		fsl,pins = <
+			MX93_PAD_GPIO_IO26__SAI3_TX_SYNC                0x31e
+			MX93_PAD_GPIO_IO16__SAI3_TX_BCLK                0x31e
+			MX93_PAD_GPIO_IO17__SAI3_MCLK           0x31e
+			MX93_PAD_GPIO_IO19__SAI3_TX_DATA00              0x31e
+			MX93_PAD_GPIO_IO20__SAI3_RX_DATA00              0x31e
+		>;
+	};
+
+	pinctrl_sai3_sleep: sai3sleepgrp {
+		fsl,pins = <
+			MX93_PAD_GPIO_IO26__GPIO2_IO26			0x51e
+			MX93_PAD_GPIO_IO16__GPIO2_IO16			0x51e
+			MX93_PAD_GPIO_IO17__GPIO2_IO17			0x51e
+			MX93_PAD_GPIO_IO19__GPIO2_IO19			0x51e
+			MX93_PAD_GPIO_IO20__GPIO2_IO20			0x51e
+		>;
+	};
+
 	pinctrl_spdif: spdifgrp {
 		fsl,pins = <
 			MX93_PAD_GPIO_IO22__SPDIF_IN		0x3fe
@@ -1168,12 +1174,12 @@
 	/* need to config the SION for data and cmd pad, refer to ERR052021 */
 	pinctrl_usdhc3_100mhz: usdhc3-100mhzgrp {
 		fsl,pins = <
-			MX93_PAD_SD3_CLK__USDHC3_CLK		0x15be
-			MX93_PAD_SD3_CMD__USDHC3_CMD		0x400013be
-			MX93_PAD_SD3_DATA0__USDHC3_DATA0	0x400013be
-			MX93_PAD_SD3_DATA1__USDHC3_DATA1	0x400013be
-			MX93_PAD_SD3_DATA2__USDHC3_DATA2	0x400013be
-			MX93_PAD_SD3_DATA3__USDHC3_DATA3	0x400013be
+			MX93_PAD_SD3_CLK__USDHC3_CLK		0x158e
+			MX93_PAD_SD3_CMD__USDHC3_CMD		0x4000138e
+			MX93_PAD_SD3_DATA0__USDHC3_DATA0	0x4000138e
+			MX93_PAD_SD3_DATA1__USDHC3_DATA1	0x4000138e
+			MX93_PAD_SD3_DATA2__USDHC3_DATA2	0x4000138e
+			MX93_PAD_SD3_DATA3__USDHC3_DATA3	0x4000138e
 		>;
 	};
 
@@ -1189,7 +1195,7 @@
 		>;
 	};
 
-	pinctrl_usdhc3_sleep: usdhc3grpsleep {
+	pinctrl_usdhc3_sleep: usdhc3grpsleepgrp {
 		fsl,pins = <
 			MX93_PAD_SD3_CLK__GPIO3_IO20		0x31e
 			MX93_PAD_SD3_CMD__GPIO3_IO21		0x31e
@@ -1206,68 +1212,9 @@
 		>;
 	};
 
-	pinctrl_sai3: sai3grp {
+	pinctrl_wdog: wdoggrp {
 		fsl,pins = <
-			MX93_PAD_GPIO_IO26__SAI3_TX_SYNC		0x31e
-			MX93_PAD_GPIO_IO16__SAI3_TX_BCLK		0x31e
-			MX93_PAD_GPIO_IO17__SAI3_MCLK			0x31e
-			MX93_PAD_GPIO_IO19__SAI3_TX_DATA00		0x31e
-			MX93_PAD_GPIO_IO20__SAI3_RX_DATA00		0x31e
+			MX93_PAD_WDOG_ANY__WDOG1_WDOG_ANY	0x31e
 		>;
 	};
-
-	pinctrl_sai3_sleep: sai3grpsleep {
-		fsl,pins = <
-			MX93_PAD_GPIO_IO26__GPIO2_IO26			0x51e
-			MX93_PAD_GPIO_IO16__GPIO2_IO16			0x51e
-			MX93_PAD_GPIO_IO17__GPIO2_IO17			0x51e
-			MX93_PAD_GPIO_IO19__GPIO2_IO19			0x51e
-			MX93_PAD_GPIO_IO20__GPIO2_IO20			0x51e
-		>;
-	};
-};
-
-&epxp {
-	status = "okay";
-};
-
-&isi {
-	status = "okay";
-
-	port {
-		isi_in: endpoint {
-			remote-endpoint = <&mipi_csi_out>;
-		};
-	};
-};
-
-&mipi_csi {
-	status = "okay";
-
-	ports {
-		#address-cells = <1>;
-		#size-cells = <0>;
-
-		port@0 {
-			reg = <0>;
-
-			mipi_csi_in: endpoint {
-				remote-endpoint = <&isp_out>;
-				data-lanes = <1 2>;
-				clock-lanes = <0>;
-			};
-		};
-
-		port@1 {
-			reg = <1>;
-
-			mipi_csi_out: endpoint {
-				remote-endpoint = <&isi_in>;
-			};
-		};
-	};
-};
-
-&dphy_rx {
-	status = "okay";
 };

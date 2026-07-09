@@ -295,8 +295,8 @@ struct lan966x {
 	const struct lan966x_stat_layout *stats_layout;
 	u32 num_stats;
 
-	/* workqueue for reading stats */
-	struct mutex stats_lock;
+	/* lock for reading stats */
+	spinlock_t stats_lock;
 	u64 *stats;
 	struct delayed_work stats_work;
 	struct workqueue_struct *stats_queue;
@@ -448,7 +448,7 @@ int lan966x_stats_init(struct lan966x *lan966x);
 
 void lan966x_port_config_down(struct lan966x_port *port);
 void lan966x_port_config_up(struct lan966x_port *port);
-void lan966x_port_status_get(struct lan966x_port *port,
+void lan966x_port_status_get(struct lan966x_port *port, unsigned int neg_mode,
 			     struct phylink_link_state *state);
 int lan966x_port_pcs_set(struct lan966x_port *port,
 			 struct lan966x_port_config *config);

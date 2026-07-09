@@ -232,7 +232,7 @@ static inline int caam_prng_register(struct device *dev)
 static inline void caam_prng_unregister(void *data) {}
 #endif /* CONFIG_CRYPTO_DEV_FSL_CAAM_PRNG_API */
 
-#ifdef CONFIG_CAAM_QI
+#ifdef CONFIG_CRYPTO_DEV_FSL_CAAM_CRYPTO_API_QI
 
 int caam_qi_algapi_init(struct device *dev);
 void caam_qi_algapi_exit(void);
@@ -248,7 +248,7 @@ static inline void caam_qi_algapi_exit(void)
 {
 }
 
-#endif /* CONFIG_CAAM_QI */
+#endif /* CONFIG_CRYPTO_DEV_FSL_CAAM_CRYPTO_API_QI */
 
 #ifdef CONFIG_CRYPTO_DEV_FSL_CAAM_SM
 

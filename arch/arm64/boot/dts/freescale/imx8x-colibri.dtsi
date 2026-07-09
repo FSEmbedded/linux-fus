@@ -29,6 +29,57 @@
 		regulator-min-microvolt = <3300000>;
 		regulator-max-microvolt = <3300000>;
 	};
+
+	reg_module_3v3_avdd: regulator-module-3v3-avdd {
+		compatible = "regulator-fixed";
+		regulator-max-microvolt = <3300000>;
+		regulator-min-microvolt = <3300000>;
+		regulator-name = "+V3.3_AVDD_AUDIO";
+	};
+
+	reg_module_vref_1v8: regulator-module-vref-1v8 {
+		compatible = "regulator-fixed";
+		regulator-max-microvolt = <1800000>;
+		regulator-min-microvolt = <1800000>;
+		regulator-name = "vref-1v8";
+	};
+
+	reg_module_wifi: regulator-module-wifi {
+		compatible = "regulator-fixed";
+		gpio = <&gpio_expander_43 6 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+		regulator-always-on;
+		regulator-name = "Wi-Fi_PDn";
+		startup-delay-us = <2000>;
+	};
+
+	reg_usbh_vbus: regulator-usbh-vbus {
+		compatible = "regulator-fixed";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_usbh1_reg>;
+		gpio = <&lsio_gpio4 3 GPIO_ACTIVE_LOW>;
+		regulator-always-on;
+		regulator-max-microvolt = <5000000>;
+		regulator-min-microvolt = <5000000>;
+		regulator-name = "usbh_vbus";
+	};
+
+	sound-card {
+		compatible = "simple-audio-card";
+		simple-audio-card,bitclock-master = <&dailink_master>;
+		simple-audio-card,format = "i2s";
+		simple-audio-card,frame-master = <&dailink_master>;
+		simple-audio-card,name = "colibri-imx8x";
+
+		dailink_master: simple-audio-card,codec {
+			clocks = <&mclkout0_lpcg IMX_LPCG_CLK_0>;
+			sound-dai = <&sgtl5000_a>;
+		};
+
+		simple-audio-card,cpu {
+			sound-dai = <&sai0>;
+		};
+	};
 };
 
 /* TODO Analogue Inputs */
@@ -61,7 +112,7 @@
 	status = "okay";
 
 	/* Touch controller */
-	touchscreen@2c {
+	ad7879_ts: touchscreen@2c {
 		compatible = "adi,ad7879-1";
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_ad7879_int>;
@@ -141,6 +192,16 @@
 	};
 };
 
+&hsio_phy {
+	fsl,hsio-cfg = "pciea-x2-pcieb";
+	fsl,refclk-pad-mode = "input";
+	status = "okay";
+};
+
+&hsio_refb_clk {
+	enable-gpios = <&gpio_expander_43 3 GPIO_ACTIVE_HIGH>;
+};
+
 /* Colibri SPI */
 &lpspi2 {
 	pinctrl-names = "default";
@@ -175,8 +236,8 @@
 			  "",
 			  "SODIMM_61",
 			  "SODIMM_103",
-			  "",
-			  "",
+			  "SODIMM_79",
+			  "SODIMM_97",
 			  "",
 			  "SODIMM_25",
 			  "SODIMM_27",
@@ -321,11 +382,28 @@
 	pinctrl-names = "default";
 };
 
+/* VPU Mailboxes */
+&mu_m0 {
+	status = "okay";
+};
+
+&mu1_m0 {
+	status = "okay";
+};
+
 /* TODO MIPI CSI */
 
 /* TODO MIPI DSI with DSI-to-HDMI bridge lt8912 */
 
-/* TODO on-module PCIe for Wi-Fi */
+/* On-module PCIe for Wi-Fi */
+&pcieb {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pcieb>;
+	phys = <&hsio_phy 0 PHY_TYPE_PCIE 0>;
+	phy-names = "pcie-phy";
+	reset-gpios = <&lsio_gpio4 0 GPIO_ACTIVE_LOW>;
+	status = "okay";
+};
 
 /* TODO On-module i2s / Audio */
 
@@ -504,7 +582,7 @@
 
 	/*
 	 * This pin is used in the SCFW as a UART. Using it from
-	 * Linux would require rewritting the SCFW board file.
+	 * Linux would require rewriting the SCFW board file.
 	 */
 	pinctrl_hog_scfw: hogscfwgrp {
 		fsl,pins = <IMX8QXP_SCU_GPIO0_00_LSIO_GPIO2_IO03		0x20>;		/* SODIMM 144 */

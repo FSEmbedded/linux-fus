@@ -32,10 +32,6 @@ obj-$(CONFIG_CRYPTO_DEV_FSL_CAAM_SECVIO) += secvio.o
 obj-$(CONFIG_CRYPTO_DEV_FSL_CAAM_TK_API_TEST) += caamkeyblob_test.o
 
 caam-$(CONFIG_CRYPTO_DEV_FSL_CAAM_CRYPTO_API_QI) += qi.o
-ifneq ($(CONFIG_CRYPTO_DEV_FSL_CAAM_CRYPTO_API_QI),)
-	ccflags-y += -DCONFIG_CAAM_QI
-endif
-
 caam-$(CONFIG_DEBUG_FS) += debugfs.o
 
 obj-$(CONFIG_CRYPTO_DEV_FSL_DPAA2_CAAM) += dpaa2_caam.o

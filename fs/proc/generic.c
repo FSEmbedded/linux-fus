@@ -216,7 +216,8 @@ void proc_free_inum(unsigned int inum)
 	ida_free(&proc_inum_ida, inum - PROC_DYNAMIC_FIRST);
 }
 
-static int proc_misc_d_revalidate(struct dentry *dentry, unsigned int flags)
+static int proc_misc_d_revalidate(struct inode *dir, const struct qstr *name,
+				  struct dentry *dentry, unsigned int flags)
 {
 	if (flags & LOOKUP_RCU)
 		return -ECHILD;
@@ -253,8 +254,11 @@ struct dentry *proc_lookup_de(struct inode *dir, struct dentry *dentry,
 		inode = proc_get_inode(dir->i_sb, de);
 		if (!inode)
 			return ERR_PTR(-ENOMEM);
-		d_set_d_op(dentry, de->proc_dops);
-		return d_splice_alias(inode, dentry);
+		if (de->flags & PROC_ENTRY_FORCE_LOOKUP)
+			return d_splice_alias_ops(inode, dentry,
+						  &proc_net_dentry_ops);
+		return d_splice_alias_ops(inode, dentry,
+					  &proc_misc_dentry_ops);
 	}
 	read_unlock(&proc_subdir_lock);
 	return ERR_PTR(-ENOENT);
@@ -343,7 +347,8 @@ static const struct file_operations proc_dir_operations = {
 	.iterate_shared		= proc_readdir,
 };
 
-static int proc_net_d_revalidate(struct dentry *dentry, unsigned int flags)
+static int proc_net_d_revalidate(struct inode *dir, const struct qstr *name,
+				 struct dentry *dentry, unsigned int flags)
 {
 	return 0;
 }
@@ -468,9 +473,8 @@ static struct proc_dir_entry *__proc_create(struct proc_dir_entry **parent,
 	INIT_LIST_HEAD(&ent->pde_openers);
 	proc_set_user(ent, (*parent)->uid, (*parent)->gid);
 
-	ent->proc_dops = &proc_misc_dentry_ops;
 	/* Revalidate everything under /proc/${pid}/net */
-	if ((*parent)->proc_dops == &proc_net_dentry_ops)
+	if ((*parent)->flags & PROC_ENTRY_FORCE_LOOKUP)
 		pde_force_lookup(ent);
 
 out:
@@ -694,6 +698,12 @@ void pde_put(struct proc_dir_entry *pde)
 	}
 }
 
+static void pde_erase(struct proc_dir_entry *pde, struct proc_dir_entry *parent)
+{
+	rb_erase(&pde->subdir_node, &parent->subdir);
+	RB_CLEAR_NODE(&pde->subdir_node);
+}
+
 /*
  * Remove a /proc entry and free it if it's not currently in use.
  */
@@ -716,7 +726,7 @@ void remove_proc_entry(const char *name, struct proc_dir_entry *parent)
 			WARN(1, "removing permanent /proc entry '%s'", de->name);
 			de = NULL;
 		} else {
-			rb_erase(&de->subdir_node, &parent->subdir);
+			pde_erase(de, parent);
 			if (S_ISDIR(de->mode))
 				parent->nlink--;
 		}
@@ -760,7 +770,7 @@ int remove_proc_subtree(const char *name, struct proc_dir_entry *parent)
 			root->parent->name, root->name);
 		return -EINVAL;
 	}
-	rb_erase(&root->subdir_node, &parent->subdir);
+	pde_erase(root, parent);
 
 	de = root;
 	while (1) {
@@ -772,7 +782,7 @@ int remove_proc_subtree(const char *name, struct proc_dir_entry *parent)
 					next->parent->name, next->name);
 				return -EINVAL;
 			}
-			rb_erase(&next->subdir_node, &de->subdir);
+			pde_erase(next, de);
 			de = next;
 			continue;
 		}

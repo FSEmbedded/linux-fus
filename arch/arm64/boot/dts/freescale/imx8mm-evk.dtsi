@@ -166,60 +166,11 @@
 			sound-dai = <&sai3>;
 			dai-tdm-slot-num = <2>;
 			dai-tdm-slot-width = <32>;
+			system-clock-direction-out;
 		};
 
 		simple-audio-card,codec {
 			sound-dai = <&wm8524>;
-		};
-	};
-
-	sound-ak4458 {
-		compatible = "fsl,imx-audio-card";
-		model = "ak4458-audio";
-		pri-dai-link {
-			link-name = "akcodec";
-			format = "i2s";
-			fsl,mclk-equal-bclk;
-			cpu {
-				sound-dai = <&sai1>;
-			};
-			codec {
-				sound-dai = <&ak4458_1>, <&ak4458_2>;
-			};
-		};
-	};
-
-	sound-ak5558 {
-		compatible = "fsl,imx-audio-card";
-		model = "ak5558-audio";
-		status = "disabled";
-		pri-dai-link {
-			link-name = "akcodec";
-			format = "i2s";
-			fsl,mclk-equal-bclk;
-			cpu {
-				sound-dai = <&sai5>;
-			};
-			codec {
-				sound-dai = <&ak5558>;
-			};
-		};
-	};
-
-	sound-ak4497 {
-		compatible = "fsl,imx-audio-card";
-		model = "ak4497-audio";
-		status = "disabled";
-		pri-dai-link {
-			link-name = "akcodec";
-			format = "i2s";
-			fsl,mclk-equal-bclk;
-			cpu {
-				sound-dai = <&sai1>;
-			};
-			codec {
-				sound-dai = <&ak4497>;
-			};
 		};
 	};
 
@@ -640,6 +591,19 @@
 	status = "okay";
 };
 
+&pcie0_ep {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pcie0>;
+	clocks = <&clk IMX8MM_CLK_PCIE1_ROOT>, <&pcie0_refclk>,
+		 <&clk IMX8MM_CLK_PCIE1_AUX>;
+	assigned-clocks = <&clk IMX8MM_CLK_PCIE1_AUX>,
+			  <&clk IMX8MM_CLK_PCIE1_CTRL>;
+	assigned-clock-rates = <10000000>, <250000000>;
+	assigned-clock-parents = <&clk IMX8MM_SYS_PLL2_50M>,
+				 <&clk IMX8MM_SYS_PLL2_250M>;
+	status = "disabled";
+};
+
 &sai2 {
 	#sound-dai-cells = <0>;
 	pinctrl-names = "default";
@@ -673,39 +637,17 @@
 &sai3 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_sai3>;
-	assigned-clocks = <&clk IMX8MM_CLK_SAI3>;
-	assigned-clock-parents = <&clk IMX8MM_AUDIO_PLL1_OUT>;
-	assigned-clock-rates = <24576000>;
+	assigned-clocks = <&clk IMX8MM_AUDIO_PLL1>,
+			  <&clk IMX8MM_AUDIO_PLL2>,
+			  <&clk IMX8MM_CLK_SAI3>;
+	assigned-clock-parents = <0>, <0>, <&clk IMX8MM_AUDIO_PLL1_OUT>;
+	assigned-clock-rates = <393216000>, <361267200>, <24576000>;
 	fsl,sai-mclk-direction-output;
 	clocks = <&clk IMX8MM_CLK_SAI3_IPG>, <&clk IMX8MM_CLK_DUMMY>,
 		<&clk IMX8MM_CLK_SAI3_ROOT>, <&clk IMX8MM_CLK_DUMMY>,
 		<&clk IMX8MM_CLK_DUMMY>, <&clk IMX8MM_AUDIO_PLL1_OUT>,
 		<&clk IMX8MM_AUDIO_PLL2_OUT>;
 	clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3", "pll8k", "pll11k";
-	status = "okay";
-};
-
-&sai5 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_sai5>;
-	assigned-clocks = <&clk IMX8MM_CLK_SAI5>;
-	assigned-clock-parents = <&clk IMX8MM_AUDIO_PLL1_OUT>;
-	assigned-clock-rates = <49152000>;
-	clocks = <&clk IMX8MM_CLK_SAI5_IPG>, <&clk IMX8MM_CLK_DUMMY>,
-		<&clk IMX8MM_CLK_SAI5_ROOT>, <&clk IMX8MM_CLK_DUMMY>,
-		<&clk IMX8MM_CLK_DUMMY>, <&clk IMX8MM_AUDIO_PLL1_OUT>,
-		<&clk IMX8MM_AUDIO_PLL2_OUT>;
-	clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3", "pll8k", "pll11k";
-	fsl,sai-asynchronous;
-	fsl,sai-multi-lane;
-	fsl,sai-mclk-direction-output;
-	dmas = <&sdma2 8 25 0>, <&sdma2 9 25 0>;
-	status = "disabled";
-};
-
-&sai6 {
-	fsl,sai-monitor-spdif;
-	fsl,sai-asynchronous;
 	status = "okay";
 };
 

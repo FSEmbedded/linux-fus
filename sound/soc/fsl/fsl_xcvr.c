@@ -63,8 +63,6 @@ struct fsl_xcvr {
 	spinlock_t lock; /* Protect hw_reset and trigger */
 	struct snd_pcm_hw_constraint_list spdif_constr_rates;
 	u32 spdif_constr_rates_list[SPDIF_NUM_RATES];
-	struct work_struct work;
-	struct drm_bridge *bridge;
 };
 
 static const struct fsl_xcvr_pll_conf {
@@ -1387,19 +1385,6 @@ static void reset_rx_work(struct work_struct *work)
 	spin_unlock_irqrestore(&xcvr->lock, lock_flags);
 }
 
-static void edid_work(struct work_struct *work)
-{
-	struct fsl_xcvr *xcvr = container_of(work, struct fsl_xcvr, work);
-	struct device *dev = &xcvr->pdev->dev;
-	const struct drm_edid *edid;
-
-	dev_dbg(dev, "trigger edid read\n");
-	if (xcvr->bridge) {
-		edid = drm_bridge_edid_read(xcvr->bridge, NULL);
-		drm_edid_free(edid);
-	}
-}
-
 static irqreturn_t irq0_isr(int irq, void *devid)
 {
 	struct fsl_xcvr *xcvr = (struct fsl_xcvr *)devid;
@@ -1489,7 +1474,6 @@ static irqreturn_t irq0_isr(int irq, void *devid)
 	}
 	if (isr & FSL_XCVR_IRQ_CMDC_STATUS_UPD) {
 		dev_dbg(dev, "CMDC status update\n");
-		schedule_work(&xcvr->work);
 		isr_clr |= FSL_XCVR_IRQ_CMDC_STATUS_UPD;
 	}
 	if (isr & FSL_XCVR_IRQ_PREAMBLE_MISMATCH) {
@@ -1598,24 +1582,13 @@ static int fsl_xcvr_probe(struct platform_device *pdev)
 	fsl_asoc_get_pll_clocks(dev, &xcvr->pll8k_clk,
 				&xcvr->pll11k_clk);
 
-	xcvr->spdif_constr_rates = fsl_xcvr_spdif_rates_constr;
 	if (xcvr->soc_data->spdif_only) {
-		xcvr->spdif_constr_rates.list = xcvr->spdif_constr_rates_list;
-		xcvr->spdif_constr_rates.count = 0;
-		for (i = 0; i < SPDIF_NUM_RATES; i++) {
-			clk_rate[0] = clk_get_rate(xcvr->pll8k_clk);
-			clk_rate[1] = clk_get_rate(xcvr->pll11k_clk);
-			if (!(clk_rate[0] || clk_rate[1]))
-				clk_rate[0] = clk_get_rate(xcvr->phy_clk);
-			for (j = 0; j < 2; j++) {
-				if (clk_rate[j] != 0 &&
-				    do_div(clk_rate[j], fsl_xcvr_spdif_rates[i]) == 0) {
-					xcvr->spdif_constr_rates_list[k++] =
-					fsl_xcvr_spdif_rates[i];
-					xcvr->spdif_constr_rates.count++;
-				}
-			}
-		}
+		if (!(xcvr->pll8k_clk || xcvr->pll11k_clk))
+			xcvr->pll8k_clk = xcvr->phy_clk;
+		fsl_asoc_constrain_rates(&xcvr->spdif_constr_rates,
+					 &fsl_xcvr_spdif_rates_constr,
+					 xcvr->pll8k_clk, xcvr->pll11k_clk, NULL,
+					 xcvr->spdif_constr_rates_list);
 	}
 
 	xcvr->ram_addr = devm_platform_ioremap_resource_byname(pdev, "ram");
@@ -1740,6 +1713,8 @@ static int fsl_xcvr_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "fail to create sys group\n");
 	}
 
+	INIT_WORK(&xcvr->work_rst, reset_rx_work);
+	spin_lock_init(&xcvr->lock);
 	return ret;
 }
 
@@ -1748,8 +1723,6 @@ static void fsl_xcvr_remove(struct platform_device *pdev)
 	struct fsl_xcvr *xcvr = dev_get_drvdata(&pdev->dev);
 
 	cancel_work_sync(&xcvr->work_rst);
-	cancel_work_sync(&xcvr->work);
-	sysfs_remove_group(&pdev->dev.kobj, fsl_xcvr_get_attr_grp());
 	pm_runtime_disable(&pdev->dev);
 }
 
@@ -1892,14 +1865,13 @@ stop_ipg_clk:
 
 static const struct dev_pm_ops fsl_xcvr_pm_ops = {
 	RUNTIME_PM_OPS(fsl_xcvr_runtime_suspend, fsl_xcvr_runtime_resume, NULL)
-	SET_SYSTEM_SLEEP_PM_OPS(pm_runtime_force_suspend,
-				pm_runtime_force_resume)
+	SYSTEM_SLEEP_PM_OPS(pm_runtime_force_suspend, pm_runtime_force_resume)
 };
 
 static struct platform_driver fsl_xcvr_driver = {
 	.probe = fsl_xcvr_probe,
 	.driver = {
-		.name = "fsl,imx8mp-audio-xcvr",
+		.name = "fsl-xcvr",
 		.pm = pm_ptr(&fsl_xcvr_pm_ops),
 		.of_match_table = fsl_xcvr_dt_ids,
 	},

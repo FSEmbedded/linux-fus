@@ -354,7 +354,7 @@ conn_subsys: bus@5b000000 {
 		power-domains = <&pd IMX_SC_R_NAND>;
 	};
 
-	gpmi: gpmi-nand@5b812000{
+	gpmi: nand-controller@5b812000 {
 		compatible = "fsl,imx8qxp-gpmi-nand";
 		#address-cells = <1>;
 		#size-cells = <1>;

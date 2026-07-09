@@ -238,10 +238,10 @@ static int bcm84881_read_status(struct phy_device *phydev)
 /* The Broadcom BCM84881 in the Methode DM7052 is unable to provide a SGMII
  * or 802.3z control word, so inband will not work.
  */
-static int bcm84881_validate_inband_aneg(struct phy_device *phydev,
+static unsigned int bcm84881_inband_caps(struct phy_device *phydev,
 					 phy_interface_t interface)
 {
-	return PHY_INBAND_ANEG_OFF;
+	return LINK_INBAND_DISABLE;
 }
 
 static struct phy_driver bcm84881_drivers[] = {
@@ -249,6 +249,7 @@ static struct phy_driver bcm84881_drivers[] = {
 		.phy_id		= 0xae025150,
 		.phy_id_mask	= 0xfffffff0,
 		.name		= "Broadcom BCM84881",
+		.inband_caps	= bcm84881_inband_caps,
 		.config_init	= bcm84881_config_init,
 		.probe		= bcm84881_probe,
 		.get_features	= bcm84881_get_features,
@@ -262,7 +263,7 @@ static struct phy_driver bcm84881_drivers[] = {
 module_phy_driver(bcm84881_drivers);
 
 /* FIXME: module auto-loading for Clause 45 PHYs seems non-functional */
-static struct mdio_device_id __maybe_unused bcm84881_tbl[] = {
+static const struct mdio_device_id __maybe_unused bcm84881_tbl[] = {
 	{ 0xae025150, 0xfffffff0 },
 	{ },
 };

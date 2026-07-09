@@ -2,15 +2,13 @@
 /* Copyright 2017-2019 NXP */
 
 #include <linux/unaligned.h>
-#include <linux/mdio.h>
 #include <linux/module.h>
-#include <linux/fsl/enetc_mdio.h>
+#include <linux/of.h>
 #include <linux/of_platform.h>
-#include <linux/of_mdio.h>
 #include <linux/of_net.h>
 #include <linux/pcs-lynx.h>
 #include "enetc_ierb.h"
-#include "enetc_pf.h"
+#include "enetc_pf_common.h"
 
 #define ENETC_DRV_NAME_STR "ENETC PF driver"
 
@@ -33,7 +31,18 @@ static void enetc_pf_set_primary_mac_addr(struct enetc_hw *hw, int si,
 	__raw_writew(lower, hw->port + ENETC_PSIPMAR1(si));
 }
 
-static void enetc_set_si_vlan_promisc(struct enetc_hw *hw, int si, bool en)
+static struct phylink_pcs *enetc_pf_create_pcs(struct enetc_pf *pf,
+					       struct mii_bus *bus)
+{
+	return lynx_pcs_create_mdiodev(bus, 0);
+}
+
+static void enetc_pf_destroy_pcs(struct phylink_pcs *pcs)
+{
+	lynx_pcs_destroy(pcs);
+}
+
+static void enetc_set_vlan_promisc(struct enetc_hw *hw, char si_map)
 {
 	u32 val = enetc_port_rd(hw, ENETC_PSIPVMR);
 
@@ -63,9 +72,9 @@ static void enetc_add_mac_addr_em_filter(struct enetc_mac_filter *filter,
 	filter->mac_addr_cnt++;
 }
 
-static void enetc_pf_set_si_mac_promisc(struct enetc_hw *hw, int si, int type, bool en)
+static void enetc_clear_mac_ht_flt(struct enetc_si *si, int si_idx, int type)
 {
-	u32 val = enetc_port_rd(hw, ENETC_PSIPMR);
+	bool err = si->errata & ENETC_ERR_UCMCSWP;
 
 	if (type == UC) {
 		if (en)
@@ -209,13 +218,6 @@ static void enetc_pf_set_rx_mode(struct net_device *ndev)
 	}
 }
 
-static void enetc_set_vlan_ht_filter(struct enetc_hw *hw, int si_idx,
-				     u64 hash)
-{
-	enetc_port_wr(hw, ENETC_PSIVHFR0(si_idx), lower_32_bits(hash));
-	enetc_port_wr(hw, ENETC_PSIVHFR1(si_idx), upper_32_bits(hash));
-}
-
 static void enetc_set_loopback(struct net_device *ndev, bool en)
 {
 	struct enetc_ndev_priv *priv = netdev_priv(ndev);
@@ -257,16 +259,6 @@ static bool enetc_pf_get_time_gating(struct enetc_hw *hw)
 	return !!(enetc_rd(hw, ENETC_PTGCR) & ENETC_PTGCR_TGE);
 }
 
-static void enetc_pf_set_time_gating(struct enetc_hw *hw, bool en)
-{
-	u32 old_val, val;
-
-	old_val = enetc_rd(hw, ENETC_PTGCR);
-	val = u32_replace_bits(old_val, en ? 1 : 0, ENETC_PTGCR_TGE);
-	if (val != old_val)
-		enetc_wr(hw, ENETC_PTGCR, val);
-}
-
 static void enetc_port_assign_rfs_entries(struct enetc_si *si)
 {
 	struct enetc_pf *pf = enetc_si_priv(si);
@@ -298,10 +290,8 @@ static void enetc_port_get_caps(struct enetc_si *si)
 	if (val & ENETC_PCAPR0_QBV)
 		si->hw_features |= ENETC_SI_F_QBV;
 
-	if (val & ENETC_PCAPR0_QBU) {
+	if (val & ENETC_PCAPR0_QBU)
 		si->hw_features |= ENETC_SI_F_QBU;
-		si->pmac_offset = ENETC_PMAC_OFFSET;
-	}
 
 	if (val & ENETC_PCAPR0_PSFP)
 		si->hw_features |= ENETC_SI_F_PSFP;
@@ -447,7 +437,6 @@ static void enetc_mac_enable(struct enetc_si *si, bool en)
 
 static void enetc_configure_port(struct enetc_pf *pf)
 {
-	u8 hash_key[ENETC_RSSHASH_KEY_SIZE];
 	struct enetc_hw *hw = &pf->si->hw;
 	u32 val;
 
@@ -456,8 +445,7 @@ static void enetc_configure_port(struct enetc_pf *pf)
 	enetc_port_si_configure(pf->si);
 
 	/* set up hash key */
-	get_random_bytes(hash_key, ENETC_RSSHASH_KEY_SIZE);
-	enetc_set_rss_key(hw, hash_key);
+	enetc_set_default_rss_key(pf);
 
 	/* split up RFS entries */
 	enetc_port_assign_rfs_entries(pf->si);
@@ -492,7 +480,8 @@ static const struct net_device_ops enetc_ndev_ops = {
 	.ndo_setup_tc		= enetc_pf_setup_tc,
 	.ndo_bpf		= enetc_setup_bpf,
 	.ndo_xdp_xmit		= enetc_xdp_xmit,
-	.ndo_xsk_wakeup		= enetc_xsk_wakeup,
+	.ndo_hwtstamp_get	= enetc_hwtstamp_get,
+	.ndo_hwtstamp_set	= enetc_hwtstamp_set,
 };
 
 static struct phylink_pcs *
@@ -743,6 +732,11 @@ static int enetc_pf_register_with_ierb(struct pci_dev *pdev)
 	return ret;
 }
 
+static const struct enetc_si_ops enetc_psi_ops = {
+	.get_rss_table = enetc_get_rss_table,
+	.set_rss_table = enetc_set_rss_table,
+};
+
 static struct enetc_si *enetc_psi_create(struct pci_dev *pdev)
 {
 	struct enetc_si *si;
@@ -761,7 +755,16 @@ static struct enetc_si *enetc_psi_create(struct pci_dev *pdev)
 		goto out_pci_remove;
 	}
 
-	err = enetc_init_cbdr(si);
+	si->revision = enetc_get_ip_revision(&si->hw);
+	si->ops = &enetc_psi_ops;
+	err = enetc_get_driver_data(si);
+	if (err) {
+		dev_err(&pdev->dev, "Could not get PF driver data\n");
+		goto out_pci_remove;
+	}
+
+	err = enetc_setup_cbdr(&pdev->dev, &si->hw, ENETC_CBDR_DEFAULT_SIZE,
+			       &si->cbd_ring);
 	if (err)
 		goto out_pci_remove;
 
@@ -795,6 +798,14 @@ static void enetc_psi_destroy(struct pci_dev *pdev)
 	enetc_pci_remove(pdev);
 }
 
+static const struct enetc_pf_ops enetc_pf_ops = {
+	.set_si_primary_mac = enetc_pf_set_primary_mac_addr,
+	.get_si_primary_mac = enetc_pf_get_primary_mac_addr,
+	.create_pcs = enetc_pf_create_pcs,
+	.destroy_pcs = enetc_pf_destroy_pcs,
+	.enable_psfp = enetc_psfp_enable,
+};
+
 static int enetc_pf_probe(struct pci_dev *pdev,
 			  const struct pci_device_id *ent)
 {
@@ -821,6 +832,8 @@ static int enetc_pf_probe(struct pci_dev *pdev,
 
 	pf = enetc_si_priv(si);
 	pf->si = si;
+	pf->ops = &enetc_pf_ops;
+
 	pf->total_vfs = pci_sriov_get_totalvfs(pdev);
 	if (pf->total_vfs) {
 		pf->vf_state = kcalloc(pf->total_vfs, sizeof(struct enetc_vf_state),

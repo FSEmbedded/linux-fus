@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- *  Copyright 2025 NXP
+ * Copyright 2025 NXP
  * Based on panel-raspberrypi-touchscreen by Broadcom
  */
 
@@ -12,12 +12,10 @@
 #include <linux/of_graph.h>
 #include <linux/regmap.h>
 
-#include <drm/drm_atomic_helper.h>
 #include <drm/drm_bridge.h>
 #include <drm/drm_mipi_dsi.h>
 #include <drm/drm_of.h>
 #include <drm/drm_panel.h>
-#include <drm/drm_print.h>
 
 struct ws_bridge {
 	struct drm_bridge bridge;
@@ -31,7 +29,6 @@ static const struct regmap_config ws_regmap_config = {
 	.reg_bits = 8,
 	.val_bits = 8,
 	.max_register = 0xff,
-	.disable_debugfs = true,
 };
 
 static struct ws_bridge *bridge_to_ws_bridge(struct drm_bridge *bridge)
@@ -41,15 +38,15 @@ static struct ws_bridge *bridge_to_ws_bridge(struct drm_bridge *bridge)
 
 static int ws_bridge_attach_dsi(struct ws_bridge *ws)
 {
-	struct device_node *dsi_host_node;
-	struct mipi_dsi_host *host;
-	struct mipi_dsi_device *dsi;
 	const struct mipi_dsi_device_info info = {
 		.type = "ws-bridge",
 		.channel = 0,
 		.node = NULL,
 	};
+	struct device_node *dsi_host_node;
 	struct device *dev = ws->dev;
+	struct mipi_dsi_device *dsi;
+	struct mipi_dsi_host *host;
 	int ret;
 
 	dsi_host_node = of_graph_get_remote_node(dev->of_node, 0, 0);
@@ -57,15 +54,12 @@ static int ws_bridge_attach_dsi(struct ws_bridge *ws)
 		dev_err(dev, "Failed to get remote port\n");
 		return -ENODEV;
 	}
-
 	host = of_find_mipi_dsi_host_by_node(dsi_host_node);
-
 	of_node_put(dsi_host_node);
 	if (!host)
 		return dev_err_probe(dev, -EPROBE_DEFER, "Failed to find dsi_host\n");
 
 	dsi = devm_mipi_dsi_device_register_full(dev, host, &info);
-
 	if (IS_ERR(dsi))
 		return dev_err_probe(dev, PTR_ERR(dsi), "Failed to create dsi device\n");
 
@@ -82,6 +76,7 @@ static int ws_bridge_attach_dsi(struct ws_bridge *ws)
 }
 
 static int ws_bridge_bridge_attach(struct drm_bridge *bridge,
+				   struct drm_encoder *encoder,
 				   enum drm_bridge_attach_flags flags)
 {
 	struct ws_bridge *ws = bridge_to_ws_bridge(bridge);
@@ -91,7 +86,7 @@ static int ws_bridge_bridge_attach(struct drm_bridge *bridge,
 	if (ret)
 		return ret;
 
-	return drm_bridge_attach(ws->bridge.encoder, ws->next_bridge,
+	return drm_bridge_attach(encoder, ws->next_bridge,
 				 &ws->bridge, flags);
 }
 
@@ -133,12 +128,12 @@ static const struct backlight_ops ws_bridge_bl_ops = {
 
 static struct backlight_device *ws_bridge_create_backlight(struct ws_bridge *ws)
 {
-	struct device *dev = ws->dev;
 	const struct backlight_properties props = {
 		.type = BACKLIGHT_RAW,
 		.brightness = 255,
 		.max_brightness = 255,
 	};
+	struct device *dev = ws->dev;
 
 	return devm_backlight_device_register(dev, dev_name(dev), dev, ws,
 					      &ws_bridge_bl_ops, &props);
@@ -147,14 +142,13 @@ static struct backlight_device *ws_bridge_create_backlight(struct ws_bridge *ws)
 static int ws_bridge_probe(struct i2c_client *i2c)
 {
 	struct device *dev = &i2c->dev;
-	struct ws_bridge *ws;
 	struct drm_panel *panel;
+	struct ws_bridge *ws;
 	int ret;
-	struct backlight_device *backlight;
 
-	ws = devm_kzalloc(dev, sizeof(*ws), GFP_KERNEL);
-	if (!ws)
-		return -ENOMEM;
+	ws = devm_drm_bridge_alloc(dev, struct ws_bridge, bridge, &ws_bridge_bridge_funcs);
+	if (IS_ERR(ws))
+		return PTR_ERR(ws);
 
 	ws->dev = dev;
 
@@ -171,8 +165,8 @@ static int ws_bridge_probe(struct i2c_client *i2c)
 		return PTR_ERR(ws->next_bridge);
 
 	ws->backlight = ws_bridge_create_backlight(ws);
-	if (IS_ERR(backlight)) {
-		ret = PTR_ERR(backlight);
+	if (IS_ERR(ws->backlight)) {
+		ret = PTR_ERR(ws->backlight);
 		dev_err(dev, "Failed to create backlight: %d\n", ret);
 		return ret;
 	}
@@ -181,7 +175,6 @@ static int ws_bridge_probe(struct i2c_client *i2c)
 	regmap_write(ws->reg_map, 0xc2, 0x01);
 	regmap_write(ws->reg_map, 0xac, 0x01);
 
-	ws->bridge.funcs = &ws_bridge_bridge_funcs;
 	ws->bridge.type = DRM_MODE_CONNECTOR_DPI;
 	ws->bridge.of_node = dev->of_node;
 	devm_drm_bridge_add(dev, &ws->bridge);

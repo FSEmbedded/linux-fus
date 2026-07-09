@@ -129,22 +129,7 @@ static int dp83848_config_init(struct phy_device *phydev)
 	return 0;
 }
 
-static int dp83848c_config_init(struct phy_device *phydev)
-{
-	int rbr, ret = 0;
-
-	if (phydev->interface == PHY_INTERFACE_MODE_RMII) {
-		rbr = phy_read(phydev, DP83848_MISR);
-		if (rbr & DP83848_RMII_MODE)
-			return 0;
-		rbr |= DP83848_RMII_MODE;
-		ret = phy_write(phydev, DP83848_RBR, rbr);
-	}
-
-	return ret;
-}
-
-static struct mdio_device_id __maybe_unused dp83848_tbl[] = {
+static const struct mdio_device_id __maybe_unused dp83848_tbl[] = {
 	{ TI_DP83848C_PHY_ID, 0xfffffff0 },
 	{ NS_DP83848C_PHY_ID, 0xfffffff0 },
 	{ TI_DP83620_PHY_ID, 0xfffffff0 },

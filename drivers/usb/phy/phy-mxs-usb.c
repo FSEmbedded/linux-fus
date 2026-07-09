@@ -1026,7 +1026,7 @@ static int mxs_phy_probe(struct platform_device *pdev)
 	clk = devm_clk_get(&pdev->dev, NULL);
 	if (IS_ERR(clk))
 		return dev_err_probe(&pdev->dev, PTR_ERR(clk),
-				     "failed to get clock\n");
+				     "can't get the clock\n");
 
 	mxs_phy = devm_kzalloc(&pdev->dev, sizeof(*mxs_phy), GFP_KERNEL);
 	if (!mxs_phy)
@@ -1240,7 +1240,7 @@ static const struct dev_pm_ops mxs_phy_pm_ops = {
 
 static struct platform_driver mxs_phy_driver = {
 	.probe = mxs_phy_probe,
-	.remove_new = mxs_phy_remove,
+	.remove = mxs_phy_remove,
 	.driver = {
 		.name = DRIVER_NAME,
 		.of_match_table = mxs_phy_dt_ids,

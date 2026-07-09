@@ -155,8 +155,7 @@
 
 		cpudai: simple-audio-card,cpu {
 			sound-dai = <&sai2>;
-			dai-tdm-slot-num = <2>;
-			dai-tdm-slot-width = <32>;
+			system-clock-direction-out;
 		};
 
 		link_codec: simple-audio-card,codec {
@@ -631,6 +630,16 @@
 	status = "okay";
 };
 
+&pcie0_ep {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pcie0>;
+	clocks = <&clk IMX8MQ_CLK_PCIE1_ROOT>,
+		 <&pcie0_refclk>,
+		 <&clk IMX8MQ_CLK_PCIE1_PHY>,
+		 <&clk IMX8MQ_CLK_PCIE1_AUX>;
+	status = "disabled";
+};
+
 &pcie1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pcie1>;
@@ -644,6 +653,16 @@
 	vph-supply = <&vgen5_reg>;
 	supports-clkreq;
 	status = "okay";
+};
+
+&pcie1_ep {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pcie1>;
+	clocks = <&clk IMX8MQ_CLK_PCIE2_ROOT>,
+		 <&pcie0_refclk>,
+		 <&clk IMX8MQ_CLK_PCIE2_PHY>,
+		 <&clk IMX8MQ_CLK_PCIE2_AUX>;
+	status = "disabled";
 };
 
 &pgc_gpu {
@@ -693,9 +712,9 @@
 &sai2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_sai2>;
-	assigned-clocks = <&clk IMX8MQ_CLK_SAI2>;
-	assigned-clock-parents = <&clk IMX8MQ_AUDIO_PLL1_OUT>;
-	assigned-clock-rates = <24576000>;
+	assigned-clocks = <&clk IMX8MQ_AUDIO_PLL1_BYPASS>, <&clk IMX8MQ_CLK_SAI2>;
+	assigned-clock-parents = <&clk IMX8MQ_AUDIO_PLL1>, <&clk IMX8MQ_AUDIO_PLL1_OUT>;
+	assigned-clock-rates = <0>, <24576000>;
 	clocks = <&clk IMX8MQ_CLK_SAI2_IPG>, <&clk IMX8MQ_CLK_DUMMY>,
 		<&clk IMX8MQ_CLK_SAI2_ROOT>, <&clk IMX8MQ_CLK_DUMMY>,
 		<&clk IMX8MQ_CLK_DUMMY>, <&clk IMX8MQ_AUDIO_PLL1_OUT>,

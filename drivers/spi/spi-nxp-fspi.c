@@ -330,6 +330,8 @@
 
 /* Access flash memory using IP bus only */
 #define FSPI_QUIRK_USE_IP_ONLY	BIT(0)
+/* Disable DTR */
+#define FSPI_QUIRK_DISABLE_DTR	BIT(1)
 
 /* Disable DTR */
 #define FSPI_QUIRK_DISABLE_DTR	BIT(1)
@@ -403,12 +405,13 @@ struct nxp_fspi {
 	struct mutex lock;
 	struct pm_qos_request pm_qos_req;
 	int selected;
-#define FSPI_INITILIZED		(1 << 0)
-#define FSPI_RXCLKSRC_3		(1 << 1)
-#define FSPI_DTR_ODD_ADDR	(1 << 2)
-#define FSPI_DTR_MODE		(1 << 3)
+#define FSPI_NEED_INIT		BIT(0)
+#define FSPI_DTR_MODE		BIT(1)
 	int flags;
-	unsigned long support_max_rate;	/* the max clock rate fspi output to device */
+	/* save the previous operation clock rate */
+	unsigned long pre_op_rate;
+	/* the max clock rate fspi output to device */
+	unsigned long max_rate;
 };
 
 static inline int needs_ip_only(struct nxp_fspi *f)
@@ -572,7 +575,7 @@ static void nxp_fspi_prepare_lut(struct nxp_fspi *f,
 				     op->cmd.opcode >> 8);
 		lutval[lutidx / 2] |= LUT_DEF(lutidx, LUT_CMD_DDR,
 					      LUT_PAD(op->cmd.buswidth),
-					      op->cmd.opcode & 0x00ff);
+					      op->cmd.opcode & 0xFF);
 		lutidx++;
 	} else {
 		lutval[0] |= LUT_DEF(0, LUT_CMD, LUT_PAD(op->cmd.buswidth),
@@ -581,8 +584,7 @@ static void nxp_fspi_prepare_lut(struct nxp_fspi *f,
 
 	/* addr bytes */
 	if (op->addr.nbytes) {
-		lutval[lutidx / 2] |= LUT_DEF(lutidx, op->addr.dtr ?
-					      LUT_ADDR_DDR : LUT_ADDR,
+		lutval[lutidx / 2] |= LUT_DEF(lutidx, op->addr.dtr ? LUT_ADDR_DDR : LUT_ADDR,
 					      LUT_PAD(op->addr.buswidth),
 					      op->addr.nbytes * 8);
 		lutidx++;
@@ -590,8 +592,7 @@ static void nxp_fspi_prepare_lut(struct nxp_fspi *f,
 
 	/* dummy bytes, if needed */
 	if (op->dummy.nbytes) {
-		lutval[lutidx / 2] |= LUT_DEF(lutidx, op->dummy.dtr ?
-					      LUT_DUMMY_DDR : LUT_DUMMY,
+		lutval[lutidx / 2] |= LUT_DEF(lutidx, op->dummy.dtr ? LUT_DUMMY_DDR : LUT_DUMMY,
 		/*
 		 * Due to FlexSPI controller limitation number of PAD for dummy
 		 * buswidth needs to be programmed as equal to data buswidth.
@@ -678,35 +679,28 @@ static void nxp_fspi_clk_disable_unprep(struct nxp_fspi *f)
  * fspi default use mode 0 after reset
  */
 static void nxp_fspi_select_rx_sample_clk_source(struct nxp_fspi *f,
-						 const struct spi_mem_op *op)
+						 bool op_is_dtr)
 {
 	u32 reg;
 
 	/*
-	 * For 8-8-8-DTR mode, need to use mode 3 (Flash provided Read
+	 * For 8D-8D-8D mode, need to use mode 3 (Flash provided Read
 	 * strobe and input from DQS pad), otherwise read operaton may
 	 * meet issue.
 	 * This mode require flash device connect the DQS pad on board.
 	 * For other modes, still use mode 0, keep align with before.
-	 * spi_nor_suspend will disable 8-8-8-DTR mode, also need to
+	 * spi_nor_suspend will disable 8D-8D-8D mode, also need to
 	 * change the mode back to mode 0.
 	 */
-	if (!(f->flags & FSPI_RXCLKSRC_3) &&
-			op->cmd.dtr && op->addr.dtr &&
-			op->dummy.dtr && op->data.dtr) {
-		reg = fspi_readl(f, f->iobase + FSPI_MCR0);
+	reg = fspi_readl(f, f->iobase + FSPI_MCR0);
+	if (op_is_dtr) {
 		reg |= FSPI_MCR0_RXCLKSRC(3);
-		fspi_writel(f, reg, f->iobase + FSPI_MCR0);
-		f->flags |= FSPI_RXCLKSRC_3;
-		f->support_max_rate = 166000000;
-	} else {
-		reg = fspi_readl(f, f->iobase + FSPI_MCR0);
-		reg &= ~FSPI_MCR0_RXCLKSRC(3);	/* select mode 0 */
-		fspi_writel(f, reg, f->iobase + FSPI_MCR0);
-		f->flags &= ~FSPI_RXCLKSRC_3;
-		f->support_max_rate = 66000000;
+		f->max_rate = 166000000;
+	} else {	/*select mode 0 */
+		reg &= ~FSPI_MCR0_RXCLKSRC(3);
+		f->max_rate = 66000000;
 	}
-
+	fspi_writel(f, reg, f->iobase + FSPI_MCR0);
 }
 
 static void nxp_fspi_dll_calibration(struct nxp_fspi *f)
@@ -744,10 +738,15 @@ static void nxp_fspi_dll_calibration(struct nxp_fspi *f)
 	udelay(4);
 }
 
+/*
+ * Config the DLL register to default value, enable the target clock delay
+ * line delay cell override mode, and use 1 fixed delay cell in DLL delay
+ * chain, this is the suggested setting when clock rate < 100MHz.
+ */
 static void nxp_fspi_dll_override(struct nxp_fspi *f)
 {
 	fspi_writel(f, FSPI_DLLACR_OVRDEN, f->iobase + FSPI_DLLACR);
-	fspi_writel(f, FSPI_DLLACR_OVRDEN, f->iobase + FSPI_DLLBCR);
+	fspi_writel(f, FSPI_DLLBCR_OVRDEN, f->iobase + FSPI_DLLBCR);
 }
 
 /*
@@ -789,18 +788,26 @@ static void nxp_fspi_dll_override(struct nxp_fspi *f)
  *
  */
 static void nxp_fspi_select_mem(struct nxp_fspi *f, struct spi_device *spi,
-					const struct spi_mem_op *op)
+				const struct spi_mem_op *op)
 {
-	unsigned long rate, serial_root_clk_rate;
+	/* flexspi only support one DTR mode: 8D-8D-8D */
+	bool op_is_dtr = op->cmd.dtr && op->addr.dtr && op->dummy.dtr && op->data.dtr;
+	unsigned long rate = op->max_freq;
 	int ret;
 	uint64_t size_kb;
 
 	/*
-	 * Return, if previously selected target device is same as current
-	 * requested target device.
+	 * Return when following condition all meet,
+	 * 1, if previously selected target device is same as current
+	 *    requested target device.
+	 * 2, the DTR or STR mode do not change.
+	 * 3, previous operation max rate equals current one.
+	 *
+	 * For other case, need to re-config.
 	 */
 	if ((f->selected == spi_get_chipselect(spi, 0)) &&
-		(!!(f->flags & FSPI_DTR_MODE) == op->cmd.dtr))
+	    (!!(f->flags & FSPI_DTR_MODE) == op_is_dtr) &&
+	    (f->pre_op_rate == op->max_freq))
 		return;
 
 	/* Reset FLSHxxCR0 registers */
@@ -817,16 +824,17 @@ static void nxp_fspi_select_mem(struct nxp_fspi *f, struct spi_device *spi,
 
 	dev_dbg(f->dev, "Target device [CS:%x] selected\n", spi_get_chipselect(spi, 0));
 
-	nxp_fspi_select_rx_sample_clk_source(f, op);
-	rate = min(f->support_max_rate, spi->max_speed_hz);
+	nxp_fspi_select_rx_sample_clk_source(f, op_is_dtr);
+	rate = min(f->max_rate, op->max_freq);
 
-	if (!op->cmd.dtr) {
-		f->flags &= ~FSPI_DTR_MODE;
-		serial_root_clk_rate = rate;
-	} else {
+	if (op_is_dtr) {
 		f->flags |= FSPI_DTR_MODE;
-		/* for DDR mode, clock output to device = serial root clock / 2 */
-		serial_root_clk_rate = rate * 2;
+		/* For DTR mode, flexspi will default div 2 and output to device.
+		 * so here to config the root clock to 2 * device rate.
+		 */
+		rate = rate * 2;
+	} else {
+		f->flags &= ~FSPI_DTR_MODE;
 	}
 
 	nxp_fspi_clk_disable_unprep(f);
@@ -847,6 +855,8 @@ static void nxp_fspi_select_mem(struct nxp_fspi *f, struct spi_device *spi,
 		nxp_fspi_dll_calibration(f);
 	else
 		nxp_fspi_dll_override(f);
+
+	f->pre_op_rate = op->max_freq;
 
 	f->selected = spi_get_chipselect(spi, 0);
 }
@@ -1068,7 +1078,13 @@ static int nxp_fspi_exec_op(struct spi_mem *mem, const struct spi_mem_op *op)
 	struct nxp_fspi *f = spi_controller_get_devdata(mem->spi->controller);
 	int err = 0;
 
-	mutex_lock(&f->lock);
+	guard(mutex)(&f->lock);
+
+	err = pm_runtime_get_sync(f->dev);
+	if (err < 0) {
+		dev_err(f->dev, "Failed to enable clock %d\n", __LINE__);
+		return err;
+	}
 
 	err = pm_runtime_get_sync(f->dev);
 	if (err < 0) {
@@ -1104,7 +1120,6 @@ static int nxp_fspi_exec_op(struct spi_mem *mem, const struct spi_mem_op *op)
 	/* Invalidate the data in the AHB buffer. */
 	nxp_fspi_invalid(f);
 
-	pm_runtime_mark_last_busy(f->dev);
 	pm_runtime_put_autosuspend(f->dev);
 
 	mutex_unlock(&f->lock);
@@ -1229,13 +1244,7 @@ static int nxp_fspi_default_setup(struct nxp_fspi *f)
 	/* Disable the module */
 	fspi_writel(f, FSPI_MCR0_MDIS, base + FSPI_MCR0);
 
-	/*
-	 * Config the DLL register to default value, enable the target clock delay
-	 * line delay cell override mode, and use 1 fixed delay cell in DLL delay
-	 * chain, this is the suggested setting when clock rate < 100MHz.
-	 */
-	fspi_writel(f, FSPI_DLLACR_OVRDEN, base + FSPI_DLLACR);
-	fspi_writel(f, FSPI_DLLBCR_OVRDEN, base + FSPI_DLLBCR);
+	nxp_fspi_dll_override(f);
 
 	/* enable module */
 	reg = FSPI_MCR0_AHB_TIMEOUT(0xFF) | FSPI_MCR0_IP_TIMEOUT(0xFF);
@@ -1328,31 +1337,28 @@ static const struct spi_controller_mem_ops nxp_fspi_mem_ops = {
 
 static const struct spi_controller_mem_caps nxp_fspi_mem_caps = {
 	.dtr = true,
+	.swap16 = false,
+	.per_op_freq = true,
 };
 
-static const struct spi_controller_mem_caps nxp_fspi_mem_caps_quirks = {
+static const struct spi_controller_mem_caps nxp_fspi_mem_caps_disable_dtr = {
 	.dtr = false,
+	.per_op_freq = true,
 };
 
 static void nxp_fspi_cleanup(void *data)
 {
 	struct nxp_fspi *f = data;
-	int ret;
 
-	/* enable clock first since there is reigster access */
-	ret = pm_runtime_get_sync(f->dev);
-	if (ret < 0)
-		dev_err(f->dev, "Failed to enable clock %d\n", __LINE__);
+	/* enable clock first since there is register access */
+	pm_runtime_get_sync(f->dev);
 
 	/* disable the hardware */
 	fspi_writel(f, FSPI_MCR0_MDIS, f->iobase + FSPI_MCR0);
 
 	pm_runtime_disable(f->dev);
 	pm_runtime_put_noidle(f->dev);
-
 	nxp_fspi_clk_disable_unprep(f);
-
-	mutex_destroy(&f->lock);
 
 	if (f->ahb_addr)
 		iounmap(f->ahb_addr);
@@ -1362,13 +1368,13 @@ static int nxp_fspi_probe(struct platform_device *pdev)
 {
 	struct spi_controller *ctlr;
 	struct device *dev = &pdev->dev;
-	struct device_node *np = dev->of_node;
+	struct fwnode_handle *fwnode = dev_fwnode(dev);
 	struct resource *res;
 	struct nxp_fspi *f;
-	int ret;
+	int ret, irq;
 	u32 reg;
 
-	ctlr = spi_alloc_host(&pdev->dev, sizeof(*f));
+	ctlr = devm_spi_alloc_host(&pdev->dev, sizeof(*f));
 	if (!ctlr)
 		return -ENOMEM;
 
@@ -1378,54 +1384,47 @@ static int nxp_fspi_probe(struct platform_device *pdev)
 	f = spi_controller_get_devdata(ctlr);
 	f->dev = dev;
 	f->devtype_data = (struct nxp_fspi_devtype_data *)device_get_match_data(dev);
-	if (!f->devtype_data) {
-		ret = -ENODEV;
-		goto err_put_ctrl;
-	}
+	if (!f->devtype_data)
+		return -ENODEV;
 
 	platform_set_drvdata(pdev, f);
 
 	/* find the resources - configuration register address space */
-	if (is_acpi_node(dev_fwnode(f->dev)))
+	if (is_acpi_node(fwnode))
 		f->iobase = devm_platform_ioremap_resource(pdev, 0);
 	else
 		f->iobase = devm_platform_ioremap_resource_byname(pdev, "fspi_base");
-
-	if (IS_ERR(f->iobase)) {
-		ret = PTR_ERR(f->iobase);
-		goto err_put_ctrl;
-	}
+	if (IS_ERR(f->iobase))
+		return PTR_ERR(f->iobase);
 
 	/* find the resources - controller memory mapped space */
-	if (is_acpi_node(dev_fwnode(f->dev)))
+	if (is_acpi_node(fwnode))
 		res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
 	else
 		res = platform_get_resource_byname(pdev,
 				IORESOURCE_MEM, "fspi_mmap");
-
-	if (!res) {
-		ret = -ENODEV;
-		goto err_put_ctrl;
-	}
+	if (!res)
+		return -ENODEV;
 
 	/* assign memory mapped starting address and mapped size. */
 	f->memmap_phy = res->start;
 	f->memmap_phy_size = resource_size(res);
 
 	/* find the clocks */
-	if (dev_of_node(&pdev->dev)) {
+	if (is_of_node(fwnode)) {
 		f->clk_en = devm_clk_get(dev, "fspi_en");
-		if (IS_ERR(f->clk_en)) {
-			ret = PTR_ERR(f->clk_en);
-			goto err_put_ctrl;
-		}
+		if (IS_ERR(f->clk_en))
+			return PTR_ERR(f->clk_en);
 
 		f->clk = devm_clk_get(dev, "fspi");
-		if (IS_ERR(f->clk)) {
-			ret = PTR_ERR(f->clk);
-			goto err_put_ctrl;
-		}
+		if (IS_ERR(f->clk))
+			return PTR_ERR(f->clk);
 	}
+
+	/* find the irq */
+	irq = platform_get_irq(pdev, 0);
+	if (irq < 0)
+		return dev_err_probe(dev, irq, "Failed to get irq source");
 
 	pm_runtime_enable(dev);
 	pm_runtime_set_autosuspend_delay(dev, FSPI_RPM_TIMEOUT);
@@ -1433,33 +1432,28 @@ static int nxp_fspi_probe(struct platform_device *pdev)
 
 	/* enable clock */
 	ret = pm_runtime_get_sync(f->dev);
-	if (ret < 0) {
-		dev_err(f->dev, "Failed to enable clock %d\n", __LINE__);
-		goto err_put_ctrl;
-	}
+	if (ret < 0)
+		return dev_err_probe(dev, ret, "Failed to enable clock");
 
 	/* Clear potential interrupts */
 	reg = fspi_readl(f, f->iobase + FSPI_INTR);
 	if (reg)
 		fspi_writel(f, reg, f->iobase + FSPI_INTR);
 
-	/* find the irq */
-	ret = platform_get_irq(pdev, 0);
+	nxp_fspi_default_setup(f);
+
+	ret = pm_runtime_put_sync(dev);
 	if (ret < 0)
-		goto err_disable_clk;
+		return dev_err_probe(dev, ret, "Failed to disable clock");
 
-	ret = devm_request_irq(dev, ret,
+	ret = devm_request_irq(dev, irq,
 			nxp_fspi_irq_handler, 0, pdev->name, f);
-	if (ret) {
-		dev_err(dev, "failed to request irq: %d\n", ret);
-		goto err_disable_clk;
-	}
+	if (ret)
+		return dev_err_probe(dev, ret, "Failed to request irq\n");
 
-	/* check if the controller work in combination or individual mode */
-	f->individual_mode = of_property_read_bool(np,
-						   "nxp,fspi-individual-mode");
-
-	mutex_init(&f->lock);
+	ret = devm_mutex_init(dev, &f->lock);
+	if (ret)
+		return dev_err_probe(dev, ret, "Failed to initialize lock\n");
 
 	ctlr->bus_num = -1;
 	ctlr->num_chipselect = NXP_FSPI_MAX_CHIPSELECT;
@@ -1469,51 +1463,18 @@ static int nxp_fspi_probe(struct platform_device *pdev)
 	else
 		ctlr->mem_caps = &nxp_fspi_mem_caps;
 
-	nxp_fspi_default_setup(f);
+	if (f->devtype_data->quirks & FSPI_QUIRK_DISABLE_DTR)
+		ctlr->mem_caps = &nxp_fspi_mem_caps_disable_dtr;
+	else
+		ctlr->mem_caps = &nxp_fspi_mem_caps;
 
-	ctlr->dev.of_node = np;
+	device_set_node(&ctlr->dev, fwnode);
 
 	ret = devm_add_action_or_reset(dev, nxp_fspi_cleanup, f);
 	if (ret)
 		return ret;
 
-	ret = devm_spi_register_controller(&pdev->dev, ctlr);
-	if (ret)
-		return ret;
-
-	pm_runtime_mark_last_busy(f->dev);
-	pm_runtime_put_autosuspend(f->dev);
-
-	/* indicate the controller has been initialized */
-	f->flags |= FSPI_INITILIZED;
-
-	return 0;
-
-err_disable_clk:
-	pm_runtime_disable(dev);
-
-err_put_ctrl:
-	spi_controller_put(ctlr);
-
-	dev_err(dev, "NXP FSPI probe failed\n");
-	return ret;
-}
-
-#ifdef CONFIG_PM
-static int nxp_fspi_initialized(struct nxp_fspi *f)
-{
-	return f->flags & FSPI_INITILIZED;
-}
-
-static int nxp_fspi_need_reinit(struct nxp_fspi *f)
-{
-	/*
-	 * MCR2 SAMEDEVICEEN was set by default, so we check this
-	 * register bit to determine if the controller once lost
-	 * power, such as suspend/resume, and need to be re-init.
-	 */
-
-	return (readl(f->iobase + FSPI_MCR2) & FSPI_MCR2_SAMEDEVICEEN);
+	return devm_spi_register_controller(&pdev->dev, ctlr);
 }
 
 static int nxp_fspi_runtime_suspend(struct device *dev)
@@ -1534,14 +1495,20 @@ static int nxp_fspi_runtime_resume(struct device *dev)
 	if (ret)
 		return ret;
 
-	if (nxp_fspi_initialized(f) && nxp_fspi_need_reinit(f))
+	if (f->flags & FSPI_NEED_INIT) {
 		nxp_fspi_default_setup(f);
+		ret = pinctrl_pm_select_default_state(dev);
+		if (ret)
+			dev_err(dev, "select flexspi default pinctrl failed!\n");
+		f->flags &= ~FSPI_NEED_INIT;
+	}
 
-	return 0;
+	return ret;
 }
 
 static int nxp_fspi_suspend(struct device *dev)
 {
+	struct nxp_fspi *f = dev_get_drvdata(dev);
 	int ret;
 
 	ret = pinctrl_pm_select_sleep_state(dev);
@@ -1550,30 +1517,15 @@ static int nxp_fspi_suspend(struct device *dev)
 		return ret;
 	}
 
+	f->flags |= FSPI_NEED_INIT;
+
 	return pm_runtime_force_suspend(dev);
 }
 
-static int nxp_fspi_resume(struct device *dev)
-{
-	int ret;
-
-	ret = pm_runtime_force_resume(dev);
-	if (ret)
-		return ret;
-
-	ret = pinctrl_pm_select_default_state(dev);
-	if (ret)
-		dev_err(dev, "select flexspi default pinctrl failed!\n");
-
-	return ret;
-}
-
-
 static const struct dev_pm_ops nxp_fspi_pm_ops = {
-	SET_RUNTIME_PM_OPS(nxp_fspi_runtime_suspend, nxp_fspi_runtime_resume, NULL)
-	SET_SYSTEM_SLEEP_PM_OPS(nxp_fspi_suspend, nxp_fspi_resume)
+	RUNTIME_PM_OPS(nxp_fspi_runtime_suspend, nxp_fspi_runtime_resume, NULL)
+	SYSTEM_SLEEP_PM_OPS(nxp_fspi_suspend, pm_runtime_force_resume)
 };
-#endif	/* CONFIG_PM */
 
 static const struct of_device_id nxp_fspi_dt_ids[] = {
 	{ .compatible = "nxp,lx2160a-fspi", .data = (void *)&lx2160a_data, },
@@ -1599,7 +1551,7 @@ static struct platform_driver nxp_fspi_driver = {
 		.name	= "nxp-fspi",
 		.of_match_table = nxp_fspi_dt_ids,
 		.acpi_match_table = ACPI_PTR(nxp_fspi_acpi_ids),
-		.pm =   &nxp_fspi_pm_ops,
+		.pm = pm_ptr(&nxp_fspi_pm_ops),
 	},
 	.probe          = nxp_fspi_probe,
 };

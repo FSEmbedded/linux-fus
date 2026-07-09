@@ -435,7 +435,7 @@ static const struct dev_pm_ops dw_hdmi_imx_pm = {
 
 static struct platform_driver dw_hdmi_imx_platform_driver = {
 	.probe  = dw_hdmi_imx_probe,
-	.remove_new = dw_hdmi_imx_remove,
+	.remove = dw_hdmi_imx_remove,
 	.driver = {
 		.name = "dwhdmi-imx",
 		.pm = &dw_hdmi_imx_pm,

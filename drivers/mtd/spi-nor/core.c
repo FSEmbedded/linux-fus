@@ -7,16 +7,18 @@
  * Copyright (C) 2014, Freescale Semiconductor, Inc.
  */
 
-#include <linux/err.h>
-#include <linux/errno.h>
+#include <linux/cleanup.h>
 #include <linux/delay.h>
 #include <linux/device.h>
+#include <linux/err.h>
+#include <linux/errno.h>
 #include <linux/math64.h>
 #include <linux/module.h>
 #include <linux/mtd/mtd.h>
 #include <linux/mtd/spi-nor.h>
 #include <linux/mutex.h>
-#include <linux/of_platform.h>
+#include <linux/of.h>
+#include <linux/regulator/consumer.h>
 #include <linux/sched/task_stack.h>
 #include <linux/sizes.h>
 #include <linux/slab.h>
@@ -113,6 +115,9 @@ void spi_nor_spimem_setup_op(const struct spi_nor *nor,
 		op->cmd.opcode = (op->cmd.opcode << 8) | ext;
 		op->cmd.nbytes = 2;
 	}
+
+	if (proto == SNOR_PROTO_8_8_8_DTR && nor->flags & SNOR_F_SWAP16)
+		op->data.swap16 = true;
 }
 
 /**
@@ -635,32 +640,26 @@ static bool spi_nor_use_parallel_locking(struct spi_nor *nor)
 static int spi_nor_rww_start_rdst(struct spi_nor *nor)
 {
 	struct spi_nor_rww *rww = &nor->rww;
-	int ret = -EAGAIN;
 
-	mutex_lock(&nor->lock);
+	guard(mutex)(&nor->lock);
 
 	if (rww->ongoing_io || rww->ongoing_rd)
-		goto busy;
+		return -EAGAIN;
 
 	rww->ongoing_io = true;
 	rww->ongoing_rd = true;
-	ret = 0;
 
-busy:
-	mutex_unlock(&nor->lock);
-	return ret;
+	return 0;
 }
 
 static void spi_nor_rww_end_rdst(struct spi_nor *nor)
 {
 	struct spi_nor_rww *rww = &nor->rww;
 
-	mutex_lock(&nor->lock);
+	guard(mutex)(&nor->lock);
 
 	rww->ongoing_io = false;
 	rww->ongoing_rd = false;
-
-	mutex_unlock(&nor->lock);
 }
 
 static int spi_nor_lock_rdst(struct spi_nor *nor)
@@ -1208,26 +1207,21 @@ static void spi_nor_offset_to_banks(u64 bank_size, loff_t start, size_t len,
 static bool spi_nor_rww_start_io(struct spi_nor *nor)
 {
 	struct spi_nor_rww *rww = &nor->rww;
-	bool start = false;
 
-	mutex_lock(&nor->lock);
+	guard(mutex)(&nor->lock);
 
 	if (rww->ongoing_io)
-		goto busy;
+		return false;
 
 	rww->ongoing_io = true;
-	start = true;
 
-busy:
-	mutex_unlock(&nor->lock);
-	return start;
+	return true;
 }
 
 static void spi_nor_rww_end_io(struct spi_nor *nor)
 {
-	mutex_lock(&nor->lock);
+	guard(mutex)(&nor->lock);
 	nor->rww.ongoing_io = false;
-	mutex_unlock(&nor->lock);
 }
 
 static int spi_nor_lock_device(struct spi_nor *nor)
@@ -1250,32 +1244,27 @@ static void spi_nor_unlock_device(struct spi_nor *nor)
 static bool spi_nor_rww_start_exclusive(struct spi_nor *nor)
 {
 	struct spi_nor_rww *rww = &nor->rww;
-	bool start = false;
 
 	mutex_lock(&nor->lock);
 
 	if (rww->ongoing_io || rww->ongoing_rd || rww->ongoing_pe)
-		goto busy;
+		return false;
 
 	rww->ongoing_io = true;
 	rww->ongoing_rd = true;
 	rww->ongoing_pe = true;
-	start = true;
 
-busy:
-	mutex_unlock(&nor->lock);
-	return start;
+	return true;
 }
 
 static void spi_nor_rww_end_exclusive(struct spi_nor *nor)
 {
 	struct spi_nor_rww *rww = &nor->rww;
 
-	mutex_lock(&nor->lock);
+	guard(mutex)(&nor->lock);
 	rww->ongoing_io = false;
 	rww->ongoing_rd = false;
 	rww->ongoing_pe = false;
-	mutex_unlock(&nor->lock);
 }
 
 int spi_nor_prep_and_lock(struct spi_nor *nor)
@@ -1312,30 +1301,26 @@ static bool spi_nor_rww_start_pe(struct spi_nor *nor, loff_t start, size_t len)
 {
 	struct spi_nor_rww *rww = &nor->rww;
 	unsigned int used_banks = 0;
-	bool started = false;
 	u8 first, last;
 	int bank;
 
-	mutex_lock(&nor->lock);
+	guard(mutex)(&nor->lock);
 
 	if (rww->ongoing_io || rww->ongoing_rd || rww->ongoing_pe)
-		goto busy;
+		return false;
 
 	spi_nor_offset_to_banks(nor->params->bank_size, start, len, &first, &last);
 	for (bank = first; bank <= last; bank++) {
 		if (rww->used_banks & BIT(bank))
-			goto busy;
+			return false;
 
 		used_banks |= BIT(bank);
 	}
 
 	rww->used_banks |= used_banks;
 	rww->ongoing_pe = true;
-	started = true;
 
-busy:
-	mutex_unlock(&nor->lock);
-	return started;
+	return true;
 }
 
 static void spi_nor_rww_end_pe(struct spi_nor *nor, loff_t start, size_t len)
@@ -1344,15 +1329,13 @@ static void spi_nor_rww_end_pe(struct spi_nor *nor, loff_t start, size_t len)
 	u8 first, last;
 	int bank;
 
-	mutex_lock(&nor->lock);
+	guard(mutex)(&nor->lock);
 
 	spi_nor_offset_to_banks(nor->params->bank_size, start, len, &first, &last);
 	for (bank = first; bank <= last; bank++)
 		rww->used_banks &= ~BIT(bank);
 
 	rww->ongoing_pe = false;
-
-	mutex_unlock(&nor->lock);
 }
 
 static int spi_nor_prep_and_lock_pe(struct spi_nor *nor, loff_t start, size_t len)
@@ -1389,19 +1372,18 @@ static bool spi_nor_rww_start_rd(struct spi_nor *nor, loff_t start, size_t len)
 {
 	struct spi_nor_rww *rww = &nor->rww;
 	unsigned int used_banks = 0;
-	bool started = false;
 	u8 first, last;
 	int bank;
 
-	mutex_lock(&nor->lock);
+	guard(mutex)(&nor->lock);
 
 	if (rww->ongoing_io || rww->ongoing_rd)
-		goto busy;
+		return false;
 
 	spi_nor_offset_to_banks(nor->params->bank_size, start, len, &first, &last);
 	for (bank = first; bank <= last; bank++) {
 		if (rww->used_banks & BIT(bank))
-			goto busy;
+			return false;
 
 		used_banks |= BIT(bank);
 	}
@@ -1409,11 +1391,8 @@ static bool spi_nor_rww_start_rd(struct spi_nor *nor, loff_t start, size_t len)
 	rww->used_banks |= used_banks;
 	rww->ongoing_io = true;
 	rww->ongoing_rd = true;
-	started = true;
 
-busy:
-	mutex_unlock(&nor->lock);
-	return started;
+	return true;
 }
 
 static void spi_nor_rww_end_rd(struct spi_nor *nor, loff_t start, size_t len)
@@ -1422,7 +1401,7 @@ static void spi_nor_rww_end_rd(struct spi_nor *nor, loff_t start, size_t len)
 	u8 first, last;
 	int bank;
 
-	mutex_lock(&nor->lock);
+	guard(mutex)(&nor->lock);
 
 	spi_nor_offset_to_banks(nor->params->bank_size, start, len, &first, &last);
 	for (bank = first; bank <= last; bank++)
@@ -1430,8 +1409,6 @@ static void spi_nor_rww_end_rd(struct spi_nor *nor, loff_t start, size_t len)
 
 	rww->ongoing_io = false;
 	rww->ongoing_rd = false;
-
-	mutex_unlock(&nor->lock);
 }
 
 static int spi_nor_prep_and_lock_rd(struct spi_nor *nor, loff_t start, size_t len)
@@ -2038,10 +2015,9 @@ static const struct flash_info *spi_nor_detect(struct spi_nor *nor)
 }
 
 /*
- * On Octal DTR capable flashes like Micron Xcella reads cannot start or
- * end at an odd address in Octal DTR mode. Extra bytes need to be read
- * at the start or end to make sure both the start address and length
- * remain even.
+ * On Octal DTR capable flashes, reads cannot start or end at an odd
+ * address in Octal DTR mode. Extra bytes need to be read at the start
+ * or end to make sure both the start address and length remain even.
  */
 static int spi_nor_octal_dtr_read(struct spi_nor *nor, loff_t from, size_t len,
 				  u_char *buf)
@@ -2102,12 +2078,6 @@ static int spi_nor_octal_dtr_read(struct spi_nor *nor, loff_t from, size_t len,
 	if (start + bytes_read == end)
 		ret -= end - (from + len);
 
-	/* Should not be possible. */
-	if (WARN_ON(ret < 0)) {
-		ret = -EIO;
-		goto out;
-	}
-
 	memcpy(buf, tmp_buf + (from - start), ret);
 out:
 	kfree(tmp_buf);
@@ -2135,6 +2105,7 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 			ret = spi_nor_octal_dtr_read(nor, addr, len, buf);
 		else
 			ret = spi_nor_read_data(nor, addr, len, buf);
+
 		if (ret == 0) {
 			/* We shouldn't see 0-length reads */
 			ret = -EIO;
@@ -2158,11 +2129,11 @@ read_err:
 }
 
 /*
- * On Octal DTR capable flashes like Micron Xcella the writes cannot start or
- * end at an odd address in Octal DTR mode. Extra 0xff bytes need to be appended
- * or prepended to make sure the start address and end address are even. 0xff is
- * used because on NOR flashes a program operation can only flip bits from 1 to
- * 0, not the other way round. 0 to 1 flip needs to happen via erases.
+ * On Octal DTR capable flashes, writes cannot start or end at an odd address
+ * in Octal DTR mode. Extra 0xff bytes need to be appended or prepended to
+ * make sure the start address and end address are even. 0xff is used because
+ * on NOR flashes a program operation can only flip bits from 1 to 0, not the
+ * other way round. 0 to 1 flip needs to happen via erases.
  */
 static int spi_nor_octal_dtr_write(struct spi_nor *nor, loff_t to, size_t len,
 				   const u8 *buf)
@@ -2213,10 +2184,6 @@ static int spi_nor_octal_dtr_write(struct spi_nor *nor, loff_t to, size_t len,
 	 */
 	if (start + bytes_written == end)
 		ret -= end - (to + len);
-
-	/* Should not be possible. */
-	if (WARN_ON(ret < 0))
-		ret = -EIO;
 
 out:
 	kfree(tmp_buf);
@@ -3724,7 +3691,8 @@ static int spi_nor_create_write_dirmap(struct spi_nor *nor)
 static int spi_nor_probe(struct spi_mem *spimem)
 {
 	struct spi_device *spi = spimem->spi;
-	struct flash_platform_data *data = dev_get_platdata(&spi->dev);
+	struct device *dev = &spi->dev;
+	struct flash_platform_data *data = dev_get_platdata(dev);
 	struct spi_nor *nor;
 	/*
 	 * Enable all caps by default. The core will mask them after
@@ -3734,13 +3702,17 @@ static int spi_nor_probe(struct spi_mem *spimem)
 	char *flash_name;
 	int ret;
 
-	nor = devm_kzalloc(&spi->dev, sizeof(*nor), GFP_KERNEL);
+	ret = devm_regulator_get_enable(dev, "vcc");
+	if (ret)
+		return ret;
+
+	nor = devm_kzalloc(dev, sizeof(*nor), GFP_KERNEL);
 	if (!nor)
 		return -ENOMEM;
 
 	nor->spimem = spimem;
-	nor->dev = &spi->dev;
-	spi_nor_set_flash_node(nor, spi->dev.of_node);
+	nor->dev = dev;
+	spi_nor_set_flash_node(nor, dev->of_node);
 
 	spi_mem_set_drvdata(spimem, nor);
 
@@ -3776,9 +3748,8 @@ static int spi_nor_probe(struct spi_mem *spimem)
 	 */
 	if (nor->params->page_size > PAGE_SIZE) {
 		nor->bouncebuf_size = nor->params->page_size;
-		devm_kfree(nor->dev, nor->bouncebuf);
-		nor->bouncebuf = devm_kmalloc(nor->dev,
-					      nor->bouncebuf_size,
+		devm_kfree(dev, nor->bouncebuf);
+		nor->bouncebuf = devm_kmalloc(dev, nor->bouncebuf_size,
 					      GFP_KERNEL);
 		if (!nor->bouncebuf)
 			return -ENOMEM;

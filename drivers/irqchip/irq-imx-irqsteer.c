@@ -259,8 +259,8 @@ static int imx_irqsteer_probe(struct platform_device *pdev)
 	/* steer all IRQs into configured channel */
 	writel_relaxed(BIT(data->channel), data->regs + CHANCTRL);
 
-	data->domain = irq_domain_add_linear(np, data->reg_num * 32,
-					     &imx_irqsteer_domain_ops, data);
+	data->domain = irq_domain_create_linear(dev_fwnode(&pdev->dev), data->reg_num * 32,
+						&imx_irqsteer_domain_ops, data);
 	if (!data->domain) {
 		dev_err(&pdev->dev, "failed to create IRQ domain\n");
 		ret = -ENOMEM;
@@ -377,7 +377,7 @@ static struct platform_driver imx_irqsteer_driver = {
 		.pm		= &imx_irqsteer_pm_ops,
 	},
 	.probe		= imx_irqsteer_probe,
-	.remove_new	= imx_irqsteer_remove,
+	.remove		= imx_irqsteer_remove,
 };
 module_platform_driver(imx_irqsteer_driver);
 MODULE_LICENSE("GPL v2");

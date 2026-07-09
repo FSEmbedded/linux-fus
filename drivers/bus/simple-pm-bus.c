@@ -78,9 +78,29 @@ static int simple_pm_bus_runtime_resume(struct device *dev)
 	return 0;
 }
 
+static int simple_pm_bus_suspend(struct device *dev)
+{
+	struct simple_pm_bus *bus = dev_get_drvdata(dev);
+
+	if (!bus)
+		return 0;
+
+	return pm_runtime_force_suspend(dev);
+}
+
+static int simple_pm_bus_resume(struct device *dev)
+{
+	struct simple_pm_bus *bus = dev_get_drvdata(dev);
+
+	if (!bus)
+		return 0;
+
+	return pm_runtime_force_resume(dev);
+}
+
 static const struct dev_pm_ops simple_pm_bus_pm_ops = {
 	RUNTIME_PM_OPS(simple_pm_bus_runtime_suspend, simple_pm_bus_runtime_resume, NULL)
-	NOIRQ_SYSTEM_SLEEP_PM_OPS(pm_runtime_force_suspend, pm_runtime_force_resume)
+	NOIRQ_SYSTEM_SLEEP_PM_OPS(simple_pm_bus_suspend, simple_pm_bus_resume)
 };
 
 static const struct of_device_id simple_pm_bus_of_match[] = {
@@ -91,7 +111,7 @@ MODULE_DEVICE_TABLE(of, simple_pm_bus_of_match);
 
 static struct platform_driver simple_pm_bus_driver = {
 	.probe = simple_pm_bus_probe,
-	.remove_new = simple_pm_bus_remove,
+	.remove = simple_pm_bus_remove,
 	.driver = {
 		.name = "simple-pm-bus",
 		.of_match_table = simple_pm_bus_of_match,

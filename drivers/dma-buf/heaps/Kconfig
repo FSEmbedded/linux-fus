@@ -13,10 +13,12 @@ config DMABUF_HEAPS_CMA
 	  by the Contiguous Memory Allocator (CMA). If your system has these
 	  regions, you should say Y here.
 
-config DMABUF_HEAPS_DSP
-        tristate "DMA-BUF DSP Heap"
-        depends on DMABUF_HEAPS
-        help
-          Choose this option to enable the dsp dmabuf heap. The dsp heap
-          is allocated by gen allocater. it's allocated according the dts.
-          If in doubt, say Y.
+config DMABUF_HEAPS_CMA_LEGACY
+	bool "Legacy DMA-BUF CMA Heap"
+	default y
+	depends on DMABUF_HEAPS_CMA
+	help
+	  Add a duplicate CMA-backed dma-buf heap with legacy naming derived
+	  from the CMA area's devicetree node, or "reserved" if the area is not
+	  defined in the devicetree. This uses the same underlying allocator as
+	  CONFIG_DMABUF_HEAPS_CMA.

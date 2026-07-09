@@ -13,6 +13,11 @@
 	model = "NXP i.MX8ULP EVK";
 	compatible = "fsl,imx8ulp-evk", "fsl,imx8ulp";
 
+	bt_sco_codec: bt-sco-codec {
+		#sound-dai-cells = <1>;
+		compatible = "linux,bt-sco";
+	};
+
 	chosen {
 		stdout-path = &lpuart5;
 	};
@@ -154,41 +159,6 @@
 		#clock-cells = <0>;
 	};
 
-	reg_5v: regulator-5v {
-		compatible = "regulator-fixed";
-		regulator-name = "5V";
-		regulator-min-microvolt = <5000000>;
-		regulator-max-microvolt = <5000000>;
-		regulator-always-on;
-	};
-
-	reg_usdhc2_vmmc: regulator-usdhc2 {
-		compatible = "regulator-fixed";
-		regulator-name = "WLAN_EN";
-		regulator-min-microvolt = <3300000>;
-		regulator-max-microvolt = <3300000>;
-		gpio = <&pcal6408 2 GPIO_ACTIVE_HIGH>;
-		enable-active-high;
-	};
-
-	usdhc2_pwrseq: usdhc2_pwrseq {
-		compatible = "mmc-pwrseq-simple";
-		reset-gpios = <&pcal6408 0 GPIO_ACTIVE_LOW>;
-	};
-
-	reg_audio_pwr: regulator-audio-pwr {
-		compatible = "regulator-fixed";
-		regulator-name = "audio-pwr";
-		regulator-min-microvolt = <3300000>;
-		regulator-max-microvolt = <3300000>;
-		enable-active-high;
-	};
-
-	bt_sco_codec: bt_sco_codec {
-		#sound-dai-cells = <1>;
-		compatible = "linux,bt-sco";
-	};
-
 	sound-bt-sco {
 		compatible = "simple-audio-card";
 		simple-audio-card,name = "bt-sco-audio";
@@ -211,33 +181,13 @@
 	sound-spdif {
 		compatible = "fsl,imx-audio-spdif";
 		model = "imx-spdif";
-		spdif-controller = <&spdif>;
-		spdif-out;
-		fsl,constraint-rate = <16000>, <32000>, <48000>,
-				      <64000>, <96000>, <192000>;
+		audio-cpu = <&spdif>;
+		audio-codec = <&spdif_out>;
 	};
 
-	rpmsg_audio: rpmsg-audio {
-		compatible = "fsl,imx8ulp-rpmsg-audio";
-		model = "wm8960-audio";
-		fsl,rpmsg-channel-name = "rpmsg-audio-channel";
-		fsl,rpmsg-out;
-		fsl,rpmsg-in;
-		audio-codec = <&wm8960>;
-		memory-region = <&audio_reserved>;
-		audio-routing =
-			"LINPUT1", "MICB",
-			"LINPUT3", "MICB";
-		status = "okay";
-	};
-
-	rpmsg_micfil: rpmsg_micfil {
-		compatible = "fsl,imx8ulp-rpmsg-audio";
-		model = "micfil-audio";
-		fsl,rpmsg-channel-name = "rpmsg-micfil-channel";
-		fsl,rpmsg-in;
-		memory-region = <&micfil_reserved>;
-		status = "okay";
+	spdif_out: spdif-out {
+		compatible = "linux,spdif-dit";
+		#sound-dai-cells = <0>;
 	};
 };
 
@@ -448,7 +398,6 @@
 };
 
 &sai5 {
-	#sound-dai-cells = <0>;
 	pinctrl-names = "default", "sleep";
 	pinctrl-0 = <&pinctrl_sai5>;
 	pinctrl-1 = <&pinctrl_sai5>;
@@ -464,10 +413,6 @@
 	pinctrl-1 = <&pinctrl_spdif>;
 	assigned-clocks = <&cgc2 IMX8ULP_CLK_SPDIF_SEL>;
 	assigned-clock-parents = <&cgc1 IMX8ULP_CLK_SPLL3_PFD1_DIV1>;
-	status = "okay";
-};
-
-&tpm_rpchip_0 {
 	status = "okay";
 };
 
@@ -666,6 +611,21 @@
 		fsl,pins = <
 			MX8ULP_PAD_PTE12__LPI2C7_SCL	0x20
 			MX8ULP_PAD_PTE13__LPI2C7_SDA	0x20
+		>;
+	};
+
+	pinctrl_sai5: sai5grp {
+		fsl,pins = <
+			MX8ULP_PAD_PTF26__I2S5_TX_BCLK	0x43
+			MX8ULP_PAD_PTF27__I2S5_TX_FS	0x43
+			MX8ULP_PAD_PTF28__I2S5_TXD0	0x43
+			MX8ULP_PAD_PTF24__I2S5_RXD3	0x43
+		>;
+	};
+
+	pinctrl_spdif: spdifgrp {
+		fsl,pins = <
+			MX8ULP_PAD_PTF25__SPDIF_OUT1    0x43
 		>;
 	};
 

@@ -608,8 +608,8 @@ static const struct net_device_ops enetc_ndev_ops = {
 	.ndo_set_features	= enetc_vf_set_features,
 	.ndo_eth_ioctl		= enetc_ioctl,
 	.ndo_setup_tc		= enetc_vf_setup_tc,
-	.ndo_bpf		= enetc_setup_bpf,
-	.ndo_xdp_xmit		= enetc_xdp_xmit,
+	.ndo_hwtstamp_get	= enetc_hwtstamp_get,
+	.ndo_hwtstamp_set	= enetc_hwtstamp_set,
 };
 
 static void enetc_vf_netdev_setup(struct enetc_si *si, struct net_device *ndev,
@@ -624,6 +624,8 @@ static void enetc_vf_netdev_setup(struct enetc_si *si, struct net_device *ndev,
 	si->ndev = ndev;
 
 	priv->msg_enable = (NETIF_MSG_IFUP << 1) - 1;
+	priv->sysclk_freq = si->drvdata->sysclk_freq;
+	priv->max_frags = si->drvdata->max_frags;
 	ndev->netdev_ops = ndev_ops;
 	enetc_set_ethtool_ops(ndev);
 	ndev->watchdog_timeo = 5 * HZ;
@@ -643,7 +645,6 @@ static void enetc_vf_netdev_setup(struct enetc_si *si, struct net_device *ndev,
 	ndev->hw_features = NETIF_F_SG | NETIF_F_RXCSUM |
 			    NETIF_F_HW_VLAN_CTAG_TX |
 			    NETIF_F_HW_VLAN_CTAG_RX |
-			    NETIF_F_HW_VLAN_CTAG_FILTER |
 			    NETIF_F_HW_CSUM | NETIF_F_TSO | NETIF_F_TSO6 |
 			    NETIF_F_GSO_UDP_L4;
 	ndev->features = NETIF_F_HIGHDMA | NETIF_F_SG | NETIF_F_RXCSUM |
@@ -654,127 +655,19 @@ static void enetc_vf_netdev_setup(struct enetc_si *si, struct net_device *ndev,
 	ndev->vlan_features = NETIF_F_SG | NETIF_F_HW_CSUM |
 			      NETIF_F_TSO | NETIF_F_TSO6 | NETIF_F_GSO_UDP_L4;
 
-	ndev->xdp_features = NETDEV_XDP_ACT_BASIC | NETDEV_XDP_ACT_REDIRECT |
-			     NETDEV_XDP_ACT_NDO_XMIT | NETDEV_XDP_ACT_RX_SG |
-			     NETDEV_XDP_ACT_NDO_XMIT_SG |
-			     NETDEV_XDP_ACT_XSK_ZEROCOPY;
-
-	ndev->xdp_zc_max_segs = priv->max_frags_bd;
-	ndev->xdp_metadata_ops = &enetc_xdp_metadata_ops;
-	ndev->xsk_tx_metadata_ops = &enetc_xsk_tx_metadata_ops;
-
-	/* If driver handles unicast address filtering, it should set
-	 * IFF_UNICAST_FLT in its priv_flags. (Refer to the description
-	 * of the ndo_set_rx_mode())
-	 */
-	ndev->priv_flags |= IFF_UNICAST_FLT;
-
 	if (si->num_rss) {
 		ndev->hw_features |= NETIF_F_RXHASH;
 		ndev->features |= NETIF_F_RXHASH;
 	}
 
-	if (si->hw_features & ENETC_SI_F_RSC)
-		ndev->hw_features |= NETIF_F_LRO;
-
 	/* pick up primary MAC address from SI */
 	enetc_load_primary_mac_addr(&si->hw, ndev);
 }
 
-static void enetc_vf_enable_mr_int(struct enetc_hw *hw, bool en)
-{
-	u32 val;
-
-	val = enetc_rd(hw, ENETC_VSIIER);
-	val = u32_replace_bits(val, en ? 1 : 0, VSIIER_MRIE);
-	enetc_wr(hw, ENETC_VSIIER, val);
-}
-
-static void enetc_vf_msg_handle_link_status(struct enetc_si *si, u8 class_code)
-{
-	struct net_device *ndev = si->ndev;
-
-	switch (class_code) {
-	case ENETC_PF_NC_LINK_STATUS_UP:
-		if (!netif_carrier_ok(ndev)) {
-			netif_carrier_on(ndev);
-			netdev_info(ndev, "Link is Up\n");
-		}
-		break;
-	case ENETC_PF_NC_LINK_STATUS_DOWN:
-		if (netif_carrier_ok(ndev)) {
-			netif_carrier_off(ndev);
-			netdev_info(ndev, "Link is Down\n");
-		}
-		break;
-	}
-}
-
-static void enetc_vf_msg_task(struct work_struct *work)
-{
-	struct enetc_si *si = container_of(work, struct enetc_si, msg_task);
-	struct enetc_hw *hw = &si->hw;
-	union enetc_pf_msg pf_msg;
-	u32 val;
-
-	val = enetc_rd(hw, ENETC_VSIMSGRR);
-	pf_msg.code = VSIMSGRR_GET_MC(val);
-	switch (pf_msg.class_id) {
-	case ENETC_MSG_CLASS_ID_LINK_STATUS:
-		enetc_vf_msg_handle_link_status(si, pf_msg.class_code);
-		break;
-	default:
-		dev_err(&si->pdev->dev,
-			"Unknown Message Class ID (0x%02x) from PF\n",
-			pf_msg.class_id);
-	}
-
-	enetc_wr(hw, ENETC_VSIIDR, VSIIDR_MR);
-	enetc_vf_enable_mr_int(hw, true);
-}
-
-static irqreturn_t enetc_vf_msg_msix_handler(int irq, void *data)
-{
-	struct enetc_si *si = (struct enetc_si *)data;
-
-	enetc_vf_enable_mr_int(&si->hw, false);
-	queue_work(si->workqueue, &si->msg_task);
-
-	return IRQ_HANDLED;
-}
-
-static int enetc_vf_register_msg_msix(struct enetc_si *si)
-{
-	int irq, err;
-
-	snprintf(si->msg_int_name, sizeof(si->msg_int_name), "%s-pfmsg",
-		 si->ndev->name);
-	irq = pci_irq_vector(si->pdev, ENETC_SI_INT_IDX);
-	err = request_irq(irq, enetc_vf_msg_msix_handler, 0,
-			  si->msg_int_name, si);
-	if (err) {
-		dev_err(&si->pdev->dev,
-			"VF messaging: request_irq() failed!\n");
-		return err;
-	}
-
-	/* set one IRQ entry for PSI-to-VSI messaging */
-	enetc_wr(&si->hw, ENETC_SIMSIVR, ENETC_SI_INT_IDX);
-
-	/* Enable message received interrupt */
-	enetc_vf_enable_mr_int(&si->hw, true);
-
-	return 0;
-}
-
-static void enetc_vf_free_msg_msix(struct enetc_si *si)
-{
-	int irq = pci_irq_vector(si->pdev, ENETC_SI_INT_IDX);
-
-	cancel_work_sync(&si->msg_task);
-	enetc_vf_enable_mr_int(&si->hw, false);
-	free_irq(irq, si);
-}
+static const struct enetc_si_ops enetc_vsi_ops = {
+	.get_rss_table = enetc_get_rss_table,
+	.set_rss_table = enetc_set_rss_table,
+};
 
 static int enetc_vf_probe(struct pci_dev *pdev,
 			  const struct pci_device_id *ent)
@@ -790,30 +683,13 @@ static int enetc_vf_probe(struct pci_dev *pdev,
 		return dev_err_probe(&pdev->dev, err, "PCI probing failed\n");
 
 	si = pci_get_drvdata(pdev);
-	enetc_vf_get_revision(si);
-
-	si->devlink = device_link_add(&pdev->dev, &pdev->physfn->dev,
-				      DL_FLAG_PM_RUNTIME |
-				      DL_FLAG_STATELESS);
-	if (!si->devlink) {
-		err = -ENOMEM;
-		goto err_devlink_add;
-	}
-
-	INIT_WORK(&si->rx_mode_task, enetc_vf_do_set_rx_mode);
-	snprintf(wq_name, sizeof(wq_name), "enetc-%s", pci_name(pdev));
-	si->workqueue = create_singlethread_workqueue(wq_name);
-	if (!si->workqueue) {
-		err = -ENOMEM;
-		goto err_create_wq;
-	}
-
-	if (!is_enetc_rev1(si)) {
-		INIT_WORK(&si->msg_task, enetc_vf_msg_task);
-		si->vf_register_msg_msix = enetc_vf_register_msg_msix;
-		si->vf_free_msg_msix = enetc_vf_free_msg_msix;
-		si->vf_register_link_status_notify =
-			enetc_msg_vf_register_link_status_notify;
+	si->revision = ENETC_REV_1_0;
+	si->ops = &enetc_vsi_ops;
+	err = enetc_get_driver_data(si);
+	if (err) {
+		dev_err_probe(&pdev->dev, err,
+			      "Could not get VF driver data\n");
+		goto err_alloc_netdev;
 	}
 
 	enetc_get_si_caps(si);

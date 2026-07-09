@@ -68,6 +68,12 @@ properties:
             description: The link number
             maxItems: 1
 
+          '#address-cells':
+            const: 1
+
+          '#size-cells':
+            const: 0
+
           i2c-alias:
             $ref: /schemas/types.yaml#/definitions/uint32
             description:
@@ -107,19 +113,8 @@ properties:
             maximum: 14
             description: Manual EQ level
 
-	ti,bc-gpio:
-            $ref: /schemas/types.yaml#/definitions/uint32
-            enum:
-              - 0 # GPIO0
-              - 1 # GPIO1
-              - 2 # GPIO2
-              - 3 # GPIO3
-            description:
-              Back channel GPIO select. The deserializer can link GPIO
-	      pin input data on up to four available slots to send on
-	      the back channel per each remote serializer connection.
-
-          serializer:
+        patternProperties:
+          '^serializer(@[0-9a-f]+)*$':
             type: object
             description: FPD-Link Serializer node
 
@@ -127,7 +122,6 @@ properties:
           - reg
           - i2c-alias
           - ti,rx-mode
-          - serializer
 
   ports:
     $ref: /schemas/graph.yaml#/properties/ports
@@ -321,13 +315,17 @@ examples:
           /* Link 0 has DS90UB953 serializer and IMX274 sensor */
 
           link@0 {
+            #address-cells = <1>;
+            #size-cells = <0>;
+
             reg = <0>;
             i2c-alias = <0x44>;
 
             ti,rx-mode = <3>;
 
-            serializer1: serializer {
+            serializer1: serializer@30 {
               compatible = "ti,ds90ub953-q1";
+              reg = <0x30>;
 
               gpio-controller;
               #gpio-cells = <2>;
@@ -362,6 +360,9 @@ examples:
                 sensor@1a {
                   compatible = "sony,imx274";
                   reg = <0x1a>;
+
+                  clocks = <&serializer>;
+                  clock-names = "inck";
 
                   reset-gpios = <&serializer1 0 GPIO_ACTIVE_LOW>;
 

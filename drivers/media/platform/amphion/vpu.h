@@ -167,7 +167,6 @@ struct vpu_core {
 	struct delayed_work msg_delayed_work;
 	struct kfifo msg_fifo;
 	void *msg_buffer;
-	unsigned int msg_buffer_size;
 
 	struct vpu_dev *vpu;
 	void *iface;
@@ -337,7 +336,7 @@ static inline const char *vpu_core_type_desc(enum vpu_core_type type)
 
 static inline struct vpu_inst *to_inst(struct file *filp)
 {
-	return container_of(filp->private_data, struct vpu_inst, fh);
+	return container_of(file_to_v4l2_fh(filp), struct vpu_inst, fh);
 }
 
 #define ctrl_to_inst(ctrl)	\

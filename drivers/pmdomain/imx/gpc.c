@@ -244,7 +244,7 @@ static struct platform_driver imx_pgc_power_domain_driver = {
 		.name = "imx-pgc-pd",
 	},
 	.probe = imx_pgc_power_domain_probe,
-	.remove_new = imx_pgc_power_domain_remove,
+	.remove = imx_pgc_power_domain_remove,
 	.id_table = imx_pgc_power_domain_id,
 };
 builtin_platform_driver(imx_pgc_power_domain_driver)
@@ -349,7 +349,6 @@ static const struct regmap_config imx_gpc_regmap_config = {
 	.rd_table = &access_table,
 	.wr_table = &access_table,
 	.max_register = 0x2ac,
-	.fast_io = true,
 };
 
 static struct generic_pm_domain *imx_gpc_onecell_domains[] = {
@@ -433,7 +432,7 @@ static int imx_gpc_probe(struct platform_device *pdev)
 	pgc_node = of_get_child_by_name(pdev->dev.of_node, "pgc");
 
 	/* bail out if DT too old and doesn't provide the necessary info */
-	if (!of_property_read_bool(pdev->dev.of_node, "#power-domain-cells") &&
+	if (!of_property_present(pdev->dev.of_node, "#power-domain-cells") &&
 	    !pgc_node)
 		return 0;
 
@@ -535,7 +534,7 @@ static void imx_gpc_remove(struct platform_device *pdev)
 	pgc_node = of_get_child_by_name(pdev->dev.of_node, "pgc");
 
 	/* bail out if DT too old and doesn't provide the necessary info */
-	if (!of_property_read_bool(pdev->dev.of_node, "#power-domain-cells") &&
+	if (!of_property_present(pdev->dev.of_node, "#power-domain-cells") &&
 	    !pgc_node)
 		return;
 
@@ -561,6 +560,8 @@ static void imx_gpc_remove(struct platform_device *pdev)
 			return;
 		}
 	}
+
+	of_node_put(pgc_node);
 }
 
 static struct platform_driver imx_gpc_driver = {
@@ -569,6 +570,6 @@ static struct platform_driver imx_gpc_driver = {
 		.of_match_table = imx_gpc_dt_ids,
 	},
 	.probe = imx_gpc_probe,
-	.remove_new = imx_gpc_remove,
+	.remove = imx_gpc_remove,
 };
 builtin_platform_driver(imx_gpc_driver)

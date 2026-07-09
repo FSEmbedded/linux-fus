@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-2.0-only OR MIT */
+/* SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause) */
 /*
  * Copyright 2025 NXP
  */
@@ -11,4 +11,3 @@
 #define IMX94_CLK_DISPMIX_LVDS_CLK_GATE	0
 
 #endif /* __DT_BINDINGS_CLOCK_IMX94_H */
-

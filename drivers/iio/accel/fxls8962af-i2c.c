@@ -32,16 +32,14 @@ static const struct i2c_device_id fxls8962af_id[] = {
 	{ "fxls8964af", fxls8964af },
 	{ "fxls8967af", fxls8967af },
 	{ "fxls8974cf", fxls8974cf },
-	{}
+	{ }
 };
 MODULE_DEVICE_TABLE(i2c, fxls8962af_id);
 
 static const struct of_device_id fxls8962af_of_match[] = {
 	{ .compatible = "nxp,fxls8962af" },
 	{ .compatible = "nxp,fxls8964af" },
-	{ .compatible = "nxp,fxls8967af" },
-	{ .compatible = "nxp,fxls8974cf" },
-	{}
+	{ }
 };
 MODULE_DEVICE_TABLE(of, fxls8962af_of_match);
 
@@ -65,4 +63,4 @@ module_i2c_driver(fxls8962af_driver);
 MODULE_AUTHOR("Sean Nyekjaer <sean@geanix.com>");
 MODULE_DESCRIPTION("NXP FXLS8962AF/FXLS8964AF accelerometer i2c driver");
 MODULE_LICENSE("GPL v2");
-MODULE_IMPORT_NS(IIO_FXLS8962AF);
+MODULE_IMPORT_NS("IIO_FXLS8962AF");

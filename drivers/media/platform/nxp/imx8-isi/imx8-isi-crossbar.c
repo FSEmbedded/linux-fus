@@ -243,17 +243,19 @@ static int mxc_isi_crossbar_init_state(struct v4l2_subdev *sd,
 	 * ISI channels. The algorithm will divide the ISI channel equally
 	 * to each pixel link input which connect to a remote device.
 	 */
-	routes = kcalloc(xbar->num_sources, sizeof(*routes), GFP_KERNEL);
+	routing.num_routes = min(xbar->num_sinks - 1, xbar->num_sources);
+	routes = kcalloc(routing.num_routes, sizeof(*routes), GFP_KERNEL);
 	if (!routes)
 		return -ENOMEM;
 
-	ret = mxc_isi_create_default_routing(xbar, routes);
-	if (ret < 0) {
-		kfree(routes);
-		return ret;
+	for (i = 0; i < routing.num_routes; ++i) {
+		struct v4l2_subdev_route *route = &routes[i];
+
+		route->sink_pad = i;
+		route->source_pad = i + xbar->num_sinks;
+		route->flags = V4L2_SUBDEV_ROUTE_FL_ACTIVE;
 	}
 
-	routing.num_routes = xbar->num_sources;
 	routing.routes = routes;
 
 	ret = __mxc_isi_crossbar_set_routing(sd, state, &routing);
@@ -479,6 +481,16 @@ static int mxc_isi_crossbar_enable_streams(struct v4l2_subdev *sd,
 						     remote_pad, sink_pad);
 		if (ret)
 			return ret;
+
+		ret = v4l2_subdev_enable_streams(remote_sd, remote_pad,
+						 sink_streams);
+		if (ret) {
+			dev_err(xbar->isi->dev,
+				"failed to enable streams 0x%llx on '%s':%u: %d\n",
+				sink_streams, remote_sd->name, remote_pad, ret);
+			mxc_isi_crossbar_gasket_disable(xbar, sink_pad);
+			return ret;
+		}
 	}
 
 	stream_index = clamp_t(u8, ffs(sink_streams), 1, xbar->num_sources);
@@ -535,12 +547,13 @@ static int mxc_isi_crossbar_disable_streams(struct v4l2_subdev *sd,
 	    --input->enabled_count[(stream_index - 1)])
 		return 0;
 
-	ret = v4l2_subdev_disable_streams(remote_sd, remote_pad, sink_streams);
-	if (ret)
-		dev_err(xbar->isi->dev,
-			"failed to %s streams 0x%llx on '%s':%u: %d\n",
-			"disable", sink_streams, remote_sd->name,
-			remote_pad, ret);
+	if (!input->enable_count) {
+		ret = v4l2_subdev_disable_streams(remote_sd, remote_pad,
+						  sink_streams);
+		if (ret)
+			dev_err(xbar->isi->dev,
+				"failed to disable streams 0x%llx on '%s':%u: %d\n",
+				sink_streams, remote_sd->name, remote_pad, ret);
 
 	input->enabled_streams &= ~sink_streams;
 

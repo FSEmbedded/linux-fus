@@ -211,7 +211,44 @@
 		regulator-always-on;
 	};
 
-	bt_sco_codec: bt_sco_codec {
+	reg_pcieb: regulator-pcieb {
+		compatible = "regulator-fixed";
+		regulator-max-microvolt = <3300000>;
+		regulator-min-microvolt = <3300000>;
+		regulator-name = "reg_pcieb";
+		gpio = <&pca6416_1 13 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+	};
+
+	reg_audio_5v: regulator-audio-pwr {
+		compatible = "regulator-fixed";
+		regulator-name = "audio-5v";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		regulator-always-on;
+		regulator-boot-on;
+	};
+
+	reg_audio_3v3: regulator-audio-3v3 {
+		compatible = "regulator-fixed";
+		regulator-name = "audio-3v3";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		regulator-always-on;
+		regulator-boot-on;
+	};
+
+	reg_audio_1v8: regulator-audio-1v8 {
+		compatible = "regulator-fixed";
+		regulator-name = "audio-1v8";
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+		regulator-always-on;
+		regulator-boot-on;
+	};
+
+	bt_sco_codec: audio-codec-bt {
+		compatible = "linux,bt-sco";
 		#sound-dai-cells = <1>;
 		compatible = "linux,bt-sco";
 	};
@@ -457,11 +494,11 @@
 				wlf,shared-lrclk;
 				wlf,hp-cfg = <2 2 3>;
 				wlf,gpio-cfg = <1 3>;
-				assigned-clocks = <&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_PLL>,
-						  <&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_SLV_BUS>,
-						  <&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_MST_BUS>,
-						  <&mclkout1_lpcg 0>;
-				assigned-clock-rates = <786432000>, <49152000>, <12288000>, <12288000>;
+				AVDD-supply = <&reg_audio_3v3>;
+				DBVDD-supply = <&reg_audio_1v8>;
+				DCVDD-supply = <&reg_audio_1v8>;
+				SPKVDD1-supply = <&reg_audio_5v>;
+				SPKVDD2-supply = <&reg_audio_5v>;
 			};
 		};
 
@@ -479,11 +516,11 @@
 				wlf,shared-lrclk;
 				wlf,hp-cfg = <2 2 3>;
 				wlf,gpio-cfg = <1 3>;
-				assigned-clocks = <&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_PLL>,
-						  <&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_SLV_BUS>,
-						  <&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_MST_BUS>,
-						  <&mclkout1_lpcg 0>;
-				assigned-clock-rates = <786432000>, <49152000>, <12288000>, <12288000>;
+				AVDD-supply = <&reg_audio_3v3>;
+				DBVDD-supply = <&reg_audio_1v8>;
+				DCVDD-supply = <&reg_audio_1v8>;
+				SPKVDD1-supply = <&reg_audio_5v>;
+				SPKVDD2-supply = <&reg_audio_5v>;
 			};
 		};
 
@@ -501,11 +538,11 @@
 				wlf,shared-lrclk;
 				wlf,hp-cfg = <2 2 3>;
 				wlf,gpio-cfg = <1 3>;
-				assigned-clocks = <&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_PLL>,
-						  <&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_SLV_BUS>,
-						  <&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_MST_BUS>,
-						  <&mclkout1_lpcg 0>;
-				assigned-clock-rates = <786432000>, <49152000>, <12288000>, <12288000>;
+				AVDD-supply = <&reg_audio_3v3>;
+				DBVDD-supply = <&reg_audio_1v8>;
+				DCVDD-supply = <&reg_audio_1v8>;
+				SPKVDD1-supply = <&reg_audio_5v>;
+				SPKVDD2-supply = <&reg_audio_5v>;
 			};
 		};
 
@@ -624,6 +661,22 @@
 	status = "okay";
 };
 
+&hsio_phy {
+	fsl,hsio-cfg = "pciea-x2-pcieb";
+	fsl,refclk-pad-mode = "output";
+	status = "okay";
+};
+
+&cm40_intmux {
+	status = "disabled";
+};
+
+&cm40_lpuart {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_cm40_lpuart>;
+	status = "disabled";
+};
+
 &lsio_gpio4 {
 	status = "okay";
 };
@@ -632,28 +685,23 @@
 	status = "okay";
 };
 
-&hsio_phy{
-	fsl,hsio-cfg = "pciea-x2-pcieb";
-	fsl,refclk-pad-mode = "output";
-        status = "okay";
-};
-
-&pcieb{
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_pcieb>;
-	clkreq-gpio = <&lsio_gpio4 1 GPIO_ACTIVE_LOW>;
-	reset-gpio = <&lsio_gpio4 0 GPIO_ACTIVE_LOW>;
-	vpcie-supply = <&reg_pcieb>;
+&pcie0 {
 	phys = <&hsio_phy 0 PHY_TYPE_PCIE 0>;
 	phy-names = "pcie-phy";
+	pinctrl-0 = <&pinctrl_pcieb>;
+	pinctrl-names = "default";
+	reset-gpio = <&lsio_gpio4 0 GPIO_ACTIVE_LOW>;
+	vpcie-supply = <&reg_pcieb>;
 	status = "okay";
 };
 
-&pcieb_ep{
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_pcieb>;
+&pcie0_ep {
 	phys = <&hsio_phy 0 PHY_TYPE_PCIE 0>;
 	phy-names = "pcie-phy";
+	pinctrl-0 = <&pinctrl_pcieb>;
+	pinctrl-names = "default";
+	reset-gpio = <&lsio_gpio4 0 GPIO_ACTIVE_LOW>;
+	vpcie-supply = <&reg_pcieb>;
 	status = "disabled";
 };
 
@@ -953,7 +1001,7 @@
 		>;
 	};
 
-	pinctrl_pcieb: pcieagrp{
+	pinctrl_pcieb: pcieagrp {
 		fsl,pins = <
 			IMX8DXL_PCIE_CTRL0_PERST_B_LSIO_GPIO4_IO00	0x06000021
 			IMX8DXL_PCIE_CTRL0_CLKREQ_B_LSIO_GPIO4_IO01	0x06000021

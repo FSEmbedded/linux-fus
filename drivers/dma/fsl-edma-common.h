@@ -71,6 +71,20 @@
 #define EDMA_V3_CH_CSR_EEI         BIT(2)
 #define EDMA_V3_CH_CSR_DONE        BIT(30)
 #define EDMA_V3_CH_CSR_ACTIVE      BIT(31)
+#define EDMA_V3_CH_ES_ERR          BIT(31)
+#define EDMA_V3_MP_ES_VLD          BIT(31)
+
+#define EDMA_V3_CH_ERR_DBE	BIT(0)
+#define EDMA_V3_CH_ERR_SBE	BIT(1)
+#define EDMA_V3_CH_ERR_SGE	BIT(2)
+#define EDMA_V3_CH_ERR_NCE	BIT(3)
+#define EDMA_V3_CH_ERR_DOE	BIT(4)
+#define EDMA_V3_CH_ERR_DAE	BIT(5)
+#define EDMA_V3_CH_ERR_SOE	BIT(6)
+#define EDMA_V3_CH_ERR_SAE	BIT(7)
+#define EDMA_V3_CH_ERR_ECX	BIT(8)
+#define EDMA_V3_CH_ERR_UCE	BIT(9)
+#define EDMA_V3_CH_ERR		BIT(31)
 
 enum fsl_edma_pm_state {
 	RUNNING = 0,
@@ -217,20 +231,9 @@ struct fsl_edma3_reg_save {
 /* Need clean CHn_CSR DONE before enable TCD's MAJORELINK */
 #define FSL_EDMA_DRV_CLEAR_DONE_E_LINK	BIT(14)
 #define FSL_EDMA_DRV_TCD64		BIT(15)
-#define FSL_EDMA_DRV_HAS_MPCLK         BIT(16)
-#define FSL_EDMA_DRV_ERRIRQ_SHARE       BIT(17)
+/* All channel ERR IRQ share one IRQ line */
+#define FSL_EDMA_DRV_ERRIRQ_SHARE       BIT(16)
 
-#define EDMA_CH_ERR_DBE                 BIT(0)
-#define EDMA_CH_ERR_SBE                 BIT(1)
-#define EDMA_CH_ERR_SGE                 BIT(2)
-#define EDMA_CH_ERR_NCE                 BIT(3)
-#define EDMA_CH_ERR_DOE                 BIT(4)
-#define EDMA_CH_ERR_DAE                 BIT(5)
-#define EDMA_CH_ERR_SOE                 BIT(6)
-#define EDMA_CH_ERR_SAE                 BIT(7)
-#define EDMA_CH_ERR_ECX                 BIT(8)
-#define EDMA_CH_ERR_UCE                 BIT(9)
-#define EDMA_CH_ERR                     BIT(31)
 
 #define FSL_EDMA_DRV_EDMA3	(FSL_EDMA_DRV_SPLIT_REG |	\
 				 FSL_EDMA_DRV_BUS_8BYTE |	\
@@ -266,6 +269,7 @@ struct fsl_edma_engine {
 	const struct fsl_edma_drvdata *drvdata;
 	u32			n_chans;
 	int			txirq;
+	int			txirq_16_31;
 	int			errirq;
 	int                     txirq_count;
 	#define MAX_CHAN_NUM    64

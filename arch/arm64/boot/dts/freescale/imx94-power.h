@@ -3,8 +3,8 @@
  *  Copyright 2024-2025 NXP
  */
 
-#ifndef __IMX94_POWER_H__
-#define __IMX94_POWER_H__
+#ifndef __IMX94_POWER_H
+#define __IMX94_POWER_H
 
 #define IMX94_PD_ANA		0
 #define IMX94_PD_AON		1
@@ -38,4 +38,4 @@
 #define IMX94_PERF_A55		9
 #define IMX94_PERF_DISP		10
 
-#endif
+#endif /* __IMX94_POWER_H */

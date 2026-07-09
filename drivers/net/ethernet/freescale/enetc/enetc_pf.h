@@ -6,11 +6,9 @@
 #include <linux/phylink.h>
 
 #define ENETC_PF_NUM_RINGS	8
+#define ENETC_MAX_NUM_MAC_FLT	((ENETC_MAX_NUM_VFS + 1) * MADDR_TYPE)
 
-/* This means the ENETC PF is owned by M core, but its VFs are
- * owned by A core.
- */
-#define ENETC_PF_VIRTUAL_DEVID	0x080b
+#define ENETC_VLAN_HT_SIZE	64
 
 enum enetc_vf_flags {
 	ENETC_VF_FLAG_PF_SET_MAC	= BIT(0),
@@ -23,53 +21,21 @@ struct enetc_vf_state {
 
 struct enetc_port_caps {
 	u32 half_duplex:1;
-	u32 wol:1;
 	int num_vsi;
 	int num_msix;
 	int num_rx_bdr;
 	int num_tx_bdr;
 	int mac_filter_num;
-	int vlan_filter_num;
-	int ipf_words_num;
 };
 
-struct enetc_pf_hw_ops {
+struct enetc_pf;
+
+struct enetc_pf_ops {
 	void (*set_si_primary_mac)(struct enetc_hw *hw, int si, const u8 *addr);
 	void (*get_si_primary_mac)(struct enetc_hw *hw, int si, u8 *addr);
-	void (*set_si_based_vlan)(struct enetc_hw *hw, int si, u16 vlan, u8 qos);
-	void (*get_si_based_vlan)(struct enetc_hw *hw, int si, u32 *vlan, u32 *qos);
-	void (*set_si_anti_spoofing)(struct enetc_hw *hw, int si, bool en);
-	void (*set_si_vlan_promisc)(struct enetc_hw *hw, int si, bool en);
-	void (*set_si_mac_promisc)(struct enetc_hw *hw, int si, int type, bool en);
-	void (*set_si_mac_hash_filter)(struct enetc_hw *hw, int si, int type, u64 hash);
-	void (*set_si_vlan_hash_filter)(struct enetc_hw *hw, int si, u64 hash);
-	void (*set_loopback)(struct net_device *ndev, bool en);
-	void (*set_tc_tsd)(struct enetc_hw *hw, int tc, bool en);
-	void (*set_tc_msdu)(struct enetc_hw *hw, u32 *max_sdu);
-	void (*reset_tc_msdu)(struct enetc_hw *hw);
-	bool (*get_time_gating)(struct enetc_hw *hw);
-	void (*set_time_gating)(struct enetc_hw *hw, bool en);
-};
-
-struct enetc_mfe {
-	u8 mac[ETH_ALEN];
-	u16 si_bitmap;
-};
-
-struct enetc_mac_list_entry {
-	struct enetc_mfe mfe;
-	struct hlist_node node;
-};
-
-struct enetc_vfe {
-	u16 vid;
-	u8 tpid;
-	u16 si_bitmap;
-};
-
-struct enetc_vlan_list_entry {
-	struct enetc_vfe vfe;
-	struct hlist_node node;
+	struct phylink_pcs *(*create_pcs)(struct enetc_pf *pf, struct mii_bus *bus);
+	void (*destroy_pcs)(struct phylink_pcs *pcs);
+	int (*enable_psfp)(struct enetc_ndev_priv *priv);
 };
 
 struct enetc_pf {
@@ -88,18 +54,11 @@ struct enetc_pf {
 
 	phy_interface_t if_mode;
 	struct phylink_config phylink_config;
-	const struct enetc_pf_hw_ops *hw_ops;
-	struct enetc_devlink_priv *devl_priv;
 
-	u8 mac_addr_base[ETH_ALEN];
+	struct enetc_port_caps caps;
+	const struct enetc_pf_ops *ops;
 
-	struct hlist_head mac_list; /* MAC address filter table */
-	struct mutex mac_list_lock; /* mac_list lock */
-	int num_mac_fe;	/* number of mac address filter table entries */
-
-	struct hlist_head vlan_list; /* VLAN address filter table */
-	struct mutex vlan_list_lock; /* mac_list lock */
-	int num_vlan_fe; /* number of VLAN address filter table entries */
+	int num_mfe;	/* number of mac address filter table entries */
 };
 
 #define phylink_to_enetc_pf(config) \

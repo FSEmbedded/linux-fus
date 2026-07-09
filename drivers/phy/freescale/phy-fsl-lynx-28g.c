@@ -893,6 +893,10 @@ static struct lynx_28g_pll *lynx_28g_pll_get(struct lynx_28g_priv *priv,
 			return pll;
 	}
 
+	/* no pll supports requested mode, either caller forgot to check
+	 * lynx_28g_supports_lane_mode, or this is a bug.
+	 */
+	dev_WARN_ONCE(priv->dev, 1, "no pll for interface %s\n", phy_modes(intf));
 	return NULL;
 }
 
@@ -1008,12 +1012,36 @@ static void lynx_28g_lane_halt(struct phy *phy)
 	lynx_28g_lane_rmw(lane, LNaRRSTCTL, LYNX_28G_LNaRRSTCTL_HLT_REQ,
 			  LYNX_28G_LNaRRSTCTL_HLT_REQ);
 
-	/* Wait until the halting process is complete */
-	do {
-		trstctl = lynx_28g_lane_read(lane, LNaTRSTCTL);
-		rrstctl = lynx_28g_lane_read(lane, LNaRRSTCTL);
-	} while ((trstctl & LYNX_28G_LNaTRSTCTL_HLT_REQ) ||
-		 (rrstctl & LYNX_28G_LNaRRSTCTL_HLT_REQ));
+	/* Setup the lane to run in SGMII */
+	lynx_28g_rmw(priv, LYNX_28G_PCC8,
+		     LYNX_28G_PCC8_SGMII << lane_offset,
+		     GENMASK(3, 0) << lane_offset);
+
+	/* Setup the protocol select and SerDes parallel interface width */
+	lynx_28g_lane_rmw(lane, LNaGCR0, PROTO_SEL_SGMII, PROTO_SEL_MSK);
+	lynx_28g_lane_rmw(lane, LNaGCR0, IF_WIDTH_10_BIT, IF_WIDTH_MSK);
+
+	/* Find the PLL that works with this interface type */
+	pll = lynx_28g_pll_get(priv, PHY_INTERFACE_MODE_SGMII);
+	if (unlikely(pll == NULL))
+		return;
+
+	/* Switch to the PLL that works with this interface type */
+	lynx_28g_lane_set_pll(lane, pll);
+
+	/* Choose the portion of clock net to be used on this lane */
+	lynx_28g_lane_set_nrate(lane, pll, PHY_INTERFACE_MODE_SGMII);
+
+	/* Enable the SGMII PCS */
+	lynx_28g_lane_rmw(lane, SGMIIaCR1, SGPCS_EN, SGPCS_MSK);
+
+	/* Configure the appropriate equalization parameters for the protocol */
+	iowrite32(0x00808006, priv->base + LYNX_28G_LNaTECR0(lane->id));
+	iowrite32(0x04310000, priv->base + LYNX_28G_LNaRGCR1(lane->id));
+	iowrite32(0x9f800000, priv->base + LYNX_28G_LNaRECR0(lane->id));
+	iowrite32(0x001f0000, priv->base + LYNX_28G_LNaRECR1(lane->id));
+	iowrite32(0x00000000, priv->base + LYNX_28G_LNaRECR2(lane->id));
+	iowrite32(0x00000000, priv->base + LYNX_28G_LNaRSCCR0(lane->id));
 }
 
 static void lynx_28g_lane_reset(struct phy *phy)
@@ -1027,12 +1055,36 @@ static void lynx_28g_lane_reset(struct phy *phy)
 	lynx_28g_lane_rmw(lane, LNaRRSTCTL, LYNX_28G_LNaRRSTCTL_RST_REQ,
 			  LYNX_28G_LNaRRSTCTL_RST_REQ);
 
-	/* Wait until the reset sequence is completed */
-	do {
-		trstctl = lynx_28g_lane_read(lane, LNaTRSTCTL);
-		rrstctl = lynx_28g_lane_read(lane, LNaRRSTCTL);
-	} while (!(trstctl & LYNX_28G_LNaTRSTCTL_RST_DONE) ||
-		 !(rrstctl & LYNX_28G_LNaRRSTCTL_RST_DONE));
+	/* Enable the SXGMII lane */
+	lynx_28g_rmw(priv, LYNX_28G_PCCC,
+		     LYNX_28G_PCCC_10GBASER << lane_offset,
+		     GENMASK(3, 0) << lane_offset);
+
+	/* Setup the protocol select and SerDes parallel interface width */
+	lynx_28g_lane_rmw(lane, LNaGCR0, PROTO_SEL_XFI, PROTO_SEL_MSK);
+	lynx_28g_lane_rmw(lane, LNaGCR0, IF_WIDTH_20_BIT, IF_WIDTH_MSK);
+
+	/* Find the PLL that works with this interface type */
+	pll = lynx_28g_pll_get(priv, PHY_INTERFACE_MODE_10GBASER);
+	if (unlikely(pll == NULL))
+		return;
+
+	/* Switch to the PLL that works with this interface type */
+	lynx_28g_lane_set_pll(lane, pll);
+
+	/* Choose the portion of clock net to be used on this lane */
+	lynx_28g_lane_set_nrate(lane, pll, PHY_INTERFACE_MODE_10GBASER);
+
+	/* Disable the SGMII PCS */
+	lynx_28g_lane_rmw(lane, SGMIIaCR1, SGPCS_DIS, SGPCS_MSK);
+
+	/* Configure the appropriate equalization parameters for the protocol */
+	iowrite32(0x10808307, priv->base + LYNX_28G_LNaTECR0(lane->id));
+	iowrite32(0x10000000, priv->base + LYNX_28G_LNaRGCR1(lane->id));
+	iowrite32(0x00000000, priv->base + LYNX_28G_LNaRECR0(lane->id));
+	iowrite32(0x001f0000, priv->base + LYNX_28G_LNaRECR1(lane->id));
+	iowrite32(0x81000020, priv->base + LYNX_28G_LNaRECR2(lane->id));
+	iowrite32(0x00002000, priv->base + LYNX_28G_LNaRSCCR0(lane->id));
 }
 
 static int lynx_28g_power_off(struct phy *phy)
@@ -2192,9 +2244,9 @@ static const struct of_device_id lynx_28g_of_match_table[] = {
 MODULE_DEVICE_TABLE(of, lynx_28g_of_match_table);
 
 static struct platform_driver lynx_28g_driver = {
-	.probe	= lynx_28g_probe,
-	.remove_new = lynx_28g_remove,
-	.driver	= {
+	.probe = lynx_28g_probe,
+	.remove = lynx_28g_remove,
+	.driver = {
 		.name = "lynx-28g",
 		.of_match_table = lynx_28g_of_match_table,
 	},

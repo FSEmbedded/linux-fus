@@ -318,27 +318,27 @@ static const struct lpuart_soc_data ls1028a_data = {
 	.rx_watermark = 0,
 };
 
-static struct lpuart_soc_data imx7ulp_data = {
+static const struct lpuart_soc_data imx7ulp_data = {
 	.devtype = IMX7ULP_LPUART,
 	.iotype = UPIO_MEM32,
 	.reg_off = IMX_REG_OFF,
 	.rx_watermark = 1,
 };
 
-static struct lpuart_soc_data imx8ulp_data = {
+static const struct lpuart_soc_data imx8ulp_data = {
 	.devtype = IMX8ULP_LPUART,
 	.iotype = UPIO_MEM32,
 	.reg_off = IMX_REG_OFF,
 	.rx_watermark = 3,
 };
 
-static struct lpuart_soc_data imx8qxp_data = {
+static const struct lpuart_soc_data imx8qxp_data = {
 	.devtype = IMX8QXP_LPUART,
 	.iotype = UPIO_MEM32,
 	.reg_off = IMX_REG_OFF,
 	.rx_watermark = 7, /* A lower watermark is ideal for low baud rates. */
 };
-static struct lpuart_soc_data imxrt1050_data = {
+static const struct lpuart_soc_data imxrt1050_data = {
 	.devtype = IMXRT1050_LPUART,
 	.iotype = UPIO_MEM32,
 	.reg_off = IMX_REG_OFF,
@@ -402,6 +402,8 @@ static inline void lpuart32_write(struct uart_port *port, u32 val,
 		break;
 	case UPIO_MEM32BE:
 		iowrite32be(val, port->membase + off);
+		break;
+	default:
 		break;
 	}
 }
@@ -563,8 +565,9 @@ static dma_addr_t lpuart_dma_datareg_addr(struct lpuart_port *sport)
 		return sport->port.mapbase + UARTDATA;
 	case UPIO_MEM32BE:
 		return sport->port.mapbase + UARTDATA + sizeof(u32) - 1;
+	default:
+		return sport->port.mapbase + UARTDR;
 	}
-	return sport->port.mapbase + UARTDR;
 }
 
 static int lpuart_dma_tx_request(struct uart_port *port)
@@ -1304,7 +1307,7 @@ static irqreturn_t lpuart32_int(int irq, void *dev_id)
  */
 static void lpuart_timer_func(struct timer_list *t)
 {
-	struct lpuart_port *sport = from_timer(sport, t, lpuart_timer);
+	struct lpuart_port *sport = timer_container_of(sport, t, lpuart_timer);
 	enum dma_status dmastat;
 	struct dma_chan *chan = sport->dma_rx_chan;
 	struct circ_buf *ring = &sport->rx_ring;
@@ -1433,7 +1436,7 @@ static void lpuart_dma_rx_free(struct uart_port *port)
 
 	dmaengine_terminate_sync(chan);
 	if (!sport->dma_idle_int)
-		del_timer_sync(&sport->lpuart_timer);
+		timer_delete_sync(&sport->lpuart_timer);
 
 	dma_unmap_sg(chan->device->dev, &sport->rx_sgl, 1, DMA_FROM_DEVICE);
 	kfree(sport->rx_ring.buf);
@@ -2071,7 +2074,7 @@ lpuart_set_termios(struct uart_port *port, struct ktermios *termios,
 	 * baud rate and restart Rx DMA path.
 	 *
 	 * Since timer function acqures port->lock, need to stop before
-	 * acquring same lock because otherwise del_timer_sync() can deadlock.
+	 * acquring same lock because otherwise timer_delete_sync() can deadlock.
 	 */
 	if (old && sport->lpuart_dma_rx_use)
 		lpuart_dma_rx_free(port);
@@ -2316,7 +2319,7 @@ lpuart32_set_termios(struct uart_port *port, struct ktermios *termios,
 	 * baud rate and restart Rx DMA path.
 	 *
 	 * Since timer function acqures port->lock, need to stop before
-	 * acquring same lock because otherwise del_timer_sync() can deadlock.
+	 * acquring same lock because otherwise timer_delete_sync() can deadlock.
 	 */
 	if (old && sport->lpuart_dma_rx_use)
 		lpuart_dma_rx_free(port);
@@ -3231,7 +3234,7 @@ static const struct dev_pm_ops lpuart_pm_ops = {
 
 static struct platform_driver lpuart_driver = {
 	.probe		= lpuart_probe,
-	.remove_new	= lpuart_remove,
+	.remove		= lpuart_remove,
 	.driver		= {
 		.name	= "fsl-lpuart",
 		.of_match_table = lpuart_dt_ids,

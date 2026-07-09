@@ -392,21 +392,23 @@ xen_swiotlb_sync_sg_for_device(struct device *dev, struct scatterlist *sgl,
 	}
 }
 
-/*swiotlb means disable IOMMU*/
-static dma_addr_t xen_swiotlb_dma_map_resource(struct device *dev, phys_addr_t phys_addr,
-					       size_t size, enum dma_data_direction dir,
-					       unsigned long attrs)
+static dma_addr_t xen_swiotlb_direct_map_resource(struct device *dev,
+						  phys_addr_t paddr,
+						  size_t size,
+						  enum dma_data_direction dir,
+						  unsigned long attrs)
 {
-	dma_addr_t addr = DMA_MAPPING_ERROR;
+	dma_addr_t dma_addr = paddr;
 
-	addr = dma_direct_map_resource(dev, phys_addr, size, dir, attrs);
-	return addr;
-}
+	if (unlikely(!dma_capable(dev, dma_addr, size, false))) {
+		dev_err_once(dev,
+			     "DMA addr %pad+%zu overflow (mask %llx, bus limit %llx).\n",
+			     &dma_addr, size, *dev->dma_mask, dev->bus_dma_limit);
+		WARN_ON_ONCE(1);
+		return DMA_MAPPING_ERROR;
+	}
 
-static void xen_swiotlb_dma_unmap_resource(struct device *dev, dma_addr_t addr, size_t size,
-					   enum dma_data_direction dir, unsigned long attrs)
-{
-	/*do nothing*/
+	return dma_addr;
 }
 
 /*
@@ -443,6 +445,5 @@ const struct dma_map_ops xen_swiotlb_dma_ops = {
 	.alloc_pages_op = dma_common_alloc_pages,
 	.free_pages = dma_common_free_pages,
 	.max_mapping_size = swiotlb_max_mapping_size,
-	.map_resource = xen_swiotlb_dma_map_resource,
-	.unmap_resource = xen_swiotlb_dma_unmap_resource,
+	.map_resource = xen_swiotlb_direct_map_resource,
 };

@@ -450,7 +450,7 @@ static struct platform_driver ipu_drm_driver = {
 		.name = "imx-ipuv3-crtc",
 	},
 	.probe = ipu_drm_probe,
-	.remove_new = ipu_drm_remove,
+	.remove = ipu_drm_remove,
 };
 module_platform_driver(ipu_drm_driver);
 

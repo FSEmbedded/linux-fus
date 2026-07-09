@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * System control and Management Interface (SCMI) NXP cpu Protocol
+ * System control and Management Interface (SCMI) NXP CPU Protocol
  *
  * Copyright 2025 NXP
  */
-
-#define pr_fmt(fmt) "SCMI CPU - " fmt
 
 #include <linux/bits.h>
 #include <linux/io.h>
@@ -15,7 +13,6 @@
 #include <linux/scmi_protocol.h>
 #include <linux/scmi_imx_protocol.h>
 
-#include "../../common.h"
 #include "../../protocols.h"
 #include "../../notify.h"
 
@@ -33,7 +30,7 @@ struct scmi_imx_cpu_info {
 	u32 nr_cpu;
 };
 
-#define SCMI_IMX_CPU_PROTO_ATTR_NUM_CPUS(x)  ((x) & 0xFFFF)
+#define SCMI_IMX_CPU_NR_CPU_MASK	GENMASK(15, 0)
 struct scmi_msg_imx_cpu_protocol_attributes {
 	__le32 attributes;
 };
@@ -76,39 +73,23 @@ static int scmi_imx_cpu_validate_cpuid(const struct scmi_protocol_handle *ph,
 	return 0;
 }
 
-static int scmi_imx_cpu_start(const struct scmi_protocol_handle *ph, u32 cpuid)
+static int scmi_imx_cpu_start(const struct scmi_protocol_handle *ph,
+			      u32 cpuid, bool start)
 {
 	struct scmi_xfer *t;
+	u8 msg_id;
 	int ret;
 
 	ret = scmi_imx_cpu_validate_cpuid(ph, cpuid);
 	if (ret)
 		return ret;
 
-	ret = ph->xops->xfer_get_init(ph, SCMI_IMX_CPU_START, sizeof(u32),
-				      0, &t);
-	if (ret)
-		return ret;
+	if (start)
+		msg_id = SCMI_IMX_CPU_START;
+	else
+		msg_id = SCMI_IMX_CPU_STOP;
 
-	put_unaligned_le32(cpuid, t->tx.buf);
-	ret = ph->xops->do_xfer(ph, t);
-
-	ph->xops->xfer_put(ph, t);
-
-	return ret;
-}
-
-static int scmi_imx_cpu_stop(const struct scmi_protocol_handle *ph, u32 cpuid)
-{
-	struct scmi_xfer *t;
-	int ret;
-
-	ret = scmi_imx_cpu_validate_cpuid(ph, cpuid);
-	if (ret)
-		return ret;
-
-	ret = ph->xops->xfer_get_init(ph, SCMI_IMX_CPU_STOP, sizeof(u32),
-				      0, &t);
+	ret = ph->xops->xfer_get_init(ph, msg_id, sizeof(u32), 0, &t);
 	if (ret)
 		return ret;
 
@@ -139,9 +120,13 @@ static int scmi_imx_cpu_reset_vector_set(const struct scmi_protocol_handle *ph,
 
 	in = t->tx.buf;
 	in->cpuid = cpu_to_le32(cpuid);
-	in->flags = start ? CPU_VEC_FLAGS_START : 0;
-	in->flags |= boot ? CPU_VEC_FLAGS_BOOT : 0;
-	in->flags |= resume ? CPU_VEC_FLAGS_BOOT : 0;
+	in->flags = cpu_to_le32(0);
+	if (start)
+		in->flags |= le32_encode_bits(1, CPU_VEC_FLAGS_START);
+	if (boot)
+		in->flags |= le32_encode_bits(1, CPU_VEC_FLAGS_BOOT);
+	if (resume)
+		in->flags |= le32_encode_bits(1, CPU_VEC_FLAGS_RESUME);
 	in->resetvectorlow = cpu_to_le32(lower_32_bits(vector));
 	in->resetvectorhigh = cpu_to_le32(upper_32_bits(vector));
 	ret = ph->xops->do_xfer(ph, t);
@@ -156,7 +141,11 @@ static int scmi_imx_cpu_started(const struct scmi_protocol_handle *ph, u32 cpuid
 {
 	struct scmi_imx_cpu_info_get_out *out;
 	struct scmi_xfer *t;
+	u32 mode;
 	int ret;
+
+	if (!started)
+		return -EINVAL;
 
 	*started = false;
 	ret = scmi_imx_cpu_validate_cpuid(ph, cpuid);
@@ -172,8 +161,8 @@ static int scmi_imx_cpu_started(const struct scmi_protocol_handle *ph, u32 cpuid
 	ret = ph->xops->do_xfer(ph, t);
 	if (!ret) {
 		out = t->rx.buf;
-		if ((out->runmode == CPU_RUN_MODE_START) ||
-		    (out->runmode == CPU_RUN_MODE_SLEEP))
+		mode = le32_to_cpu(out->runmode);
+		if (mode == CPU_RUN_MODE_START || mode == CPU_RUN_MODE_SLEEP)
 			*started = true;
 	}
 
@@ -186,7 +175,6 @@ static const struct scmi_imx_cpu_proto_ops scmi_imx_cpu_proto_ops = {
 	.cpu_reset_vector_set = scmi_imx_cpu_reset_vector_set,
 	.cpu_start = scmi_imx_cpu_start,
 	.cpu_started = scmi_imx_cpu_started,
-	.cpu_stop = scmi_imx_cpu_stop,
 };
 
 static int scmi_imx_cpu_protocol_attributes_get(const struct scmi_protocol_handle *ph,
@@ -205,8 +193,8 @@ static int scmi_imx_cpu_protocol_attributes_get(const struct scmi_protocol_handl
 
 	ret = ph->xops->do_xfer(ph, t);
 	if (!ret) {
-		info->nr_cpu = SCMI_IMX_CPU_PROTO_ATTR_NUM_CPUS(attr->attributes);
-		dev_info(ph->dev, "i.MX SM MAX CPU: %d cpus\n",
+		info->nr_cpu = le32_get_bits(attr->attributes, SCMI_IMX_CPU_NR_CPU_MASK);
+		dev_info(ph->dev, "i.MX SM CPU: %d cpus\n",
 			 info->nr_cpu);
 	}
 
@@ -216,9 +204,10 @@ static int scmi_imx_cpu_protocol_attributes_get(const struct scmi_protocol_handl
 }
 
 static int scmi_imx_cpu_attributes_get(const struct scmi_protocol_handle *ph,
-				       u32 cpuid, struct scmi_imx_cpu_info *info)
+				       u32 cpuid)
 {
 	struct scmi_msg_imx_cpu_attributes_out *out;
+	char name[SCMI_SHORT_NAME_MAX_SIZE] = {'\0'};
 	struct scmi_xfer *t;
 	int ret;
 
@@ -230,19 +219,16 @@ static int scmi_imx_cpu_attributes_get(const struct scmi_protocol_handle *ph,
 	ret = ph->xops->do_xfer(ph, t);
 	if (!ret) {
 		out = t->rx.buf;
-		dev_info(ph->dev, "i.MX CPU: name: %s\n", out->name);
+		strscpy(name, out->name, SCMI_SHORT_NAME_MAX_SIZE);
+		dev_info(ph->dev, "i.MX CPU: name: %s\n", name);
 	} else {
-		dev_err(ph->dev, "i.MX cpu: CPU unavailable cpu(%u)\n", cpuid);
-		/* CPU is disabled in fuses */
-		if (ret == -ENOENT)
-			ret = 0;
+		dev_err(ph->dev, "i.MX cpu: Failed to get info of cpu(%u)\n", cpuid);
 	}
 
 	ph->xops->xfer_put(ph, t);
 
 	return ret;
 }
-
 
 static int scmi_imx_cpu_protocol_init(const struct scmi_protocol_handle *ph)
 {
@@ -266,7 +252,7 @@ static int scmi_imx_cpu_protocol_init(const struct scmi_protocol_handle *ph)
 		return ret;
 
 	for (i = 0; i < info->nr_cpu; i++) {
-		ret = scmi_imx_cpu_attributes_get(ph, i, info);
+		ret = scmi_imx_cpu_attributes_get(ph, i);
 		if (ret)
 			return ret;
 	}
@@ -280,10 +266,11 @@ static const struct scmi_protocol scmi_imx_cpu = {
 	.instance_init = &scmi_imx_cpu_protocol_init,
 	.ops = &scmi_imx_cpu_proto_ops,
 	.supported_version = SCMI_PROTOCOL_SUPPORTED_VERSION,
-	.vendor_id = "NXP",
-	.sub_vendor_id = "IMX",
+	.vendor_id = SCMI_IMX_VENDOR,
+	.sub_vendor_id = SCMI_IMX_SUBVENDOR,
 };
 module_scmi_protocol(scmi_imx_cpu);
 
+MODULE_ALIAS("scmi-protocol-" __stringify(SCMI_PROTOCOL_IMX_CPU) "-" SCMI_IMX_VENDOR);
 MODULE_DESCRIPTION("i.MX SCMI CPU driver");
 MODULE_LICENSE("GPL");

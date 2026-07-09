@@ -52,7 +52,7 @@ struct venc_t {
 	u32 ready_count;
 	u32 enable;
 	u32 stopped;
-	bool memory_resource_configured;
+	u32 memory_resource_configured;
 
 	u32 skipped_count;
 	u32 skipped_bytes;

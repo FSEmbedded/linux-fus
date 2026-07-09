@@ -21,10 +21,7 @@ properties:
     enum:
       - fsl,imx8mn-isi
       - fsl,imx8mp-isi
-      - fsl,imx8qm-isi
-      - fsl,imx8qxp-isi
       - fsl,imx8ulp-isi
-      - fsl,imx91-isi
       - fsl,imx93-isi
 
   reg:
@@ -99,7 +96,6 @@ allOf:
             enum:
               - fsl,imx8mn-isi
               - fsl,imx8ulp-isi
-              - fsl,imx91-isi
               - fsl,imx93-isi
     then:
       properties:

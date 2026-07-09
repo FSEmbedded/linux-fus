@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0
-/*
- * Copyright 2023 NXP.
- * NXP PF0900 pmic driver
- */
+// Copyright 2025 NXP.
+// NXP PF0900 pmic driver
 
+#include <linux/bitfield.h>
+#include <linux/crc8.h>
 #include <linux/err.h>
 #include <linux/gpio/consumer.h>
 #include <linux/i2c.h>
@@ -13,32 +13,275 @@
 #include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/platform_device.h>
+#include <linux/regmap.h>
 #include <linux/regulator/driver.h>
 #include <linux/regulator/machine.h>
 #include <linux/regulator/of_regulator.h>
-#include <linux/regulator/pf0900.h>
-#include <linux/crc8.h>
 
-struct pf0900_dvs_config {
-	unsigned int run_reg;
-	unsigned int run_mask;
-	unsigned int standby_reg;
-	unsigned int standby_mask;
+enum pf0900_regulators {
+	PF0900_SW1 = 0,
+	PF0900_SW2,
+	PF0900_SW3,
+	PF0900_SW4,
+	PF0900_SW5,
+	PF0900_LDO1,
+	PF0900_LDO2,
+	PF0900_LDO3,
+	PF0900_VAON,
+	PF0900_REGULATOR_CNT,
 };
+
+enum {
+	PF0900_DVS_LEVEL_RUN = 0,
+	PF0900_DVS_LEVEL_STANDBY,
+	PF0900_DVS_LEVEL_MAX,
+};
+
+
+#define PF0900_VAON_VOLTAGE_NUM 0x03
+#define PF0900_SW_VOLTAGE_NUM   0x100
+#define PF0900_LDO_VOLTAGE_NUM  0x20
+
+#define REGU_SW_CNT             0x5
+#define REGU_LDO_VAON_CNT       0x4
+
+enum {
+	PF0900_REG_DEV_ID	    = 0x00,
+	PF0900_REG_DEV_FAM	    = 0x01,
+	PF0900_REG_REV_ID	    = 0x02,
+	PF0900_REG_PROG_ID1	    = 0x03,
+	PF0900_REG_PROG_ID2	    = 0x04,
+	PF0900_REG_SYSTEM_INT	    = 0x05,
+	PF0900_REG_STATUS1_INT	    = 0x06,
+	PF0900_REG_STATUS1_MSK      = 0x07,
+	PF0900_REG_STATUS1_SNS	    = 0x08,
+	PF0900_REG_STATUS2_INT      = 0x09,
+	PF0900_REG_STATUS2_MSK      = 0x0A,
+	PF0900_REG_STATUS2_SNS	    = 0x0B,
+	PF0900_REG_STATUS3_INT      = 0x0C,
+	PF0900_REG_STATUS3_MSK      = 0x0D,
+	PF0900_REG_SW_MODE_INT      = 0x0E,
+	PF0900_REG_SW_MODE_MSK      = 0x0F,
+	PF0900_REG_SW_ILIM_INT      = 0x10,
+	PF0900_REG_SW_ILIM_MSK      = 0x11,
+	PF0900_REG_SW_ILIM_SNS      = 0x12,
+	PF0900_REG_LDO_ILIM_INT     = 0x13,
+	PF0900_REG_LDO_ILIM_MSK     = 0x14,
+	PF0900_REG_LDO_ILIM_SNS     = 0x15,
+	PF0900_REG_SW_UV_INT        = 0x16,
+	PF0900_REG_SW_UV_MSK        = 0x17,
+	PF0900_REG_SW_UV_SNS        = 0x18,
+	PF0900_REG_SW_OV_INT        = 0x19,
+	PF0900_REG_SW_OV_MSK        = 0x1A,
+	PF0900_REG_SW_OV_SNS        = 0x1B,
+	PF0900_REG_LDO_UV_INT       = 0x1C,
+	PF0900_REG_LDO_UV_MSK       = 0x1D,
+	PF0900_REG_LDO_UV_SNS       = 0x1E,
+	PF0900_REG_LDO_OV_INT       = 0x1F,
+	PF0900_REG_LDO_OV_MSK       = 0x20,
+	PF0900_REG_LDO_OV_SNS       = 0x21,
+	PF0900_REG_PWRON_INT        = 0x22,
+	PF0900_REG_IO_INT           = 0x24,
+	PF0900_REG_IO_MSK           = 0x25,
+	PF0900_REG_IO_SNS           = 0x26,
+	PF0900_REG_IOSHORT_SNS      = 0x27,
+	PF0900_REG_ABIST_OV1        = 0x28,
+	PF0900_REG_ABIST_OV2        = 0x29,
+	PF0900_REG_ABIST_UV1        = 0x2A,
+	PF0900_REG_ABIST_UV2        = 0x2B,
+	PF0900_REG_ABIST_IO         = 0x2C,
+	PF0900_REG_TEST_FLAGS       = 0x2D,
+	PF0900_REG_HFAULT_FLAGS     = 0x2E,
+	PF0900_REG_FAULT_FLAGS      = 0x2F,
+	PF0900_REG_FS0B_CFG         = 0x30,
+	PF0900_REG_FCCU_CFG         = 0x31,
+	PF0900_REG_RSTB_CFG1        = 0x32,
+	PF0900_REG_SYSTEM_CMD       = 0x33,
+	PF0900_REG_FS0B_CMD         = 0x34,
+	PF0900_REG_SECURE_WR1       = 0x35,
+	PF0900_REG_SECURE_WR2       = 0x36,
+	PF0900_REG_VMON_CFG1        = 0x37,
+	PF0900_REG_SYS_CFG1         = 0x38,
+	PF0900_REG_GPO_CFG          = 0x39,
+	PF0900_REG_GPO_CTRL         = 0x3A,
+	PF0900_REG_PWRUP_CFG        = 0x3B,
+	PF0900_REG_RSTB_PWRUP       = 0x3C,
+	PF0900_REG_GPIO1_PWRUP      = 0x3D,
+	PF0900_REG_GPIO2_PWRUP      = 0x3E,
+	PF0900_REG_GPIO3_PWRUP      = 0x3F,
+	PF0900_REG_GPIO4_PWRUP      = 0x40,
+	PF0900_REG_VMON1_PWRUP      = 0x41,
+	PF0900_REG_VMON2_PWRUP      = 0x42,
+	PF0900_REG_SW1_PWRUP        = 0x43,
+	PF0900_REG_SW2_PWRUP        = 0x44,
+	PF0900_REG_SW3_PWRUP        = 0x45,
+	PF0900_REG_SW4_PWRUP        = 0x46,
+	PF0900_REG_SW5_PWRUP        = 0x47,
+	PF0900_REG_LDO1_PWRUP       = 0x48,
+	PF0900_REG_LDO2_PWRUP       = 0x49,
+	PF0900_REG_LDO3_PWRUP       = 0x4A,
+	PF0900_REG_VAON_PWRUP       = 0x4B,
+	PF0900_REG_FREQ_CTRL        = 0x4C,
+	PF0900_REG_PWRON_CFG        = 0x4D,
+	PF0900_REG_WD_CTRL1         = 0x4E,
+	PF0900_REG_WD_CTRL2         = 0x4F,
+	PF0900_REG_WD_CFG1          = 0x50,
+	PF0900_REG_WD_CFG2          = 0x51,
+	PF0900_REG_WD_CNT1          = 0x52,
+	PF0900_REG_WD_CNT2          = 0x53,
+	PF0900_REG_FAULT_CFG        = 0x54,
+	PF0900_REG_FAULT_CNT        = 0x55,
+	PF0900_REG_DFS_CNT          = 0x56,
+	PF0900_REG_AMUX_CFG         = 0x57,
+	PF0900_REG_VMON1_RUN_CFG    = 0x58,
+	PF0900_REG_VMON1_STBY_CFG   = 0x59,
+	PF0900_REG_VMON1_CTRL       = 0x5A,
+	PF0900_REG_VMON2_RUN_CFG    = 0x5B,
+	PF0900_REG_VMON2_STBY_CFG   = 0x5C,
+	PF0900_REG_VMON2_CTRL       = 0x5D,
+	PF0900_REG_SW1_VRUN         = 0x5E,
+	PF0900_REG_SW1_VSTBY        = 0x5F,
+	PF0900_REG_SW1_MODE         = 0x60,
+	PF0900_REG_SW1_CFG1         = 0x61,
+	PF0900_REG_SW1_CFG2         = 0x62,
+	PF0900_REG_SW2_VRUN         = 0x63,
+	PF0900_REG_SW2_VSTBY        = 0x64,
+	PF0900_REG_SW2_MODE         = 0x65,
+	PF0900_REG_SW2_CFG1         = 0x66,
+	PF0900_REG_SW2_CFG2         = 0x67,
+	PF0900_REG_SW3_VRUN         = 0x68,
+	PF0900_REG_SW3_VSTBY        = 0x69,
+	PF0900_REG_SW3_MODE         = 0x6A,
+	PF0900_REG_SW3_CFG1         = 0x6B,
+	PF0900_REG_SW3_CFG2         = 0x6C,
+	PF0900_REG_SW4_VRUN         = 0x6D,
+	PF0900_REG_SW4_VSTBY        = 0x6E,
+	PF0900_REG_SW4_MODE         = 0x6F,
+	PF0900_REG_SW4_CFG1         = 0x70,
+	PF0900_REG_SW4_CFG2         = 0x71,
+	PF0900_REG_SW5_VRUN         = 0x72,
+	PF0900_REG_SW5_VSTBY        = 0x73,
+	PF0900_REG_SW5_MODE         = 0x74,
+	PF0900_REG_SW5_CFG1         = 0x75,
+	PF0900_REG_SW5_CFG2         = 0x76,
+	PF0900_REG_LDO1_RUN         = 0x77,
+	PF0900_REG_LDO1_STBY        = 0x78,
+	PF0900_REG_LDO1_CFG2        = 0x79,
+	PF0900_REG_LDO2_RUN         = 0x7A,
+	PF0900_REG_LDO2_STBY        = 0x7B,
+	PF0900_REG_LDO2_CFG2        = 0x7C,
+	PF0900_REG_LDO3_RUN         = 0x7D,
+	PF0900_REG_LDO3_STBY        = 0x7E,
+	PF0900_REG_LDO3_CFG2        = 0x7F,
+	PF0900_REG_VAON_CFG1        = 0x80,
+	PF0900_REG_VAON_CFG2        = 0x81,
+	PF0900_REG_SYS_DIAG         = 0x82,
+	PF0900_MAX_REGISTER,
+};
+
+/* PF0900 SW MODE */
+#define SW_RUN_MODE_OFF                 0x00
+#define SW_RUN_MODE_PWM                 0x01
+#define SW_RUN_MODE_PFM                 0x02
+#define SW_STBY_MODE_OFF                0x00
+#define SW_STBY_MODE_PWM                0x04
+#define SW_STBY_MODE_PFM                0x08
+
+/* PF0900 SW MODE MASK */
+#define SW_RUN_MODE_MASK                GENMASK(1, 0)
+#define SW_STBY_MODE_MASK               GENMASK(3, 2)
+
+/* PF0900 SW VRUN/VSTBY MASK */
+#define PF0900_SW_VOL_MASK              GENMASK(7, 0)
+
+/* PF0900_REG_VAON_CFG1 bits */
+#define PF0900_VAON_1P8V                0x01
+
+#define PF0900_VAON_MASK                GENMASK(1, 0)
+
+/* PF0900_REG_SWX_CFG1 MASK */
+#define PF0900_SW_DVS_MASK              GENMASK(4, 3)
+
+/* PF0900_REG_LDO_RUN MASK */
+#define VLDO_RUN_MASK                   GENMASK(4, 0)
+#define LDO_RUN_EN_MASK                 BIT(5)
+
+/* PF0900_REG_STATUS1_INT bits */
+#define PF0900_IRQ_PWRUP                BIT(3)
+
+/* PF0900_REG_ILIM_INT bits */
+#define PF0900_IRQ_SW1_IL               BIT(0)
+#define PF0900_IRQ_SW2_IL               BIT(1)
+#define PF0900_IRQ_SW3_IL               BIT(2)
+#define PF0900_IRQ_SW4_IL               BIT(3)
+#define PF0900_IRQ_SW5_IL               BIT(4)
+
+#define PF0900_IRQ_LDO1_IL              BIT(0)
+#define PF0900_IRQ_LDO2_IL              BIT(1)
+#define PF0900_IRQ_LDO3_IL              BIT(2)
+
+/* PF0900_REG_UV_INT bits */
+#define PF0900_IRQ_SW1_UV               BIT(0)
+#define PF0900_IRQ_SW2_UV               BIT(1)
+#define PF0900_IRQ_SW3_UV               BIT(2)
+#define PF0900_IRQ_SW4_UV               BIT(3)
+#define PF0900_IRQ_SW5_UV               BIT(4)
+
+#define PF0900_IRQ_LDO1_UV              BIT(0)
+#define PF0900_IRQ_LDO2_UV              BIT(1)
+#define PF0900_IRQ_LDO3_UV              BIT(2)
+#define PF0900_IRQ_VAON_UV              BIT(3)
+
+/* PF0900_REG_OV_INT bits */
+#define PF0900_IRQ_SW1_OV               BIT(0)
+#define PF0900_IRQ_SW2_OV               BIT(1)
+#define PF0900_IRQ_SW3_OV               BIT(2)
+#define PF0900_IRQ_SW4_OV               BIT(3)
+#define PF0900_IRQ_SW5_OV               BIT(4)
+
+#define PF0900_IRQ_LDO1_OV              BIT(0)
+#define PF0900_IRQ_LDO2_OV              BIT(1)
+#define PF0900_IRQ_LDO3_OV              BIT(2)
+#define PF0900_IRQ_VAON_OV              BIT(3)
 
 struct pf0900_regulator_desc {
 	struct regulator_desc desc;
-	const struct pf0900_dvs_config dvs;
+	unsigned int suspend_enable_mask;
+	unsigned int suspend_voltage_reg;
+	unsigned int suspend_voltage_cache;
+};
+
+struct pf0900_drvdata {
+	const struct pf0900_regulator_desc *desc;
+	unsigned int rcnt;
 };
 
 struct pf0900 {
 	struct device *dev;
 	struct regmap *regmap;
-	enum pf0900_chip_type type;
-	unsigned int rcnt;
+	const struct pf0900_drvdata *drvdata;
+	struct regulator_dev *rdevs[PF0900_REGULATOR_CNT];
 	int irq;
 	unsigned short addr;
 	bool crc_en;
+};
+
+enum pf0900_regulator_type {
+	PF0900_SW = 0,
+	PF0900_LDO,
+};
+
+#define PF0900_REGU_IRQ(_reg, _type, _event)	\
+	{					\
+		.reg = _reg,			\
+		.type = _type,			\
+		.event = _event,		\
+	}
+
+struct pf0900_regulator_irq {
+	unsigned int  reg;
+	unsigned int  type;
+	unsigned int  event;
 };
 
 static const struct regmap_range pf0900_range = {
@@ -56,17 +299,36 @@ static const struct regmap_config pf0900_regmap_config = {
 	.val_bits = 8,
 	.volatile_table = &pf0900_volatile_regs,
 	.max_register = PF0900_MAX_REGISTER - 1,
-	.cache_type = REGCACHE_RBTREE,
+	.cache_type = REGCACHE_MAPLE,
 };
 
-static uint8_t crc8_j1850(uint8_t *data, uint8_t length)
+static uint8_t crc8_j1850(unsigned short addr, unsigned int reg,
+			  unsigned int val)
 {
+	uint8_t crcBuf[3];
 	uint8_t t_crc;
 	uint8_t i, j;
 
+	crcBuf[0] = addr;
+	crcBuf[1] = reg;
+	crcBuf[2] = val;
 	t_crc = 0xFF;
-	for (i = 0; i < length; i++) {
-		t_crc ^= data[i];
+
+	/*
+	 * The CRC calculation is based on the standard CRC-8-SAE as
+	 * defined in the SAE-J1850 specification with the following
+	 * characteristics.
+	 * Polynomial = 0x1D
+	 * Initial Value = 0xFF
+	 * The CRC byte is calculated by shifting 24-bit data through
+	 * the CRC polynomial.The 24-bits package is built as follows:
+	 * DEVICE_ADDR[b8] + REGISTER_ADDR [b8] +DATA[b8]
+	 * The DEVICE_ADDR is calculated as the 7-bit slave address
+	 * shifted left one space plus the corresponding read/write bit.
+	 * (7Bit Address [b7] << 1 ) + R/W = DEVICE_ADDR[b8]
+	 */
+	for (i = 0; i < sizeof(crcBuf); i++) {
+		t_crc ^= crcBuf[i];
 		for (j = 0; j < 8; j++) {
 			if ((t_crc & 0x80) != 0) {
 				t_crc <<= 1;
@@ -76,311 +338,167 @@ static uint8_t crc8_j1850(uint8_t *data, uint8_t length)
 			}
 		}
 	}
+
 	return t_crc;
 }
 
-static int pf0900_pmic_read(struct pf0900 *pf0900, unsigned int reg,
-			    unsigned int *val)
+static int pf0900_regmap_read(void *context, unsigned int reg,
+			      unsigned int *val)
 {
-	u8 crcBuf[3];
-	u8 data[2], crc;
+	struct device *dev = context;
+	struct i2c_client *i2c = to_i2c_client(dev);
+	struct pf0900 *pf0900 = dev_get_drvdata(dev);
 	int ret;
+	u8 crc;
 
-	if (reg < PF0900_MAX_REGISTER) {
-		ret = regmap_raw_read(pf0900->regmap, reg, data,
-				      pf0900->crc_en ? 2U : 1U);
-		if (ret)
-			return ret;
+	if (!pf0900 || !pf0900->dev)
+		return -EINVAL;
 
-		*val = data[0];
-		if (pf0900->crc_en) {
-			/* Get CRC */
-			crcBuf[0] = pf0900->addr << 1U | 0x1U;
-			crcBuf[1] = reg;
-			crcBuf[2] = data[0];
-			crc = crc8_j1850(crcBuf, 3U);
-
-			if (crc != data[1])
-				return -EINVAL;
-		} else {
-			return ret;
-		}
-	} else {
+	if (reg >= PF0900_MAX_REGISTER) {
+		dev_err(pf0900->dev, "Invalid register address: 0x%x\n", reg);
 		return -EINVAL;
 	}
-	return ret;
-}
 
-static int pf0900_pmic_write(struct pf0900 *pf0900, unsigned int reg,
-			     unsigned int val, uint8_t mask)
-{
-	uint8_t crcBuf[3];
-	uint8_t data[2];
-	unsigned int rxBuf;
-	int ret = -EINVAL;
-
-	/* If not updating entire register, perform a read-mod-write */
-	data[0] = val;
-
-	if (mask != 0xFFU) {
-		/* Read data */
-		ret = pf0900_pmic_read(pf0900, reg, &rxBuf);
-		if (ret) {
-			dev_err(pf0900->dev, "Read reg=%0x error!\n", reg);
+	if (pf0900->crc_en) {
+		ret = i2c_smbus_read_word_data(i2c, reg);
+		if (ret < 0) {
+			dev_err(pf0900->dev, "Read error at reg=0x%x: %d\n", reg, ret);
 			return ret;
 		}
-		data[0] = (val & mask) | (rxBuf & (~mask));
-	}
 
-	if (reg < PF0900_MAX_REGISTER) {
-		if (pf0900->crc_en) {
-			/* Get CRC */
-			crcBuf[0] = pf0900->addr << 1U;
-			crcBuf[1] = reg;
-			crcBuf[2] = data[0];
-			data[1] = crc8_j1850(crcBuf, 3U);
+		*val = (u16)ret;
+		crc = crc8_j1850(pf0900->addr << 1 | 0x1, reg, FIELD_GET(GENMASK(7, 0), *val));
+		if (crc != FIELD_GET(GENMASK(15, 8), *val)) {
+			dev_err(pf0900->dev, "Crc check error!\n");
+			return -EINVAL;
 		}
-		/* Write data */
-		ret = regmap_raw_write(pf0900->regmap, reg, data,
-				       pf0900->crc_en ? 2U : 1U);
-		if (ret) {
-			dev_err(pf0900->dev, "Write reg=%0x error!\n", reg);
+		*val = FIELD_GET(GENMASK(7, 0), *val);
+	} else {
+		ret = i2c_smbus_read_byte_data(i2c, reg);
+		if (ret < 0) {
+			dev_err(pf0900->dev, "Read error at reg=0x%x: %d\n", reg, ret);
 			return ret;
 		}
-	}
-
-	return ret;
-}
-
-/**
- * pf0900_regulator_enable_regmap for regmap users
- *
- * @rdev: regulator to operate on
- *
- * Regulators that use regmap for their register I/O can set the
- * enable_reg and enable_mask fields in their descriptor and then use
- * this as their enable() operation, saving some code.
- */
-static int pf0900_regulator_enable_regmap(struct regulator_dev *rdev)
-{
-	unsigned int val;
-	struct pf0900 *pf0900 = dev_get_drvdata(rdev->dev.parent);
-
-	if (rdev->desc->enable_is_inverted) {
-		val = rdev->desc->disable_val;
-	} else {
-		val = rdev->desc->enable_val;
-		if (!val)
-			val = rdev->desc->enable_mask;
-	}
-
-	return pf0900_pmic_write(pf0900, rdev->desc->enable_reg, val,
-				 rdev->desc->enable_mask);
-}
-
-/**
- * pf0900_regulator_disable_regmap for regmap users
- *
- * @rdev: regulator to operate on
- *
- * Regulators that use regmap for their register I/O can set the
- * enable_reg and enable_mask fields in their descriptor and then use
- * this as their disable() operation, saving some code.
- */
-static int pf0900_regulator_disable_regmap(struct regulator_dev *rdev)
-{
-	unsigned int val;
-
-	struct pf0900 *pf0900 = dev_get_drvdata(rdev->dev.parent);
-
-	if (rdev->desc->enable_is_inverted) {
-		val = rdev->desc->enable_val;
-		if (!val)
-			val = rdev->desc->enable_mask;
-	} else {
-		val = rdev->desc->disable_val;
-	}
-
-	return pf0900_pmic_write(pf0900, rdev->desc->enable_reg, val,
-				 rdev->desc->enable_mask);
-}
-
-/**
- * pf0900_regulator_is_enabled_regmap for regmap users
- *
- * @rdev: regulator to operate on
- *
- * Regulators that use regmap for their register I/O can set the
- * enable_reg and enable_mask fields in their descriptor and then use
- * this as their is_enabled operation, saving some code.
- */
-static int pf0900_regulator_is_enabled_regmap(struct regulator_dev *rdev)
-{
-	unsigned int val;
-	int ret;
-	struct pf0900 *pf0900 = dev_get_drvdata(rdev->dev.parent);
-
-	ret = pf0900_pmic_read(pf0900, rdev->desc->enable_reg, &val);
-	if (ret != 0)
-		return ret;
-
-	val &= rdev->desc->enable_mask;
-
-	if (rdev->desc->enable_is_inverted) {
-		if (rdev->desc->enable_val)
-			return val != rdev->desc->enable_val;
-		return val == 0;
-	} else {
-		if (rdev->desc->enable_val)
-			return val == rdev->desc->enable_val;
-		return val != 0;
-	}
-}
-
-/**
- * pf0900_regulator_set_voltage_sel_regmap for regmap users
- *
- * @rdev: regulator to operate on
- * @sel: Selector to set
- *
- * Regulators that use regmap for their register I/O can set the
- * vsel_reg and vsel_mask fields in their descriptor and then use this
- * as their set_voltage_vsel operation, saving some code.
- */
-static int pf0900_regulator_set_voltage_sel_regmap(struct regulator_dev *rdev,
-					    unsigned int sel)
-{
-	int ret;
-	struct pf0900 *pf0900 = dev_get_drvdata(rdev->dev.parent);
-
-	sel <<= ffs(rdev->desc->vsel_mask) - 1;
-	ret = pf0900_pmic_write(pf0900, rdev->desc->vsel_reg, sel,
-				rdev->desc->vsel_mask);
-	if (ret)
-		return ret;
-
-	if (rdev->desc->apply_bit)
-		ret = pf0900_pmic_write(pf0900, rdev->desc->apply_reg,
-					rdev->desc->apply_bit,
-					rdev->desc->apply_bit);
-	return ret;
-}
-
-static int find_closest_bigger(unsigned int target, const unsigned int *table,
-			       unsigned int num_sel, unsigned int *sel)
-{
-	unsigned int s, tmp, max, maxsel = 0;
-	bool found = false;
-
-	max = table[0];
-
-	for (s = 0; s < num_sel; s++) {
-		if (table[s] > max) {
-			max = table[s];
-			maxsel = s;
-		}
-		if (table[s] >= target) {
-			if (!found || table[s] - target < tmp - target) {
-				tmp = table[s];
-				*sel = s;
-				found = true;
-				if (tmp == target)
-					break;
-			}
-		}
-	}
-
-	if (!found) {
-		*sel = maxsel;
-		return -EINVAL;
+		*val = ret;
 	}
 
 	return 0;
 }
 
-/**
- * pf0900_regulator_set_ramp_delay_regmap
- *
- * @rdev: regulator to operate on
- *
- * Regulators that use regmap for their register I/O can set the ramp_reg
- * and ramp_mask fields in their descriptor and then use this as their
- * set_ramp_delay operation, saving some code.
- */
-static int pf0900_regulator_set_ramp_delay_regmap(struct regulator_dev *rdev,
-					   int ramp_delay)
+static int pf0900_regmap_write(void *context, unsigned int reg,
+			       unsigned int val)
 {
+	struct device *dev = context;
+	struct i2c_client *i2c = to_i2c_client(dev);
+	struct pf0900 *pf0900 = dev_get_drvdata(dev);
+	uint8_t data[2];
 	int ret;
-	unsigned int sel;
-	struct pf0900 *pf0900 = dev_get_drvdata(rdev->dev.parent);
 
-	if (WARN_ON(!rdev->desc->n_ramp_values || !rdev->desc->ramp_delay_table))
+	if (!pf0900 || !pf0900->dev)
 		return -EINVAL;
 
-	ret = find_closest_bigger(ramp_delay, rdev->desc->ramp_delay_table,
-				  rdev->desc->n_ramp_values, &sel);
-
-	if (ret) {
-		dev_warn(rdev_get_dev(rdev),
-			 "Can't set ramp-delay %u, setting %u\n", ramp_delay,
-			 rdev->desc->ramp_delay_table[sel]);
+	if (reg >= PF0900_MAX_REGISTER) {
+		dev_err(pf0900->dev, "Invalid register address: 0x%x\n", reg);
+		return -EINVAL;
 	}
 
-	sel <<= ffs(rdev->desc->ramp_mask) - 1;
+	data[0] = val;
+	if (pf0900->crc_en) {
+		/* Get CRC */
+		data[1] = crc8_j1850(pf0900->addr << 1, reg, data[0]);
+		val = FIELD_PREP(GENMASK(15, 8), data[1]) | data[0];
+		ret = i2c_smbus_write_word_data(i2c, reg, val);
+	} else {
+		ret = i2c_smbus_write_byte_data(i2c, reg, data[0]);
+	}
 
-	return pf0900_pmic_write(pf0900, rdev->desc->ramp_reg, sel,
-				 rdev->desc->ramp_mask);
-}
-
-/**
- * pf0900_regulator_get_voltage_sel_regmap for regmap users
- *
- * @rdev: regulator to operate on
- *
- * Regulators that use regmap for their register I/O can set the
- * vsel_reg and vsel_mask fields in their descriptor and then use this
- * as their get_voltage_vsel operation, saving some code.
- */
-static int pf0900_regulator_get_voltage_sel_regmap(struct regulator_dev *rdev)
-{
-	unsigned int val;
-	int ret;
-	struct pf0900 *pf0900 = dev_get_drvdata(rdev->dev.parent);
-
-	ret = pf0900_pmic_read(pf0900, rdev->desc->vsel_reg, &val);
-	if (ret != 0)
+	if (ret) {
+		dev_err(pf0900->dev, "Write reg=0x%x error!\n", reg);
 		return ret;
+	}
 
-	val &= rdev->desc->vsel_mask;
-	val >>= ffs(rdev->desc->vsel_mask) - 1;
-
-	return val;
+	return 0;
 }
+
+static int pf0900_suspend_enable(struct regulator_dev *rdev)
+{
+	struct pf0900_regulator_desc *rdata = rdev_get_drvdata(rdev);
+	struct regmap *rmap = rdev_get_regmap(rdev);
+
+	return regmap_update_bits(rmap, rdata->desc.enable_reg,
+				  rdata->suspend_enable_mask, SW_STBY_MODE_PFM);
+}
+
+static int pf0900_suspend_disable(struct regulator_dev *rdev)
+{
+	struct pf0900_regulator_desc *rdata = rdev_get_drvdata(rdev);
+	struct regmap *rmap = rdev_get_regmap(rdev);
+
+	return regmap_update_bits(rmap, rdata->desc.enable_reg,
+				  rdata->suspend_enable_mask, SW_STBY_MODE_OFF);
+}
+
+static int pf0900_set_suspend_voltage(struct regulator_dev *rdev, int uV)
+{
+	struct pf0900_regulator_desc *rdata = rdev_get_drvdata(rdev);
+	struct regmap *rmap = rdev_get_regmap(rdev);
+	int ret;
+
+	if (rdata->suspend_voltage_cache == uV)
+		return 0;
+
+	ret = regulator_map_voltage_iterate(rdev, uV, uV);
+	if (ret < 0) {
+		dev_err(rdev_get_dev(rdev), "failed to map %i uV\n", uV);
+		return ret;
+	}
+
+	dev_dbg(rdev_get_dev(rdev), "uV: %i, reg: 0x%x, msk: 0x%x, val: 0x%x\n",
+		uV, rdata->suspend_voltage_reg, rdata->desc.vsel_mask, ret);
+	ret = regmap_update_bits(rmap, rdata->suspend_voltage_reg,
+				 rdata->desc.vsel_mask, ret);
+	if (ret < 0) {
+		dev_err(rdev_get_dev(rdev), "failed to set %i uV\n", uV);
+		return ret;
+	}
+
+	rdata->suspend_voltage_cache = uV;
+
+	return 0;
+}
+
+static const struct regmap_bus pf0900_regmap_bus = {
+	.reg_read = pf0900_regmap_read,
+	.reg_write = pf0900_regmap_write,
+};
 
 static const struct regulator_ops pf0900_avon_regulator_ops = {
 	.list_voltage = regulator_list_voltage_table,
-	.set_voltage_sel = pf0900_regulator_set_voltage_sel_regmap,
-	.get_voltage_sel = pf0900_regulator_get_voltage_sel_regmap,
+	.set_voltage_sel = regulator_set_voltage_sel_regmap,
+	.get_voltage_sel = regulator_get_voltage_sel_regmap,
 };
 
 static const struct regulator_ops pf0900_dvs_sw_regulator_ops = {
-	.enable = pf0900_regulator_enable_regmap,
-	.disable = pf0900_regulator_disable_regmap,
-	.is_enabled = pf0900_regulator_is_enabled_regmap,
+	.enable = regulator_enable_regmap,
+	.disable = regulator_disable_regmap,
+	.is_enabled = regulator_is_enabled_regmap,
 	.list_voltage = regulator_list_voltage_linear_range,
-	.set_voltage_sel = pf0900_regulator_set_voltage_sel_regmap,
-	.get_voltage_sel = pf0900_regulator_get_voltage_sel_regmap,
+	.set_voltage_sel = regulator_set_voltage_sel_regmap,
+	.get_voltage_sel = regulator_get_voltage_sel_regmap,
 	.set_voltage_time_sel = regulator_set_voltage_time_sel,
-	.set_ramp_delay	= pf0900_regulator_set_ramp_delay_regmap,
+	.set_ramp_delay	= regulator_set_ramp_delay_regmap,
+	.set_suspend_enable = pf0900_suspend_enable,
+	.set_suspend_disable = pf0900_suspend_disable,
+	.set_suspend_voltage = pf0900_set_suspend_voltage,
 };
 
 static const struct regulator_ops pf0900_ldo_regulator_ops = {
-	.enable = pf0900_regulator_enable_regmap,
-	.disable = pf0900_regulator_disable_regmap,
-	.is_enabled = pf0900_regulator_is_enabled_regmap,
+	.enable = regulator_enable_regmap,
+	.disable = regulator_disable_regmap,
+	.is_enabled = regulator_is_enabled_regmap,
 	.list_voltage = regulator_list_voltage_linear_range,
-	.set_voltage_sel = pf0900_regulator_set_voltage_sel_regmap,
-	.get_voltage_sel = pf0900_regulator_get_voltage_sel_regmap,
+	.set_voltage_sel = regulator_set_voltage_sel_regmap,
+	.get_voltage_sel = regulator_get_voltage_sel_regmap,
 };
 
 /*
@@ -453,77 +571,190 @@ static const struct linear_range pf0900_ldo23_volts[] = {
 	REGULATOR_LINEAR_RANGE(1800000,  0x10, 0x1F, 100000),
 };
 
-/* SW1 dvs 0.5v to 1.35v
- * SW2-5 dvs 0.3v to 1.35v
- */
-static int sw_set_dvs(const struct regulator_desc *desc, struct pf0900 *pf0900,
-		      struct device_node *np, char *prop, unsigned int reg,
-		      unsigned int mask)
-{
-	int ret, i;
-	uint32_t uv;
-
-	ret = of_property_read_u32(np, prop, &uv);
-	if (ret == -EINVAL)
-		return 0;
-	else if (ret)
-		return ret;
-
-	for (i = 0; i < desc->n_voltages; i++) {
-		ret = regulator_desc_list_voltage_linear_range(desc, i);
-		if (ret < 0)
-			continue;
-		if (ret == uv) {
-			i <<= ffs(desc->vsel_mask) - 1;
-			ret = pf0900_pmic_write(pf0900, reg, i, mask);
-			break;
-		}
-	}
-
-	return ret;
-}
-
-static int pf0900_set_dvs_levels(struct device_node *np,
-				 const struct regulator_desc *desc,
-				 struct regulator_config *cfg)
-{
-	struct pf0900_regulator_desc *data = container_of(desc,
-					struct pf0900_regulator_desc, desc);
-	const struct pf0900_dvs_config *dvs = &data->dvs;
-	struct pf0900 *pf0900 = dev_get_drvdata(cfg->dev);
-	unsigned int reg, mask;
-	char *prop;
-	int i, ret = 0;
-
-	for (i = 0; i < PF0900_DVS_LEVEL_MAX; i++) {
-		switch (i) {
-		case PF0900_DVS_LEVEL_RUN:
-			prop = "nxp,dvs-run-voltage";
-			reg = dvs->run_reg;
-			mask = dvs->run_mask;
-			break;
-		case PF0900_DVS_LEVEL_STANDBY:
-			prop = "nxp,dvs-standby-voltage";
-			reg = dvs->standby_reg;
-			mask = dvs->standby_mask;
-			break;
-		default:
-			return -EINVAL;
-		}
-
-		ret = sw_set_dvs(desc, pf0900, np, prop, reg, mask);
-		if (ret)
-			break;
-	}
-
-	return ret;
-}
-
 static const struct pf0900_regulator_desc pf0900_regulators[] = {
 	{
 		.desc = {
+			.name = "sw1",
+			.of_match = of_match_ptr("sw1"),
+			.regulators_node = of_match_ptr("regulators"),
+			.id = PF0900_SW1,
+			.ops = &pf0900_dvs_sw_regulator_ops,
+			.type = REGULATOR_VOLTAGE,
+			.n_voltages = PF0900_SW_VOLTAGE_NUM,
+			.linear_ranges = pf0900_dvs_sw1_volts,
+			.n_linear_ranges = ARRAY_SIZE(pf0900_dvs_sw1_volts),
+			.vsel_reg = PF0900_REG_SW1_VRUN,
+			.vsel_mask = PF0900_SW_VOL_MASK,
+			.enable_reg = PF0900_REG_SW1_MODE,
+			.enable_mask = SW_RUN_MODE_MASK,
+			.enable_val = SW_RUN_MODE_PWM,
+			.ramp_reg = PF0900_REG_SW1_CFG1,
+			.ramp_mask = PF0900_SW_DVS_MASK,
+			.ramp_delay_table = pf0900_dvs_sw_ramp_table,
+			.n_ramp_values = ARRAY_SIZE(pf0900_dvs_sw_ramp_table),
+			.owner = THIS_MODULE,
+		},
+		.suspend_enable_mask = SW_STBY_MODE_MASK,
+		.suspend_voltage_reg = PF0900_REG_SW1_VSTBY,
+	},
+	{
+		.desc = {
+			.name = "sw2",
+			.of_match = of_match_ptr("sw2"),
+			.regulators_node = of_match_ptr("regulators"),
+			.id = PF0900_SW2,
+			.ops = &pf0900_dvs_sw_regulator_ops,
+			.type = REGULATOR_VOLTAGE,
+			.n_voltages = PF0900_SW_VOLTAGE_NUM,
+			.linear_ranges = pf0900_dvs_sw2345_volts,
+			.n_linear_ranges = ARRAY_SIZE(pf0900_dvs_sw2345_volts),
+			.vsel_reg = PF0900_REG_SW2_VRUN,
+			.vsel_mask = PF0900_SW_VOL_MASK,
+			.enable_reg = PF0900_REG_SW2_MODE,
+			.enable_mask = SW_RUN_MODE_MASK,
+			.enable_val = SW_RUN_MODE_PWM,
+			.ramp_reg = PF0900_REG_SW2_CFG1,
+			.ramp_mask = PF0900_SW_DVS_MASK,
+			.ramp_delay_table = pf0900_dvs_sw_ramp_table,
+			.n_ramp_values = ARRAY_SIZE(pf0900_dvs_sw_ramp_table),
+			.owner = THIS_MODULE,
+		},
+		.suspend_enable_mask = SW_STBY_MODE_MASK,
+		.suspend_voltage_reg = PF0900_REG_SW2_VSTBY,
+	},
+	{
+		.desc = {
+			.name = "sw3",
+			.of_match = of_match_ptr("sw3"),
+			.regulators_node = of_match_ptr("regulators"),
+			.id = PF0900_SW3,
+			.ops = &pf0900_dvs_sw_regulator_ops,
+			.type = REGULATOR_VOLTAGE,
+			.n_voltages = PF0900_SW_VOLTAGE_NUM,
+			.linear_ranges = pf0900_dvs_sw2345_volts,
+			.n_linear_ranges = ARRAY_SIZE(pf0900_dvs_sw2345_volts),
+			.vsel_reg = PF0900_REG_SW3_VRUN,
+			.vsel_mask = PF0900_SW_VOL_MASK,
+			.enable_reg = PF0900_REG_SW3_MODE,
+			.enable_mask = SW_RUN_MODE_MASK,
+			.enable_val = SW_RUN_MODE_PWM,
+			.ramp_reg = PF0900_REG_SW3_CFG1,
+			.ramp_mask = PF0900_SW_DVS_MASK,
+			.ramp_delay_table = pf0900_dvs_sw_ramp_table,
+			.n_ramp_values = ARRAY_SIZE(pf0900_dvs_sw_ramp_table),
+			.owner = THIS_MODULE,
+		},
+		.suspend_enable_mask = SW_STBY_MODE_MASK,
+		.suspend_voltage_reg = PF0900_REG_SW3_VSTBY,
+	},
+	{
+		.desc = {
+			.name = "sw4",
+			.of_match = of_match_ptr("sw4"),
+			.regulators_node = of_match_ptr("regulators"),
+			.id = PF0900_SW4,
+			.ops = &pf0900_dvs_sw_regulator_ops,
+			.type = REGULATOR_VOLTAGE,
+			.n_voltages = PF0900_SW_VOLTAGE_NUM,
+			.linear_ranges = pf0900_dvs_sw2345_volts,
+			.n_linear_ranges = ARRAY_SIZE(pf0900_dvs_sw2345_volts),
+			.vsel_reg = PF0900_REG_SW4_VRUN,
+			.vsel_mask = PF0900_SW_VOL_MASK,
+			.enable_reg = PF0900_REG_SW4_MODE,
+			.enable_mask = SW_RUN_MODE_MASK,
+			.enable_val = SW_RUN_MODE_PWM,
+			.ramp_reg = PF0900_REG_SW4_CFG1,
+			.ramp_mask = PF0900_SW_DVS_MASK,
+			.ramp_delay_table = pf0900_dvs_sw_ramp_table,
+			.n_ramp_values = ARRAY_SIZE(pf0900_dvs_sw_ramp_table),
+			.owner = THIS_MODULE,
+		},
+		.suspend_enable_mask = SW_STBY_MODE_MASK,
+		.suspend_voltage_reg = PF0900_REG_SW4_VSTBY,
+	},
+	{
+		.desc = {
+			.name = "sw5",
+			.of_match = of_match_ptr("sw5"),
+			.regulators_node = of_match_ptr("regulators"),
+			.id = PF0900_SW5,
+			.ops = &pf0900_dvs_sw_regulator_ops,
+			.type = REGULATOR_VOLTAGE,
+			.n_voltages = PF0900_SW_VOLTAGE_NUM,
+			.linear_ranges = pf0900_dvs_sw2345_volts,
+			.n_linear_ranges = ARRAY_SIZE(pf0900_dvs_sw2345_volts),
+			.vsel_reg = PF0900_REG_SW5_VRUN,
+			.vsel_mask = PF0900_SW_VOL_MASK,
+			.enable_reg = PF0900_REG_SW5_MODE,
+			.enable_mask = SW_RUN_MODE_MASK,
+			.enable_val = SW_RUN_MODE_PWM,
+			.ramp_reg = PF0900_REG_SW5_CFG1,
+			.ramp_mask = PF0900_SW_DVS_MASK,
+			.ramp_delay_table = pf0900_dvs_sw_ramp_table,
+			.n_ramp_values = ARRAY_SIZE(pf0900_dvs_sw_ramp_table),
+			.owner = THIS_MODULE,
+		},
+		.suspend_enable_mask = SW_STBY_MODE_MASK,
+		.suspend_voltage_reg = PF0900_REG_SW5_VSTBY,
+	},
+	{
+		.desc = {
+			.name = "ldo1",
+			.of_match = of_match_ptr("ldo1"),
+			.regulators_node = of_match_ptr("regulators"),
+			.id = PF0900_LDO1,
+			.ops = &pf0900_ldo_regulator_ops,
+			.type = REGULATOR_VOLTAGE,
+			.n_voltages = PF0900_LDO_VOLTAGE_NUM,
+			.linear_ranges = pf0900_ldo1_volts,
+			.n_linear_ranges = ARRAY_SIZE(pf0900_ldo1_volts),
+			.vsel_reg = PF0900_REG_LDO1_RUN,
+			.vsel_mask = VLDO_RUN_MASK,
+			.enable_reg = PF0900_REG_LDO1_RUN,
+			.enable_mask = LDO_RUN_EN_MASK,
+			.owner = THIS_MODULE,
+		},
+	},
+	{
+		.desc = {
+			.name = "ldo2",
+			.of_match = of_match_ptr("ldo2"),
+			.regulators_node = of_match_ptr("regulators"),
+			.id = PF0900_LDO2,
+			.ops = &pf0900_ldo_regulator_ops,
+			.type = REGULATOR_VOLTAGE,
+			.n_voltages = PF0900_LDO_VOLTAGE_NUM,
+			.linear_ranges = pf0900_ldo23_volts,
+			.n_linear_ranges = ARRAY_SIZE(pf0900_ldo23_volts),
+			.vsel_reg = PF0900_REG_LDO2_RUN,
+			.vsel_mask = VLDO_RUN_MASK,
+			.enable_reg = PF0900_REG_LDO2_RUN,
+			.enable_mask = LDO_RUN_EN_MASK,
+			.owner = THIS_MODULE,
+		},
+	},
+	{
+		.desc = {
+			.name = "ldo3",
+			.of_match = of_match_ptr("ldo3"),
+			.regulators_node = of_match_ptr("regulators"),
+			.id = PF0900_LDO3,
+			.ops = &pf0900_ldo_regulator_ops,
+			.type = REGULATOR_VOLTAGE,
+			.n_voltages = PF0900_LDO_VOLTAGE_NUM,
+			.linear_ranges = pf0900_ldo23_volts,
+			.n_linear_ranges = ARRAY_SIZE(pf0900_ldo23_volts),
+			.vsel_reg = PF0900_REG_LDO3_RUN,
+			.vsel_mask = VLDO_RUN_MASK,
+			.enable_reg = PF0900_REG_LDO3_RUN,
+			.enable_mask = LDO_RUN_EN_MASK,
+			.owner = THIS_MODULE,
+		},
+	},
+	{
+		.desc = {
 			.name = "vaon",
-			.of_match = of_match_ptr("VAON"),
+			.of_match = of_match_ptr("vaon"),
 			.regulators_node = of_match_ptr("regulators"),
 			.id = PF0900_VAON,
 			.ops = &pf0900_avon_regulator_ops,
@@ -531,435 +762,130 @@ static const struct pf0900_regulator_desc pf0900_regulators[] = {
 			.n_voltages = PF0900_VAON_VOLTAGE_NUM,
 			.volt_table = pf0900_vaon_voltages,
 			.enable_reg = PF0900_REG_VAON_CFG1,
-			.enable_mask = VAON_MASK,
-			.enable_val = VAON_1P8V,
+			.enable_mask = PF0900_VAON_MASK,
+			.enable_val = PF0900_VAON_1P8V,
 			.vsel_reg = PF0900_REG_VAON_CFG1,
-			.vsel_mask = VAON_MASK,
-			.owner = THIS_MODULE,
-		},
-	},
-	{
-		.desc = {
-			.name = "sw1",
-			.of_match = of_match_ptr("SW1"),
-			.regulators_node = of_match_ptr("regulators"),
-			.id = PF0900_SW1,
-			.ops = &pf0900_dvs_sw_regulator_ops,
-			.type = REGULATOR_VOLTAGE,
-			.n_voltages = PF0900_SW1_VOLTAGE_NUM,
-			.linear_ranges = pf0900_dvs_sw1_volts,
-			.n_linear_ranges = ARRAY_SIZE(pf0900_dvs_sw1_volts),
-			.vsel_reg = PF0900_REG_SW1_VRUN,
-			.vsel_mask = SW_VRUN_MASK,
-			.enable_reg = PF0900_REG_SW1_MODE,
-			.enable_mask = SW_RUN_MODE_MASK,
-			.enable_val = SW_RUN_MODE_PWM,
-			.ramp_reg = PF0900_REG_SW1_CFG1,
-			.ramp_mask = SW_RAMP_MASK,
-			.ramp_delay_table = pf0900_dvs_sw_ramp_table,
-			.n_ramp_values = ARRAY_SIZE(pf0900_dvs_sw_ramp_table),
-			.owner = THIS_MODULE,
-			.of_parse_cb = pf0900_set_dvs_levels,
-		},
-		.dvs = {
-			.run_reg = PF0900_REG_SW1_VRUN,
-			.run_mask = SW_VRUN_MASK,
-			.standby_reg = PF0900_REG_SW1_VSTBY,
-			.standby_mask = SW_STBY_MASK,
-		},
-	},
-	{
-		.desc = {
-			.name = "sw2",
-			.of_match = of_match_ptr("SW2"),
-			.regulators_node = of_match_ptr("regulators"),
-			.id = PF0900_SW2,
-			.ops = &pf0900_dvs_sw_regulator_ops,
-			.type = REGULATOR_VOLTAGE,
-			.n_voltages = PF0900_SW2_VOLTAGE_NUM,
-			.linear_ranges = pf0900_dvs_sw2345_volts,
-			.n_linear_ranges = ARRAY_SIZE(pf0900_dvs_sw2345_volts),
-			.vsel_reg = PF0900_REG_SW2_VRUN,
-			.vsel_mask = SW_VRUN_MASK,
-			.enable_reg = PF0900_REG_SW2_MODE,
-			.enable_mask = SW_RUN_MODE_MASK,
-			.enable_val = SW_RUN_MODE_PWM,
-			.ramp_reg = PF0900_REG_SW2_CFG1,
-			.ramp_mask = SW_RAMP_MASK,
-			.ramp_delay_table = pf0900_dvs_sw_ramp_table,
-			.n_ramp_values = ARRAY_SIZE(pf0900_dvs_sw_ramp_table),
-			.owner = THIS_MODULE,
-			.of_parse_cb = pf0900_set_dvs_levels,
-		},
-		.dvs = {
-			.run_reg = PF0900_REG_SW2_VRUN,
-			.run_mask = SW_VRUN_MASK,
-			.standby_reg = PF0900_REG_SW2_VSTBY,
-			.standby_mask = SW_STBY_MASK,
-		},
-	},
-	{
-		.desc = {
-			.name = "sw3",
-			.of_match = of_match_ptr("SW3"),
-			.regulators_node = of_match_ptr("regulators"),
-			.id = PF0900_SW3,
-			.ops = &pf0900_dvs_sw_regulator_ops,
-			.type = REGULATOR_VOLTAGE,
-			.n_voltages = PF0900_SW3_VOLTAGE_NUM,
-			.linear_ranges = pf0900_dvs_sw2345_volts,
-			.n_linear_ranges = ARRAY_SIZE(pf0900_dvs_sw2345_volts),
-			.vsel_reg = PF0900_REG_SW3_VRUN,
-			.vsel_mask = SW_VRUN_MASK,
-			.enable_reg = PF0900_REG_SW3_MODE,
-			.enable_mask = SW_RUN_MODE_MASK,
-			.enable_val = SW_RUN_MODE_PWM,
-			.ramp_reg = PF0900_REG_SW3_CFG1,
-			.ramp_mask = SW_RAMP_MASK,
-			.ramp_delay_table = pf0900_dvs_sw_ramp_table,
-			.n_ramp_values = ARRAY_SIZE(pf0900_dvs_sw_ramp_table),
-			.owner = THIS_MODULE,
-			.of_parse_cb = pf0900_set_dvs_levels,
-		},
-		.dvs = {
-			.run_reg = PF0900_REG_SW3_VRUN,
-			.run_mask = SW_VRUN_MASK,
-			.standby_reg = PF0900_REG_SW3_VSTBY,
-			.standby_mask = SW_STBY_MASK,
-		},
-	},
-	{
-		.desc = {
-			.name = "sw4",
-			.of_match = of_match_ptr("SW4"),
-			.regulators_node = of_match_ptr("regulators"),
-			.id = PF0900_SW5,
-			.ops = &pf0900_dvs_sw_regulator_ops,
-			.type = REGULATOR_VOLTAGE,
-			.n_voltages = PF0900_SW4_VOLTAGE_NUM,
-			.linear_ranges = pf0900_dvs_sw2345_volts,
-			.n_linear_ranges = ARRAY_SIZE(pf0900_dvs_sw2345_volts),
-			.vsel_reg = PF0900_REG_SW4_VRUN,
-			.vsel_mask = SW_VRUN_MASK,
-			.enable_reg = PF0900_REG_SW4_MODE,
-			.enable_mask = SW_RUN_MODE_MASK,
-			.enable_val = SW_RUN_MODE_PWM,
-			.ramp_reg = PF0900_REG_SW4_CFG1,
-			.ramp_mask = SW_RAMP_MASK,
-			.ramp_delay_table = pf0900_dvs_sw_ramp_table,
-			.n_ramp_values = ARRAY_SIZE(pf0900_dvs_sw_ramp_table),
-			.owner = THIS_MODULE,
-			.of_parse_cb = pf0900_set_dvs_levels,
-		},
-		.dvs = {
-			.run_reg = PF0900_REG_SW4_VRUN,
-			.run_mask = SW_VRUN_MASK,
-			.standby_reg = PF0900_REG_SW4_VSTBY,
-			.standby_mask = SW_STBY_MASK,
-		},
-	},
-	{
-		.desc = {
-			.name = "sw5",
-			.of_match = of_match_ptr("SW5"),
-			.regulators_node = of_match_ptr("regulators"),
-			.id = PF0900_SW5,
-			.ops = &pf0900_dvs_sw_regulator_ops,
-			.type = REGULATOR_VOLTAGE,
-			.n_voltages = PF0900_SW5_VOLTAGE_NUM,
-			.linear_ranges = pf0900_dvs_sw2345_volts,
-			.n_linear_ranges = ARRAY_SIZE(pf0900_dvs_sw2345_volts),
-			.vsel_reg = PF0900_REG_SW5_VRUN,
-			.vsel_mask = SW_VRUN_MASK,
-			.enable_reg = PF0900_REG_SW5_MODE,
-			.enable_mask = SW_RUN_MODE_MASK,
-			.enable_val = SW_RUN_MODE_PWM,
-			.ramp_reg = PF0900_REG_SW5_CFG1,
-			.ramp_mask = SW_RAMP_MASK,
-			.ramp_delay_table = pf0900_dvs_sw_ramp_table,
-			.n_ramp_values = ARRAY_SIZE(pf0900_dvs_sw_ramp_table),
-			.owner = THIS_MODULE,
-			.of_parse_cb = pf0900_set_dvs_levels,
-		},
-		.dvs = {
-			.run_reg = PF0900_REG_SW5_VRUN,
-			.run_mask = SW_VRUN_MASK,
-			.standby_reg = PF0900_REG_SW5_VSTBY,
-			.standby_mask = SW_STBY_MASK,
-		},
-	},
-	{
-		.desc = {
-			.name = "ldo1",
-			.of_match = of_match_ptr("LDO1"),
-			.regulators_node = of_match_ptr("regulators"),
-			.id = PF0900_LDO1,
-			.ops = &pf0900_ldo_regulator_ops,
-			.type = REGULATOR_VOLTAGE,
-			.n_voltages = PF0900_LDO1_VOLTAGE_NUM,
-			.linear_ranges = pf0900_ldo1_volts,
-			.n_linear_ranges = ARRAY_SIZE(pf0900_ldo1_volts),
-			.vsel_reg = PF0900_REG_LDO1_RUN,
-			.vsel_mask = VLDO1_RUN_MASK,
-			.enable_reg = PF0900_REG_LDO1_RUN,
-			.enable_mask = LDO1_RUN_EN_MASK,
-			.owner = THIS_MODULE,
-		},
-	},
-	{
-		.desc = {
-			.name = "ldo2",
-			.of_match = of_match_ptr("LDO2"),
-			.regulators_node = of_match_ptr("regulators"),
-			.id = PF0900_LDO2,
-			.ops = &pf0900_ldo_regulator_ops,
-			.type = REGULATOR_VOLTAGE,
-			.n_voltages = PF0900_LDO2_VOLTAGE_NUM,
-			.linear_ranges = pf0900_ldo23_volts,
-			.n_linear_ranges = ARRAY_SIZE(pf0900_ldo23_volts),
-			.vsel_reg = PF0900_REG_LDO2_RUN,
-			.vsel_mask = VLDO2_RUN_MASK,
-			.enable_reg = PF0900_REG_LDO2_RUN,
-			.enable_mask = LDO2_RUN_EN_MASK,
-			.owner = THIS_MODULE,
-		},
-	},
-	{
-		.desc = {
-			.name = "ldo3",
-			.of_match = of_match_ptr("LDO3"),
-			.regulators_node = of_match_ptr("regulators"),
-			.id = PF0900_LDO3,
-			.ops = &pf0900_ldo_regulator_ops,
-			.type = REGULATOR_VOLTAGE,
-			.n_voltages = PF0900_LDO3_VOLTAGE_NUM,
-			.linear_ranges = pf0900_ldo23_volts,
-			.n_linear_ranges = ARRAY_SIZE(pf0900_ldo23_volts),
-			.vsel_reg = PF0900_REG_LDO3_RUN,
-			.vsel_mask = VLDO3_RUN_MASK,
-			.enable_reg = PF0900_REG_LDO3_RUN,
-			.enable_mask = LDO3_RUN_EN_MASK,
-			.owner = THIS_MODULE,
-		},
-	},
-	{
-		.desc = {
-			.name = "ldo3_stby",
-			.of_match = of_match_ptr("LDO3"),
-			.regulators_node = of_match_ptr("regulators"),
-			.id = PF0900_LDO3,
-			.ops = &pf0900_ldo_regulator_ops,
-			.type = REGULATOR_VOLTAGE,
-			.n_voltages = PF0900_LDO3_VOLTAGE_NUM,
-			.linear_ranges = pf0900_ldo23_volts,
-			.n_linear_ranges = ARRAY_SIZE(pf0900_ldo23_volts),
-			.vsel_reg = PF0900_REG_LDO3_RUN,
-			.vsel_mask = VLDO3_RUN_MASK,
-			.enable_reg = PF0900_REG_LDO3_STBY,
-			.enable_mask = LDO3_STBY_EN_MASK,
+			.vsel_mask = PF0900_VAON_MASK,
 			.owner = THIS_MODULE,
 		},
 	},
 };
 
+struct pf0900_regulator_irq regu_irqs[] = {
+	PF0900_REGU_IRQ(PF0900_REG_SW_ILIM_INT, PF0900_SW, REGULATOR_ERROR_OVER_CURRENT_WARN),
+	PF0900_REGU_IRQ(PF0900_REG_LDO_ILIM_INT, PF0900_LDO, REGULATOR_ERROR_OVER_CURRENT_WARN),
+	PF0900_REGU_IRQ(PF0900_REG_SW_UV_INT, PF0900_SW, REGULATOR_ERROR_UNDER_VOLTAGE_WARN),
+	PF0900_REGU_IRQ(PF0900_REG_LDO_UV_INT, PF0900_LDO, REGULATOR_ERROR_UNDER_VOLTAGE_WARN),
+	PF0900_REGU_IRQ(PF0900_REG_SW_OV_INT, PF0900_SW, REGULATOR_ERROR_OVER_VOLTAGE_WARN),
+	PF0900_REGU_IRQ(PF0900_REG_LDO_OV_INT, PF0900_LDO, REGULATOR_ERROR_OVER_VOLTAGE_WARN),
+};
+
 static irqreturn_t pf0900_irq_handler(int irq, void *data)
 {
+	unsigned int val, regu, i, index;
 	struct pf0900 *pf0900 = data;
-	unsigned int system, status1, status2, status3;
 	int ret;
 
-	ret = pf0900_pmic_read(pf0900, PF0900_REG_SYSTEM_INT, &system);
-	if (ret < 0) {
-		dev_err(pf0900->dev,
-			"Failed to read SYSTEM_INT(%d)\n", ret);
-		return IRQ_NONE;
+	for (i = 0; i < ARRAY_SIZE(regu_irqs); i++) {
+		ret = regmap_read(pf0900->regmap, regu_irqs[i].reg, &val);
+		if (ret < 0) {
+			dev_err(pf0900->dev, "Failed to read %d\n", ret);
+			return IRQ_NONE;
+		}
+		if (val) {
+			ret = regmap_write_bits(pf0900->regmap, regu_irqs[i].reg, val, val);
+			if (ret < 0) {
+				dev_err(pf0900->dev, "Failed to update %d\n", ret);
+				return IRQ_NONE;
+			}
+
+			if (regu_irqs[i].type == PF0900_SW) {
+				for (index = 0; index < REGU_SW_CNT; index++) {
+					if (val & BIT(index)) {
+						regu = (enum pf0900_regulators)index;
+						regulator_notifier_call_chain(pf0900->rdevs[regu],
+									      regu_irqs[i].event,
+									      NULL);
+					}
+				}
+			} else if (regu_irqs[i].type == PF0900_LDO) {
+				for (index = 0; index < REGU_LDO_VAON_CNT; index++) {
+					if (val & BIT(index)) {
+						regu = (enum pf0900_regulators)index + PF0900_LDO1;
+						regulator_notifier_call_chain(pf0900->rdevs[regu],
+									      regu_irqs[i].event,
+									      NULL);
+					}
+				}
+			}
+		}
 	}
-
-	ret = pf0900_pmic_read(pf0900, PF0900_REG_STATUS1_INT, &status1);
-	if (ret < 0) {
-		dev_err(pf0900->dev,
-			"Failed to read STATUS1_INT(%d)\n", ret);
-		return IRQ_NONE;
-	}
-
-	ret = pf0900_pmic_read(pf0900, PF0900_REG_STATUS2_INT, &status2);
-	if (ret < 0) {
-		dev_err(pf0900->dev,
-			"Failed to read STATUS2_INT(%d)\n", ret);
-		return IRQ_NONE;
-	}
-
-	ret = pf0900_pmic_read(pf0900, PF0900_REG_STATUS3_INT, &status3);
-	if (ret < 0) {
-		dev_err(pf0900->dev,
-			"Failed to read STATUS3_INT(%d)\n", ret);
-		return IRQ_NONE;
-	}
-
-	if (system & IRQ_EWARN)
-		dev_warn(pf0900->dev, "EWARN interrupt.\n");
-
-	if (system & IRQ_GPIO)
-		dev_warn(pf0900->dev, "GPIO interrupt.\n");
-
-	if (system & IRQ_OV)
-		dev_warn(pf0900->dev, "OV interrupt.\n");
-
-	if (system & IRQ_UV)
-		dev_warn(pf0900->dev, "UV interrupt.\n");
-
-	if (system & IRQ_ILIM)
-		dev_warn(pf0900->dev, "ILIM interrupt.\n");
-
-	if (system & IRQ_MODE)
-		dev_warn(pf0900->dev, "IRQ_MODE interrupt.\n");
-
-	if (system & status1 & IRQ_SDWN)
-		dev_warn(pf0900->dev, "IRQ_SDWN interrupt.\n");
-
-	if (system & status1 & IRQ_FREQ_RDY)
-		dev_warn(pf0900->dev, "IRQ_FREQ_RDY interrupt.\n");
-
-	if (system & status1 & IRQ_DCRC)
-		dev_warn(pf0900->dev, "IRQ_DCRC interrupt.\n");
-
-	if (system & status1 & IRQ_I2C_CRC)
-		dev_warn(pf0900->dev, "IRQ_I2C_CRC interrupt.\n");
-
-	if (system & status1 & IRQ_PWRDN)
-		dev_warn(pf0900->dev, "IRQ_PWRDN interrupt.\n");
-
-	if (system & status1 & IRQ_FSYNC_FLT)
-		dev_warn(pf0900->dev, "IRQ_FSYNC_FLT interrupt.\n");
-
-	if (system & status1 & IRQ_VIN_OV)
-		dev_warn(pf0900->dev, "IRQ_VIN_OV interrupt.\n");
-
-	if (system & status2 & IRQ_VANA_OV)
-		dev_warn(pf0900->dev, "IRQ_VANA_OV interrupt.\n");
-
-	if (system & status2 & IRQ_VDIG_OV)
-		dev_warn(pf0900->dev, "IRQ_VDIG_OV interrupt.\n");
-
-	if (system & status2 & IRQ_THERM_155)
-		dev_warn(pf0900->dev, "IRQ_THERM_155 interrupt.\n");
-
-	if (system & status2 & IRQ_THERM_140)
-		dev_warn(pf0900->dev, "IRQ_THERM_140 interrupt.\n");
-
-	if (system & status2 & IRQ_THERM_125)
-		dev_warn(pf0900->dev, "IRQ_THERM_125 interrupt.\n");
-
-	if (system & status2 & IRQ_THERM_110)
-		dev_warn(pf0900->dev, "IRQ_THERM_110 interrupt.\n");
-
-	if (system & status3 & IRQ_BAD_CMD)
-		dev_warn(pf0900->dev, "IRQ_BAD_CMD interrupt.\n");
-
-	if (system & status3 & IRQ_LBIST_DONE)
-		dev_warn(pf0900->dev, "IRQ_LBIST_DONE interrupt.\n");
-
-	if (system & status3 & IRQ_SHS)
-		dev_warn(pf0900->dev, "IRQ_SHS interrupt.\n");
 
 	return IRQ_HANDLED;
 }
 
 static int pf0900_i2c_probe(struct i2c_client *i2c)
 {
-	enum pf0900_chip_type type = (unsigned int)(uintptr_t)
-				      of_device_get_match_data(&i2c->dev);
-	const struct pf0900_regulator_desc	*regulator_desc;
+	const struct pf0900_regulator_desc *regulator_desc;
+	const struct pf0900_drvdata *drvdata = NULL;
+	struct device_node *np = i2c->dev.of_node;
+	unsigned int device_id, device_fam, i;
 	struct regulator_config config = { };
 	struct pf0900 *pf0900;
-	unsigned int device_id, device_fam, i;
 	int ret;
-	bool ldo3_stby;
-	struct device_node *np = i2c->dev.of_node;
 
-	if (!i2c->irq) {
-		dev_err(&i2c->dev, "No IRQ configured?\n");
-		return -EINVAL;
-	}
+	if (!i2c->irq)
+		return dev_err_probe(&i2c->dev, -EINVAL, "No IRQ configured?\n");
+
 	pf0900 = devm_kzalloc(&i2c->dev, sizeof(struct pf0900), GFP_KERNEL);
 	if (!pf0900)
 		return -ENOMEM;
 
-	switch (type) {
-	case PF0900_TYPE_PF0900:
-		regulator_desc = pf0900_regulators;
-		pf0900->rcnt = ARRAY_SIZE(pf0900_regulators);
-		break;
-	default:
-		dev_err(&i2c->dev, "Unknown device type");
-		return -EINVAL;
-	}
+	drvdata = device_get_match_data(&i2c->dev);
+	if (!drvdata)
+		return dev_err_probe(&i2c->dev, -EINVAL, "unable to find driver data\n");
 
-	ldo3_stby = of_property_read_bool(np, "ldo3-stby");
-	if (of_property_read_bool(np, "i2c-crc-enable"))
-		pf0900->crc_en = true;
-
+	regulator_desc = drvdata->desc;
+	pf0900->drvdata = drvdata;
+	pf0900->crc_en = of_property_read_bool(np, "nxp,i2c-crc-enable");
 	pf0900->irq = i2c->irq;
-	pf0900->type = type;
 	pf0900->dev = &i2c->dev;
 	pf0900->addr = i2c->addr;
 
 	dev_set_drvdata(&i2c->dev, pf0900);
 
-	pf0900->regmap = devm_regmap_init_i2c(i2c,
+	pf0900->regmap = devm_regmap_init(&i2c->dev, &pf0900_regmap_bus, &i2c->dev,
 					       &pf0900_regmap_config);
-	if (IS_ERR(pf0900->regmap)) {
-		dev_err(&i2c->dev, "regmap initialization failed\n");
-		return PTR_ERR(pf0900->regmap);
-	}
+	if (IS_ERR(pf0900->regmap))
+		return dev_err_probe(&i2c->dev, PTR_ERR(pf0900->regmap),
+				     "regmap initialization failed\n");
+	ret = regmap_read(pf0900->regmap, PF0900_REG_DEV_ID, &device_id);
+	if (ret)
+		return dev_err_probe(&i2c->dev, ret, "Read device id error\n");
 
-	ret = pf0900_pmic_read(pf0900, PF0900_REG_DEV_ID, &device_id);
-	if (ret) {
-		dev_err(&i2c->dev, "Read device id error\n");
-		return ret;
-	}
-
-	ret = pf0900_pmic_read(pf0900, PF0900_REG_DEV_FAM, &device_fam);
-	if (ret) {
-		dev_err(&i2c->dev, "Read device fam error\n");
-		return ret;
-	}
+	ret = regmap_read(pf0900->regmap, PF0900_REG_DEV_FAM, &device_fam);
+	if (ret)
+		return dev_err_probe(&i2c->dev, ret, "Read device fam error\n");
 
 	/* Check your board and dts for match the right pmic */
-	if (device_fam == 0x09 && (device_id & 0x1F) != 0x0 &&
-	    type == PF0900_TYPE_PF0900) {
-		dev_err(&i2c->dev, "Device id(%x) mismatched\n",
-			device_id >> 4);
-		return -EINVAL;
-	}
+	if (device_fam == 0x09 && (device_id & 0x1F) != 0x0)
+		return dev_err_probe(&i2c->dev, -EINVAL, "Device id(%x) mismatched\n",
+				     device_id >> 4);
 
-	for (i = 0; i < pf0900->rcnt; i++) {
+	for (i = 0; i < drvdata->rcnt; i++) {
 		const struct regulator_desc *desc;
-		struct regulator_dev *rdev;
 		const struct pf0900_regulator_desc *r;
 
-		if (!strcmp(regulator_desc[i].desc.name, "ldo3") && ldo3_stby) {
-			r = &regulator_desc[i + 1];
-			i = i + 1;
-		} else if (!strcmp(regulator_desc[i].desc.name, "ldo3")) {
-			r = &regulator_desc[i];
-			i = i + 1;
-		} else {
-			r = &regulator_desc[i];
-		}
-
+		r = &regulator_desc[i];
 		desc = &r->desc;
 		config.regmap = pf0900->regmap;
+		config.driver_data = (void *)r;
 		config.dev = pf0900->dev;
 
-		rdev = devm_regulator_register(pf0900->dev, desc, &config);
-		if (IS_ERR(rdev)) {
-			ret = PTR_ERR(rdev);
-			dev_err(pf0900->dev,
-				"Failed to register regulator(%s): %d\n",
-				desc->name, ret);
-			return ret;
-		}
+		pf0900->rdevs[i] = devm_regulator_register(pf0900->dev, desc, &config);
+		if (IS_ERR(pf0900->rdevs[i]))
+			return dev_err_probe(pf0900->dev, PTR_ERR(pf0900->rdevs[i]),
+					     "Failed to register regulator(%s)\n", desc->name);
 	}
 
 	ret = devm_request_threaded_irq(pf0900->dev, pf0900->irq, NULL,
@@ -967,51 +893,71 @@ static int pf0900_i2c_probe(struct i2c_client *i2c)
 					(IRQF_TRIGGER_FALLING | IRQF_ONESHOT),
 					"pf0900-irq", pf0900);
 
-	if (ret != 0) {
-		dev_err(pf0900->dev, "Failed to request IRQ: %d\n",
-			pf0900->irq);
-		return ret;
-	}
+	if (ret != 0)
+		return dev_err_probe(pf0900->dev, ret, "Failed to request IRQ: %d\n",
+				     pf0900->irq);
+	/*
+	 * The PWRUP_M is unmasked by default. When the device enter in RUN state,
+	 * it will assert the PWRUP_I interrupt and assert the INTB pin to inform
+	 * the MCU that it has finished the power up sequence properly.
+	 */
+	ret = regmap_write_bits(pf0900->regmap, PF0900_REG_STATUS1_INT, PF0900_IRQ_PWRUP,
+				PF0900_IRQ_PWRUP);
+	if (ret)
+		return dev_err_probe(&i2c->dev, ret, "Clean PWRUP_I error\n");
 
-	/* Unmask all interrupt except PWRUP */
-	ret = pf0900_pmic_write(pf0900, PF0900_REG_STATUS1_MSK, IRQ_PWRUP,
-				IRQ_SDWN | IRQ_FREQ_RDY | IRQ_DCRC |
-				IRQ_I2C_CRC | IRQ_PWRDN | IRQ_FSYNC_FLT |
-				IRQ_VIN_OV);
-	if (ret) {
-		dev_err(&i2c->dev, "Unmask irq error\n");
-		return ret;
-	}
+	/* mask interrupt PWRUP */
+	ret = regmap_update_bits(pf0900->regmap, PF0900_REG_STATUS1_MSK, PF0900_IRQ_PWRUP,
+				 PF0900_IRQ_PWRUP);
+	if (ret)
+		return dev_err_probe(&i2c->dev, ret, "Unmask irq error\n");
 
-	/* Unmask all interrupt except BGMON/CLKMON */
-	ret = pf0900_pmic_write(pf0900, PF0900_REG_STATUS2_MSK, IRQ_BGMON | IRQ_CLKMON,
-				IRQ_VANA_OV | IRQ_VDIG_OV | IRQ_THERM_155 |
-				IRQ_THERM_140 | IRQ_THERM_125 | IRQ_THERM_110);
-	if (ret) {
-		dev_err(&i2c->dev, "Unmask irq error\n");
-		return ret;
-	}
+	ret = regmap_update_bits(pf0900->regmap, PF0900_REG_SW_ILIM_MSK, PF0900_IRQ_SW1_IL |
+				 PF0900_IRQ_SW2_IL | PF0900_IRQ_SW3_IL | PF0900_IRQ_SW4_IL |
+				 PF0900_IRQ_SW5_IL, 0);
+	if (ret)
+		return dev_err_probe(&i2c->dev, ret, "Unmask irq error\n");
 
-	ret = pf0900_pmic_write(pf0900, PF0900_REG_STATUS3_MSK, 0,
-				IRQ_BAD_CMD | IRQ_LBIST_DONE | IRQ_SHS);
-	if (ret) {
-		dev_err(&i2c->dev, "Unmask irq error\n");
-		return ret;
-	}
+	ret = regmap_update_bits(pf0900->regmap, PF0900_REG_SW_UV_MSK, PF0900_IRQ_SW1_UV |
+				 PF0900_IRQ_SW2_UV | PF0900_IRQ_SW3_UV | PF0900_IRQ_SW4_UV |
+				 PF0900_IRQ_SW5_UV, 0);
+	if (ret)
+		return dev_err_probe(&i2c->dev, ret, "Unmask irq error\n");
 
-	dev_err(&i2c->dev, "%s probed.\n",
-		type == PF0900_TYPE_PF0900 ? "pf0900" : "unknown type");
+	ret = regmap_update_bits(pf0900->regmap, PF0900_REG_SW_OV_MSK, PF0900_IRQ_SW1_OV |
+				 PF0900_IRQ_SW2_OV | PF0900_IRQ_SW3_OV | PF0900_IRQ_SW4_OV |
+				 PF0900_IRQ_SW5_OV, 0);
+	if (ret)
+		return dev_err_probe(&i2c->dev, ret, "Unmask irq error\n");
+
+	ret = regmap_update_bits(pf0900->regmap, PF0900_REG_LDO_ILIM_MSK, PF0900_IRQ_LDO1_IL |
+				 PF0900_IRQ_LDO2_IL | PF0900_IRQ_LDO3_IL, 0);
+	if (ret)
+		return dev_err_probe(&i2c->dev, ret, "Unmask irq error\n");
+
+	ret = regmap_update_bits(pf0900->regmap, PF0900_REG_LDO_UV_MSK, PF0900_IRQ_LDO1_UV |
+				 PF0900_IRQ_LDO2_UV | PF0900_IRQ_LDO3_UV | PF0900_IRQ_VAON_UV, 0);
+	if (ret)
+		return dev_err_probe(&i2c->dev, ret, "Unmask irq error\n");
+
+	ret = regmap_update_bits(pf0900->regmap, PF0900_REG_LDO_OV_MSK, PF0900_IRQ_LDO1_OV |
+				 PF0900_IRQ_LDO2_OV | PF0900_IRQ_LDO3_OV | PF0900_IRQ_VAON_OV, 0);
+	if (ret)
+		return dev_err_probe(&i2c->dev, ret, "Unmask irq error\n");
 
 	return 0;
 }
 
+static struct pf0900_drvdata pf0900_drvdata = {
+	.desc = pf0900_regulators,
+	.rcnt = ARRAY_SIZE(pf0900_regulators),
+};
+
 static const struct of_device_id pf0900_of_match[] = {
-	{
-		.compatible = "nxp,pf0900",
-		.data = (void *)PF0900_TYPE_PF0900,
-	},
+	{ .compatible = "nxp,pf0900", .data = &pf0900_drvdata},
 	{ }
 };
+
 MODULE_DEVICE_TABLE(of, pf0900_of_match);
 
 static struct i2c_driver pf0900_i2c_driver = {

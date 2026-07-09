@@ -36,8 +36,7 @@ static void vmw_bo_release(struct vmw_bo *vbo)
 {
 	struct vmw_resource *res;
 
-	WARN_ON(vbo->tbo.base.funcs &&
-		kref_read(&vbo->tbo.base.refcount) != 0);
+	WARN_ON(kref_read(&vbo->tbo.base.refcount) != 0);
 	vmw_bo_unmap(vbo);
 
 	xa_destroy(&vbo->detached_resources);
@@ -230,7 +229,6 @@ int vmw_bo_pin_in_start_of_vram(struct vmw_private *dev_priv,
 			     VMW_BO_DOMAIN_VRAM,
 			     VMW_BO_DOMAIN_VRAM);
 	buf->places[0].lpfn = PFN_UP(bo->resource->size);
-	buf->busy_places[0].lpfn = PFN_UP(bo->resource->size);
 	ret = ttm_bo_validate(bo, &buf->placement, &ctx);
 
 	/* For some reason we didn't end up at the start of vram */
@@ -470,6 +468,7 @@ int vmw_bo_create(struct vmw_private *vmw,
 	if (unlikely(ret != 0))
 		goto out_error;
 
+	(*p_bo)->tbo.base.funcs = &vmw_gem_object_funcs;
 	return ret;
 out_error:
 	*p_bo = NULL;
@@ -889,4 +888,10 @@ out:
 	if (res)
 		surf = vmw_res_to_srf(res);
 	return surf;
+}
+
+s32 vmw_bo_mobid(struct vmw_bo *vbo)
+{
+	WARN_ON(vbo->tbo.resource->mem_type != VMW_PL_MOB);
+	return (s32)vbo->tbo.resource->start;
 }

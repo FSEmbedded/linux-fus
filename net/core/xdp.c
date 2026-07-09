@@ -17,6 +17,7 @@
 #include <net/page_pool/helpers.h>
 
 #include <net/hotdata.h>
+#include <net/netdev_lock.h>
 #include <net/xdp.h>
 #include <net/xdp_priv.h> /* struct xdp_mem_allocator */
 #include <trace/events/xdp.h>
@@ -186,7 +187,6 @@ int __xdp_rxq_info_reg(struct xdp_rxq_info *xdp_rxq,
 	xdp_rxq_info_init(xdp_rxq);
 	xdp_rxq->dev = dev;
 	xdp_rxq->queue_index = queue_index;
-	xdp_rxq->napi_id = napi_id;
 	xdp_rxq->frag_size = frag_size;
 
 	xdp_rxq->reg_state = REG_STATE_REGISTERED;
@@ -358,12 +358,71 @@ int xdp_rxq_info_reg_mem_model(struct xdp_rxq_info *xdp_rxq,
 	if (IS_ERR(xdp_alloc))
 		return PTR_ERR(xdp_alloc);
 
+	if (type == MEM_TYPE_XSK_BUFF_POOL && allocator)
+		xsk_pool_set_rxq_info(allocator, xdp_rxq);
+
 	if (trace_mem_connect_enabled() && xdp_alloc)
 		trace_mem_connect(xdp_alloc, xdp_rxq);
 	return 0;
 }
 
 EXPORT_SYMBOL_GPL(xdp_rxq_info_reg_mem_model);
+
+/**
+ * xdp_reg_page_pool - register &page_pool as a memory provider for XDP
+ * @pool: &page_pool to register
+ *
+ * Can be used to register pools manually without connecting to any XDP RxQ
+ * info, so that the XDP layer will be aware of them. Then, they can be
+ * attached to an RxQ info manually via xdp_rxq_info_attach_page_pool().
+ *
+ * Return: %0 on success, -errno on error.
+ */
+int xdp_reg_page_pool(struct page_pool *pool)
+{
+	struct xdp_mem_info mem;
+
+	return xdp_reg_mem_model(&mem, MEM_TYPE_PAGE_POOL, pool);
+}
+EXPORT_SYMBOL_GPL(xdp_reg_page_pool);
+
+/**
+ * xdp_unreg_page_pool - unregister &page_pool from the memory providers list
+ * @pool: &page_pool to unregister
+ *
+ * A shorthand for manual unregistering page pools. If the pool was previously
+ * attached to an RxQ info, it must be detached first.
+ */
+void xdp_unreg_page_pool(const struct page_pool *pool)
+{
+	struct xdp_mem_info mem = {
+		.type	= MEM_TYPE_PAGE_POOL,
+		.id	= pool->xdp_mem_id,
+	};
+
+	xdp_unreg_mem_model(&mem);
+}
+EXPORT_SYMBOL_GPL(xdp_unreg_page_pool);
+
+/**
+ * xdp_rxq_info_attach_page_pool - attach registered pool to RxQ info
+ * @xdp_rxq: XDP RxQ info to attach the pool to
+ * @pool: pool to attach
+ *
+ * If the pool was registered manually, this function must be called instead
+ * of xdp_rxq_info_reg_mem_model() to connect it to the RxQ info.
+ */
+void xdp_rxq_info_attach_page_pool(struct xdp_rxq_info *xdp_rxq,
+				   const struct page_pool *pool)
+{
+	struct xdp_mem_info mem = {
+		.type	= MEM_TYPE_PAGE_POOL,
+		.id	= pool->xdp_mem_id,
+	};
+
+	xdp_rxq_info_attach_mem_model(xdp_rxq, &mem);
+}
+EXPORT_SYMBOL_GPL(xdp_rxq_info_attach_page_pool);
 
 /* XDP RX runs under NAPI protection, and in different delivery error
  * scenarios (e.g. queue full), it is possible to return the xdp_frame
@@ -560,15 +619,177 @@ void xdp_warn(const char *msg, const char *func, const int line)
 };
 EXPORT_SYMBOL_GPL(xdp_warn);
 
-int xdp_alloc_skb_bulk(void **skbs, int n_skb, gfp_t gfp)
+/**
+ * xdp_build_skb_from_buff - create an skb from &xdp_buff
+ * @xdp: &xdp_buff to convert to an skb
+ *
+ * Perform common operations to create a new skb to pass up the stack from
+ * &xdp_buff: allocate an skb head from the NAPI percpu cache, initialize
+ * skb data pointers and offsets, set the recycle bit if the buff is
+ * PP-backed, Rx queue index, protocol and update frags info.
+ *
+ * Return: new &sk_buff on success, %NULL on error.
+ */
+struct sk_buff *xdp_build_skb_from_buff(const struct xdp_buff *xdp)
 {
-	n_skb = kmem_cache_alloc_bulk(net_hotdata.skbuff_cache, gfp, n_skb, skbs);
-	if (unlikely(!n_skb))
-		return -ENOMEM;
+	const struct xdp_rxq_info *rxq = xdp->rxq;
+	const struct skb_shared_info *sinfo;
+	struct sk_buff *skb;
+	u32 nr_frags = 0;
+	int metalen;
 
-	return 0;
+	if (unlikely(xdp_buff_has_frags(xdp))) {
+		sinfo = xdp_get_shared_info_from_buff(xdp);
+		nr_frags = sinfo->nr_frags;
+	}
+
+	skb = napi_build_skb(xdp->data_hard_start, xdp->frame_sz);
+	if (unlikely(!skb))
+		return NULL;
+
+	skb_reserve(skb, xdp->data - xdp->data_hard_start);
+	__skb_put(skb, xdp->data_end - xdp->data);
+
+	metalen = xdp->data - xdp->data_meta;
+	if (metalen > 0)
+		skb_metadata_set(skb, metalen);
+
+	if (rxq->mem.type == MEM_TYPE_PAGE_POOL)
+		skb_mark_for_recycle(skb);
+
+	skb_record_rx_queue(skb, rxq->queue_index);
+
+	if (unlikely(nr_frags)) {
+		u32 tsize;
+
+		tsize = sinfo->xdp_frags_truesize ? : nr_frags * xdp->frame_sz;
+		xdp_update_skb_frags_info(skb, nr_frags, sinfo->xdp_frags_size,
+					  tsize, xdp_buff_get_skb_flags(xdp));
+	}
+
+	skb->protocol = eth_type_trans(skb, rxq->dev);
+
+	return skb;
 }
-EXPORT_SYMBOL_GPL(xdp_alloc_skb_bulk);
+EXPORT_SYMBOL_GPL(xdp_build_skb_from_buff);
+
+/**
+ * xdp_copy_frags_from_zc - copy frags from XSk buff to skb
+ * @skb: skb to copy frags to
+ * @xdp: XSk &xdp_buff from which the frags will be copied
+ * @pp: &page_pool backing page allocation, if available
+ *
+ * Copy all frags from XSk &xdp_buff to the skb to pass it up the stack.
+ * Allocate a new buffer for each frag, copy it and attach to the skb.
+ *
+ * Return: true on success, false on netmem allocation fail.
+ */
+static noinline bool xdp_copy_frags_from_zc(struct sk_buff *skb,
+					    const struct xdp_buff *xdp,
+					    struct page_pool *pp)
+{
+	struct skb_shared_info *sinfo = skb_shinfo(skb);
+	const struct skb_shared_info *xinfo;
+	u32 nr_frags, tsize = 0;
+	u32 flags = 0;
+
+	xinfo = xdp_get_shared_info_from_buff(xdp);
+	nr_frags = xinfo->nr_frags;
+
+	for (u32 i = 0; i < nr_frags; i++) {
+		const skb_frag_t *frag = &xinfo->frags[i];
+		u32 len = skb_frag_size(frag);
+		u32 offset, truesize = len;
+		struct page *page;
+
+		page = page_pool_dev_alloc(pp, &offset, &truesize);
+		if (unlikely(!page)) {
+			sinfo->nr_frags = i;
+			return false;
+		}
+
+		memcpy(page_address(page) + offset, skb_frag_address(frag),
+		       LARGEST_ALIGN(len));
+		__skb_fill_page_desc_noacc(sinfo, i, page, offset, len);
+
+		tsize += truesize;
+		if (page_is_pfmemalloc(page))
+			flags |= XDP_FLAGS_FRAGS_PF_MEMALLOC;
+	}
+
+	xdp_update_skb_frags_info(skb, nr_frags, xinfo->xdp_frags_size, tsize,
+				  flags);
+
+	return true;
+}
+
+/**
+ * xdp_build_skb_from_zc - create an skb from XSk &xdp_buff
+ * @xdp: source XSk buff
+ *
+ * Similar to xdp_build_skb_from_buff(), but for XSk frames. Allocate an skb
+ * head, new buffer for the head, copy the data and initialize the skb fields.
+ * If there are frags, allocate new buffers for them and copy.
+ * Buffers are allocated from the system percpu pools to try recycling them.
+ * If new skb was built successfully, @xdp is returned to XSk pool's freelist.
+ * On error, it remains untouched and the caller must take care of this.
+ *
+ * Return: new &sk_buff on success, %NULL on error.
+ */
+struct sk_buff *xdp_build_skb_from_zc(struct xdp_buff *xdp)
+{
+	const struct xdp_rxq_info *rxq = xdp->rxq;
+	u32 len = xdp->data_end - xdp->data_meta;
+	u32 truesize = xdp->frame_sz;
+	struct sk_buff *skb = NULL;
+	struct page_pool *pp;
+	int metalen;
+	void *data;
+
+	if (!IS_ENABLED(CONFIG_PAGE_POOL))
+		return NULL;
+
+	local_lock_nested_bh(&system_page_pool.bh_lock);
+	pp = this_cpu_read(system_page_pool.pool);
+	data = page_pool_dev_alloc_va(pp, &truesize);
+	if (unlikely(!data))
+		goto out;
+
+	skb = napi_build_skb(data, truesize);
+	if (unlikely(!skb)) {
+		page_pool_free_va(pp, data, true);
+		goto out;
+	}
+
+	skb_mark_for_recycle(skb);
+	skb_reserve(skb, xdp->data_meta - xdp->data_hard_start);
+
+	memcpy(__skb_put(skb, len), xdp->data_meta, LARGEST_ALIGN(len));
+
+	metalen = xdp->data - xdp->data_meta;
+	if (metalen > 0) {
+		skb_metadata_set(skb, metalen);
+		__skb_pull(skb, metalen);
+	}
+
+	skb_record_rx_queue(skb, rxq->queue_index);
+
+	if (unlikely(xdp_buff_has_frags(xdp)) &&
+	    unlikely(!xdp_copy_frags_from_zc(skb, xdp, pp))) {
+		napi_consume_skb(skb, true);
+		skb = NULL;
+		goto out;
+	}
+
+	xsk_buff_free(xdp);
+
+	skb->protocol = eth_type_trans(skb, rxq->dev);
+
+out:
+	local_unlock_nested_bh(&system_page_pool.bh_lock);
+	return skb;
+}
+EXPORT_SYMBOL_GPL(xdp_build_skb_from_zc);
 
 /**
  * xdp_build_skb_from_buff - create an skb from &xdp_buff
@@ -657,10 +878,9 @@ struct sk_buff *__xdp_build_skb_from_frame(struct xdp_frame *xdpf,
 		skb_metadata_set(skb, xdpf->metasize);
 
 	if (unlikely(xdp_frame_has_frags(xdpf)))
-		xdp_update_skb_shared_info(skb, nr_frags,
-					   sinfo->xdp_frags_size,
-					   nr_frags * xdpf->frame_sz,
-					   xdp_frame_is_frag_pfmemalloc(xdpf));
+		xdp_update_skb_frags_info(skb, nr_frags, sinfo->xdp_frags_size,
+					  nr_frags * xdpf->frame_sz,
+					  xdp_frame_get_skb_flags(xdpf));
 
 	/* Essential SKB info: protocol and skb->dev */
 	skb->protocol = eth_type_trans(skb, dev);
@@ -831,34 +1051,60 @@ static int __init xdp_metadata_init(void)
 }
 late_initcall(xdp_metadata_init);
 
-void xdp_set_features_flag(struct net_device *dev, xdp_features_t val)
+void xdp_set_features_flag_locked(struct net_device *dev, xdp_features_t val)
 {
 	val &= NETDEV_XDP_ACT_MASK;
 	if (dev->xdp_features == val)
 		return;
 
+	netdev_assert_locked_or_invisible(dev);
 	dev->xdp_features = val;
 
 	if (dev->reg_state == NETREG_REGISTERED)
 		call_netdevice_notifiers(NETDEV_XDP_FEAT_CHANGE, dev);
 }
+EXPORT_SYMBOL_GPL(xdp_set_features_flag_locked);
+
+void xdp_set_features_flag(struct net_device *dev, xdp_features_t val)
+{
+	netdev_lock(dev);
+	xdp_set_features_flag_locked(dev, val);
+	netdev_unlock(dev);
+}
 EXPORT_SYMBOL_GPL(xdp_set_features_flag);
 
-void xdp_features_set_redirect_target(struct net_device *dev, bool support_sg)
+void xdp_features_set_redirect_target_locked(struct net_device *dev,
+					     bool support_sg)
 {
 	xdp_features_t val = (dev->xdp_features | NETDEV_XDP_ACT_NDO_XMIT);
 
 	if (support_sg)
 		val |= NETDEV_XDP_ACT_NDO_XMIT_SG;
-	xdp_set_features_flag(dev, val);
+	xdp_set_features_flag_locked(dev, val);
+}
+EXPORT_SYMBOL_GPL(xdp_features_set_redirect_target_locked);
+
+void xdp_features_set_redirect_target(struct net_device *dev, bool support_sg)
+{
+	netdev_lock(dev);
+	xdp_features_set_redirect_target_locked(dev, support_sg);
+	netdev_unlock(dev);
 }
 EXPORT_SYMBOL_GPL(xdp_features_set_redirect_target);
 
-void xdp_features_clear_redirect_target(struct net_device *dev)
+void xdp_features_clear_redirect_target_locked(struct net_device *dev)
 {
 	xdp_features_t val = dev->xdp_features;
 
 	val &= ~(NETDEV_XDP_ACT_NDO_XMIT | NETDEV_XDP_ACT_NDO_XMIT_SG);
-	xdp_set_features_flag(dev, val);
+	xdp_set_features_flag_locked(dev, val);
+}
+EXPORT_SYMBOL_GPL(xdp_features_clear_redirect_target_locked);
+
+void xdp_features_clear_redirect_target(struct net_device *dev)
+{
+	netdev_lock(dev);
+	xdp_features_clear_redirect_target_locked(dev);
+	netdev_unlock(dev);
 }
 EXPORT_SYMBOL_GPL(xdp_features_clear_redirect_target);
