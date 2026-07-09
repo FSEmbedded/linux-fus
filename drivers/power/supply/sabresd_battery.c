@@ -765,7 +765,6 @@ static int max8903_probe(struct platform_device *pdev)
 	data->ta_in = ta_in;
 	data->usb_in = usb_in;
 
-	psy_cfg.of_node = dev->of_node;
 	psy_cfg.drv_data = data;
 
 	data->psy = power_supply_register(dev, &max8903_ac_desc, &psy_cfg);

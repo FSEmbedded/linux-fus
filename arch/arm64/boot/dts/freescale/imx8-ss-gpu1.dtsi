@@ -26,6 +26,5 @@ gpu1_subsys: bus@54100000 {
 		assigned-clock-rates = <800000000>, <1000000000>;
 		fsl,sc_gpu_pid = <IMX_SC_R_GPU_1_PID0>;
 		power-domains = <&pd IMX_SC_R_GPU_1_PID0>;
-		status = "disabled";
 	};
 };

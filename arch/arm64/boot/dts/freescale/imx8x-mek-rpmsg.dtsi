@@ -57,7 +57,7 @@
 	i2c-parent = <&i2c_rpbus_5>;
 };
 
-&i2c_rpbus_5 {
+pcam_i2c: &i2c_rpbus_5 {
 	#address-cells = <1>;
 	#size-cells = <0>;
 	status = "okay";
@@ -72,7 +72,7 @@
 	cs42888: cs42888@48 {
 		compatible = "cirrus,cs42888";
 		reg = <0x48>;
-		clocks = <&mclkout0_lpcg 0>;
+		clocks = <&mclkout0_lpcg IMX_LPCG_CLK_0>;
 		clock-names = "mclk";
 		VA-supply = <&reg_audio>;
 		VD-supply = <&reg_audio>;
@@ -82,26 +82,9 @@
 		assigned-clocks = <&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_PLL>,
 				<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_SLV_BUS>,
 				<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_MST_BUS>,
-				<&mclkout0_lpcg 0>;
+				<&mclkout0_lpcg IMX_LPCG_CLK_0>;
 		assigned-clock-rates = <786432000>, <49152000>, <12288000>, <12288000>;
 		fsl,txs-rxm;
-	};
-
-	ov5640_pi: ov5640@3c {
-		compatible = "ovti,ov5640";
-		reg = <0x3c>;
-		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_parallel_csi>;
-		clocks = <&pi0_misc_lpcg 0>;
-		assigned-clocks = <&pi0_misc_lpcg 0>;
-		assigned-clock-rates = <24000000>;
-		clock-names = "xclk";
-		powerdown-gpios = <&lsio_gpio3 2 GPIO_ACTIVE_HIGH>;
-		reset-gpios = <&lsio_gpio3 3 GPIO_ACTIVE_LOW>;
-		csi_id = <0>;
-		mclk = <24000000>;
-		mclk_source = <0>;
-		status = "disabled";
 	};
 };
 

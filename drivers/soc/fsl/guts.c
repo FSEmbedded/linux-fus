@@ -166,6 +166,7 @@ static unsigned int fsl_guts_read(const void __iomem *reg)
 {
 	if (soc.little_endian)
 		return ioread32(reg);
+
 	return ioread32be(reg);
 }
 

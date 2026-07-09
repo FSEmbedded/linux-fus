@@ -2550,6 +2550,10 @@ static struct platform_device *pci_pwrctrl_create_device(struct pci_bus *bus, in
 		goto err_put_of_node;
 	}
 
+	if (of_device_is_compatible(np, "pci1131,e101") ||
+	    of_device_is_compatible(np, "pci1131,ee00"))
+		return NULL;
+
 	/*
 	 * First check whether the pwrctrl device really needs to be created or
 	 * not. This is decided based on at least one of the power supplies

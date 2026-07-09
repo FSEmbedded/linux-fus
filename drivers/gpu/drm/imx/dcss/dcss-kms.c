@@ -3,9 +3,11 @@
  * Copyright 2019 NXP.
  */
 
+#include <drm/bridge/cdns-mhdp.h>
 #include <drm/clients/drm_client_setup.h>
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
+#include <drm/drm_blend.h>
 #include <drm/drm_bridge.h>
 #include <drm/drm_bridge_connector.h>
 #include <drm/drm_drv.h>
@@ -52,6 +54,7 @@ static const struct drm_driver dcss_kms_driver = {
 	.driver_features	= DRIVER_MODESET | DRIVER_GEM | DRIVER_ATOMIC,
 	DRM_GEM_DMA_DRIVER_OPS,
 	DRM_FBDEV_DMA_DRIVER_OPS,
+	.gem_prime_import	= drm_gem_prime_import,
 	.fops			= &dcss_cma_fops,
 	.name			= "imx-dcss",
 	.desc			= "i.MX8MQ Display Subsystem",

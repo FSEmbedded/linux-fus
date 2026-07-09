@@ -966,8 +966,8 @@ static void sdhci_calc_sw_timeout(struct sdhci_host *host,
 		host->data_timeout += MMC_CMD_TRANSFER_TIME;
 }
 
-u8 sdhci_calc_timeout(struct sdhci_host *host, struct mmc_command *cmd,
-		      bool *too_big)
+static u8 sdhci_calc_timeout(struct sdhci_host *host, struct mmc_command *cmd,
+			     bool *too_big)
 {
 	u8 count;
 	struct mmc_data *data;
@@ -1023,7 +1023,6 @@ u8 sdhci_calc_timeout(struct sdhci_host *host, struct mmc_command *cmd,
 
 	return count;
 }
-EXPORT_SYMBOL_GPL(sdhci_calc_timeout);
 
 static void sdhci_set_transfer_irqs(struct sdhci_host *host)
 {
@@ -3812,7 +3811,7 @@ int sdhci_suspend_host(struct sdhci_host *host)
 		host->ier = 0;
 		sdhci_writel(host, 0, SDHCI_INT_ENABLE);
 		sdhci_writel(host, 0, SDHCI_SIGNAL_ENABLE);
-		disable_irq(host->irq);
+		free_irq(host->irq, host);
 	}
 
 	return 0;
@@ -3823,6 +3822,7 @@ EXPORT_SYMBOL_GPL(sdhci_suspend_host);
 int sdhci_resume_host(struct sdhci_host *host)
 {
 	struct mmc_host *mmc = host->mmc;
+	int ret = 0;
 
 	if (host->flags & (SDHCI_USE_SDMA | SDHCI_USE_ADMA)) {
 		if (host->ops->enable_dma)
@@ -3844,12 +3844,16 @@ int sdhci_resume_host(struct sdhci_host *host)
 	if (host->irq_wake_enabled) {
 		sdhci_disable_irq_wakeups(host);
 	} else {
-		enable_irq(host->irq);
+		ret = request_threaded_irq(host->irq, sdhci_irq,
+					   sdhci_thread_irq, IRQF_SHARED,
+					   mmc_hostname(mmc), host);
+		if (ret)
+			return ret;
 	}
 
 	sdhci_enable_card_detection(host);
 
-	return 0;
+	return ret;
 }
 
 EXPORT_SYMBOL_GPL(sdhci_resume_host);

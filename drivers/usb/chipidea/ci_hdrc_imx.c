@@ -110,7 +110,6 @@ struct ci_hdrc_imx_data {
 	bool supports_runtime_pm;
 	bool override_phy_control;
 	bool in_lpm;
-	bool wakeup_int;
 	struct pinctrl *pinctrl;
 	struct pinctrl_state *pinctrl_hsic_active;
 	struct regulator *hsic_pad_regulator;
@@ -641,6 +640,7 @@ static int imx_controller_suspend(struct device *dev,
 	}
 
 	imx_disable_unprepare_clks(dev);
+	release_bus_freq(BUS_FREQ_HIGH);
 
 	if (data->wakeup_irq > 0)
 		enable_irq(data->wakeup_irq);
@@ -671,6 +671,7 @@ static int imx_controller_resume(struct device *dev,
 	    !irqd_irq_disabled(irq_get_irq_data(data->wakeup_irq)))
 		disable_irq_nosync(data->wakeup_irq);
 
+	request_bus_freq(BUS_FREQ_HIGH);
 	ret = imx_prepare_enable_clks(dev);
 	if (ret)
 		return ret;
@@ -682,11 +683,6 @@ static int imx_controller_resume(struct device *dev,
 	if (ret) {
 		dev_err(dev, "usbmisc resume failed, ret=%d\n", ret);
 		goto clk_disable;
-	}
-
-	if (data->wakeup_int) {
-		data->wakeup_int = false;
-		enable_irq(data->irq);
 	}
 
 	return 0;

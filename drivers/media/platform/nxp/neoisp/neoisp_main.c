@@ -2,16 +2,15 @@
 /*
  * NEOISP main driver source code
  *
- * This driver is highly inspired from "Raspberry Pi PiSP Backend (BE) ISP driver", developed by
- * "David Plowman <david.plowman@raspberrypi.com>" and
- * "Nick Hollinghurst <nick.hollinghurst@raspberrypi.com>"
+ * This is a derived work from the PiSP Back End driver
+ * Copyright (c) 2021-2024 Raspberry Pi Limited
  *
  * Copyright 2023-2025 NXP
- * Author: Aymen Sghaier (aymen.sghaier@nxp.com)
  */
 
 #include <linux/clk.h>
 #include <linux/debugfs.h>
+#include <linux/delay.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/lockdep.h>
@@ -20,43 +19,47 @@
 #include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
-#include <linux/regmap.h>
 
 #include <media/v4l2-ctrls.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-event.h>
 #include <media/v4l2-ioctl.h>
-#include <media/v4l2-mem2mem.h>
 #include <media/videobuf2-dma-contig.h>
 
 #include "neoisp.h"
 #include "neoisp_regs.h"
 #include "neoisp_ctx.h"
 
-static int neoisp_regfield_alloc(struct device *dev, struct neoisp_dev_s *neoispd)
-{
-	int idx = 0;
-	struct reg_field default_regf = REG_FIELD(0, 0, 31);
+static int enable_debugfs;
+module_param_named(enable_debugfs, enable_debugfs, uint, 0600);
 
-	for (idx = 0; idx < NEOISP_FIELD_COUNT; idx++) {
-		default_regf.reg = neoispd->info->regs[idx];
-		neoispd->regs.fields[idx] =
-			devm_regmap_field_alloc(dev, neoispd->regmap, default_regf);
-		if (IS_ERR(neoispd->regs.fields[idx]))
-			return PTR_ERR(neoispd->regs.fields[idx]);
-	}
-
-	return 0;
-}
+static const struct isp_block_map_s active_block_map[] = {
+	[NEOISP_HW_V1] = {
+		.vignetting_table = NEO_VIGNETTING_TABLE_MAP_V1,
+		.drc_global_tonemap = NEO_DRC_GLOBAL_TONEMAP_MAP_V1,
+		.drc_global_hist_roi0 = NEO_DRC_GLOBAL_HIST_ROI0_MAP_V1,
+		.drc_global_hist_roi1 = NEO_DRC_GLOBAL_HIST_ROI1_MAP_V1,
+		.drc_local_tonemap = NEO_DRC_LOCAL_TONEMAP_MAP_V1,
+		.drc_local_sum = NEO_DRC_LOCAL_SUM_MAP_V1,
+	},
+	[NEOISP_HW_V2] = {
+		.vignetting_table = NEO_VIGNETTING_TABLE_MAP_V2,
+		.drc_global_tonemap = NEO_DRC_GLOBAL_TONEMAP_MAP_V2,
+		.drc_global_hist_roi0 = NEO_DRC_GLOBAL_HIST_ROI0_MAP_V2,
+		.drc_global_hist_roi1 = NEO_DRC_GLOBAL_HIST_ROI1_MAP_V2,
+		.drc_local_tonemap = NEO_DRC_LOCAL_TONEMAP_MAP_V2,
+		.drc_local_sum = NEO_DRC_LOCAL_SUM_MAP_V2,
+	},
+};
 
 static void neoisp_fill_mp(struct v4l2_format *f, const struct neoisp_fmt_s *fmt)
 {
-	unsigned int nplanes = f->fmt.pix_mp.num_planes;
-	unsigned int i;
+	u32 nplanes = f->fmt.pix_mp.num_planes;
+	u32 i;
 
 	for (i = 0; i < nplanes; i++) {
 		struct v4l2_plane_pix_format *p = &f->fmt.pix_mp.plane_fmt[i];
-		unsigned int bpl, plane_size;
+		u32 bpl, plane_size;
 
 		bpl = f->fmt.pix_mp.width * ((fmt->bit_depth + 7) >> 3);
 		bpl = ALIGN(max(p->bytesperline, bpl), fmt->align);
@@ -74,7 +77,7 @@ static void neoisp_fill_mp(struct v4l2_format *f, const struct neoisp_fmt_s *fmt
 static const struct neoisp_fmt_s *neoisp_find_pixel_format_by_node(u32 pixel_format,
 								   struct neoisp_node_s *node)
 {
-	__u32 i;
+	u32 i;
 
 	if (IS_ERR_OR_NULL(node))
 		return NULL;
@@ -116,18 +119,13 @@ static const struct neoisp_fmt_s *neoisp_find_pixel_format_by_node(u32 pixel_for
 	return NULL;
 }
 
-static int neoisp_node_link_state(struct neoisp_node_s *node)
-{
-	return (node->intf_link->flags & MEDIA_LNK_FL_ENABLED);
-}
-
-static int neoisp_node_queue_setup(struct vb2_queue *q, __u32 *nbuffers,
-		__u32 *nplanes, __u32 sizes[],
+static int neoisp_node_queue_setup(struct vb2_queue *q, u32 *nbuffers,
+		u32 *nplanes, u32 sizes[],
 		struct device *alloc_devs[])
 {
 	struct neoisp_node_s *node = vb2_get_drv_priv(q);
 	struct neoisp_dev_s *neoispd = node->node_group->neoisp_dev;
-	__u32 i, num_planes;
+	u32 i, num_planes;
 
 	num_planes = NODE_IS_MPLANE(node) ?
 		     node->format.fmt.pix_mp.num_planes : 1;
@@ -136,7 +134,7 @@ static int neoisp_node_queue_setup(struct vb2_queue *q, __u32 *nbuffers,
 			return -EINVAL;
 
 		for (i = 0; i < *nplanes; i++) {
-			__u32 size = NODE_IS_MPLANE(node) ?
+			u32 size = NODE_IS_MPLANE(node) ?
 				     node->format.fmt.pix_mp.plane_fmt[i].sizeimage :
 				     node->format.fmt.meta.buffersize;
 
@@ -165,18 +163,8 @@ static int neoisp_node_buffer_prepare(struct vb2_buffer *vb)
 	struct neoisp_node_s *node = vb2_get_drv_priv(vb->vb2_queue);
 	struct neoisp_dev_s *neoispd = node->node_group->neoisp_dev;
 	unsigned long size = 0;
-	__u32 num_planes = NODE_IS_MPLANE(node) ?
+	u32 i, num_planes = NODE_IS_MPLANE(node) ?
 		node->format.fmt.pix_mp.num_planes : 1;
-	__u32 i;
-
-	if (NODE_IS_META(node) && NODE_IS_OUTPUT(node) &&
-	    vb->planes[0].bytesused != node->format.fmt.meta.buffersize) {
-		dev_err(&neoispd->pdev->dev,
-				"%s: Meta buffer size mismatch for node %s got %d expected %d\n",
-				__func__, NODE_NAME(node),
-				vb->planes[0].bytesused, node->format.fmt.meta.buffersize);
-		return -EINVAL;
-	}
 
 	for (i = 0; i < num_planes; i++) {
 		size = NODE_IS_MPLANE(node)
@@ -197,8 +185,8 @@ static int neoisp_node_buffer_prepare(struct vb2_buffer *vb)
 
 static void send_frame_sync_event(struct neoisp_dev_s *neoispd)
 {
-	struct v4l2_subdev *sd =  &neoispd->queued_job.node_group->sd;
-	__u32 sequence = neoispd->queued_job.node_group->frame_sequence;
+	struct v4l2_subdev *sd = &neoispd->queued_job.node_group->sd;
+	u32 sequence = neoispd->queued_job.node_group->frame_sequence;
 
 	struct v4l2_event ev = {
 		.type = V4L2_EVENT_FRAME_SYNC,
@@ -208,569 +196,44 @@ static void send_frame_sync_event(struct neoisp_dev_s *neoispd)
 	v4l2_event_queue(sd->devnode, &ev);
 }
 
-static __u32 *get_vaddr(struct neoisp_buffer_s *buf)
-{
-	if (buf)
-		return vb2_plane_vaddr(&buf->vb.vb2_buf, 0);
-	return NULL;
-}
-
-static dma_addr_t get_addr(struct neoisp_buffer_s *buf, __u32 num_plane)
-{
-	if (buf)
-		return vb2_dma_contig_plane_dma_addr(&buf->vb.vb2_buf, num_plane);
-	return 0;
-}
-
-struct ycbcr_enc {
-	/* Matrix stored in s8.8 format */
-	__s16 matrix[NEO_GAMMA_MATRIX_SIZE][NEO_GAMMA_MATRIX_SIZE];
-	/* This range [-128, 127] is remapped to [0, 255] for full-range quantization.
-	 * Thus, chrominance channels offset is 0.5 in s0.12 format that is 0.5 * 4096.
-	 */
-	__s16 offsets[NEO_GAMMA_MATRIX_SIZE];
-};
-struct xfer_func {
-	__s16 gain; /* s8.8 format*/
-	__s16 blklvl_gain; /* s8.8 format */
-	__s16 threshold; /* s0.16 format */
-	__s16 gamma; /* s1.8 format */
-	__s16 gamma_offset; /* s0.12 format */
-};
-
-static const struct ycbcr_enc enc_lut[] = {
-	[V4L2_YCBCR_ENC_601] = {
-		/* BT.601 full-range encoding - floating-point matrix:
-		 *	[0.299, 0.5870, 0.1140
-		 *	 -0.1687, -0.3313, 0.5
-		 *	 0.5, -0.4187, -0.0813]
-		 */
-		.matrix = {
-			{77, 150, 29},
-			{-43, -85, 128},
-			{128, -107, -21},
-		},
-		.offsets = {0, 2048, 2048},
-	}, [V4L2_YCBCR_ENC_709] = {
-		/* BT.709 full-range encoding - floating-point matrix:
-		 *	[0.2126, 0.7152, 0.0722
-		 *	 -0.1146, -0.3854, 0.5
-		 *	 0.5, -0.4542, -0.0458]
-		 */
-		.matrix = {
-			{54, 183, 18},
-			{-29, -99, 128},
-			{128, -116, -12},
-		},
-		.offsets =  {0, 2048, 2048},
-	}, [V4L2_YCBCR_ENC_DEFAULT] = {
-		/* No encoding - used for RGB output formats */
-		.matrix = {
-			{256, 0, 0},
-			{0, 256, 0},
-			{0, 0, 256},
-		},
-		.offsets =  {0, 0, 0},
-	},
-};
-
-static const struct xfer_func xfer_lut[] = {
-	[V4L2_XFER_FUNC_709] = {
-		/* L' = 4.5L, for 0 <= L <= 0.018
-		 * L' = 1.099L^0.45 - 0.099, for L >= 0.018
-		 *    = 1.099 * (L^0.45 - (0.099 / 1.099)), for L >= 0.018
-		 */
-		.gain = 281,
-		.blklvl_gain = 1152,
-		.threshold = 1180,
-		.gamma = 115,
-		.gamma_offset = 369,
-	}, [V4L2_XFER_FUNC_SRGB] = {
-		/* L' = 12.92L, for 0 <= L <= 0.0031308
-		 * L' = 1.055L^(1/2.4) - 0.055, for L >= 0.0031308
-		 *    = 1.055 * (L^(1/2.4) - (0.055 / 1.055)), for L >= 0.0031308
-		 */
-		.gain = 270,
-		.blklvl_gain = 3308,
-		.threshold = 205,
-		.gamma = 107,
-		.gamma_offset = 214,
-	}, [V4L2_XFER_FUNC_NONE] = {
-		.gain = 256,
-		.blklvl_gain = 0,
-		.threshold = 0,
-		.gamma = 256,
-		.gamma_offset = 0,
-	},
-};
-
-static void neoisp_update_gcm(struct neoisp_reg_params_s *regp,
-			      enum v4l2_colorspace cspace, enum v4l2_xfer_func xfer,
-			      enum v4l2_ycbcr_encoding enc, enum v4l2_quantization quant)
-{
-	/* Colorspaces definition are extracted from kernel documentation:
-	 * https://www.kernel.org/doc/html/latest/userspace-api/media/v4l/colorspaces-details.html
-	 */
-	int i, j;
-	__s32 value;
-
-	/* Transfer function */
-	regp->gcm.lowth_ctrl01_threshold0 = xfer_lut[xfer].threshold;
-	regp->gcm.lowth_ctrl01_threshold1 = xfer_lut[xfer].threshold;
-	regp->gcm.lowth_ctrl2_threshold2 = xfer_lut[xfer].threshold;
-	regp->gcm.blklvl0_ctrl_gain0 = xfer_lut[xfer].blklvl_gain;
-	regp->gcm.blklvl1_ctrl_gain1 = xfer_lut[xfer].blklvl_gain;
-	regp->gcm.blklvl2_ctrl_gain2 = xfer_lut[xfer].blklvl_gain;
-	regp->gcm.gamma0_gamma0 = xfer_lut[xfer].gamma;
-	regp->gcm.gamma0_offset0 = xfer_lut[xfer].gamma_offset;
-	regp->gcm.gamma1_gamma1 = xfer_lut[xfer].gamma;
-	regp->gcm.gamma1_offset1 = xfer_lut[xfer].gamma_offset;
-	regp->gcm.gamma2_gamma2 = xfer_lut[xfer].gamma;
-	regp->gcm.gamma2_offset2 = xfer_lut[xfer].gamma_offset;
-
-	/* Quantization
-	 *
-	 * The quantization is amended by transfer function gain.
-	 * The default quantization is full-range for RGB formats and
-	 * V4L2_COLORSPACE_JPEG.
-	 *
-	 * In limited range the offsets are defined by standard as follow: (16, 128, 128)
-	 * for 8-bit range while ISP offsets are defined for 12-bit range.
-	 * Hence, the offsets defined by standard should be multiplied by 2^4=16:
-	 * (256, 2048, 2048) for 12-bit range
-	 * The same quantization factors are applied to Y'CbCr for BT.601 and BT.709:
-	 * (219*Y, 224*Pb, 224*Pr)
-	 */
-	regp->gcm.ooffsets[0] = (quant == V4L2_QUANTIZATION_LIM_RANGE) ?
-					256 : enc_lut[enc].offsets[0];
-	/* Chrominance has the same offset for full or limited range */
-	regp->gcm.ooffsets[1] = enc_lut[enc].offsets[1];
-	regp->gcm.ooffsets[2] = enc_lut[enc].offsets[2];
-	for (i = 0; i < NEO_GAMMA_MATRIX_SIZE; i++) {
-		__s32 factor = (quant == V4L2_QUANTIZATION_LIM_RANGE) ?
-				(i == 0 ? 219 : 224) : 256;
-		for (j = 0; j < NEO_GAMMA_MATRIX_SIZE; j++) {
-			value = ((__s32) enc_lut[enc].matrix[i][j] * factor) / 256;
-			value = ((__s32) value * (__s32) xfer_lut[xfer].gain) / 256;
-			regp->gcm.omat_rxcy[i][j] = (__s16) value;
-		}
-	}
-}
-
-static int neoisp_set_packetizer(struct neoisp_dev_s *neoispd)
-{
-	struct neoisp_mparam_packetizer_s *pck = &mod_params.pack;
-	struct neoisp_node_s *nd = &neoispd->queued_job.node_group->node[NEOISP_FRAME_NODE];
-	__u32 pixfmt;
-	__u8 bpp_enc;
-
-	if (neoisp_node_link_state(nd)) {
-		pixfmt = nd->format.fmt.pix_mp.pixelformat;
-		bpp_enc = nd->neoisp_format->bpp_enc;
-	} else {
-		/* Force dummy buffer configuration to YUYV format */
-		const struct neoisp_fmt_s *neoisp_fmt;
-
-		pixfmt = V4L2_PIX_FMT_YUYV;
-		neoisp_fmt =  neoisp_find_pixel_format_by_node(pixfmt, nd);
-		bpp_enc = neoisp_fmt->bpp_enc;
-	}
-
-	/* set output bits per pixel */
-	pck->ch0_ctrl_cam0_obpp = bpp_enc;
-	pck->ch12_ctrl_cam0_obpp = bpp_enc;
-
-	switch (pixfmt) {
-	case V4L2_PIX_FMT_Y10:
-		pck->ch0_ctrl_cam0_rsa = 2;
-		pck->ch0_ctrl_cam0_lsa = 0;
-		break;
-	case V4L2_PIX_FMT_Y12:
-		pck->ch0_ctrl_cam0_rsa = 0;
-		pck->ch0_ctrl_cam0_lsa = 0;
-		break;
-	case V4L2_PIX_FMT_Y16:
-		pck->ch0_ctrl_cam0_rsa = 0;
-		pck->ch0_ctrl_cam0_lsa = 4;
-		break;
-	default:
-		pck->ch0_ctrl_cam0_rsa = 4;
-		pck->ch0_ctrl_cam0_lsa = 0;
-		break;
-	}
-
-	switch (pixfmt) {
-	case V4L2_PIX_FMT_GREY:
-	case V4L2_PIX_FMT_NV12:
-	case V4L2_PIX_FMT_Y10:
-	case V4L2_PIX_FMT_Y12:
-	case V4L2_PIX_FMT_Y16:
-	case V4L2_PIX_FMT_Y16_BE:
-		pck->ctrl_cam0_type = 0;
-		pck->ch12_ctrl_cam0_subsample = 2;
-		/* set channels orders */
-		pck->ctrl_cam0_order0 = 2;
-		pck->ctrl_cam0_order1 = 0;
-		pck->ctrl_cam0_order2 = 1;
-		/* remove 0-padding */
-		pck->ctrl_cam0_a0s = 0;
-		break;
-	case V4L2_PIX_FMT_NV21:
-		pck->ctrl_cam0_type = 0;
-		pck->ch12_ctrl_cam0_subsample = 2;
-		/* set channels orders */
-		pck->ctrl_cam0_order0 = 2;
-		pck->ctrl_cam0_order1 = 1;
-		pck->ctrl_cam0_order2 = 0;
-		/* remove 0-padding */
-		pck->ctrl_cam0_a0s = 0;
-		break;
-	case V4L2_PIX_FMT_NV16:
-		pck->ctrl_cam0_type = 0;
-		pck->ch12_ctrl_cam0_subsample = 1;
-		/* set channels orders */
-		pck->ctrl_cam0_order0 = 2;
-		pck->ctrl_cam0_order1 = 0;
-		pck->ctrl_cam0_order2 = 1;
-		/* remove 0-padding */
-		pck->ctrl_cam0_a0s = 0;
-		break;
-	case V4L2_PIX_FMT_NV61:
-		pck->ctrl_cam0_type = 0;
-		pck->ch12_ctrl_cam0_subsample = 1;
-		/* set channels orders */
-		pck->ctrl_cam0_order0 = 2;
-		pck->ctrl_cam0_order1 = 1;
-		pck->ctrl_cam0_order2 = 0;
-		/* remove 0-padding */
-		pck->ctrl_cam0_a0s = 0;
-		break;
-	case V4L2_PIX_FMT_YUYV:
-		pck->ctrl_cam0_type = 1;
-		pck->ch12_ctrl_cam0_subsample = 1;
-		/* set channels orders */
-		pck->ctrl_cam0_order0 = 0;
-		pck->ctrl_cam0_order1 = 1;
-		pck->ctrl_cam0_order2 = 3;
-		/* remove 0-padding */
-		pck->ctrl_cam0_a0s = 0;
-		break;
-	case V4L2_PIX_FMT_VYUY:
-		pck->ctrl_cam0_type = 1;
-		pck->ch12_ctrl_cam0_subsample = 1;
-		/* set channels orders */
-		pck->ctrl_cam0_order0 = 1;
-		pck->ctrl_cam0_order1 = 2;
-		pck->ctrl_cam0_order2 = 0;
-		/* remove 0-padding */
-		pck->ctrl_cam0_a0s = 0;
-		break;
-	case V4L2_PIX_FMT_UYVY:
-		pck->ctrl_cam0_type = 1;
-		pck->ch12_ctrl_cam0_subsample = 1;
-		/* set channels orders */
-		pck->ctrl_cam0_order0 = 1;
-		pck->ctrl_cam0_order1 = 0;
-		pck->ctrl_cam0_order2 = 2;
-		/* remove 0-padding */
-		pck->ctrl_cam0_a0s = 0;
-		break;
-	case V4L2_PIX_FMT_YUVX32:
-		pck->ctrl_cam0_type = 1;
-		pck->ch12_ctrl_cam0_subsample = 0;
-		/* set channels orders */
-		pck->ctrl_cam0_order0 = 0;
-		pck->ctrl_cam0_order1 = 1;
-		pck->ctrl_cam0_order2 = 2;
-		/* add 0-padding */
-		pck->ctrl_cam0_a0s = 8;
-		break;
-	case V4L2_PIX_FMT_VUYX32:
-		pck->ctrl_cam0_type = 1;
-		pck->ch12_ctrl_cam0_subsample = 0;
-		/* set channels orders */
-		pck->ctrl_cam0_order0 = 2;
-		pck->ctrl_cam0_order1 = 1;
-		pck->ctrl_cam0_order2 = 0;
-		/* add 0-padding */
-		pck->ctrl_cam0_a0s = 8;
-		break;
-	case V4L2_PIX_FMT_XBGR32:
-		pck->ctrl_cam0_type = 1;
-		pck->ch12_ctrl_cam0_subsample = 0;
-		/* set channels orders */
-		pck->ctrl_cam0_order0 = 2;
-		pck->ctrl_cam0_order1 = 1;
-		pck->ctrl_cam0_order2 = 0;
-		/* add 0-padding */
-		pck->ctrl_cam0_a0s = 8;
-		break;
-	case V4L2_PIX_FMT_RGBX32:
-		pck->ctrl_cam0_type = 1;
-		pck->ch12_ctrl_cam0_subsample = 0;
-		/* set channels orders */
-		pck->ctrl_cam0_order0 = 0;
-		pck->ctrl_cam0_order1 = 1;
-		pck->ctrl_cam0_order2 = 2;
-		/* add 0-padding */
-		pck->ctrl_cam0_a0s = 8;
-		break;
-	case V4L2_PIX_FMT_BGR24:
-		pck->ctrl_cam0_type = 1;
-		pck->ch12_ctrl_cam0_subsample = 0;
-		/* set channels orders */
-		pck->ctrl_cam0_order0 = 2;
-		pck->ctrl_cam0_order1 = 1;
-		pck->ctrl_cam0_order2 = 0;
-		/* remove 0-padding */
-		pck->ctrl_cam0_a0s = 0;
-		break;
-	default: /* all other pixel formats */
-		pck->ctrl_cam0_type = 1;
-		pck->ch12_ctrl_cam0_subsample = 0;
-		/* set channels orders */
-		pck->ctrl_cam0_order0 = 0;
-		pck->ctrl_cam0_order1 = 1;
-		pck->ctrl_cam0_order2 = 2;
-		/* remove 0-padding */
-		pck->ctrl_cam0_a0s = 0;
-		break;
-	}
-
-	/* packetizer settings */
-	regmap_field_write(neoispd->regs.fields[NEO_PACKETIZER_CH0_CTRL_CAM0_IDX],
-			NEO_PACKETIZER_CH0_CTRL_CAM0_OBPP_SET(pck->ch0_ctrl_cam0_obpp)
-			| NEO_PACKETIZER_CH0_CTRL_CAM0_RSA_SET(pck->ch0_ctrl_cam0_rsa)
-			| NEO_PACKETIZER_CH0_CTRL_CAM0_LSA_SET(pck->ch0_ctrl_cam0_lsa));
-	regmap_field_write(neoispd->regs.fields[NEO_PACKETIZER_CH12_CTRL_CAM0_IDX],
-			NEO_PACKETIZER_CH12_CTRL_CAM0_OBPP_SET(pck->ch12_ctrl_cam0_obpp)
-			| NEO_PACKETIZER_CH12_CTRL_CAM0_RSA_SET(pck->ch12_ctrl_cam0_rsa)
-			| NEO_PACKETIZER_CH12_CTRL_CAM0_LSA_SET(pck->ch12_ctrl_cam0_lsa)
-			| NEO_PACKETIZER_CH12_CTRL_CAM0_SUBSAMPLE_SET(
-				pck->ch12_ctrl_cam0_subsample));
-	regmap_field_write(neoispd->regs.fields[NEO_PACKETIZER_PACK_CTRL_CAM0_IDX],
-			NEO_PACKETIZER_PACK_CTRL_CAM0_TYPE_SET(pck->ctrl_cam0_type)
-			| NEO_PACKETIZER_PACK_CTRL_CAM0_ORDER0_SET(pck->ctrl_cam0_order0)
-			| NEO_PACKETIZER_PACK_CTRL_CAM0_ORDER1_SET(pck->ctrl_cam0_order1)
-			| NEO_PACKETIZER_PACK_CTRL_CAM0_ORDER2_SET(pck->ctrl_cam0_order2)
-			| NEO_PACKETIZER_PACK_CTRL_CAM0_A0S_SET(pck->ctrl_cam0_a0s));
-	return 0;
-}
-
-/*
- * Check if sensor is monochrome, then update concerned parameters.
- */
-static void neoisp_update_monochrome(struct neoisp_reg_params_s *regs, __u32 pixfmt)
-{
-	if (FMT_IS_MONOCHROME(pixfmt)) {
-		regs->demosaic.ctrl_fmt = 2; /* monochrome format */
-		regs->bnr.ctrl_nhood = 1; /* neighborhood */
-	} else {
-		regs->demosaic.ctrl_fmt = 0; /* bayer format */
-		regs->bnr.ctrl_nhood = 0;
-	}
-}
-
-/*
- * Set Head Color selection
- */
-static void neoisp_update_head_color(struct neoisp_reg_params_s *regs, __u32 pixfmt)
-{
-	switch (pixfmt) {
-	case (V4L2_PIX_FMT_SRGGB8):
-	case (V4L2_PIX_FMT_SRGGB10):
-	case (V4L2_PIX_FMT_SRGGB12):
-	case (V4L2_PIX_FMT_SRGGB14):
-	case (V4L2_PIX_FMT_SRGGB16):
-		regs->head_color.ctrl_hoffset = 0;
-		regs->head_color.ctrl_voffset = 0;
-		break;
-	case (V4L2_PIX_FMT_SGRBG8):
-	case (V4L2_PIX_FMT_SGRBG10):
-	case (V4L2_PIX_FMT_SGRBG12):
-	case (V4L2_PIX_FMT_SGRBG14):
-	case (V4L2_PIX_FMT_SGRBG16):
-		regs->head_color.ctrl_hoffset = 1;
-		regs->head_color.ctrl_voffset = 0;
-		break;
-	case (V4L2_PIX_FMT_SGBRG8):
-	case (V4L2_PIX_FMT_SGBRG10):
-	case (V4L2_PIX_FMT_SGBRG12):
-	case (V4L2_PIX_FMT_SGBRG14):
-	case (V4L2_PIX_FMT_SGBRG16):
-		regs->head_color.ctrl_hoffset = 0;
-		regs->head_color.ctrl_voffset = 1;
-		break;
-	case (V4L2_PIX_FMT_SBGGR8):
-	case (V4L2_PIX_FMT_SBGGR10):
-	case (V4L2_PIX_FMT_SBGGR12):
-	case (V4L2_PIX_FMT_SBGGR14):
-	case (V4L2_PIX_FMT_SBGGR16):
-		regs->head_color.ctrl_hoffset = 1;
-		regs->head_color.ctrl_voffset = 1;
-		break;
-	}
-}
-
-/*
- *  set pipe conf settings
- */
-static int neoisp_set_pipe_conf(struct neoisp_dev_s *neoispd)
-{
-	struct neoisp_buffer_s *buf_inp0 = neoispd->queued_job.buf[NEOISP_INPUT0_NODE];
-	struct neoisp_buffer_s *buf_inp1 = neoispd->queued_job.buf[NEOISP_INPUT1_NODE];
-	struct neoisp_buffer_s *buf_out = neoispd->queued_job.buf[NEOISP_FRAME_NODE];
-	struct neoisp_buffer_s *buf_ir = neoispd->queued_job.buf[NEOISP_IR_NODE];
-	struct neoisp_node_s *nd = &neoispd->queued_job.node_group->node[NEOISP_INPUT0_NODE];
-	struct neoisp_mparam_conf_s *cfg = &mod_params.conf;
-	__u32 width, height, obpp, ibpp, irbpp, inp0_stride, inp1_stride;
-	dma_addr_t inp0_addr, inp1_addr;
-
-	width = nd->crop.width;
-	height = nd->crop.height;
-	ibpp = (nd->neoisp_format->bit_depth + 7) / 8;
-	inp0_stride = nd->format.fmt.pix_mp.plane_fmt[0].bytesperline;
-	cfg->img_conf_cam0_ibpp0 = nd->neoisp_format->bpp_enc;
-	/* take crop into account if any */
-	inp0_addr = get_addr(buf_inp0, 0) + (nd->crop.left * ibpp) + (nd->crop.top * inp0_stride);
-
-	nd = &neoispd->queued_job.node_group->node[NEOISP_INPUT1_NODE];
-	ibpp = (nd->neoisp_format->bit_depth + 7) / 8;
-	inp1_stride = nd->format.fmt.pix_mp.plane_fmt[0].bytesperline;
-	inp1_addr = get_addr(buf_inp1, 0) + (nd->crop.left * ibpp) + (nd->crop.top * inp1_stride);
-	cfg->img_conf_cam0_ibpp1 = nd->neoisp_format->bpp_enc;
-
-	regmap_field_update_bits_base(neoispd->regs.fields[NEO_PIPE_CONF_IMG_CONF_CAM0_IDX],
-			NEO_PIPE_CONF_IMG_CONF_CAM0_IBPP0_MASK
-			| NEO_PIPE_CONF_IMG_CONF_CAM0_IBPP1_MASK,
-			NEO_PIPE_CONF_IMG_CONF_CAM0_IBPP0_SET(cfg->img_conf_cam0_ibpp0)
-			| NEO_PIPE_CONF_IMG_CONF_CAM0_IBPP1_SET(cfg->img_conf_cam0_ibpp1),
-			NULL, false, false);
-	regmap_field_write(neoispd->regs.fields[NEO_PIPE_CONF_IMG_SIZE_CAM0_IDX],
-			NEO_PIPE_CONF_IMG_SIZE_CAM0_WIDTH_SET(width)
-			| NEO_PIPE_CONF_IMG_SIZE_CAM0_HEIGHT_SET(height));
-	regmap_field_write(neoispd->regs.fields[NEO_PIPE_CONF_IMG0_IN_LS_CAM0_IDX],
-			NEO_PIPE_CONF_IMG0_IN_LS_CAM0_LS_SET(inp0_stride));
-	/* raw image addr from video output input0 node buffer */
-	regmap_field_write(neoispd->regs.fields[NEO_PIPE_CONF_IMG0_IN_ADDR_CAM0_IDX],
-			NEO_PIPE_CONF_ADDR_SET(inp0_addr));
-	/* Handle hdr inputs */
-	if (neoisp_node_link_state(nd)) {
-		regmap_field_write(neoispd->regs.fields[NEO_PIPE_CONF_IMG1_IN_ADDR_CAM0_IDX],
-				   NEO_PIPE_CONF_ADDR_SET(inp1_addr));
-		regmap_field_write(neoispd->regs.fields[NEO_PIPE_CONF_IMG1_IN_LS_CAM0_IDX],
-				   NEO_PIPE_CONF_IMG1_IN_LS_CAM0_LS_SET(inp1_stride));
-	} else {
-		regmap_field_write(neoispd->regs.fields[NEO_PIPE_CONF_IMG1_IN_ADDR_CAM0_IDX],
-				   NEO_PIPE_CONF_ADDR_SET(0u));
-		regmap_field_write(neoispd->regs.fields[NEO_PIPE_CONF_IMG1_IN_LS_CAM0_IDX],
-				   NEO_PIPE_CONF_IMG1_IN_LS_CAM0_LS_SET(0u));
-	}
-
-	nd = &neoispd->queued_job.node_group->node[NEOISP_FRAME_NODE];
-	if (neoisp_node_link_state(nd)) {
-		obpp = (nd->neoisp_format->bit_depth + 7) / 8;
-		/* planar/multiplanar output image addresses */
-		switch (nd->format.fmt.pix_mp.pixelformat) {
-		case V4L2_PIX_FMT_GREY:
-		case V4L2_PIX_FMT_Y10:
-		case V4L2_PIX_FMT_Y12:
-		case V4L2_PIX_FMT_Y16:
-		case V4L2_PIX_FMT_Y16_BE:
-			regmap_field_write(neoispd->regs.fields[NEO_PIPE_CONF_OUTCH0_ADDR_CAM0_IDX],
-					NEO_PIPE_CONF_ADDR_SET(get_addr(buf_out, 0)));
-			regmap_field_write(neoispd->regs.fields[NEO_PIPE_CONF_OUTCH0_LS_CAM0_IDX],
-					NEO_PIPE_CONF_OUTCH0_LS_CAM0_LS_SET(obpp * width));
-			regmap_field_write(neoispd->regs.fields[NEO_PIPE_CONF_OUTCH1_ADDR_CAM0_IDX],
-					NEO_PIPE_CONF_ADDR_SET(nd->node_group->any_dma));
-			regmap_field_write(neoispd->regs.fields[NEO_PIPE_CONF_OUTCH1_LS_CAM0_IDX],
-					NEO_PIPE_CONF_OUTCH1_LS_CAM0_LS_SET(0));
-			break;
-		case V4L2_PIX_FMT_NV12:
-		case V4L2_PIX_FMT_NV21:
-		case V4L2_PIX_FMT_NV16:
-		case V4L2_PIX_FMT_NV61:
-			regmap_field_write(neoispd->regs.fields[NEO_PIPE_CONF_OUTCH0_ADDR_CAM0_IDX],
-					NEO_PIPE_CONF_ADDR_SET(get_addr(buf_out, 0)));
-			regmap_field_write(neoispd->regs.fields[NEO_PIPE_CONF_OUTCH0_LS_CAM0_IDX],
-					NEO_PIPE_CONF_OUTCH0_LS_CAM0_LS_SET(obpp * width));
-			regmap_field_write(neoispd->regs.fields[NEO_PIPE_CONF_OUTCH1_ADDR_CAM0_IDX],
-					NEO_PIPE_CONF_ADDR_SET(get_addr(buf_out, 1)));
-			regmap_field_write(neoispd->regs.fields[NEO_PIPE_CONF_OUTCH1_LS_CAM0_IDX],
-					NEO_PIPE_CONF_OUTCH1_LS_CAM0_LS_SET(obpp * width));
-			break;
-		default:
-			regmap_field_write(neoispd->regs.fields[NEO_PIPE_CONF_OUTCH0_ADDR_CAM0_IDX],
-					NEO_PIPE_CONF_ADDR_SET(0));
-			regmap_field_write(neoispd->regs.fields[NEO_PIPE_CONF_OUTCH0_LS_CAM0_IDX],
-					NEO_PIPE_CONF_OUTCH0_LS_CAM0_LS_SET(0));
-
-			regmap_field_write(neoispd->regs.fields[NEO_PIPE_CONF_OUTCH1_ADDR_CAM0_IDX],
-					NEO_PIPE_CONF_ADDR_SET(get_addr(buf_out, 0)));
-			regmap_field_write(neoispd->regs.fields[NEO_PIPE_CONF_OUTCH1_LS_CAM0_IDX],
-					NEO_PIPE_CONF_OUTCH1_LS_CAM0_LS_SET(obpp * width));
-			break;
-		}
-	} else {
-		/* Default dummy pixelformat is set to YUYV */
-		regmap_field_write(neoispd->regs.fields[NEO_PIPE_CONF_OUTCH0_ADDR_CAM0_IDX],
-				NEO_PIPE_CONF_ADDR_SET(nd->node_group->any_dma));
-		regmap_field_write(neoispd->regs.fields[NEO_PIPE_CONF_OUTCH0_LS_CAM0_IDX],
-					NEO_PIPE_CONF_OUTCH0_LS_CAM0_LS_SET(0));
-		regmap_field_write(neoispd->regs.fields[NEO_PIPE_CONF_OUTCH1_ADDR_CAM0_IDX],
-				NEO_PIPE_CONF_ADDR_SET(nd->node_group->any_dma));
-		regmap_field_write(neoispd->regs.fields[NEO_PIPE_CONF_OUTCH1_LS_CAM0_IDX],
-					NEO_PIPE_CONF_OUTCH1_LS_CAM0_LS_SET(0));
-	}
-
-	nd = &neoispd->queued_job.node_group->node[NEOISP_IR_NODE];
-	if (neoisp_node_link_state(nd)) {
-		irbpp = (nd->neoisp_format->bit_depth + 7) / 8;
-		regmap_field_write(neoispd->regs.fields[NEO_PIPE_CONF_OUTIR_ADDR_CAM0_IDX],
-				NEO_PIPE_CONF_ADDR_SET(get_addr(buf_ir, 0)));
-		regmap_field_write(neoispd->regs.fields[NEO_PIPE_CONF_OUTIR_LS_CAM0_IDX],
-				NEO_PIPE_CONF_OUTIR_LS_CAM0_LS_SET(width * irbpp));
-	} else {
-		regmap_field_write(neoispd->regs.fields[NEO_PIPE_CONF_OUTIR_ADDR_CAM0_IDX],
-				NEO_PIPE_CONF_ADDR_SET(nd->node_group->any_dma));
-		regmap_field_write(neoispd->regs.fields[NEO_PIPE_CONF_OUTIR_LS_CAM0_IDX],
-				NEO_PIPE_CONF_OUTIR_LS_CAM0_LS_SET(0));
-	}
-
-	return 0;
-}
-
 static void neoisp_reset_hw(struct neoisp_dev_s *neoispd, bool is_hw)
 {
-	__u32 bit = NEO_PIPE_CONF_SOFT_RESET_SOFT_RESET;
-	__u32 val, count = 100;
+	u32 bit = NEO_PIPE_CONF_SOFT_RESET_SOFT_RESET;
+	u32 val, count = 100;
 
 	if (is_hw)
 		bit = NEO_PIPE_CONF_SOFT_RESET_HARD_RESET;
 
-	regmap_field_write(neoispd->regs.fields[NEO_PIPE_CONF_SOFT_RESET_IDX], bit);
+	neoisp_wr(neoispd, NEO_PIPE_CONF_SOFT_RESET, bit);
 
-	/* wait for auto-clear */
+	/* Wait for auto-clear */
 	do {
-		regmap_field_read(neoispd->regs.fields[NEO_PIPE_CONF_SOFT_RESET_IDX], &val);
+		usleep_range(1, 2);
+		val = neoisp_rd(neoispd, NEO_PIPE_CONF_SOFT_RESET);
 		count--;
 	} while ((val & bit) && count);
+
+	if (val & bit)
+		dev_warn(&neoispd->pdev->dev, "%s reset incomplete\n",
+			 is_hw ? "hw" : "sw");
 }
 
-static void neoisp_queue_job(struct neoisp_dev_s *neoispd,
-		struct neoisp_node_group_s *node_group)
+static void neoisp_run_job(struct neoisp_dev_s *neoispd)
 {
-	neoisp_set_packetizer(neoispd);
-	neoisp_set_pipe_conf(neoispd);
+	/* Update queued job context buf addresses */
+	neoisp_update_context_buf_addr(neoispd);
 
-	neoisp_update_ctx(neoispd, node_group->id);
-	neoisp_program_ctx(neoispd, node_group->id);
+	/* Update queued job context with user space values */
+	neoisp_update_context_w_user_params(neoispd);
 
-	/* kick off the hw */
-	regmap_field_write(neoispd->regs.fields[NEO_PIPE_CONF_TRIG_CAM0_IDX],
-			NEO_PIPE_CONF_TRIG_CAM0_TRIGGER);
+	/* Upload context into HW registers and memories */
+	neoisp_upload_context(neoispd);
+
+	/* Kick off the hw */
+	neoisp_wr(neoispd, NEO_PIPE_CONF_TRIG_CAM0, NEO_PIPE_CONF_TRIG_CAM0_TRIGGER);
 	send_frame_sync_event(neoispd);
-	dev_dbg(&neoispd->pdev->dev, "isp starting ctx id: %d\n", node_group->id);
+	dev_dbg(&neoispd->pdev->dev, "isp starting ctx id: %d\n",
+		neoispd->queued_job.node_group->id);
 }
 
 static int neoisp_prepare_job(struct neoisp_node_group_s *node_group)
@@ -784,9 +247,14 @@ static int neoisp_prepare_job(struct neoisp_node_group_s *node_group)
 	lockdep_assert_held(&neoispd->hw_lock);
 
 	/*
-	 * To schedule a job, we need input0 and params (if not disabled) streaming nodes
-	 *  to have a buffer ready,
-	 * (Note that streaming_map is protected by hw_lock, which is held.)
+	 * To schedule a job, we need to have 1 buffer for any enabled node, knowing that:
+	 *  - Input0 is immutable, so it must have 1 buffer.
+	 *  - Input1 is mutable, so it is ignored if not used.
+	 *  - Params and Stats are also mutable, but enabled by default.
+	 *  - Frame and IR are mutable; Only Frame is enabled by default. At least one
+	 *    of these 2 should be enabled.
+	 *
+	 * (Note that streaming_map is protected by hw_lock, which is held here)
 	 */
 	if ((BIT(NEOISP_INPUT0_NODE) & node_group->streaming_map)
 			!= BIT(NEOISP_INPUT0_NODE)) {
@@ -795,7 +263,7 @@ static int neoisp_prepare_job(struct neoisp_node_group_s *node_group)
 	}
 
 	node = &node_group->node[NEOISP_INPUT1_NODE];
-	if (neoisp_node_link_state(node)) {
+	if (neoisp_node_link_is_enabled(node)) {
 		if ((BIT(NEOISP_INPUT1_NODE) & node_group->streaming_map)
 				!= BIT(NEOISP_INPUT1_NODE)) {
 			dev_dbg(&neoispd->pdev->dev, "Input1 is not disabled and not ready\n");
@@ -803,7 +271,7 @@ static int neoisp_prepare_job(struct neoisp_node_group_s *node_group)
 		}
 	}
 	node = &node_group->node[NEOISP_PARAMS_NODE];
-	if (neoisp_node_link_state(node)) {
+	if (neoisp_node_link_is_enabled(node)) {
 		if ((BIT(NEOISP_PARAMS_NODE) & node_group->streaming_map)
 				!= BIT(NEOISP_PARAMS_NODE)) {
 			dev_dbg(&neoispd->pdev->dev, "Params is not disabled and not ready\n");
@@ -811,7 +279,7 @@ static int neoisp_prepare_job(struct neoisp_node_group_s *node_group)
 		}
 	}
 	node = &node_group->node[NEOISP_FRAME_NODE];
-	if (neoisp_node_link_state(node)) {
+	if (neoisp_node_link_is_enabled(node)) {
 		if ((BIT(NEOISP_FRAME_NODE) & node_group->streaming_map)
 				!= BIT(NEOISP_FRAME_NODE)) {
 			dev_dbg(&neoispd->pdev->dev, "Frame node not ready, nothing to do\n");
@@ -819,7 +287,7 @@ static int neoisp_prepare_job(struct neoisp_node_group_s *node_group)
 		}
 	}
 	node = &node_group->node[NEOISP_IR_NODE];
-	if (neoisp_node_link_state(node)) {
+	if (neoisp_node_link_is_enabled(node)) {
 		if ((BIT(NEOISP_IR_NODE) & node_group->streaming_map)
 				!= BIT(NEOISP_IR_NODE)) {
 			dev_dbg(&neoispd->pdev->dev, "IR node not ready, nothing to do\n");
@@ -827,7 +295,7 @@ static int neoisp_prepare_job(struct neoisp_node_group_s *node_group)
 		}
 	}
 	node = &node_group->node[NEOISP_STATS_NODE];
-	if (neoisp_node_link_state(node)) {
+	if (neoisp_node_link_is_enabled(node)) {
 		if ((BIT(NEOISP_STATS_NODE) & node_group->streaming_map)
 				!= BIT(NEOISP_STATS_NODE)) {
 			dev_dbg(&neoispd->pdev->dev, "Stats is not disabled and not ready\n");
@@ -847,7 +315,7 @@ static int neoisp_prepare_job(struct neoisp_node_group_s *node_group)
 				ready_list);
 		spin_unlock_irqrestore(&node->ready_lock, flags);
 
-		if (!buf[i] && neoisp_node_link_state(node)) {
+		if (!buf[i] && neoisp_node_link_is_enabled(node)) {
 			dev_dbg(&neoispd->pdev->dev, "Nothing to do\n");
 			return -EINVAL;
 		}
@@ -869,17 +337,21 @@ static int neoisp_prepare_job(struct neoisp_node_group_s *node_group)
 	return 0;
 }
 
-/* Try and schedule a job for just a single node group. */
+/*
+ * Try to schedule a job for a single node group. If neoisp hw is free, go
+ * through all the groups starting from index of the one sent in parameters.
+ * If one group is ready, move it into the queued_job, and launch it.
+ */
 static void neoisp_schedule(struct neoisp_dev_s *neoispd,
 			    struct neoisp_node_group_s *node_group,
-			    __u32 idx)
+			    bool clear_hw_busy)
 {
 	unsigned long flags;
 	int ret;
 
 	spin_lock_irqsave(&neoispd->hw_lock, flags);
 
-	if (idx != -1)
+	if (clear_hw_busy)
 		neoispd->hw_busy = false;
 
 	if (neoispd->hw_busy) {
@@ -887,19 +359,23 @@ static void neoisp_schedule(struct neoisp_dev_s *neoispd,
 		return;
 	}
 
-	if (IS_ERR_OR_NULL(node_group)) {
-		for (unsigned int i = 1; i <= NEOISP_NODE_GROUPS_COUNT; i++) {
-			/* try to schedule next index from last processed one. */
-			__u32 next = (i + idx) % NEOISP_NODE_GROUPS_COUNT;
+	if (clear_hw_busy) {
+		u32 idx = node_group->id;
+
+		for (u32 i = 1; i <= NEOISP_NODE_GROUPS_COUNT; i++) {
+			/* Try to schedule next index from last processed one. */
+			u32 next = (i + idx) % NEOISP_NODE_GROUPS_COUNT;
 
 			ret = neoisp_prepare_job(&neoispd->node_group[next]);
-			if (!ret) {
-				/* prepare job was successful then save the node_group pointer and
-				 * stop checking other streams/groups
-				 */
-				node_group = &neoispd->node_group[next];
-				break;
-			}
+			if (ret)
+				continue;
+
+			/*
+			 * Prepare job was successful then save the node_group pointer and
+			 * stop checking other streams/groups
+			 */
+			node_group = &neoispd->node_group[next];
+			break;
 		}
 	} else {
 		ret = neoisp_prepare_job(node_group);
@@ -914,12 +390,23 @@ static void neoisp_schedule(struct neoisp_dev_s *neoispd,
 	 * We can kick the job off without the hw_lock, as this can
 	 * never run again until hw_busy is cleared, which will happen
 	 * only when the following job has been queued and an interrupt
-	 * is rised.
+	 * is raised.
 	 */
 	neoispd->hw_busy = true;
 	spin_unlock_irqrestore(&neoispd->hw_lock, flags);
 
-	neoisp_queue_job(neoispd, node_group);
+	neoisp_run_job(neoispd);
+}
+
+static void neoisp_try_start(struct neoisp_node_group_s *node_group)
+{
+	struct neoisp_dev_s *neoispd = node_group->neoisp_dev;
+
+	/* Update queued job context with current driver configuration */
+	neoisp_update_context_packetizer(node_group);
+	neoisp_update_context_pipe_conf(node_group);
+
+	neoisp_schedule(neoispd, node_group, false);
 }
 
 static void neoisp_node_buffer_queue(struct vb2_buffer *buf)
@@ -930,10 +417,10 @@ static void neoisp_node_buffer_queue(struct vb2_buffer *buf)
 		container_of(vbuf, struct neoisp_buffer_s, vb);
 	struct neoisp_node_s *node = vb2_get_drv_priv(buf->vb2_queue);
 	struct neoisp_node_group_s *node_group = node->node_group;
-	struct neoisp_dev_s *neoisp = node->node_group->neoisp_dev;
+	struct neoisp_dev_s *neoispd = node->node_group->neoisp_dev;
 	unsigned long flags;
 
-	dev_dbg(&neoisp->pdev->dev, "%s: for node %s\n", __func__, NODE_NAME(node));
+	dev_dbg(&neoispd->pdev->dev, "%s: for node %s\n", __func__, NODE_NAME(node));
 	spin_lock_irqsave(&node->ready_lock, flags);
 	list_add_tail(&buffer->ready_list, &node->ready_queue);
 	spin_unlock_irqrestore(&node->ready_lock, flags);
@@ -942,79 +429,127 @@ static void neoisp_node_buffer_queue(struct vb2_buffer *buf)
 	 * Every time we add a buffer, check if there's now some work for the hw
 	 * to do, but only for this client.
 	 */
-	neoisp_schedule(neoisp, node_group, -1);
+	neoisp_schedule(neoispd, node_group, false);
 }
 
-static void neoisp_set_ctx_default_params(struct neoisp_dev_s *neoispd, int ctx_id)
+static void neoisp_set_default_context(struct neoisp_dev_s *neoispd, int ctx_id)
 {
-	memcpy(neoispd->node_group[ctx_id].params,
-		&neoisp_default_params,
-		sizeof(neoisp_default_params));
+	memcpy(neoispd->node_group[ctx_id].context, &def_context,
+	       sizeof(struct neoisp_context_s));
+
+	/*
+	 * After init, context parameters are copied by the 'neoisp_program_context'
+	 * function, starting from pipe_conf->img_conf register, up to latest
+	 * ISP register.
+	 *
+	 * However, depending on hw version, some critical registers such as
+	 * INT_EN are impacted by this copy. Indeed, on V1 version, interrupt
+	 * registers are located _after_ pipe_conf->img_conf register, so they
+	 * would be overwritten with 0s during 'neoisp_program_context' execution.
+	 *
+	 * As a consequence, default context must be updated with appropriate
+	 * INT_EN register value. This is not required for V2 since INT_EN
+	 * register is out of memory copy section (i.e. _before_ img_conf).
+	 */
+	if (neoispd->info->hw_ver == NEOISP_HW_V1) {
+		struct neoisp_context_s *context = neoispd->node_group[ctx_id].context;
+		struct neoisp_pipe_conf_v1_s *pc = &context->hw.pipe_conf.v1;
+
+		pc->int_en =
+			NEO_PIPE_CONF_INT_EN0_EN_FD2 |
+			NEO_PIPE_CONF_INT_EN0_EN_DRCD |
+			NEO_PIPE_CONF_INT_EN0_EN_BUS_ERR_MASK |
+			NEO_PIPE_CONF_INT_EN0_EN_CSI_TERR |
+			NEO_PIPE_CONF_INT_EN0_EN_TRIG_ERR;
+	}
+
+	/*
+	 * As i.MX95 only supports MSB-aligned data when reading buffers coming
+	 * from ISI, reset the input data alignment to MSB for both input nodes
+	 * (i.e. INALIGN0 and INALIGN1) to ensure proper data handling.
+	 */
+	if (neoispd->info->capabilities & NEO_CAP_ALIGNMENT_MSB) {
+		struct neoisp_context_s *context = neoispd->node_group[ctx_id].context;
+		struct neoisp_pipe_conf_s *pc = &context->hw.pipe_conf.common;
+		u32 tmp;
+
+		tmp = pc->img_conf &
+			~(NEO_PIPE_CONF_IMG_CONF_CAM0_INALIGN0 |
+			  NEO_PIPE_CONF_IMG_CONF_CAM0_INALIGN1);
+		tmp |= NEO_PIPE_CONF_IMG_CONF_CAM0_INALIGN0_SET(1) |
+			NEO_PIPE_CONF_IMG_CONF_CAM0_INALIGN1_SET(1);
+		pc->img_conf = tmp;
+	}
 }
 
 static int neoisp_prepare_node_streaming(struct neoisp_node_s *node)
 {
 	struct neoisp_node_group_s *node_group = node->node_group;
 	struct neoisp_dev_s *neoispd = node_group->neoisp_dev;
-	struct neoisp_meta_params_s *params = node_group->params;
-	__u32 pixfmt = node->format.fmt.pix_mp.pixelformat;
+	struct neoisp_context_s *ctx = node_group->context;
+	struct neoisp_node_s *in0_node;
+	u32 pixfmt = node->format.fmt.pix_mp.pixelformat;
 
-	/*
-	 * Check if this is input0 node to preload default params
-	 */
-	if (node->id == NEOISP_INPUT0_NODE) {
-		if (neoispd->info->gain_adjust)
-			neoispd->info->gain_adjust(&params->regs, node->neoisp_format->bit_depth);
-		neoisp_update_head_color(&params->regs, pixfmt);
-		neoisp_update_monochrome(&params->regs, pixfmt);
-	}
+	switch (node->id) {
+	case NEOISP_INPUT0_NODE:
+		/* Preload default parameters */
+		if (neoispd->info->context_ops->adjust_gain)
+			neoispd->info->context_ops->adjust_gain(ctx,
+					node->neoisp_format->bit_depth);
 
-	/*
-	 * Check if this is input1 node (hdr mode)
-	 */
-	if (node->id == NEOISP_INPUT1_NODE) {
-		params->regs.hdr_merge.ctrl_enable = 1;
-		params->regs.decompress_input1.ctrl_enable = 1;
-	}
+		neoisp_update_context_head_color(neoispd, ctx, pixfmt);
+		neoisp_update_context_monochrome_fmt(neoispd, ctx, pixfmt);
+		break;
 
-	/*
-	 * Check output modes (frame, ir, dummy or combination)
-	 */
-	if (!neoisp_node_link_state(&node_group->node[NEOISP_FRAME_NODE]) ||
-			!neoisp_node_link_state(&node_group->node[NEOISP_IR_NODE]) ||
-			FMT_IS_MONOCHROME(pixfmt)) {
-		if (!node_group->any_buf) {
-			struct neoisp_node_s *in0_node = &node_group->node[NEOISP_INPUT0_NODE];
+	case NEOISP_INPUT1_NODE:
+		/* Prepare HDR mode */
+		neoisp_update_context_hdr_mode(neoispd, ctx);
+		break;
 
-			/* Allocate a single line dummy buffer as line stride is set to 0 */
-			node_group->any_size = in0_node->crop.width * NEOISP_MAX_BPP;
-			node_group->any_buf = dma_alloc_coherent(&neoispd->pdev->dev,
-								 node_group->any_size,
-								 &node_group->any_dma, GFP_KERNEL);
-		}
-	}
-	if (node->id == NEOISP_FRAME_NODE) {
-		struct neoisp_node_s *in0_node = &node_group->node[NEOISP_INPUT0_NODE];
+	case NEOISP_FRAME_NODE:
+		in0_node = &node_group->node[NEOISP_INPUT0_NODE];
 
 		if ((node->format.fmt.pix_mp.width != in0_node->crop.width)
 				|| (node->format.fmt.pix_mp.height != in0_node->crop.height)) {
-			dev_err(&neoispd->pdev->dev, "Crop size and output size does not match\n");
+			dev_err(&neoispd->pdev->dev,
+				"Crop & output sizes don't match - w/cw: %d/%d, h/ch : %d/%d\n",
+				node->format.fmt.pix_mp.width, in0_node->crop.width,
+				node->format.fmt.pix_mp.height, in0_node->crop.height);
 			return -EPIPE;
 		}
 
-		neoisp_update_gcm(&params->regs,
+		neoisp_update_context_gcm(neoispd, ctx,
 				  node->format.fmt.pix_mp.colorspace,
 				  node->format.fmt.pix_mp.xfer_func,
 				  (node->neoisp_format->is_rgb ?
 					V4L2_YCBCR_ENC_DEFAULT :
 					node->format.fmt.pix_mp.ycbcr_enc),
 				  node->format.fmt.pix_mp.quantization);
+		break;
+	}
+
+	/*
+	 * Check output modes (frame, ir, dummy or combination)
+	 */
+	if (!neoisp_node_link_is_enabled(&node_group->node[NEOISP_FRAME_NODE]) ||
+			!neoisp_node_link_is_enabled(&node_group->node[NEOISP_IR_NODE]) ||
+			FORMAT_IS_MONOCHROME(pixfmt)) {
+		if (!node_group->dummy_buf) {
+			struct neoisp_node_s *in0_node = &node_group->node[NEOISP_INPUT0_NODE];
+
+			/* Allocate a single line dummy buffer as line stride is set to 0 */
+			node_group->dummy_size = in0_node->crop.width * NEOISP_MAX_BPP;
+			node_group->dummy_buf =
+				dma_alloc_coherent(&neoispd->pdev->dev,
+						   node_group->dummy_size,
+						   &node_group->dummy_dma, GFP_KERNEL);
+		}
 	}
 
 	return 0;
 }
 
-static int neoisp_node_start_streaming(struct vb2_queue *q, __u32 count)
+static int neoisp_node_start_streaming(struct vb2_queue *q, u32 count)
 {
 	struct neoisp_node_s *node = vb2_get_drv_priv(q);
 	struct neoisp_node_group_s *node_group = node->node_group;
@@ -1024,18 +559,15 @@ static int neoisp_node_start_streaming(struct vb2_queue *q, __u32 count)
 	int ret;
 
 	ret = pm_runtime_resume_and_get(&neoispd->pdev->dev);
-	if (ret < 0) {
+	if (ret < 0)
 		goto error;
-	}
 
 	ret = neoisp_prepare_node_streaming(node);
 	if (ret < 0)
 		goto error;
 
-	spin_lock_irqsave(&neoispd->hw_lock, flags);
-	node->node_group->streaming_map |=  BIT(node->id);
+	node->node_group->streaming_map |= BIT(node->id);
 	node_group->frame_sequence = 0;
-	spin_unlock_irqrestore(&neoispd->hw_lock, flags);
 
 	dev_dbg(&neoispd->pdev->dev, "%s: for node %s (count %u)\n",
 			__func__, NODE_NAME(node), count);
@@ -1043,7 +575,7 @@ static int neoisp_node_start_streaming(struct vb2_queue *q, __u32 count)
 			node->node_group->streaming_map);
 
 	/* Maybe we're ready to run. */
-	neoisp_schedule(neoispd, node_group, -1);
+	neoisp_try_start(node_group);
 
 	return 0;
 
@@ -1094,14 +626,14 @@ static void neoisp_node_stop_streaming(struct vb2_queue *q)
 	vb2_wait_for_all_buffers(&node->queue);
 
 	if (node->id == NEOISP_INPUT0_NODE)
-		neoisp_set_ctx_default_params(neoispd, node_group->id);
+		neoisp_set_default_context(neoispd, node_group->id);
 
-	if (node_group->any_buf) {
+	if (node_group->dummy_buf) {
 		dma_free_coherent(&neoispd->pdev->dev,
-				  node_group->any_size,
-				  node_group->any_buf,
-				  node_group->any_dma);
-		node_group->any_buf = NULL;
+				  node_group->dummy_size,
+				  node_group->dummy_buf,
+				  node_group->dummy_dma);
+		node_group->dummy_buf = NULL;
 	}
 
 	spin_lock_irqsave(&neoispd->hw_lock, flags);
@@ -1165,13 +697,17 @@ static int neoisp_enum_fmt(struct file *file, void *priv, struct v4l2_fmtdesc *f
 
 	f->flags = 0;
 	if (NODE_IS_META(node)) {
-		if (f->index)
-			return -EINVAL;
+		if (NODE_IS_OUTPUT(node)) {
+			if (f->index >= ARRAY_SIZE(formats_mout))
+				return -EINVAL;
 
-		if (NODE_IS_OUTPUT(node))
-			f->pixelformat = V4L2_META_FMT_NEO_ISP_PARAMS;
-		else
-			f->pixelformat = V4L2_META_FMT_NEO_ISP_STATS;
+			f->pixelformat = formats_mout[f->index].fourcc;
+		} else {
+			if (f->index >= ARRAY_SIZE(formats_mcap))
+				return -EINVAL;
+
+			f->pixelformat = formats_mcap[f->index].fourcc;
+		}
 		return 0;
 	}
 	if (NODE_IS_OUTPUT(node)) {
@@ -1222,113 +758,11 @@ static int neoisp_g_fmt_meta(struct file *file, void *priv, struct v4l2_format *
 
 	if (!NODE_IS_META(node)) {
 		dev_err(&neoispd->pdev->dev,
-				"Cannot get meta fmt for video node %s\n",
-				NODE_NAME(node));
+				"Cannot get meta fmt for video node %s\n", NODE_NAME(node));
 		return -EINVAL;
 	}
 	*f = node->format;
-	dev_dbg(&neoispd->pdev->dev, "Get meta format for node %s\n",
-			NODE_NAME(node));
-	return 0;
-}
-
-static int neoisp_try_fmt_meta_out(struct file *file, void *priv, struct v4l2_format *f)
-{
-	struct neoisp_node_s *node = video_drvdata(file);
-	struct neoisp_dev_s *neoispd = node->node_group->neoisp_dev;
-
-	if (!NODE_IS_META(node) || NODE_IS_CAPTURE(node)) {
-		dev_err(&neoispd->pdev->dev,
-				"Cannot set capture fmt for meta output node %s\n",
-				NODE_NAME(node));
-		return -EINVAL;
-	}
-
-	f->fmt.meta.dataformat = V4L2_META_FMT_NEO_ISP_PARAMS;
-	f->fmt.meta.buffersize = sizeof(struct neoisp_meta_params_s);
-
-	return 0;
-}
-
-static int neoisp_try_fmt_meta_cap(struct file *file, void *priv, struct v4l2_format *f)
-{
-	struct neoisp_node_s *node = video_drvdata(file);
-	struct neoisp_dev_s *neoispd = node->node_group->neoisp_dev;
-
-	if (!NODE_IS_META(node) || NODE_IS_OUTPUT(node)) {
-		dev_err(&neoispd->pdev->dev,
-				"Cannot set capture fmt for meta output node %s\n",
-				NODE_NAME(node));
-		return -EINVAL;
-	}
-
-	f->fmt.meta.dataformat = V4L2_META_FMT_NEO_ISP_STATS;
-	if (!f->fmt.meta.buffersize)
-		f->fmt.meta.buffersize = sizeof(struct neoisp_meta_stats_s);
-
-	return 0;
-}
-
-static int neoisp_s_fmt_meta_out(struct file *file, void *priv, struct v4l2_format *f)
-{
-	struct neoisp_node_s *node = video_drvdata(file);
-	struct neoisp_dev_s *neoispd = node->node_group->neoisp_dev;
-	int ret = neoisp_try_fmt_meta_out(file, priv, f);
-
-	if (ret < 0)
-		return ret;
-
-	if (vb2_is_busy(&node->queue))
-		return -EBUSY;
-
-	node->format = *f;
-	node->neoisp_format = &formats_mout[0];
-
-	dev_dbg(&neoispd->pdev->dev,
-			"Set output format for meta node %s to %x\n",
-			NODE_NAME(node),
-			f->fmt.meta.dataformat);
-
-	return 0;
-}
-
-static int neoisp_s_fmt_meta_cap(struct file *file, void *priv, struct v4l2_format *f)
-{
-	struct neoisp_node_s *node = video_drvdata(file);
-	struct neoisp_dev_s *neoispd = node->node_group->neoisp_dev;
-	int ret = neoisp_try_fmt_meta_cap(file, priv, f);
-
-	if (ret < 0)
-		return ret;
-
-	if (vb2_is_busy(&node->queue))
-		return -EBUSY;
-
-	node->format = *f;
-	node->neoisp_format = &formats_mcap[0];
-
-	dev_dbg(&neoispd->pdev->dev,
-			"Set capture format for meta node %s to %x\n",
-			NODE_NAME(node),
-			f->fmt.meta.dataformat);
-
-	return 0;
-}
-
-static int neoisp_g_fmt_vid(struct file *file, void *priv, struct v4l2_format *f)
-{
-	struct neoisp_node_s *node = video_drvdata(file);
-	struct neoisp_dev_s *neoispd = node->node_group->neoisp_dev;
-
-	if (NODE_IS_META(node)) {
-		dev_err(&neoispd->pdev->dev,
-				"Cannot get video fmt for meta node %s\n",
-				NODE_NAME(node));
-		return -EINVAL;
-	}
-	*f = node->format;
-	dev_dbg(&neoispd->pdev->dev, "Get video format for node %s\n",
-			NODE_NAME(node));
+	dev_dbg(&neoispd->pdev->dev, "Get meta format for node %s\n", NODE_NAME(node));
 	return 0;
 }
 
@@ -1338,9 +772,20 @@ static int neoisp_try_fmt(struct v4l2_format *f, struct neoisp_node_s *node)
 	u32 pixfmt = f->fmt.pix_mp.pixelformat;
 	struct neoisp_dev_s *neoispd = node->node_group->neoisp_dev;
 
-	if ((pixfmt == V4L2_META_FMT_NEO_ISP_STATS)
-			|| (pixfmt == V4L2_META_FMT_NEO_ISP_PARAMS))
-		return 0; /* FIXME do check the buffer size */
+	if (NODE_IS_META(node)) {
+		pixfmt = f->fmt.meta.dataformat;
+
+		if (NODE_IS_OUTPUT(node)
+				&& (pixfmt != V4L2_META_FMT_NEO_ISP_PARAMS)
+				&& (pixfmt != V4L2_META_FMT_NEO_ISP_EXT_PARAMS))
+			f->fmt.meta.dataformat = V4L2_META_FMT_NEO_ISP_PARAMS;
+		else if (!NODE_IS_OUTPUT(node)
+				&& (pixfmt != V4L2_META_FMT_NEO_ISP_STATS)
+				&& (pixfmt != V4L2_META_FMT_NEO_ISP_EXT_STATS))
+			f->fmt.meta.dataformat = V4L2_META_FMT_NEO_ISP_STATS;
+
+		return 0;
+	}
 
 	fmt = neoisp_find_pixel_format_by_node(pixfmt, node);
 	if (!fmt) {
@@ -1383,8 +828,114 @@ static int neoisp_try_fmt(struct v4l2_format *f, struct neoisp_node_s *node)
 	f->fmt.pix_mp.quantization =
 		V4L2_MAP_QUANTIZATION_DEFAULT(fmt->is_rgb, f->fmt.pix_mp.colorspace,
 				f->fmt.pix_mp.ycbcr_enc);
+
 	/* Set plane size and bytes/line for each plane. */
 	neoisp_fill_mp(f, fmt);
+
+	return 0;
+}
+
+static int neoisp_try_fmt_meta_out(struct file *file, void *priv, struct v4l2_format *f)
+{
+	struct neoisp_node_s *node = video_drvdata(file);
+	struct neoisp_dev_s *neoispd = node->node_group->neoisp_dev;
+
+	if (!NODE_IS_META(node) || NODE_IS_CAPTURE(node)) {
+		dev_err(&neoispd->pdev->dev,
+				"Cannot set capture fmt for meta output node %s\n",
+				NODE_NAME(node));
+		return -EINVAL;
+	}
+
+	if (!f->fmt.meta.buffersize)
+		f->fmt.meta.buffersize = sizeof(struct neoisp_ext_params_s);
+
+	return neoisp_try_fmt(f, node);
+}
+
+static int neoisp_try_fmt_meta_cap(struct file *file, void *priv, struct v4l2_format *f)
+{
+	struct neoisp_node_s *node = video_drvdata(file);
+	struct neoisp_dev_s *neoispd = node->node_group->neoisp_dev;
+
+	if (!NODE_IS_META(node) || NODE_IS_OUTPUT(node)) {
+		dev_err(&neoispd->pdev->dev,
+				"Cannot set capture fmt for meta output node %s\n",
+				NODE_NAME(node));
+		return -EINVAL;
+	}
+
+	if (!f->fmt.meta.buffersize)
+		f->fmt.meta.buffersize = sizeof(struct neoisp_ext_stats_s);
+
+	return neoisp_try_fmt(f, node);
+}
+
+static int neoisp_s_fmt_meta_out(struct file *file, void *priv, struct v4l2_format *f)
+{
+	struct neoisp_node_s *node = video_drvdata(file);
+	struct neoisp_dev_s *neoispd = node->node_group->neoisp_dev;
+	int ret;
+
+	ret = neoisp_try_fmt_meta_out(file, priv, f);
+	if (ret < 0)
+		return ret;
+
+	if (vb2_is_busy(&node->queue))
+		return -EBUSY;
+
+	node->format = *f;
+	node->neoisp_format = neoisp_find_pixel_format_by_node(f->fmt.meta.dataformat, node);
+
+	dev_dbg(&neoispd->pdev->dev,
+		"Set output format for meta node %s to %x\n",
+		NODE_NAME(node),
+		f->fmt.meta.dataformat);
+
+	return 0;
+}
+
+static int neoisp_s_fmt_meta_cap(struct file *file, void *priv, struct v4l2_format *f)
+{
+	struct neoisp_node_s *node = video_drvdata(file);
+	struct neoisp_dev_s *neoispd = node->node_group->neoisp_dev;
+	int ret;
+
+	ret = neoisp_try_fmt_meta_cap(file, priv, f);
+	if (ret < 0)
+		return ret;
+
+	if (vb2_is_busy(&node->queue))
+		return -EBUSY;
+
+	node->format = *f;
+	node->neoisp_format =
+		neoisp_find_pixel_format_by_node(f->fmt.meta.dataformat, node);
+
+	dev_dbg(&neoispd->pdev->dev,
+		"Set capture format for meta node %s to %x\n",
+		NODE_NAME(node),
+		f->fmt.meta.dataformat);
+
+	return 0;
+}
+
+static int neoisp_g_fmt_vid(struct file *file, void *priv, struct v4l2_format *f)
+{
+	struct neoisp_node_s *node = video_drvdata(file);
+	struct neoisp_dev_s *neoispd = node->node_group->neoisp_dev;
+
+	if (NODE_IS_META(node)) {
+		dev_err(&neoispd->pdev->dev,
+			"Cannot get video fmt for meta node %s\n",
+			NODE_NAME(node));
+		return -EINVAL;
+	}
+
+	*f = node->format;
+
+	dev_dbg(&neoispd->pdev->dev, "Get video format for node %s\n",
+		NODE_NAME(node));
 
 	return 0;
 }
@@ -1455,8 +1006,7 @@ static int neoisp_s_fmt_vid_out(struct file *file, void *priv,
 		return -EBUSY;
 
 	node->format = *f;
-	node->neoisp_format =
-		neoisp_find_pixel_format_by_node(f->fmt.pix_mp.pixelformat, node);
+	node->neoisp_format = neoisp_find_pixel_format_by_node(f->fmt.pix_mp.pixelformat, node);
 
 	node->crop.top = 0;
 	node->crop.left = 0;
@@ -1501,7 +1051,7 @@ static int neoisp_g_selection(struct file *file, void *fh, struct v4l2_selection
 static int neoisp_s_selection(struct file *file, void *fh, struct v4l2_selection *sel)
 {
 	struct neoisp_node_s *node = video_drvdata(file);
-	__u32 winput, hinput;
+	u32 winput, hinput;
 
 	if (sel->type != V4L2_BUF_TYPE_VIDEO_OUTPUT)
 		return -EINVAL;
@@ -1516,10 +1066,10 @@ static int neoisp_s_selection(struct file *file, void *fh, struct v4l2_selection
 		winput = node->format.fmt.pix_mp.width;
 		hinput = node->format.fmt.pix_mp.height;
 
-		/* left and width should be multiple of 16 */
+		/* Left and width should be multiple of 16 */
 		sel->r.left = (sel->r.left / 16) * 16;
 		sel->r.width = (sel->r.width / 16) * 16;
-		/* top and height should be even */
+		/* Top and height should be even */
 		sel->r.top = (sel->r.top / 2) * 2;
 		sel->r.height = (sel->r.height / 2) * 2;
 
@@ -1594,72 +1144,75 @@ static const struct video_device neoisp_videodev = {
 	.release = video_device_release_empty,
 };
 
-/*
- * extract offset and size in bytes from memory region map
- */
-static void neoisp_get_offsize(enum isp_block_map_e map, __u32 *offset, __u32 *size)
+static int neoisp_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
 {
-	*offset = ISP_GET_OFF(map) * sizeof(__u32);
-	*size = ISP_GET_WSZ(map) * sizeof(__u32);
-}
+	struct neoisp_node_group_s *node_group =
+			container_of(ctrl->handler, struct neoisp_node_group_s, hdl);
 
-static void neoisp_get_stats(struct neoisp_dev_s *neoispd, struct neoisp_buffer_s *buf)
-{
-	struct neoisp_node_s *node = &neoispd->queued_job.node_group->node[NEOISP_STATS_NODE];
-	struct neoisp_meta_stats_s *dest = (struct neoisp_meta_stats_s *)get_vaddr(buf);
-	__u8 *src = (__u8 *)(uintptr_t)neoispd->mmio_tcm;
-	__u32 offset, size;
-
-	/* check if stats node link is enabled */
-	if (!neoisp_node_link_state(node))
-		return;
-
-	if (IS_ERR_OR_NULL(dest) || IS_ERR_OR_NULL(src)) {
-		dev_err(&neoispd->pdev->dev, "Error: stats pointer\n");
-		return;
+	switch (ctrl->id) {
+	case V4L2_CID_NEOISP_QUERYCAP:
+		ctrl->val = node_group->neoisp_dev->info->capabilities;
+		break;
 	}
-	/* get stats from registers */
-	regmap_bulk_read(neoispd->regmap,
-				NEO_ALIAS_ALIAS_REG0,
-				(__u32 *)(uintptr_t)dest,
-				sizeof(struct neoisp_reg_stats_s) / sizeof(uint32_t));
 
-	/* get ctemp stats from memory */
-	memcpy(&dest->mems.ctemp, src, sizeof(struct neoisp_ctemp_mem_stats_s));
-
-	/* get rgbir stats from memory */
-	neoisp_get_offsize(NEO_RGBIR_HIST_MAP, &offset, &size);
-	memcpy(&dest->mems.rgbir, &src[offset], size);
-
-	/* get histograms stats from memory */
-	neoisp_get_offsize(NEO_HIST_STAT_MAP, &offset, &size);
-	memcpy(&dest->mems.hist, &src[offset], size);
-
-	/* get drc local sum stats from memory */
-	neoisp_get_offsize(neoispd->info->mems->drc_local_sum, &offset, &size);
-	memcpy(&dest->mems.drc.drc_local_sum, &src[offset], size);
-
-	/* get drc hist roi0 stats from memory */
-	neoisp_get_offsize(neoispd->info->mems->drc_global_hist_roi0, &offset, &size);
-	memcpy(&dest->mems.drc.drc_global_hist_roi0, &src[offset], size);
-
-	/* get drc hist roi1 stats from memory */
-	neoisp_get_offsize(neoispd->info->mems->drc_global_hist_roi1, &offset, &size);
-	memcpy(&dest->mems.drc.drc_global_hist_roi1, &src[offset], size);
+	return 0;
 }
+
+static int neoisp_s_ctrl(struct v4l2_ctrl *ctrl)
+{
+	struct neoisp_node_group_s *node_group =
+			container_of(ctrl->handler, struct neoisp_node_group_s, hdl);
+
+	switch (ctrl->id) {
+	case V4L2_CID_NEOISP_META_API_VERSION:
+		node_group->neoisp_dev->api_ver = ctrl->val;
+		break;
+	}
+
+	return 0;
+}
+
+static const struct v4l2_ctrl_ops neoisp_ctrl_ops = {
+	.g_volatile_ctrl = neoisp_g_volatile_ctrl,
+	.s_ctrl = neoisp_s_ctrl,
+};
+
+static struct v4l2_ctrl_config controls[] = {
+	[NEOISP_CTRLS_QUERYCAP] = {
+		.ops = &neoisp_ctrl_ops,
+		.id = V4L2_CID_NEOISP_QUERYCAP,
+		.name = "Neoisp custom capabilities",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = 0,
+		.max = 0xFFFFFFFF,
+		.step = 1,
+		.def = 0,
+		.flags = V4L2_CTRL_FLAG_READ_ONLY | V4L2_CTRL_FLAG_VOLATILE,
+	},
+	[NEOISP_CTRLS_META_BUFF_API_VER] = {
+		.ops = &neoisp_ctrl_ops,
+		.id = V4L2_CID_NEOISP_META_API_VERSION,
+		.name = "Neoisp meta buffer api version",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = NEOISP_LEGACY_META_BUFFER,
+		.max = NEOISP_META_BUFFER_VERSION_COUNT - 1,
+		.step = 1,
+		.def = NEOISP_LEGACY_META_BUFFER,
+	},
+};
 
 static irqreturn_t neoisp_irq_handler(int irq, void *dev_id)
 {
 	struct neoisp_dev_s *neoispd = (struct neoisp_dev_s *)dev_id;
 	struct neoisp_buffer_s **buf = neoispd->queued_job.buf;
 	struct neoisp_node_group_s *node_group = neoispd->queued_job.node_group;
-	__u64 ts = ktime_get_ns();
-	__u32 irq_status = 0;
-	__u32 irq_clear = 0;
+	u64 ts = ktime_get_ns();
+	u32 irq_status = 0;
+	u32 irq_clear = 0;
 	bool done = false;
-	int i, ret;
+	int i;
 
-	regmap_field_read(neoispd->regs.fields[NEO_PIPE_CONF_INT_STAT0_IDX], &irq_status);
+	irq_status = neoispd->info->context_ops->get_irq_status(neoispd);
 
 	if (irq_status & NEO_PIPE_CONF_INT_STAT0_S_FS1) {
 		dev_dbg(&neoispd->pdev->dev, "Neo IRQ FS1 !\n");
@@ -1681,13 +1234,13 @@ static irqreturn_t neoisp_irq_handler(int irq, void *dev_id)
 
 	if (irq_status & NEO_PIPE_CONF_INT_STAT0_S_STATD) {
 		dev_dbg(&neoispd->pdev->dev, "Neo IRQ STATD !\n");
-		neoisp_get_stats(neoispd, buf[NEOISP_STATS_NODE]);
 		irq_clear |= NEO_PIPE_CONF_INT_STAT0_S_STATD;
 		done = false;
 	}
 
 	if (irq_status & NEO_PIPE_CONF_INT_STAT0_S_DRCD) {
 		dev_dbg(&neoispd->pdev->dev, "Neo IRQ DRCD !\n");
+		neoisp_get_stats(neoispd, buf[NEOISP_STATS_NODE]);
 		irq_clear |= NEO_PIPE_CONF_INT_STAT0_S_DRCD;
 		done = false;
 	}
@@ -1719,12 +1272,7 @@ static irqreturn_t neoisp_irq_handler(int irq, void *dev_id)
 	if (irq_status & NEO_PIPE_CONF_INT_STAT0_BUSY)
 		dev_err(&neoispd->pdev->dev, "Neo is busy !\n");
 
-	ret = regmap_field_force_write(neoispd->regs.fields[NEO_PIPE_CONF_INT_STAT0_IDX], irq_clear);
-	if (ret) {
-		dev_err(&neoispd->pdev->dev,
-			"Unable to clear irq ret (%x) it will be disabled to avoid stall\n", ret);
-		regmap_field_force_write(neoispd->regs.fields[NEO_PIPE_CONF_INT_EN0_IDX], irq_clear);
-	}
+	neoispd->info->context_ops->clear_irq(neoispd, irq_clear);
 
 	if (done) {
 		for (i = 0; i < NEOISP_NODES_COUNT; i++) {
@@ -1734,10 +1282,10 @@ static irqreturn_t neoisp_irq_handler(int irq, void *dev_id)
 				vb2_buffer_done(&buf[i]->vb.vb2_buf, VB2_BUF_STATE_DONE);
 			}
 		}
-		/* update frame_sequence */
+		/* Update frame_sequence */
 		node_group->frame_sequence++;
-		/* check if there's more to do before going to sleep */
-		neoisp_schedule(neoispd, NULL, node_group->id);
+		/* Check if there's more to do before going to sleep */
+		neoisp_schedule(neoispd, node_group, true);
 	}
 
 	return IRQ_HANDLED;
@@ -1746,10 +1294,14 @@ static irqreturn_t neoisp_irq_handler(int irq, void *dev_id)
 static int neoisp_sd_subs_evt(struct v4l2_subdev *sd, struct v4l2_fh *fh,
 			       struct v4l2_event_subscription *sub)
 {
-	if (sub->type != V4L2_EVENT_FRAME_SYNC)
+	switch (sub->type) {
+	case V4L2_EVENT_FRAME_SYNC:
+		return v4l2_event_subscribe(fh, sub, 0, NULL);
+	case V4L2_EVENT_CTRL:
+		return v4l2_ctrl_subdev_subscribe_event(sd, fh, sub);
+	default:
 		return -EINVAL;
-
-	return v4l2_event_subscribe(fh, sub, 0, NULL);
+	}
 }
 
 static const struct v4l2_subdev_core_ops neoisp_sd_core_ops = {
@@ -1770,7 +1322,9 @@ static int neoisp_init_subdev(struct neoisp_node_group_s *node_group)
 {
 	struct neoisp_dev_s *neoispd = node_group->neoisp_dev;
 	struct v4l2_subdev *sd = &node_group->sd;
-	__u32 i;
+	struct v4l2_ctrl_handler *hdl;
+	struct v4l2_ctrl_config *api_version_control;
+	u32 i;
 	int ret;
 
 	v4l2_subdev_init(sd, &neoisp_sd_ops);
@@ -1791,6 +1345,29 @@ static int neoisp_init_subdev(struct neoisp_node_group_s *node_group)
 	if (ret)
 		goto error;
 
+	hdl = &node_group->hdl;
+
+	/* Overwrite api control range with platform data values */
+	api_version_control = &controls[NEOISP_CTRLS_META_BUFF_API_VER];
+	api_version_control->min = neoispd->info->api_ver_min;
+	api_version_control->max = neoispd->info->api_ver_max;
+
+	/* Create custom controls */
+	v4l2_ctrl_handler_init(hdl, ARRAY_SIZE(controls));
+	for (i = 0; i < ARRAY_SIZE(controls); i++) {
+		node_group->ctrls[i] = v4l2_ctrl_new_custom(hdl, &controls[i], NULL);
+		if (hdl->error) {
+			dev_err(&neoispd->pdev->dev,
+					"Adding control (%d) failed\n", i);
+			ret = hdl->error;
+			goto error;
+		}
+	}
+	sd->ctrl_handler = hdl;
+
+	/* Update custom control*/
+	v4l2_ctrl_s_ctrl(node_group->ctrls[NEOISP_CTRLS_QUERYCAP], neoispd->info->capabilities);
+
 	ret = v4l2_device_register_subdev(&node_group->v4l2_dev, sd);
 	if (ret)
 		goto error;
@@ -1805,18 +1382,18 @@ error:
 static void node_set_default_format(struct neoisp_node_s *node)
 {
 	if (NODE_IS_META(node) && NODE_IS_OUTPUT(node)) {
-		/* params node */
+		/* Params node */
 		struct v4l2_format *f = &node->format;
 
 		f->fmt.meta.dataformat = V4L2_META_FMT_NEO_ISP_PARAMS;
-		f->fmt.meta.buffersize = sizeof(struct neoisp_meta_params_s);
+		f->fmt.meta.buffersize = sizeof(struct neoisp_ext_params_s);
 		f->type = node->buf_type;
 	} else if (NODE_IS_META(node) && NODE_IS_CAPTURE(node)) {
-		/* stats node */
+		/* Stats node */
 		struct v4l2_format *f = &node->format;
 
 		f->fmt.meta.dataformat = V4L2_META_FMT_NEO_ISP_STATS;
-		f->fmt.meta.buffersize =  sizeof(struct neoisp_meta_stats_s);
+		f->fmt.meta.buffersize = sizeof(struct neoisp_ext_stats_s);
 		f->type = node->buf_type;
 	} else {
 		struct v4l2_format f = {0};
@@ -1843,7 +1420,7 @@ static void node_set_default_format(struct neoisp_node_s *node)
  * Initialise a struct neoisp_node_s and register it as /dev/video<N>
  * to represent one of the neoisp's input or output streams.
  */
-static int neoisp_init_node(struct neoisp_node_group_s *node_group, __u32 id)
+static int neoisp_init_node(struct neoisp_node_group_s *node_group, u32 id)
 {
 	bool output = NODE_DESC_IS_OUTPUT(&node_desc[id]);
 	struct neoisp_node_s *node = &node_group->node[id];
@@ -1874,7 +1451,7 @@ static int neoisp_init_node(struct neoisp_node_group_s *node_group, __u32 id)
 	q->buf_struct_size = sizeof(struct neoisp_buffer_s);
 	q->timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC;
 	q->dev = &neoispd->pdev->dev;
-	/* get V4L2 to handle node->queue locking */
+	/* Get V4L2 to handle node->queue locking */
 	q->lock = &node->queue_lock;
 
 	ret = vb2_queue_init(q);
@@ -1883,11 +1460,11 @@ static int neoisp_init_node(struct neoisp_node_group_s *node_group, __u32 id)
 		return ret;
 	}
 
-	*vdev = neoisp_videodev; /* default initialization */
+	*vdev = neoisp_videodev; /* Default initialization */
 	strscpy(vdev->name, node_desc[id].ent_name, sizeof(vdev->name));
 	vdev->v4l2_dev = &node_group->v4l2_dev;
 	vdev->vfl_dir = output ? VFL_DIR_TX : VFL_DIR_RX;
-	/* get V4L2 to serialise our ioctls */
+	/* Get V4L2 to serialise our ioctls */
 	vdev->lock = &node->node_lock;
 	vdev->queue = &node->queue;
 	vdev->device_caps = V4L2_CAP_STREAMING | node_desc[id].caps;
@@ -1940,25 +1517,25 @@ err_unregister_queue:
 	return ret;
 }
 
-static int neoisp_init_group(struct neoisp_dev_s *neoispd, __u32 id)
+static int neoisp_init_group(struct neoisp_dev_s *neoispd, u32 id)
 {
 	struct neoisp_node_group_s *node_group = &neoispd->node_group[id];
 	struct v4l2_device *v4l2_dev;
 	struct media_device *mdev;
-	__u32 num_registered = 0;
+	u32 num_registered = 0;
 	int ret;
 
 	node_group->id = id;
 	node_group->neoisp_dev = neoispd;
 	node_group->streaming_map = 0;
-	node_group->any_buf = NULL;
+	node_group->dummy_buf = NULL;
 
 	dev_dbg(&neoispd->pdev->dev, "Register nodes for group %u\n", id);
 
 	/* Register v4l2_device and media_device */
 	mdev = &node_group->mdev;
 	mdev->dev = &neoispd->pdev->dev;
-	mdev->hw_revision = neoispd->info->neoisp_hw_ver;
+	mdev->hw_revision = neoispd->info->hw_ver;
 	strscpy(mdev->model, NEOISP_NAME, sizeof(mdev->model));
 	snprintf(mdev->bus_info, sizeof(mdev->bus_info),
 			"platform:%s", dev_name(&neoispd->pdev->dev));
@@ -1992,11 +1569,11 @@ static int neoisp_init_group(struct neoisp_dev_s *neoispd, __u32 id)
 	if (ret)
 		goto err_unregister_nodes;
 
-	node_group->params = dma_alloc_coherent(mdev->dev,
-				sizeof(struct neoisp_meta_params_s),
+	node_group->context = dma_alloc_coherent(mdev->dev,
+				sizeof(struct neoisp_context_s),
 				&node_group->params_dma_addr, GFP_KERNEL);
-	if (!node_group->params) {
-		dev_err(mdev->dev, "Unable to allocate cached params buffers.\n");
+	if (!node_group->context) {
+		dev_err(mdev->dev, "Unable to allocate cached context buffers.\n");
 		ret = -ENOMEM;
 		goto err_unregister_mdev;
 	}
@@ -2023,10 +1600,10 @@ static void neoisp_destroy_node_group(struct neoisp_node_group_s *node_group)
 	struct neoisp_dev_s *neoispd = node_group->neoisp_dev;
 	int i;
 
-	if (node_group->params) {
+	if (node_group->context) {
 		dma_free_coherent(&neoispd->pdev->dev,
-				sizeof(struct neoisp_meta_params_s),
-				node_group->params,
+				sizeof(struct neoisp_context_s),
+				node_group->context,
 				node_group->params_dma_addr);
 	}
 
@@ -2045,98 +1622,76 @@ static void neoisp_destroy_node_group(struct neoisp_node_group_s *node_group)
 	v4l2_device_unregister(&node_group->v4l2_dev);
 }
 
-static int neoisp_init_ctx(struct neoisp_dev_s *neoispd)
+static int neoisp_init_groups_context(struct neoisp_dev_s *neoispd)
 {
-	int i = 0;
-	__u16 *ptr = neoisp_default_params.mems.gtm.drc_global_tonemap;
-
-	/* Fill default global tonemap lut with 1.0 value (256) */
-	for (; i < NEO_DRC_GLOBAL_TONEMAP_SIZE; i++)
-		ptr[i] = 1 << 8;
+	int i;
 
 	for (i = 0; i < NEOISP_NODE_GROUPS_COUNT; i++)
-		neoisp_set_ctx_default_params(neoispd, i);
+		neoisp_set_default_context(neoispd, i);
 
 	return 0;
 }
 
-static int neoisp_init_hw(struct neoisp_dev_s *neoispd)
+static void neoisp_init_hw(struct neoisp_dev_s *neoispd)
 {
-	int ret;
+	u32 val;
 
 	neoisp_reset_hw(neoispd, false);
 	neoisp_reset_hw(neoispd, true);
 
-	/* disable bus error if eDMA transfer is used */
-	regmap_field_write(neoispd->regs.fields[NEO_PIPE_CONF_REG_XFR_DIS_IDX],
-			NEO_PIPE_CONF_REG_XFR_DIS_XFR_ERR_DIS);
+	/* Disable bus error if eDMA transfer is used */
+	neoisp_wr(neoispd, NEO_PIPE_CONF_REG_XFR_DIS, NEO_PIPE_CONF_REG_XFR_DIS_XFR_ERR_DIS);
 
-	// disable debug
-	ret = regmap_field_write(neoispd->regs.fields[NEO_IDBG1_LINE_NUM_IDX],
-			NEO_IDBG1_LINE_NUM_LINE_NUM_MASK);
-	ret += regmap_field_write(neoispd->regs.fields[NEO_IDBG2_LINE_NUM_IDX],
-			NEO_IDBG2_LINE_NUM_LINE_NUM_MASK);
+	/* Disable debug */
+	neoisp_wr(neoispd, NEO_IDBG1_LINE_NUM, NEO_IDBG1_LINE_NUM_LINE_NUM_MASK);
+	neoisp_wr(neoispd, NEO_IDBG2_LINE_NUM, NEO_IDBG2_LINE_NUM_LINE_NUM_MASK);
 
-	ret += regmap_field_write(neoispd->regs.fields[NEO_PIPE_CONF_INT_EN0_IDX],
-			NEO_PIPE_CONF_INT_EN0_EN_FD2
-			| NEO_PIPE_CONF_INT_EN0_EN_STATD
-			| NEO_PIPE_CONF_INT_EN0_EN_BUS_ERR_MASK
-			| NEO_PIPE_CONF_INT_EN0_EN_CSI_TERR
-			| NEO_PIPE_CONF_INT_EN0_EN_TRIG_ERR);
-
-	return ret;
+	/* Enable interrupts */
+	val = NEO_PIPE_CONF_INT_EN0_EN_FD2 |
+		NEO_PIPE_CONF_INT_EN0_EN_DRCD |
+		NEO_PIPE_CONF_INT_EN0_EN_BUS_ERR_MASK |
+		NEO_PIPE_CONF_INT_EN0_EN_CSI_TERR |
+		NEO_PIPE_CONF_INT_EN0_EN_TRIG_ERR;
+	neoispd->info->context_ops->set_irq_enable(neoispd, val);
 }
 
 static int neoisp_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
-	struct neoisp_dev_s *neoisp_dev;
+	struct neoisp_dev_s *neoispd;
 	int num_groups, ret, irq;
 
-	neoisp_dev = devm_kzalloc(dev, sizeof(*neoisp_dev), GFP_KERNEL);
-	if (!neoisp_dev)
+	neoispd = devm_kzalloc(dev, sizeof(*neoispd), GFP_KERNEL);
+	if (!neoispd)
 		return -ENOMEM;
-	neoisp_dev->pdev = pdev;
-	platform_set_drvdata(pdev, neoisp_dev);
-	neoisp_dev->info = (struct neoisp_info_s *)of_device_get_match_data(dev);
+	neoispd->pdev = pdev;
+	neoispd->info = (struct neoisp_info_s *)of_device_get_match_data(dev);
 
-	ret = devm_clk_bulk_get_all(dev, &neoisp_dev->clks);
+	/* Set api version to min by default, could be updated by ioctl */
+	neoispd->api_ver = neoispd->info->api_ver_min;
+
+	ret = devm_clk_bulk_get_all(dev, &neoispd->clks);
 	if (ret < 0) {
 		dev_err(dev, "Unable to get clocks: %d\n", ret);
 		return ret;
 	}
-	neoisp_dev->num_clks = ret;
+	neoispd->num_clks = ret;
 
-	/* get regs address */
-	neoisp_dev->mmio = devm_platform_get_and_ioremap_resource(pdev, 0, NULL);
-	if (IS_ERR(neoisp_dev->mmio))
-		return PTR_ERR(neoisp_dev->mmio);
-	/* get internal isp memory address */
-	neoisp_dev->mmio_tcm = devm_platform_get_and_ioremap_resource(pdev, 1, NULL);
+	/* Get regs address */
+	neoispd->mmio = devm_platform_get_and_ioremap_resource(pdev, 0, NULL);
+	if (IS_ERR(neoispd->mmio))
+		return PTR_ERR(neoispd->mmio);
 
-	if (mod_params.test.enable_debugfs) {
-		neoisp_debugfs_init(neoisp_dev);
-		neoisp_regmap_config.max_register = NEO_IDBG2_DONE_STAT;
-		neoisp_regmap_config.num_reg_defaults = NEO_IDBG2_DONE_STAT_IDX + 1;
-		neoisp_regmap_config.readable_reg = neoisp_valid_reg;
-		neoisp_regmap_config.volatile_reg = neoisp_valid_reg;
-		neoisp_regmap_config.writeable_reg = neoisp_valid_reg;
-	}
-
-	neoisp_dev->regmap = devm_regmap_init_mmio(dev, neoisp_dev->mmio, &neoisp_regmap_config);
-	if (IS_ERR(neoisp_dev->regmap)) {
-		dev_err(dev, "regmap init failed\n");
-		return PTR_ERR(neoisp_dev->regmap);
-	}
-
-	if (neoisp_regfield_alloc(dev, neoisp_dev)) {
-		dev_err(dev, "reg field alloc failed\n");
-		return -ENODEV;
-	}
+	/* Get internal isp memory address */
+	neoispd->mmio_tcm = devm_platform_get_and_ioremap_resource(pdev, 1, NULL);
+	if (IS_ERR(neoispd->mmio_tcm))
+		return PTR_ERR(neoispd->mmio_tcm);
 
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0)
 		return irq;
+
+	platform_set_drvdata(pdev, neoispd);
 
 	pm_runtime_set_autosuspend_delay(&pdev->dev, NEOISP_SUSPEND_TIMEOUT_MS);
 	pm_runtime_use_autosuspend(&pdev->dev);
@@ -2148,7 +1703,7 @@ static int neoisp_probe(struct platform_device *pdev)
 	}
 
 	ret = devm_request_irq(&pdev->dev, irq, neoisp_irq_handler, IRQF_ONESHOT,
-			dev_name(&pdev->dev), neoisp_dev);
+			dev_name(&pdev->dev), neoispd);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "Failed to request irq: %d\n", ret);
 		goto err_pm;
@@ -2159,34 +1714,33 @@ static int neoisp_probe(struct platform_device *pdev)
 	 * device
 	 */
 	for (num_groups = 0; num_groups < NEOISP_NODE_GROUPS_COUNT; num_groups++) {
-		ret = neoisp_init_group(neoisp_dev, num_groups);
+		ret = neoisp_init_group(neoispd, num_groups);
 		if (ret)
 			goto disable_nodes_err;
 	}
 
-	spin_lock_init(&neoisp_dev->hw_lock);
-	ret = neoisp_init_hw(neoisp_dev);
+	spin_lock_init(&neoispd->hw_lock);
+	neoisp_init_hw(neoispd);
+
+	ret = neoisp_init_groups_context(neoispd);
 	if (ret)
 		goto disable_nodes_err;
 
-	ret = neoisp_init_ctx(neoisp_dev);
-	if (ret)
-		goto disable_nodes_err;
-
-	if (mod_params.test.enable_debugfs)
-		/* increase pm_runtime counter to prevent suspend */
+	if (enable_debugfs) {
+		neoisp_debugfs_init(neoispd);
+		/* Increase pm_runtime counter to prevent suspend */
 		pm_runtime_resume_and_get(&pdev->dev);
+	}
 
 	pm_runtime_mark_last_busy(&pdev->dev);
 	pm_runtime_put_autosuspend(&pdev->dev);
 
-	dev_info(&pdev->dev, "probe: done (%d) debugfs (%x)\n",
-		 ret, mod_params.test.enable_debugfs);
+	dev_info(&pdev->dev, "probe: done (%d) debugfs (%x)\n", ret, enable_debugfs);
 	return ret;
 
 disable_nodes_err:
 	while (num_groups-- > 0)
-		neoisp_destroy_node_group(&neoisp_dev->node_group[num_groups]);
+		neoisp_destroy_node_group(&neoispd->node_group[num_groups]);
 err_pm:
 	pm_runtime_dont_use_autosuspend(&pdev->dev);
 	pm_runtime_disable(&pdev->dev);
@@ -2197,14 +1751,14 @@ err_pm:
 
 static void neoisp_remove(struct platform_device *pdev)
 {
-	struct neoisp_dev_s *neoisp_dev = platform_get_drvdata(pdev);
+	struct neoisp_dev_s *neoispd = platform_get_drvdata(pdev);
 	int i;
 
-	if (mod_params.test.enable_debugfs)
-		neoisp_debugfs_exit(neoisp_dev);
+	if (enable_debugfs)
+		neoisp_debugfs_exit(neoispd);
 
 	for (i = NEOISP_NODE_GROUPS_COUNT - 1; i >= 0; i--)
-		neoisp_destroy_node_group(&neoisp_dev->node_group[i]);
+		neoisp_destroy_node_group(&neoispd->node_group[i]);
 
 	pm_runtime_dont_use_autosuspend(&pdev->dev);
 	pm_runtime_disable(&pdev->dev);
@@ -2212,9 +1766,9 @@ static void neoisp_remove(struct platform_device *pdev)
 
 static int __maybe_unused neoisp_runtime_suspend(struct device *dev)
 {
-	struct neoisp_dev_s *neoisp_dev = dev_get_drvdata(dev);
+	struct neoisp_dev_s *neoispd = dev_get_drvdata(dev);
 
-	clk_bulk_disable_unprepare(neoisp_dev->num_clks, neoisp_dev->clks);
+	clk_bulk_disable_unprepare(neoispd->num_clks, neoispd->clks);
 
 	return 0;
 }
@@ -2222,20 +1776,16 @@ static int __maybe_unused neoisp_runtime_suspend(struct device *dev)
 static int __maybe_unused neoisp_runtime_resume(struct device *dev)
 {
 	int ret;
-	struct neoisp_dev_s *neoisp_dev = dev_get_drvdata(dev);
+	struct neoisp_dev_s *neoispd = dev_get_drvdata(dev);
 
-	ret = clk_bulk_prepare_enable(neoisp_dev->num_clks, neoisp_dev->clks);
+	ret = clk_bulk_prepare_enable(neoispd->num_clks, neoispd->clks);
 
 	if (ret) {
 		dev_err(dev, "Failed to resume device. Could not re-enable clocks.\n");
 		return ret;
 	}
 
-	ret = neoisp_init_hw(neoisp_dev);
-	if (ret) {
-		dev_err(dev, "Failed to resume device. Could not re-initialize hardware.\n");
-		return ret;
-	}
+	neoisp_init_hw(neoispd);
 
 	return 0;
 }
@@ -2279,27 +1829,82 @@ static const struct dev_pm_ops neoisp_pm = {
  * input0 as other formats are defined. As the working BPP of input1 is 16-bit depth, the data is
  * already MSB-aligned and do not need an extra gain.
  */
-static void neoisp_gain_adjust_v2(struct neoisp_reg_params_s *regp, __u32 ibpp)
+static void neoisp_adjust_gain_v2(struct neoisp_context_s *ctx, u32 ibpp)
 {
+	struct neoisp_hdr_decompress0_s *hdr0 = &ctx->hw.hdr_decompress0;
+
 	if (ibpp == 12)
-		regp->decompress_input0.knee_ratio4 = 16 << NEOISP_HDR_SHIFT_RADIX;
+		hdr0->knee_ratio4 =
+			NEO_HDR_DECOMPRESS0_KNEE_RATIO4_CAM0_RATIO4_SET(
+					16 << NEOISP_HDR_SHIFT_RADIX);
 }
 
+static u32 neoisp_get_irq_status(struct neoisp_dev_s *neoispd)
+{
+	return neoisp_rd(neoispd, NEO_PIPE_CONF_INT_STAT0);
+}
+
+static u32 neoisp_get_irq_status_v2(struct neoisp_dev_s *neoispd)
+{
+	return neoisp_rd(neoispd, NEO_PIPE_CONF_INT_STAT0_V2);
+}
+
+static void neoisp_clear_irq(struct neoisp_dev_s *neoispd, u32 val)
+{
+	neoisp_wr(neoispd, NEO_PIPE_CONF_INT_STAT0, val);
+}
+
+static void neoisp_clear_irq_v2(struct neoisp_dev_s *neoispd, u32 val)
+{
+	neoisp_wr(neoispd, NEO_PIPE_CONF_INT_STAT0_V2, val);
+}
+
+static void neoisp_set_irq_enable(struct neoisp_dev_s *neoispd, u32 val)
+{
+	neoisp_wr(neoispd, NEO_PIPE_CONF_INT_EN0, val);
+}
+
+static void neoisp_set_irq_enable_v2(struct neoisp_dev_s *neoispd, u32 val)
+{
+	neoisp_wr(neoispd, NEO_PIPE_CONF_INT_EN0_V2, val);
+}
+
+static struct neoisp_context_ops_s neoisp_context_ops[] = {
+	[NEOISP_HW_V1] = {
+		.set_irq_enable = neoisp_set_irq_enable,
+		.get_irq_status = neoisp_get_irq_status,
+		.clear_irq = neoisp_clear_irq,
+		.adjust_gain = NULL,
+	},
+	[NEOISP_HW_V2] = {
+		.set_irq_enable = neoisp_set_irq_enable_v2,
+		.get_irq_status = neoisp_get_irq_status_v2,
+		.clear_irq = neoisp_clear_irq_v2,
+		.adjust_gain = neoisp_adjust_gain_v2,
+	},
+};
+
 static const struct neoisp_info_s neoisp_v1_data = {
-	.neoisp_hw_ver = NEO_ISP_V1,
-	.regs = neoisp_fields_a_v1,
-	.mems = &active_block_map[NEO_ISP_V1],
+	.hw_ver = NEOISP_HW_V1,
+	.capabilities = NEO_CAP_ALIGNMENT_MSB,
+	.api_ver_min = NEOISP_LEGACY_META_BUFFER,
+	.api_ver_max = NEOISP_EXT_META_BUFFER_V1,
+	.context_ops = &neoisp_context_ops[NEOISP_HW_V1],
+	.mems = &active_block_map[NEOISP_HW_V1],
 };
 
 static const struct neoisp_info_s neoisp_v2_data = {
-	.neoisp_hw_ver = NEO_ISP_V2,
-	.regs = neoisp_fields_a_v2,
-	.mems = &active_block_map[NEO_ISP_V2],
-	.gain_adjust = neoisp_gain_adjust_v2,
+	.hw_ver = NEOISP_HW_V2,
+	.capabilities = NEO_CAP_ALIGNMENT_MSB,
+	.api_ver_min = NEOISP_LEGACY_META_BUFFER,
+	.api_ver_max = NEOISP_EXT_META_BUFFER_V1,
+	.context_ops = &neoisp_context_ops[NEOISP_HW_V2],
+	.mems = &active_block_map[NEOISP_HW_V2],
 };
 
 static const struct of_device_id neoisp_dt_ids[] = {
 	{ .compatible = "nxp,imx95-a0-neoisp", .data = &neoisp_v1_data },
+	{ .compatible = "nxp,imx95-a1-neoisp", .data = &neoisp_v1_data },
 	{ .compatible = "nxp,imx95-b0-neoisp", .data = &neoisp_v2_data },
 	{ },
 };
@@ -2318,5 +1923,6 @@ static struct platform_driver neoisp_driver = {
 module_platform_driver(neoisp_driver);
 
 MODULE_DESCRIPTION("NXP NEOISP Hardware");
-MODULE_AUTHOR("Aymen SGHAIER <Aymen.Sghaier@nxp.com>");
+
+MODULE_AUTHOR("Antoine Bouyer <antoine.bouyer@nxp.com>");
 MODULE_LICENSE("GPL");

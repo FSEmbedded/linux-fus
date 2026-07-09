@@ -251,18 +251,21 @@ static inline void imx_rpmsg_gpio_direction_output_init(struct gpio_chip *gc,
 	msg->out.value = val;
 }
 
-static void imx_rpmsg_gpio_set(struct gpio_chip *gc, unsigned int gpio, int val)
+static int imx_rpmsg_gpio_set(struct gpio_chip *gc, unsigned int gpio, int val)
 {
 	struct imx_rpmsg_gpio_port *port = gpiochip_get_data(gc);
 	struct gpio_rpmsg_data *msg = NULL;
+	int ret;
 
 	mutex_lock(&gpio_rpmsg.lock);
 
 	msg = gpio_get_pin_msg(port, gpio);
 	imx_rpmsg_gpio_direction_output_init(gc, gpio, val, msg);
-	gpio_send_message(port, msg, &gpio_rpmsg, true);
+	ret = gpio_send_message(port, msg, &gpio_rpmsg, true);
 
 	mutex_unlock(&gpio_rpmsg.lock);
+
+	return ret;
 }
 
 static int imx_rpmsg_gpio_direction_output(struct gpio_chip *gc,
@@ -476,9 +479,9 @@ static int imx_rpmsg_gpio_probe(struct platform_device *pdev)
 				   numa_node_id());
 	WARN_ON(irq_base < 0);
 
-	port->domain = irq_domain_add_legacy(np, IMX_RPMSG_GPIO_PER_PORT,
-					     irq_base, 0,
-					     &irq_domain_simple_ops, port);
+	port->domain = irq_domain_create_legacy(of_fwnode_handle(np), IMX_RPMSG_GPIO_PER_PORT,
+						irq_base, 0,
+						&irq_domain_simple_ops, port);
 	WARN_ON(!port->domain);
 	for (i = irq_base; i < irq_base + IMX_RPMSG_GPIO_PER_PORT; i++) {
 		irq_set_chip_and_handler(i, &port->chip, handle_level_irq);

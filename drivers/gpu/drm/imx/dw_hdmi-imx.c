@@ -420,6 +420,15 @@ static void dw_hdmi_imx_remove(struct platform_device *pdev)
 	dw_hdmi_remove(hdmi->hdmi);
 }
 
+static int __maybe_unused dw_hdmi_imx_suspend(struct device *dev)
+{
+	struct imx_hdmi *hdmi = dev_get_drvdata(dev);
+
+	dw_hdmi_suspend(hdmi->hdmi);
+
+	return 0;
+}
+
 static int __maybe_unused dw_hdmi_imx_resume(struct device *dev)
 {
 	struct imx_hdmi *hdmi = dev_get_drvdata(dev);
@@ -430,7 +439,7 @@ static int __maybe_unused dw_hdmi_imx_resume(struct device *dev)
 }
 
 static const struct dev_pm_ops dw_hdmi_imx_pm = {
-	SET_SYSTEM_SLEEP_PM_OPS(NULL, dw_hdmi_imx_resume)
+	SET_SYSTEM_SLEEP_PM_OPS(dw_hdmi_imx_suspend, dw_hdmi_imx_resume)
 };
 
 static struct platform_driver dw_hdmi_imx_platform_driver = {

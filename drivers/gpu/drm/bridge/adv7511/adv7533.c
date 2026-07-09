@@ -91,13 +91,9 @@ void adv7533_dsi_power_on(struct adv7511 *adv)
 	/* set number of dsi lanes */
 	regmap_write(adv->regmap_cec, 0x1c, dsi->lanes << 4);
 
-	if (adv->use_timing_gen) {
-		/* reset internal timing generator */
-		regmap_write(adv->regmap_cec, 0x27, 0xcb);
-		regmap_write(adv->regmap_cec, 0x27, 0x8b);
-		regmap_write(adv->regmap_cec, 0x27, 0xcb);
-	} else {
-		/* disable internal timing generator */
+	if (adv->use_timing_gen)
+		adv7533_dsi_config_timing_gen(adv);
+	else
 		regmap_write(adv->regmap_cec, 0x27, 0x0b);
 
 	/* 04-01 HDMI Output */

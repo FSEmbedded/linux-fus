@@ -477,6 +477,8 @@ extern "C" {
 #define DRM_FORMAT_MOD_VENDOR_AMLOGIC 0x0a
 #define DRM_FORMAT_MOD_VENDOR_MTK     0x0b
 #define DRM_FORMAT_MOD_VENDOR_APPLE   0x0c
+#define DRM_FORMAT_MOD_VENDOR_AMPHION 0xf0
+#define DRM_FORMAT_MOD_VENDOR_VSI     0xf1
 
 /* add more to the end as needed */
 

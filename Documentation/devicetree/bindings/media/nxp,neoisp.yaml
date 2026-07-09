@@ -7,7 +7,7 @@ $schema: http://devicetree.org/meta-schemas/core.yaml#
 title: NXP NEOISP Image Signal Processing Pipeline
 
 maintainers:
-  - Aymen Sghaier <aymen.sghaier@nxp.com>
+  - Antoine Bouyer <antoine.bouyer@nxp.com>
   - Julien Vuillaumier <julien.vuillaumier@nxp.com>
 
 description: |-
@@ -19,6 +19,7 @@ properties:
   compatible:
     enum:
       - nxp,imx95-a0-neoisp
+      - nxp,imx95-a1-neoisp
       - nxp,imx95-b0-neoisp
 
   reg:

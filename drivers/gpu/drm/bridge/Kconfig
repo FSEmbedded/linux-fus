@@ -511,13 +511,13 @@ source "drivers/gpu/drm/bridge/imx/Kconfig"
 
 source "drivers/gpu/drm/bridge/synopsys/Kconfig"
 
-config DRM_ITE_IT6263
-	tristate "ITE IT6263 LVDS/HDMI bridge"
+config DRM_ITE_IT6263_NXP
+	tristate "ITE IT6263 LVDS/HDMI bridge for NXP"
 	depends on OF
 	select DRM_KMS_HELPER
 	select REGMAP_I2C
 	help
-	  ITE IT6263 bridge chip driver.
+	  ITE IT6263 bridge chip driver for NXP.
 
 config DRM_ITE_IT6161
 	tristate "ITE IT6161 MIPI/HDMI bridge"

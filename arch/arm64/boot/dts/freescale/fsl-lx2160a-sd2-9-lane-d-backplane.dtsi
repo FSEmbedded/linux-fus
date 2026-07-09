@@ -4,11 +4,15 @@
  */
 
 &dpmac18 {
-	phys = <&serdes_2 3>; /* lane D */
+	phys = <&serdes_2_lane_d>;
 	phy-names = "serdes";
 	managed = "c73";
 };
 
 &pcs_mdio18 {
+	status = "okay";
+};
+
+&serdes_2 {
 	status = "okay";
 };

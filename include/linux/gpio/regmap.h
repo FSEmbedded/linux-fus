@@ -100,7 +100,6 @@ struct gpio_regmap_config {
 	int (*reg_mask_xlate)(struct gpio_regmap *gpio, unsigned int base,
 			      unsigned int offset, unsigned int *reg,
 			      unsigned int *mask);
-	int (*get_direction)(struct gpio_regmap *gpio, unsigned int offset);
 
 	int (*init_valid_mask)(struct gpio_chip *gc,
 			       unsigned long *valid_mask,

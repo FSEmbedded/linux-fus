@@ -71,6 +71,19 @@ properties:
     $ref: /schemas/graph.yaml#/properties/port
     description: The LCDIF output port
 
+  max-memory-bandwidth:
+    - description: |
+	maximum bandwidth in bytes per second that the
+	controller can handle; if not present, the memory
+	interface is fast enough to handle all possible video modes
+
+  backlight:
+    $ref: /schemas/types.yaml#/definitions/phandle
+    description:
+      For legacy framebuffer device whose backlight is controlled by an
+      external backlight controller, this property contains a phandle that
+      references the controller.
+
   display:
     $ref: /schemas/types.yaml#/definitions/phandle
     description: phandle to display panel

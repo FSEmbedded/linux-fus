@@ -547,7 +547,7 @@
 		>;
 	};
 
-	pinctrl_usdhc3_100mhz: usdhc3-100mhzgrp {
+	pinctrl_usdhc3_100mhz: usdhc3grp-100mhz {
 		fsl,pins = <
 			MX6SX_PAD_SD3_CMD__USDHC3_CMD		0x170b9
 			MX6SX_PAD_SD3_CLK__USDHC3_CLK		0x100b9
@@ -562,7 +562,7 @@
 		>;
 	};
 
-	pinctrl_usdhc3_200mhz: usdhc3-200mhzgrp {
+	pinctrl_usdhc3_200mhz: usdhc3grp-200mhz {
 		fsl,pins = <
 			MX6SX_PAD_SD3_CMD__USDHC3_CMD		0x170f9
 			MX6SX_PAD_SD3_CLK__USDHC3_CLK		0x100f9

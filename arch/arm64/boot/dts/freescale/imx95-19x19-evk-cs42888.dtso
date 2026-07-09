@@ -15,7 +15,7 @@
 		regulator-name = "audio-slot8-switch";
 		regulator-min-microvolt = <3300000>;
 		regulator-max-microvolt = <3300000>;
-		gpio = <&i2c6_gpio_expander_21 11 GPIO_ACTIVE_HIGH>;
+		gpio = <&i2c6_pcal6416 11 GPIO_ACTIVE_HIGH>;
 		enable-active-high;
 		regulator-always-on;
 		regulator-boot-on;
@@ -52,7 +52,7 @@
 		VD-supply = <&reg_3p3v>;
 		VLS-supply = <&reg_3p3v>;
 		VLC-supply = <&reg_3p3v>;
-		reset-gpio = <&i2c6_gpio_expander_21 8 GPIO_ACTIVE_LOW>;
+		reset-gpio = <&i2c6_pcal6416 8 GPIO_ACTIVE_LOW>;
 		assigned-clocks = <&scmi_clk IMX95_CLK_AUDIOPLL1_VCO>,
 				  <&scmi_clk IMX95_CLK_AUDIOPLL2_VCO>,
 				  <&scmi_clk IMX95_CLK_AUDIOPLL1>,

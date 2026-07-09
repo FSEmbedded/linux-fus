@@ -22,5 +22,6 @@
 };
 /delete-node/ &{/display-subsystem};
 /delete-node/ &gpu;
+/delete-node/ &imx8_gpu_ss;
 /delete-node/ &lcdif;
 /delete-node/ &mipi_dsi;

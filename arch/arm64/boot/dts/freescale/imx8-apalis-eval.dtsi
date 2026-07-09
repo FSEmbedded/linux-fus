@@ -39,18 +39,6 @@
 	status = "okay";
 };
 
-/* Apalis CAN1 */
-&flexcan1 {
-	status = "okay";
-};
-
-/* Apalis CAN2 */
-&flexcan2 {
-	status = "okay";
-};
-
-/* TODO: GPU */
-
 /* Apalis I2C1 */
 &i2c2 {
 	status = "okay";

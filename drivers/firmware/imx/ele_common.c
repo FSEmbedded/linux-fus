@@ -137,7 +137,7 @@ int ele_msg_send_rcv(struct se_if_device_ctx *dev_ctx,
 	guard(mutex)(&priv->se_if_cmd_lock);
 
 	/* Capture request timer */
-	ktime_get_raw_ts64(&priv->time_frame.t_start);
+	ktime_get_raw_ts64(&dev_ctx->time_frame.t_start);
 	priv->waiting_rsp_clbk_hdl.dev_ctx = dev_ctx;
 	priv->waiting_rsp_clbk_hdl.rx_msg_sz = exp_rx_msg_sz;
 	priv->waiting_rsp_clbk_hdl.rx_msg = rx_msg;
@@ -159,7 +159,7 @@ int ele_msg_send_rcv(struct se_if_device_ctx *dev_ctx,
 	priv->waiting_rsp_clbk_hdl.dev_ctx = NULL;
 
 	/* Capture response timer */
-	ktime_get_raw_ts64(&priv->time_frame.t_end);
+	ktime_get_raw_ts64(&dev_ctx->time_frame.t_end);
 exit:
 	return err;
 }
@@ -346,7 +346,6 @@ int se_save_imem_state(struct se_if_priv *priv, struct se_imem_buf *imem)
 	struct ele_dev_info s_info = {0};
 	int ret;
 
-	/* get info from ELE */
 	ret = ele_get_info(priv, &s_info);
 	if (ret) {
 		dev_err(priv->dev, "Failed to get info from ELE.\n");
@@ -393,9 +392,7 @@ int se_restore_imem_state(struct se_if_priv *priv, struct se_imem_buf *imem)
 	}
 	imem->state = s_info.d_addn_info.imem_state;
 
-	/* Get IMEM state, if 0xFE and saved/exported IMEM buffer size is non-zero,
-	 * then import IMEM
-	 */
+	/* Get IMEM state, if 0xFE then import IMEM */
 	if (s_info.d_addn_info.imem_state == ELE_IMEM_STATE_BAD && imem->size) {
 		/* IMPORT command will restore IMEM from the given
 		 * address, here size is the actual size returned by ELE

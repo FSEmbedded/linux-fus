@@ -253,7 +253,7 @@
 		>;
 	};
 
-	pinctrl_ecspi1_gpio: ecspi1gpiogrp {
+	pinctrl_ecspi1_gpio: ecspi1grpgpiogrp {
 		fsl,pins = <
 			MX6QDL_PAD_KEY_ROW1__GPIO4_IO09		0x1b0b0
 			MX6QDL_PAD_ENET_RXD0__GPIO1_IO27	0x1b0b0
@@ -349,7 +349,7 @@
 		>;
 	};
 
-	pinctrl_usdhc1_gpio: usdhc1gpiogrp {
+	pinctrl_usdhc1_gpio: usdhc1grpgpiogrp {
 		fsl,pins = <
 			MX6QDL_PAD_ENET_TX_EN__GPIO1_IO28	0x1b0b0
 		>;
@@ -366,7 +366,7 @@
 		>;
 	};
 
-	pinctrl_usdhc2_gpio: usdhc2gpiogrp {
+	pinctrl_usdhc2_gpio: usdhc2grpgpiogrp {
 		fsl,pins = <
 			MX6QDL_PAD_NANDF_D0__GPIO2_IO00		0x1b0b0
 			MX6QDL_PAD_NANDF_D1__GPIO2_IO01		0x1b0b0

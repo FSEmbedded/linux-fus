@@ -21,8 +21,8 @@
 #define BRD_SM_CTRL_BUTTON		0x8004	/*!< PCAL6408A-7 */
 
 / {
-	model = "NXP FRDM-IMX95";
 	compatible = "fsl,frdm-imx95", "fsl,imx95";
+	model = "NXP FRDM-IMX95";
 
 	aliases {
 		ethernet0 = &enetc_port0;
@@ -33,6 +33,12 @@
 		stdout-path = &lpuart1;
 		#address-cells = <2>;
 		#size-cells = <2>;
+	};
+
+	dmic: dmic {
+		compatible = "dmic-codec";
+		#sound-dai-cells = <0>;
+		num-channels = <2>;
 	};
 
 	hdmi-connector {
@@ -173,7 +179,7 @@
 		enable-active-high;
 	};
 
-	usdhc3_pwrseq: usdhc3_pwrseq {
+	usdhc3_pwrseq: usdhc3-pwrseq {
 		compatible = "mmc-pwrseq-simple";
 		reset-gpios = <&pcal6524 8 GPIO_ACTIVE_LOW>;
 	};
@@ -222,7 +228,6 @@
 		regulator-max-microvolt = <3300000>;
 		gpio = <&pcal6524 14 GPIO_ACTIVE_HIGH>;
 		enable-active-high;
-		regulator-always-on;
 	};
 
 	cm7: imx95-cm7 {
@@ -248,6 +253,9 @@
 			format = "i2s";
 			cpu {
 				sound-dai = <&micfil>;
+			};
+			codec {
+				sound-dai = <&dmic>;
 			};
 		};
 	};
@@ -378,7 +386,7 @@
 		pwm-gpio-sel-hog {
 			gpio-hog;
 			gpios = <5 GPIO_ACTIVE_HIGH>;
-			output-low;
+			output-high;
 		};
 	};
 
@@ -406,12 +414,6 @@
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_ptn5110>;
 
-		port {
-			typec_dr_sw: endpoint {
-				remote-endpoint = <&usb3_drd_sw>;
-			};
-		};
-
 		typec_con: connector {
 			compatible = "usb-c-connector";
 			label = "USB-C";
@@ -427,6 +429,14 @@
 			ports {
 				#address-cells = <1>;
 				#size-cells = <0>;
+
+				port@0 {
+					reg = <0>;
+
+					typec_con_hs: endpoint {
+						remote-endpoint = <&usb3_data_hs>;
+					};
+				};
 
 				port@1 {
 					reg = <1>;
@@ -496,7 +506,6 @@
 };
 
 &lpspi3 {
-	fsl,spi-num-chipselects = <1>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_lpspi3>;
 	cs-gpios = <&gpio2 8 GPIO_ACTIVE_LOW>;
@@ -528,6 +537,10 @@
 };
 
 &mu7 {
+	status = "okay";
+};
+
+&neoisp0 {
 	status = "okay";
 };
 
@@ -582,10 +595,14 @@
 	status = "okay";
 };
 
+&netc_blk_ctrl {
+	status = "okay";
+};
+
 /* The default setting in i.mx95.dtsi are for i.MX95 19x19,
  * so change them for i.MX95 15x15 here.
  */
-&pcie_4ca00000 {
+&netc_bus0 {
 	msi-map = <0x0 &its 0x60 0x1>,	//ENETC0 PF
 		  <0x10 &its 0x61 0x1>, //ENETC0 VF0
 		  <0x20 &its 0x62 0x1>, //ENETC0 VF1
@@ -644,10 +661,7 @@
 	};
 };
 
-&usb2 {
-	dr_mode = "host";
-	vbus-supply = <&reg_usb_vbus>;
-	disable-over-current;
+&netcmix_blk_ctrl {
 	status = "okay";
 };
 
@@ -723,11 +737,23 @@
 	};
 };
 
+&usb2 {
+	dr_mode = "host";
+	vbus-supply = <&reg_usb_vbus>;
+	disable-over-current;
+	status = "okay";
+};
+
 &usb3 {
 	status = "okay";
 };
 
 &usb3_phy {
+	orientation-switch;
+	fsl,phy-pcs-tx-deemph-3p5db-attenuation-db = <17>;
+	fsl,phy-pcs-tx-swing-full-percent = <100>;
+	fsl,phy-tx-preemp-amp-tune-microamp = <600>;
+	fsl,phy-tx-vboost-level-microvolt = <1156>;
 	status = "okay";
 
 	port {
@@ -743,14 +769,14 @@
 	srp-disable;
 	adp-disable;
 	usb-role-switch;
-	role-switch-default-mode = "none";
+	role-switch-default-mode = "peripheral";
 	snps,dis-u1-entry-quirk;
 	snps,dis-u2-entry-quirk;
 	status = "okay";
 
 	port {
-		usb3_drd_sw: endpoint {
-			remote-endpoint = <&typec_dr_sw>;
+		usb3_data_hs: endpoint {
+			remote-endpoint = <&typec_con_hs>;
 		};
 	};
 };
@@ -976,10 +1002,10 @@
 
 	pinctrl_lpspi3: lpspi3grp {
 		fsl,pins = <
-			IMX95_PAD_GPIO_IO08__GPIO2_IO_BIT8			0x3fe
-			IMX95_PAD_GPIO_IO09__LPSPI3_SIN				0x3fe
-			IMX95_PAD_GPIO_IO10__LPSPI3_SOUT			0x3fe
-			IMX95_PAD_GPIO_IO11__LPSPI3_SCK				0x3fe
+			IMX95_PAD_GPIO_IO08__GPIO2_IO_BIT8			0x39e
+			IMX95_PAD_GPIO_IO09__LPSPI3_SIN				0x39e
+			IMX95_PAD_GPIO_IO10__LPSPI3_SOUT			0x39e
+			IMX95_PAD_GPIO_IO11__LPSPI3_SCK				0x39e
 		>;
 	};
 
@@ -1062,7 +1088,6 @@
 &pcie0 {
 	pinctrl-0 = <&pinctrl_pcie0>;
 	pinctrl-names = "default";
-	fsl,refclk-pad-mode = <IMX8_PCIE_REFCLK_PAD_OUTPUT>;
 	reset-gpio = <&gpio5 13 GPIO_ACTIVE_LOW>;
 	vpcie-supply = <&reg_m2_mkey_pwr>;
 	status = "okay";

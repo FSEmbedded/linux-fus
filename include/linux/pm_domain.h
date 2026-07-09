@@ -18,7 +18,6 @@
 #include <linux/spinlock.h>
 #include <linux/cpumask_types.h>
 #include <linux/time64.h>
-#include <linux/clk.h>
 
 /*
  * Flags to control the behaviour when attaching a device to its PM domains.
@@ -252,8 +251,6 @@ struct generic_pm_domain {
 	};
 
 	unsigned int state_idx_saved; /* saved power state for recovery after system suspend/resume */
-	struct clk_bulk_data *clks;
-	int num_clks;
 };
 
 static inline struct generic_pm_domain *pd_to_genpd(struct dev_pm_domain *pd)
@@ -320,7 +317,6 @@ int pm_genpd_remove_subdomain(struct generic_pm_domain *genpd,
 			      struct generic_pm_domain *subdomain);
 int pm_genpd_init(struct generic_pm_domain *genpd,
 		  struct dev_power_governor *gov, bool is_off);
-int pm_genpd_of_add_clks(struct generic_pm_domain *genpd, struct device *dev);
 int pm_genpd_remove(struct generic_pm_domain *genpd);
 void pm_genpd_inc_rejected(struct generic_pm_domain *genpd,
 			   unsigned int state_idx);
@@ -370,12 +366,6 @@ static inline int pm_genpd_init(struct generic_pm_domain *genpd,
 				struct dev_power_governor *gov, bool is_off)
 {
 	return -ENOSYS;
-}
-static inline int pm_genpd_of_add_clks(struct generic_pm_domain *genpd,
-				       struct device *dev)
-{
-	return 0;
-
 }
 static inline int pm_genpd_remove(struct generic_pm_domain *genpd)
 {

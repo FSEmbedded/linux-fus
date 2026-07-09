@@ -18,6 +18,7 @@
 
 #include <linux/phy/phy-dp.h>
 #include <linux/phy/phy-hdmi.h>
+#include <linux/phy/phy-ethernet.h>
 #include <linux/phy/phy-lvds.h>
 #include <linux/phy/phy-mipi-dphy.h>
 
@@ -40,7 +41,6 @@ enum phy_mode {
 	PHY_MODE_UFS_HS_B,
 	PHY_MODE_PCIE,
 	PHY_MODE_ETHERNET,
-	PHY_MODE_ETHERNET_LINKMODE,
 	PHY_MODE_MIPI_DPHY,
 	PHY_MODE_SATA,
 	PHY_MODE_LVDS,
@@ -55,7 +55,7 @@ enum phy_media {
 };
 
 enum phy_status_type {
-	/* Valid for PHY_MODE_ETHERNET and PHY_MODE_ETHERNET_LINKMODE */
+	/* Valid for PHY_MODE_ETHERNET */
 	PHY_STATUS_CDR_LOCK,
 	PHY_STATUS_PCVT_COUNT,
 	PHY_STATUS_PCVT_ADDR,
@@ -126,12 +126,15 @@ union phy_status_opts {
  *		the LVDS phy mode.
  * @hdmi:	Configuration set applicable for phys supporting
  *		the HDMI phy mode.
+ * @ethernet:	Configuration set applicable for phys supporting
+ *		the ethernet and ethtool phy mode.
  */
 union phy_configure_opts {
 	struct phy_configure_opts_mipi_dphy	mipi_dphy;
 	struct phy_configure_opts_dp		dp;
 	struct phy_configure_opts_lvds		lvds;
 	struct phy_configure_opts_hdmi		hdmi;
+	struct phy_configure_opts_ethernet	ethernet;
 };
 
 /**

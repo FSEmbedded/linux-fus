@@ -40,8 +40,9 @@
 
 	pcie0: pcie@5f010000 {
 		#interrupt-cells = <1>;
-		interrupts = <GIC_SPI 44 IRQ_TYPE_LEVEL_HIGH>;
-		interrupt-names = "msi";
+		interrupts = <GIC_SPI 44 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 46 IRQ_TYPE_LEVEL_HIGH>;
+		interrupt-names = "msi", "dma";
 		interrupt-map = <0 0 0 1 &gic GIC_SPI 47 IRQ_TYPE_LEVEL_HIGH>,
 				<0 0 0 2 &gic GIC_SPI 48 IRQ_TYPE_LEVEL_HIGH>,
 				<0 0 0 3 &gic GIC_SPI 49 IRQ_TYPE_LEVEL_HIGH>,

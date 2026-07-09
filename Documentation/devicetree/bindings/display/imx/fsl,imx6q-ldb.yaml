@@ -18,6 +18,10 @@ properties:
     oneOf:
       - enum:
           - fsl,imx53-ldb
+          - fsl,imx8mp-ldb-nxp
+          - fsl,imx8qm-ldb-nxp
+          - fsl,imx8qxp-ldb-nxp
+          - fsl,imx93-ldb-nxp
       - items:
           - enum:
               - fsl,imx6q-ldb
@@ -39,11 +43,21 @@ properties:
       control register.
 
   clocks:
-    minItems: 6
+    minItems: 1
     maxItems: 8
 
   clock-names:
     oneOf:
+      - items:
+          - const: ldb
+      - items:
+          - const: pixel
+          - const: bypass
+      - items:
+          - const: pixel
+          - const: bypass
+          - const: aux_pixel
+          - const: aux_bypass
       - items:
           - const: di0_pll
           - const: di1_pll
@@ -61,12 +75,24 @@ properties:
           - const: di0
           - const: di1
 
+  power-domains:
+    maxItems: 2
+
+  power-domain-names:
+    enum: [ main, aux ]
+
   fsl,dual-channel:
     $ref: /schemas/types.yaml#/definitions/flag
     description:
       if it exists, only LVDS channel 0 should
       be configured - one input will be distributed on both outputs in dual
       channel mode
+
+  fsl,auxldb:
+    $ref: /schemas/types.yaml#/definitions/phandle
+    description:
+      Phandle to auxiliary LDB which is used in dual channel mode.
+      Only required by i.MX8qxp.
 
 patternProperties:
   '^lvds-channel@[0-1]$':
@@ -105,6 +131,12 @@ patternProperties:
         $ref: /schemas/types.yaml#/definitions/phandle
         description: phandle to lcd panel
 
+      phys:
+        maxItems: 1
+
+      phy-names:
+        const: ldb_phy
+
     patternProperties:
       '^port@[0-4]$':
         $ref: /schemas/graph.yaml#/properties/port
@@ -114,9 +146,13 @@ patternProperties:
           (lvds-channel@[0,1], respectively).
           On i.MX6, there should be four input ports (port@[0-3]) that correspond
           to the four LVDS multiplexer inputs.
-          A single output port (port@2 on i.MX5, port@4 on i.MX6) must be connected
-          to a panel input port. Optionally, the output port can be left out if
-          display-timings are used instead.
+          A single output port (port@2 on i.MX5, port@4 on i.MX6, port@1 on i.MX8qm,
+          i.MX8qxp, i.MX8mp and i.MX93) must be connected to a panel input port.
+          Optionally, the output port can be left out if display-timings are used
+          instead.
+          On i.MX8qm, the two channels of LDB connect to one display interface of DPU.
+          On i.MX8mp, the two channels of LDB connect to LCDIFv3.
+          On i.MX93, the channel of LDB connect to LCDIFv3.
 
     additionalProperties: false
 

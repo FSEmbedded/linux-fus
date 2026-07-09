@@ -660,7 +660,7 @@ static int it6263_connector_get_modes(struct drm_connector *connector)
 
 static enum drm_mode_status
 it6263_connector_mode_valid(struct drm_connector *connector,
-			    struct drm_display_mode *mode)
+			    const struct drm_display_mode *mode)
 {
 	struct it6263 *it6263 = connector_to_it6263(connector);
 
@@ -802,6 +802,7 @@ static void it6263_bridge_mode_set(struct drm_bridge *bridge,
 }
 
 static int it6263_bridge_attach(struct drm_bridge *bridge,
+				struct drm_encoder *encoder,
 				enum drm_bridge_attach_flags flags)
 {
 	struct it6263 *it6263 = bridge_to_it6263(bridge);
@@ -856,7 +857,7 @@ static u32
 }
 
 static enum drm_connector_status
-it6263_bridge_detect(struct drm_bridge *bridge)
+it6263_bridge_detect(struct drm_bridge *bridge, struct drm_connector *connector)
 {
 	struct it6263 *it6263 = bridge_to_it6263(bridge);
 
@@ -1013,9 +1014,10 @@ static int it6263_probe(struct i2c_client *client)
 	struct it6263 *it6263;
 	int ret;
 
-	it6263 = devm_kzalloc(dev, sizeof(*it6263), GFP_KERNEL);
-	if (!it6263)
-		return -ENOMEM;
+	it6263 = devm_drm_bridge_alloc(dev, struct it6263, bridge,
+				       &it6263_bridge_funcs);
+	if (IS_ERR(it6263))
+		return PTR_ERR(it6263);
 
 	it6263->split_mode = of_property_read_bool(np, "split-mode");
 
@@ -1084,7 +1086,6 @@ static int it6263_probe(struct i2c_client *client)
 	it6263_lvds_config(it6263);
 	it6263_hdmi_config(it6263);
 
-	it6263->bridge.funcs = &it6263_bridge_funcs;
 	it6263->bridge.of_node = np;
 	it6263->bridge.ops = DRM_BRIDGE_OP_DETECT | DRM_BRIDGE_OP_EDID |
 		DRM_BRIDGE_OP_MODES;
@@ -1172,7 +1173,7 @@ static void it6263_remove(struct i2c_client *client)
 }
 
 static const struct of_device_id it6263_dt_ids[] = {
-	{ .compatible = "ite,it6263", },
+	{ .compatible = "ite,it6263-nxp", },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, it6263_dt_ids);
@@ -1187,7 +1188,7 @@ static struct i2c_driver it6263_driver = {
 	.probe = it6263_probe,
 	.remove = it6263_remove,
 	.driver = {
-		.name = "it6263",
+		.name = "it6263-nxp",
 		.of_match_table = it6263_dt_ids,
 	},
 	.id_table = it6263_i2c_ids,

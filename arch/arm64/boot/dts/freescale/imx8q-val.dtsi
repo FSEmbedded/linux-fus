@@ -704,7 +704,7 @@
 	codec: cs42888@48 {
 		compatible = "cirrus,cs42888";
 		reg = <0x48>;
-		clocks = <&mclkout0_lpcg 0>;
+		clocks = <&mclkout0_lpcg IMX_LPCG_CLK_0>;
 		clock-names = "mclk";
 		VA-supply = <&reg_audio>;
 		VD-supply = <&reg_audio>;
@@ -839,18 +839,6 @@
 	};
 };
 
-&gpu_3d0 {
-	status = "okay";
-};
-
-&gpu_3d1 {
-	status = "okay";
-};
-
-&imx8_gpu_ss {
-	status = "okay";
-};
-
 &pciea{
 	ext_osc = <1>;
 	pinctrl-names = "default";
@@ -904,7 +892,7 @@
 	status = "okay";
 
 	lvds-to-hdmi-bridge@4c {
-		compatible = "ite,it6263";
+		compatible = "ite,it6263-nxp";
 		reg = <0x4c>;
 
 		port {
@@ -948,7 +936,7 @@
 	status = "okay";
 
 	lvds-to-hdmi-bridge@4c {
-		compatible = "ite,it6263";
+		compatible = "ite,it6263-nxp";
 		reg = <0x4c>;
 
 		port {

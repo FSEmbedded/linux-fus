@@ -199,6 +199,9 @@ struct dw_hdmi {
 	hdmi_codec_plugged_cb plugged_cb;
 	struct device *codec_dev;
 	enum drm_connector_status last_connector_result;
+
+	struct delayed_work work;
+	bool hpd_work_active;
 };
 
 #define HDMI_IH_PHY_STAT0_RX_SENSE \
@@ -3097,6 +3100,24 @@ void dw_hdmi_setup_rx_sense(struct dw_hdmi *hdmi, bool hpd, bool rx_sense)
 }
 EXPORT_SYMBOL_GPL(dw_hdmi_setup_rx_sense);
 
+static void dw_hdmi_work(struct work_struct *work)
+{
+	struct dw_hdmi *hdmi = container_of(work, struct dw_hdmi, work.work);
+	const struct drm_edid *drm_edid;
+	u8 phy_stat;
+
+	drm_edid = dw_hdmi_edid_read(hdmi, &hdmi->connector);
+	if (!drm_edid) {
+		mutex_lock(&hdmi->cec_notifier_mutex);
+		cec_notifier_phys_addr_invalidate(hdmi->cec_notifier);
+		mutex_unlock(&hdmi->cec_notifier_mutex);
+	} else {
+		phy_stat = hdmi_readb(hdmi, HDMI_PHY_STAT0);
+		if (!(phy_stat & HDMI_PHY_HPD) && hdmi->hpd_work_active)
+			schedule_delayed_work(&hdmi->work, msecs_to_jiffies(500));
+	}
+}
+
 static irqreturn_t dw_hdmi_irq(int irq, void *dev_id)
 {
 	struct dw_hdmi *hdmi = dev_id;
@@ -3136,9 +3157,7 @@ static irqreturn_t dw_hdmi_irq(int irq, void *dev_id)
 				       phy_stat & HDMI_PHY_RX_SENSE);
 
 		if ((phy_stat & (HDMI_PHY_RX_SENSE | HDMI_PHY_HPD)) == 0) {
-			mutex_lock(&hdmi->cec_notifier_mutex);
-			cec_notifier_phys_addr_invalidate(hdmi->cec_notifier);
-			mutex_unlock(&hdmi->cec_notifier_mutex);
+			schedule_delayed_work(&hdmi->work, 0);
 		}
 
 		if (phy_stat & HDMI_PHY_HPD)
@@ -3598,6 +3617,9 @@ struct dw_hdmi *dw_hdmi_probe(struct platform_device *pdev,
 
 	drm_bridge_add(&hdmi->bridge);
 
+	INIT_DELAYED_WORK(&hdmi->work, dw_hdmi_work);
+	hdmi->hpd_work_active = true;
+
 	return hdmi;
 
 err_res:
@@ -3610,6 +3632,8 @@ EXPORT_SYMBOL_GPL(dw_hdmi_probe);
 void dw_hdmi_remove(struct dw_hdmi *hdmi)
 {
 	drm_bridge_remove(&hdmi->bridge);
+	hdmi->hpd_work_active = false;
+	cancel_delayed_work_sync(&hdmi->work);
 
 	if (hdmi->audio && !IS_ERR(hdmi->audio))
 		platform_device_unregister(hdmi->audio);
@@ -3656,9 +3680,17 @@ void dw_hdmi_unbind(struct dw_hdmi *hdmi)
 }
 EXPORT_SYMBOL_GPL(dw_hdmi_unbind);
 
+void dw_hdmi_suspend(struct dw_hdmi *hdmi)
+{
+	hdmi->hpd_work_active = false;
+	cancel_delayed_work_sync(&hdmi->work);
+}
+EXPORT_SYMBOL_GPL(dw_hdmi_suspend);
+
 void dw_hdmi_resume(struct dw_hdmi *hdmi)
 {
 	dw_hdmi_init_hw(hdmi);
+	hdmi->hpd_work_active = true;
 }
 EXPORT_SYMBOL_GPL(dw_hdmi_resume);
 

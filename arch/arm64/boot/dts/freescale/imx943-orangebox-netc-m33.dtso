@@ -1,0 +1,19 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/*
+ * Copyright 2025 NXP
+ */
+
+/dts-v1/;
+/plugin/;
+
+&netc_blk_ctrl {
+	status = "disabled";
+};
+
+&lpi2c3 {
+	status = "disabled";
+};
+
+&lpi2c6 {
+	status = "disabled";
+};

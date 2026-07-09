@@ -8,6 +8,8 @@
 #include <dt-bindings/phy/phy-imx8-pcie.h>
 #include <dt-bindings/usb/pd.h>
 #include "imx8mp.dtsi"
+#include "imx8mp-nxp-display.dtsi"
+#include "imx8mp-nxp-capture.dtsi"
 
 / {
 	model = "NXP FRDM-IMX8MPLUS";
@@ -203,6 +205,28 @@
 		};
 	};
 
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		dsp_vdev0vring0: vdev0vring0@942f0000 {
+			reg = <0 0x942f0000 0 0x8000>;
+			no-map;
+		};
+
+		dsp_vdev0vring1: vdev0vring1@942f8000 {
+			reg = <0 0x942f8000 0 0x8000>;
+			no-map;
+		};
+
+		dsp_vdev0buffer: vdev0buffer@94300000 {
+			compatible = "shared-dma-pool";
+			reg = <0 0x94300000 0 0x100000>;
+			no-map;
+		};
+	};
+
 	sound-bt-sco {
 		compatible = "simple-audio-card";
 		simple-audio-card,name = "bt-sco-audio";
@@ -307,7 +331,18 @@
 	cpu-supply = <&buck2>;
 };
 
+&dsp_reserved {
+	status = "okay";
+};
+
 &dsp {
+	memory-region = <&dsp_vdev0buffer>, <&dsp_vdev0vring0>,
+			<&dsp_vdev0vring1>, <&dsp_reserved>;
+	status = "okay";
+};
+
+&easrc {
+	fsl,asrc-rate  = <48000>;
 	status = "okay";
 };
 
@@ -316,7 +351,6 @@
 };
 
 &ecspi2 {
-	fsl,spi-num-chipselects = <1>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_ecspi2 &pinctrl_ecspi2_cs>;
 	cs-gpios = <&gpio5 13 GPIO_ACTIVE_LOW>;
@@ -824,6 +858,10 @@
 	assigned-clocks = <&clk IMX8MP_CLK_PDM>;
 	assigned-clock-parents = <&clk IMX8MP_AUDIO_PLL1_OUT>;
 	assigned-clock-rates = <196608000>;
+	status = "okay";
+};
+
+&mu2 {
 	status = "okay";
 };
 
@@ -1355,38 +1393,6 @@
 			MX8MP_IOMUXC_GPIO1_IO02__WDOG1_WDOG_B	0x166
 		>;
 	};
-};
-
-&vpu_g1 {
-	status = "okay";
-};
-
-&vpu_g2 {
-	status = "okay";
-};
-
-&vpu_vc8000e {
-	status = "okay";
-};
-
-&vpu_v4l2 {
-	status = "okay";
-};
-
-&gpu_3d {
-	status = "okay";
-};
-
-&gpu_2d {
-	status = "okay";
-};
-
-&ml_vipsi {
-	status = "okay";
-};
-
-&mix_gpu_ml {
-	status = "okay";
 };
 
 &mipi_csi_0 {

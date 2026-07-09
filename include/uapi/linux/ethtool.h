@@ -2077,6 +2077,8 @@ enum ethtool_link_mode_bit_indices {
 	ETHTOOL_LINK_MODE_800000baseDR4_2_Full_BIT	 = 118,
 	ETHTOOL_LINK_MODE_800000baseSR4_Full_BIT	 = 119,
 	ETHTOOL_LINK_MODE_800000baseVR4_Full_BIT	 = 120,
+	ETHTOOL_LINK_MODE_25000baseCR_S_Full_BIT	 = 121,
+	ETHTOOL_LINK_MODE_25000baseKR_S_Full_BIT	 = 122,
 
 	/* must be last entry */
 	__ETHTOOL_LINK_MODE_MASK_NBITS

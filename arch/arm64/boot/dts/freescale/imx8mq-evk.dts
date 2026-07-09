@@ -156,6 +156,8 @@
 		cpudai: simple-audio-card,cpu {
 			sound-dai = <&sai2>;
 			system-clock-direction-out;
+			dai-tdm-slot-num = <2>;
+			dai-tdm-slot-width = <32>;
 		};
 
 		link_codec: simple-audio-card,codec {
@@ -299,9 +301,6 @@
 };
 
 &gpio3 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_bt_reset>;
-
 	/* enable the on-board BT */
 	bt-reg-on-hog {
 		gpio-hog;
@@ -329,9 +328,6 @@
 };
 
 &gpio5 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_wifi_reset>;
-
 	wl-reg-on-hog {
 		gpio-hog;
 		gpios = <29 GPIO_ACTIVE_HIGH>;
@@ -609,6 +605,10 @@
 	};
 };
 
+&noc {
+	status = "disabled";
+};
+
 &csi1 {
 	status = "okay";
 };
@@ -712,9 +712,9 @@
 &sai2 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_sai2>;
-	assigned-clocks = <&clk IMX8MQ_AUDIO_PLL1_BYPASS>, <&clk IMX8MQ_CLK_SAI2>;
-	assigned-clock-parents = <&clk IMX8MQ_AUDIO_PLL1>, <&clk IMX8MQ_AUDIO_PLL1_OUT>;
-	assigned-clock-rates = <0>, <24576000>;
+	assigned-clocks = <&clk IMX8MQ_CLK_SAI2>;
+	assigned-clock-parents = <&clk IMX8MQ_AUDIO_PLL1_OUT>;
+	assigned-clock-rates = <24576000>;
 	clocks = <&clk IMX8MQ_CLK_SAI2_IPG>, <&clk IMX8MQ_CLK_DUMMY>,
 		<&clk IMX8MQ_CLK_SAI2_ROOT>, <&clk IMX8MQ_CLK_DUMMY>,
 		<&clk IMX8MQ_CLK_DUMMY>, <&clk IMX8MQ_AUDIO_PLL1_OUT>,
@@ -809,7 +809,7 @@
 	status = "okay";
 
 	bluetooth {
-		compatible = "nxp,88w8997-bt";
+		compatible = "nxp,88w8987-bt";
 	};
 };
 
@@ -889,6 +889,8 @@
 			MX8MQ_IOMUXC_NAND_WP_B_GPIO3_IO18		0x19
 			MX8MQ_IOMUXC_GPIO1_IO08_GPIO1_IO8		0xd6
 			MX8MQ_IOMUXC_GPIO1_IO00_ANAMIX_REF_CLK_32K	0x16
+			MX8MQ_IOMUXC_NAND_CLE_GPIO3_IO5			0x16
+			MX8MQ_IOMUXC_UART4_TXD_GPIO5_IO29		0x16
 		>;
 	};
 
@@ -1233,18 +1235,14 @@
 			MX8MQ_IOMUXC_GPIO1_IO02_WDOG1_WDOG_B		0xc6
 		>;
 	};
+};
 
-	pinctrl_bt_reset: btresetgrp {
-		fsl,pins = <
-			MX8MQ_IOMUXC_NAND_CLE_GPIO3_IO5			0x16
-		>;
-	};
+&vpu_g1 {
+	status = "disabled";
+};
 
-	pinctrl_wifi_reset: wifiresetgrp {
-		fsl,pins = <
-			MX8MQ_IOMUXC_UART4_TXD_GPIO5_IO29		0x16
-		>;
-	};
+&vpu_g2 {
+	status = "disabled";
 };
 
 &vpu {
@@ -1253,10 +1251,6 @@
 };
 
 &vpu_v4l2 {
-	status = "okay";
-};
-
-&gpu3d {
 	status = "okay";
 };
 

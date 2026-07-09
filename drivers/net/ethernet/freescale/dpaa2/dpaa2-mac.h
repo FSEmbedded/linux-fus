@@ -10,6 +10,12 @@
 #include "dpmac.h"
 #include "dpmac-cmd.h"
 
+struct dpaa2_mac_stats {
+	u32 *idx_dma_mem;
+	u64 *values_dma_mem;
+	dma_addr_t idx_iova, values_iova;
+};
+
 struct dpaa2_mac {
 	struct fsl_mc_device *mc_dev;
 	struct dpmac_link_state state;
@@ -32,9 +38,9 @@ struct dpaa2_mac {
 	size_t num_lanes;
 
 	int phy_req_state;
-	u32 *cnt_idx_dma_mem;
-	u64 *cnt_values_dma_mem;
-	dma_addr_t cnt_idx_iova, cnt_values_iova;
+
+	struct dpaa2_mac_stats ethtool_stats;
+	struct dpaa2_mac_stats rmon_stats;
 };
 
 static inline bool dpaa2_mac_is_type_phy(struct dpaa2_mac *mac)
@@ -59,6 +65,9 @@ int dpaa2_mac_get_sset_count(void);
 void dpaa2_mac_get_strings(u8 **data);
 
 void dpaa2_mac_get_ethtool_stats(struct dpaa2_mac *mac, u64 *data);
+
+void dpaa2_mac_get_rmon_stats(struct dpaa2_mac *mac, struct ethtool_rmon_stats *s,
+			      const struct ethtool_rmon_hist_range **ranges);
 
 void dpaa2_mac_start(struct dpaa2_mac *mac);
 

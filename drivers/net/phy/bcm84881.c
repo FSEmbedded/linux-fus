@@ -256,7 +256,6 @@ static struct phy_driver bcm84881_drivers[] = {
 		.config_aneg	= bcm84881_config_aneg,
 		.aneg_done	= bcm84881_aneg_done,
 		.read_status	= bcm84881_read_status,
-		.validate_inband_aneg = bcm84881_validate_inband_aneg,
 	},
 };
 

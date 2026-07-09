@@ -16,3 +16,6 @@ obj-$(CONFIG_FSL_SDK_DPA)	+= fsl_qbman/
 obj-$(CONFIG_FSL_DPAA2)		+= fsl-dpaa2/
 obj-$(CONFIG_XIL_AXIS_FIFO)	+= axis-fifo/
 obj-$(CONFIG_GPIB)	 	+= gpib/
+obj-$(CONFIG_FSL_PPFE)		+= fsl_ppfe/
+obj-$(CONFIG_ETHOSU)		+= ethosu/
+obj-$(CONFIG_NEUTRON)		+= neutron/

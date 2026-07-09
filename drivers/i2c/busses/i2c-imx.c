@@ -743,7 +743,6 @@ static int i2c_imx_set_clk(struct imx_i2c_struct *i2c_imx,
 static int i2c_imx_clk_notifier_call(struct notifier_block *nb,
 				     unsigned long action, void *data)
 {
-	int ret = 0;
 	struct clk_notifier_data *ndata = data;
 	struct imx_i2c_struct *i2c_imx = container_of(nb,
 						      struct imx_i2c_struct,
@@ -760,10 +759,6 @@ static int i2c_imx_start(struct imx_i2c_struct *i2c_imx, bool atomic)
 {
 	unsigned int temp = 0;
 	int result;
-
-	result = i2c_imx_set_clk(i2c_imx, clk_get_rate(i2c_imx->clk));
-	if (result)
-		return result;
 
 	imx_i2c_write_reg(i2c_imx->ifdr, i2c_imx, IMX_I2C_IFDR);
 	/* Enable I2C controller */
@@ -1769,20 +1764,11 @@ static int i2c_imx_xfer(struct i2c_adapter *adapter,
 			struct i2c_msg *msgs, int num)
 {
 	struct imx_i2c_struct *i2c_imx = i2c_get_adapdata(adapter);
-	bool enable_runtime_pm = false;
 	int result;
 
-	if (!pm_runtime_enabled(i2c_imx->adapter.dev.parent)) {
-		pm_runtime_enable(i2c_imx->adapter.dev.parent);
-		enable_runtime_pm = true;
-	}
-
 	result = pm_runtime_resume_and_get(i2c_imx->adapter.dev.parent);
-	if (result < 0) {
-		if (enable_runtime_pm)
-			pm_runtime_disable(i2c_imx->adapter.dev.parent);
+	if (result < 0)
 		return result;
-	}
 
 	/*
 	 * workaround for ERR010027: ensure that the I2C BUS is idle
@@ -1793,19 +1779,13 @@ static int i2c_imx_xfer(struct i2c_adapter *adapter,
 		/* timeout */
 		if ((result == -ETIMEDOUT) && (i2c_imx->layerscape_bus_recover == 1))
 			i2c_imx_recovery_for_layerscape(i2c_imx);
-		else {
-			if (enable_runtime_pm)
-				pm_runtime_disable(i2c_imx->adapter.dev.parent);
+		else
 			return result;
-		}
 	}
 
 	result = i2c_imx_xfer_common(adapter, msgs, num, false);
 
 	pm_runtime_put_autosuspend(i2c_imx->adapter.dev.parent);
-
-	if (enable_runtime_pm)
-		pm_runtime_disable(i2c_imx->adapter.dev.parent);
 
 	return result;
 }
@@ -2115,6 +2095,33 @@ static int i2c_imx_runtime_resume(struct device *dev)
 	return ret;
 }
 
+static int __maybe_unused i2c_imx_suspend_noirq(struct device *dev)
+{
+	struct imx_i2c_struct *i2c_imx = dev_get_drvdata(dev);
+	int ret;
+
+	ret = pm_runtime_force_suspend(dev);
+	if (ret)
+		return ret;
+
+	i2c_mark_adapter_suspended(&i2c_imx->adapter);
+
+	return 0;
+}
+static int __maybe_unused i2c_imx_resume_noirq(struct device *dev)
+{
+	struct imx_i2c_struct *i2c_imx = dev_get_drvdata(dev);
+	int ret;
+
+	ret = pm_runtime_force_resume(dev);
+	if (ret)
+		return ret;
+
+	i2c_mark_adapter_resumed(&i2c_imx->adapter);
+
+	return 0;
+}
+
 static int i2c_imx_suspend(struct device *dev)
 {
 	/*
@@ -2148,8 +2155,8 @@ static int i2c_imx_resume(struct device *dev)
 }
 
 static const struct dev_pm_ops i2c_imx_pm_ops = {
-	NOIRQ_SYSTEM_SLEEP_PM_OPS(pm_runtime_force_suspend,
-				  pm_runtime_force_resume)
+	NOIRQ_SYSTEM_SLEEP_PM_OPS(i2c_imx_suspend_noirq,
+				  i2c_imx_resume_noirq)
 	SYSTEM_SLEEP_PM_OPS(i2c_imx_suspend, i2c_imx_resume)
 	RUNTIME_PM_OPS(i2c_imx_runtime_suspend, i2c_imx_runtime_resume, NULL)
 };

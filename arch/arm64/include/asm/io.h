@@ -273,6 +273,8 @@ int arm64_ioremap_prot_hook_register(const ioremap_prot_hook_t hook);
 	ioremap_prot((addr), (size), __pgprot(PROT_NORMAL_NC))
 #define ioremap_np(addr, size)	\
 	ioremap_prot((addr), (size), __pgprot(PROT_DEVICE_nGnRnE))
+#define ioremap_cache_ns(addr, size)  \
+	ioremap_prot((addr), (size), __pgprot(PROT_NORMAL_NS))
 
 
 #define ioremap_encrypted(addr, size)	\

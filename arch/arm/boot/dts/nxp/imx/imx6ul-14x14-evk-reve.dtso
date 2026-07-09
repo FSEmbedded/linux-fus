@@ -47,7 +47,7 @@
 	#size-cells = <0>;
 
 	fxls8974@18 {
-		compatible = "nxp,fxls8974cf";
+		compatible = "nxp,fxls8974cf", "nxp,fxls8962af";
 		reg = <0x18>;
 		interrupt-parent = <&gpio5>;
 		interrupts = <0 8>;

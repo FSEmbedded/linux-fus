@@ -54,4 +54,10 @@ source "drivers/staging/vme_user/Kconfig"
 
 source "drivers/staging/gpib/Kconfig"
 
+source "drivers/staging/fsl_ppfe/Kconfig"
+
+source "drivers/staging/ethosu/Kconfig"
+
+source "drivers/staging/neutron/Kconfig"
+
 endif # STAGING

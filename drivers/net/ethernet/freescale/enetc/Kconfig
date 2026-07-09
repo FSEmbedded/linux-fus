@@ -30,13 +30,13 @@ config FSL_ENETC
 	tristate "ENETC PF driver"
 	depends on PTP_1588_CLOCK_OPTIONAL
 	depends on PCI_MSI
+	depends on TSN || TSN=n
 	select FSL_ENETC_CORE
 	select FSL_ENETC_IERB
 	select FSL_ENETC_MDIO
 	select NXP_ENETC_PF_COMMON
 	select PHYLINK
 	select PCS_LYNX
-	select PCS_XPCS
 	select DIMLIB
 	select CRC_ITU_T
 	help
@@ -56,6 +56,9 @@ config NXP_ENETC4
 	select NXP_NTMP
 	select PHYLINK
 	select DIMLIB
+	select CRC_ITU_T
+	select NET_DEVLINK
+	select PCS_XPCS
 	help
 	  This driver supports NXP ENETC devices with major revision 4. ENETC is
 	  as the NIC functionality in NETC, it supports virtualization/isolation
@@ -87,20 +90,6 @@ config FSL_ENETC_IERB
 
 	  If compiled as module (M), the module name is fsl-enetc-ierb.
 
-config NXP_NETC_BLK_CTRL
-	tristate "NETC blocks control driver"
-	help
-	  This driver configures Integrated Endpoint Register Block (IERB) and
-	  Privileged Register Block (PRB) of NETC. For i.MX platforms, it also
-	  includes the configuration of NETCMIX block.
-	  The IERB contains registers that are used for pre-boot initialization,
-	  debug, and non-customer configuration. The PRB controls global reset
-	  and global error handling for NETC. The NETCMIX block is mainly used
-	  to set MII protocol and PCS protocol of the links, it also contains
-	  settings for some other functions.
-
-	  If compiled as module (M), the module name is nxp-netc-blk-ctrl.
-
 config FSL_ENETC_MDIO
 	tristate "ENETC MDIO driver"
 	depends on PCI && PHYLIB
@@ -124,7 +113,7 @@ config FSL_ENETC_PTP_CLOCK
 
 config FSL_ENETC_QOS
 	bool "ENETC hardware Time-sensitive Network support"
-	depends on (FSL_ENETC || FSL_ENETC4 || FSL_ENETC_VF) && (NET_SCH_TAPRIO || NET_SCH_CBS)
+	depends on (FSL_ENETC || FSL_ENETC_VF) && (NET_SCH_TAPRIO || NET_SCH_CBS)
 	help
 	  There are Time-Sensitive Network(TSN) capabilities(802.1Qbv/802.1Qci
 	  /802.1Qbu etc.) supported by ENETC. These TSN capabilities can be set

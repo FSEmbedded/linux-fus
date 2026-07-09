@@ -16,6 +16,7 @@
 #include <linux/platform_device.h>
 #include <linux/busfreq-imx.h>
 #include <linux/pm_runtime.h>
+#include <linux/debugfs.h>
 #include <linux/pinctrl/consumer.h>
 #include <linux/dma/mxs-dma.h>
 #include <linux/string_choices.h>
@@ -756,8 +757,8 @@ static int bch_create_debugfs(struct gpmi_nand_data *this)
 	}
 
 	/* create raw mode flag */
-	if (!debugfs_create_file("raw_mode", S_IRUGO,
-				dbg_root, NULL, NULL)) {
+	if (!debugfs_create_file_full("raw_mode", S_IRUGO,
+				dbg_root, NULL, NULL, NULL)) {
 		dev_err(this->dev, "failed to create raw mode flag\n");
 		return -EINVAL;
 	}
@@ -1231,7 +1232,7 @@ static const struct gpmi_devdata gpmi_devdata_imx7d = {
 };
 
 static const char * gpmi_clks_for_mx8qxp[GPMI_CLK_MAX] = {
-	"gpmi_clk", "gpmi_apb_clk", "bch_clk", "bch_apb_clk",
+	"gpmi_io", "gpmi_apb", "gpmi_bch", "gpmi_bch_apb",
 };
 
 static const struct gpmi_devdata gpmi_devdata_imx8qxp = {
@@ -1305,6 +1306,14 @@ static int acquire_dma_channels(struct gpmi_nand_data *this)
 		release_dma_channels(this);
 	} else {
 		this->dma_chans[0] = dma_chan;
+		this->link = device_link_add(&pdev->dev,
+					     dma_chan->device->dev,
+					     DL_FLAG_AUTOREMOVE_CONSUMER |
+					     DL_FLAG_PM_RUNTIME);
+		if (IS_ERR(this->link)) {
+			dev_err(this->dev, "failed to add device link\n");
+			ret = PTR_ERR(this->link);
+		}
 	}
 
 	return ret;
@@ -1346,6 +1355,10 @@ static int acquire_resources(struct gpmi_nand_data *this)
 		goto exit_regs;
 
 	ret = acquire_bch_irq(this, bch_irq);
+	if (ret)
+		goto exit_regs;
+
+	ret = acquire_dma_channels(this);
 	if (ret)
 		goto exit_regs;
 
@@ -2906,9 +2919,6 @@ static int gpmi_pm_resume(struct device *dev)
 		return ret;
 	}
 
-	/* re-apply the timing setting */
-	this->hw.must_apply_timings = true;
-
 	return 0;
 }
 
@@ -2916,6 +2926,7 @@ static int gpmi_runtime_suspend(struct device *dev)
 {
 	struct gpmi_nand_data *this = dev_get_drvdata(dev);
 
+	release_bus_freq(BUS_FREQ_HIGH);
 	gpmi_disable_clk(this);
 
 	return 0;
@@ -2929,6 +2940,8 @@ static int gpmi_runtime_resume(struct device *dev)
 	ret = gpmi_enable_clk(this);
 	if (ret)
 		return ret;
+
+	request_bus_freq(BUS_FREQ_HIGH);
 
 	return 0;
 

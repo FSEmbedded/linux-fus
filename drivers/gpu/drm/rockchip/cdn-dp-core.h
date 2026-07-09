@@ -37,7 +37,10 @@ struct cdn_dp_port {
 struct cdn_dp_device {
 	struct cdns_mhdp_device mhdp;
 	struct drm_device *drm_dev;
+<<<<<<< HEAD
 	struct drm_bridge bridge;
+=======
+>>>>>>> 60c97b2c52975 (drm: bridge: mhdp: Add cdns mhdp driver bridge driver)
 	struct rockchip_encoder encoder;
 	struct work_struct event_work;
 
@@ -61,6 +64,13 @@ struct cdn_dp_device {
 	u8 lanes;
 	int active_port;
 
+<<<<<<< HEAD
 	u8 dpcd[DP_RECEIVER_CAP_SIZE];
+=======
+	bool sink_has_audio;
+
+	hdmi_codec_plugged_cb plugged_cb;
+	struct device *codec_dev;
+>>>>>>> 60c97b2c52975 (drm: bridge: mhdp: Add cdns mhdp driver bridge driver)
 };
 #endif  /* _CDN_DP_CORE_H */

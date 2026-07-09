@@ -125,7 +125,7 @@
 						#size-cells = <0>;
 
 						lvds-to-hdmi-bridge@4c {
-							compatible = "ite,it6263";
+							compatible = "ite,it6263-nxp";
 							reg = <0x4c>;
 
 							de-ssc-enable;

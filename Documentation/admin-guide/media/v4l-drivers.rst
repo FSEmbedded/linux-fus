@@ -20,6 +20,7 @@ Video4Linux (V4L) driver-specific documentation
 	ipu6-isys
 	ivtv
 	mgb4
+	nxp-neoisp
 	omap3isp
 	philips
 	qcom_camss

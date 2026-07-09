@@ -6,7 +6,6 @@
  *         Anton Vorontsov <avorontsov@ru.mvista.com>
  *
  * Copyright (c) 2006-2007 MontaVista Software, Inc.
- * Copyright (c) 2020 Puresoftware Ltd.
  */
 
 #include <linux/kernel.h>

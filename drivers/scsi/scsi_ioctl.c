@@ -485,7 +485,7 @@ static int sg_io(struct scsi_device *sdev, struct sg_io_hdr *hdr,
 
 	if (sg_io_buffer_hack && !hdr->iovec_count) {
 		if (hdr->dxfer_len)
-			ret = blk_rq_map_kern(rq->q, rq, sg_io_buffer_hack,
+			ret = blk_rq_map_kern(rq, sg_io_buffer_hack,
 					hdr->dxfer_len, GFP_KERNEL);
 	} else {
 		ret = blk_rq_map_user_io(rq, NULL, hdr->dxferp, hdr->dxfer_len,

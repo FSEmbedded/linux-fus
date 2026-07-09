@@ -466,20 +466,6 @@ static __poll_t snd_compr_poll(struct file *f, poll_table *wait)
 	}
 #endif
 
-#if IS_ENABLED(CONFIG_SND_COMPRESS_ACCEL)
-	if (stream->direction == SND_COMPRESS_ACCEL) {
-		struct snd_compr_task_runtime *task;
-		if (runtime->fragments > runtime->active_tasks)
-			retval |= EPOLLOUT | EPOLLWRNORM;
-		task = list_first_entry_or_null(&runtime->tasks,
-						struct snd_compr_task_runtime,
-						list);
-		if (task && task->state == SND_COMPRESS_TASK_STATE_FINISHED)
-			retval |= EPOLLIN | EPOLLRDNORM;
-		return retval;
-	}
-#endif
-
 	avail = snd_compr_get_avail(stream);
 	pr_debug("avail is %lu\n", (unsigned long)avail);
 	/* check if we have at least one fragment to fill */

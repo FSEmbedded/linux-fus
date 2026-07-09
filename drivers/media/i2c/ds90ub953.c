@@ -324,7 +324,8 @@ static int ub953_gpio_set(struct gpio_chip *gc, unsigned int offset, int value)
 	struct ub953_data *priv = gpiochip_get_data(gc);
 
 	return regmap_update_bits(priv->regmap, UB953_REG_LOCAL_GPIO_DATA,
-				  UB953_REG_LOCAL_GPIO_DATA_GPIO_OUT_SRC(offset),
+				  UB953_REG_LOCAL_GPIO_DATA_GPIO_OUT_SRC(offset) |
+				  UB953_REG_LOCAL_GPIO_DATA_GPIO_RMTEN(offset),
 				  value ? UB953_REG_LOCAL_GPIO_DATA_GPIO_OUT_SRC(offset) : 0);
 }
 

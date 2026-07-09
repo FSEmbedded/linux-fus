@@ -59,6 +59,12 @@
 		stdout-path = &lpuart1;
 	};
 
+	dmic: dmic {
+		compatible = "dmic-codec";
+		#sound-dai-cells = <0>;
+		num-channels = <2>;
+	};
+
 	fan0: pwm-fan {
 		compatible = "pwm-fan";
 		fan-supply = <&reg_vcc_12v>;
@@ -117,7 +123,6 @@
 
 	reg_m2_pwr: regulator-m2-pwr {
 		compatible = "regulator-fixed";
-		regulator-always-on;
 		regulator-max-microvolt = <3300000>;
 		regulator-min-microvolt = <3300000>;
 		regulator-name = "M.2-power";
@@ -220,6 +225,26 @@
 			reg = <0 0xa0000000 0 0x100000>;
 			no-map;
 		};
+
+		mali_protected: mali_protected {
+			reg = <0 0xa0100000 0 0x1000000>;
+			no-map;
+		};
+	};
+
+	cm7: imx95-cm7 {
+		compatible = "fsl,imx95-cm7";
+		mbox-names = "tx", "rx", "rxdb";
+		mboxes = <&mu7 0 1
+			  &mu7 1 1
+			  &mu7 3 1>;
+		memory-region = <&vdevbuffer>, <&vdev0vring0>, <&vdev0vring1>,
+				<&vdev1vring0>, <&vdev1vring1>, <&rsc_table>;
+		/* cpuid and lmmid must align with SM firmware */
+		fsl,cpu-id = <1>;
+		fsl,lmm-id = <1>;
+		fsl,startup-delay-ms = <50>;
+		status = "okay";
 	};
 
 	sound-bt-sco {
@@ -241,6 +266,10 @@
 		};
 	};
 
+	mali_pma: protected-memory-allocator {
+		 compatible = "arm,protected-memory-allocator";
+		 memory-region = <&mali_protected>;
+	};
 	sound-micfil {
 		compatible = "fsl,imx-audio-card";
 		model = "micfil-audio";
@@ -251,6 +280,9 @@
 
 			cpu {
 				sound-dai = <&micfil>;
+			};
+			codec {
+				sound-dai = <&dmic>;
 			};
 		};
 	};
@@ -299,6 +331,14 @@
 	status = "okay";
 };
 
+&displaymix_irqsteer {
+	status = "okay";
+};
+
+&dpu {
+	status = "okay";
+};
+
 &enetc_port0 {
 	phy-handle = <&ethphy0>;
 	phy-mode = "rgmii-id";
@@ -325,7 +365,8 @@
 &i3c2 {
 	i2c-scl-hz = <400000>;
 	pinctrl-0 = <&pinctrl_i3c2>;
-	pinctrl-names = "default";
+	pinctrl-1 = <&pinctrl_i3c2_sleep>;
+	pinctrl-names = "default", "sleep";
 	status = "okay";
 
 	pca9570: gpio@24 {
@@ -499,6 +540,10 @@
 	status = "okay";
 };
 
+&neoisp0 {
+	status = "okay";
+};
+
 &netc_blk_ctrl {
 	status = "okay";
 };
@@ -557,6 +602,7 @@
 	pinctrl-names = "default";
 	reset-gpio = <&gpio5 13 GPIO_ACTIVE_LOW>;
 	vpcie-supply = <&reg_m2_pwr>;
+	supports-clkreq;
 	status = "okay";
 };
 
@@ -656,6 +702,13 @@
 		fsl,pins = <
 			IMX95_PAD_ENET1_MDC__I3C2_SCL				0x40000186
 			IMX95_PAD_ENET1_MDIO__I3C2_SDA				0x40000186
+		>;
+	};
+
+	pinctrl_i3c2_sleep: i3c2sleepgrp {
+		fsl,pins = <
+			IMX95_PAD_ENET1_MDC__GPIO4_IO_BIT0			0x31e
+			IMX95_PAD_ENET1_MDIO__GPIO4_IO_BIT1			0x31e
 		>;
 	};
 
@@ -769,8 +822,8 @@
 
 	pinctrl_spdif: spdifgrp {
 		fsl,pins = <
-			IMX95_PAD_GPIO_IO22__SPDIF_IN				0x3fe
-			IMX95_PAD_GPIO_IO23__SPDIF_OUT				0x3fe
+			IMX95_PAD_GPIO_IO22__SPDIF_IN				0x39e
+			IMX95_PAD_GPIO_IO23__SPDIF_OUT				0x39e
 		>;
 	};
 
@@ -1062,6 +1115,7 @@
 &tpm6 {
 	pinctrl-0 = <&pinctrl_tpm6>;
 	pinctrl-names = "default";
+	pwm-rst;
 	status = "okay";
 };
 
@@ -1132,6 +1186,7 @@
 	pinctrl-2 = <&pinctrl_usdhc2_200mhz>, <&pinctrl_usdhc2_gpio>;
 	pinctrl-3 = <&pinctrl_usdhc2>, <&pinctrl_usdhc2_gpio>;
 	pinctrl-names = "default", "state_100mhz", "state_200mhz", "sleep";
+	fsl,cd-gpio-wakeup-disable;
 	vmmc-supply = <&reg_usdhc2_vmmc>;
 	fsl,tuning-step = <1>;
 	status = "okay";
@@ -1152,8 +1207,17 @@
 	status = "okay";
 };
 
+&vpuctrl {
+	boot = <&vpu_boot>;
+	sram = <&sram1>;
+};
+
 &wdog3 {
 	status = "okay";
+};
+
+&mali {
+	protected-memory-allocator = <&mali_pma>;
 };
 
 &xcvr {

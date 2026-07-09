@@ -183,7 +183,7 @@
 		#sound-dai-cells = <0>;
 		compatible = "cirrus,cs42448";
 		reg = <0x48>;
-		clocks = <&clk IMX91_CLK_SAI3_GATE>;
+		clocks = <&clk IMX93_CLK_SAI3_GATE>;
 		clock-names = "mclk";
 		VA-supply = <&reg_audio_pwr>;
 		VD-supply = <&reg_vexp_3v3>;
@@ -213,8 +213,8 @@
 	#sound-dai-cells = <0>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pdm>;
-	assigned-clocks = <&clk IMX91_CLK_PDM>;
-	assigned-clock-parents = <&clk IMX91_CLK_AUDIO_PLL>;
+	assigned-clocks = <&clk IMX93_CLK_PDM>;
+	assigned-clock-parents = <&clk IMX93_CLK_AUDIO_PLL>;
 	assigned-clock-rates = <49152000>;
 	status = "okay";
 };
@@ -223,12 +223,12 @@
 	#sound-dai-cells = <0>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_sai3audhat>;
-	clocks = <&clk IMX91_CLK_SAI3_IPG>, <&clk IMX91_CLK_DUMMY>,
-		<&clk IMX91_CLK_SAI3_GATE>, <&clk IMX91_CLK_DUMMY>,
-		<&clk IMX91_CLK_DUMMY>, <&clk IMX91_CLK_AUDIO_PLL>;
+	clocks = <&clk IMX93_CLK_SAI3_IPG>, <&clk IMX93_CLK_DUMMY>,
+		<&clk IMX93_CLK_SAI3_GATE>, <&clk IMX93_CLK_DUMMY>,
+		<&clk IMX93_CLK_DUMMY>, <&clk IMX93_CLK_AUDIO_PLL>;
 	clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3", "pll8k";
-	assigned-clocks = <&clk IMX91_CLK_SAI3>;
-	assigned-clock-parents = <&clk IMX91_CLK_AUDIO_PLL>;
+	assigned-clocks = <&clk IMX93_CLK_SAI3>;
+	assigned-clock-parents = <&clk IMX93_CLK_AUDIO_PLL>;
 	assigned-clock-rates = <12288000>;
 	fsl,sai-asynchronous;
 	fsl,sai-mclk-direction-output;
@@ -240,16 +240,16 @@
 	pinctrl-names = "default", "sleep";
 	pinctrl-0 = <&pinctrl_spdif>;
 	pinctrl-1 = <&pinctrl_spdif_sleep>;
-	clocks = <&clk IMX91_CLK_SPDIF_IPG>,
-		<&clk IMX91_CLK_SPDIF_GATE>,
-		<&clk IMX91_CLK_DUMMY>,
-		<&clk IMX91_CLK_AUD_XCVR_GATE>,
-		<&clk IMX91_CLK_AUDIO_PLL>;
+	clocks = <&clk IMX93_CLK_SPDIF_IPG>,
+		<&clk IMX93_CLK_SPDIF_GATE>,
+		<&clk IMX93_CLK_DUMMY>,
+		<&clk IMX93_CLK_AUD_XCVR_GATE>,
+		<&clk IMX93_CLK_AUDIO_PLL>;
 	clock-names = "ipg", "phy", "spba", "pll_ipg", "pll8k";
-	assigned-clocks = <&clk IMX91_CLK_SPDIF>,
-			 <&clk IMX91_CLK_AUDIO_XCVR>;
-	assigned-clock-parents = <&clk IMX91_CLK_AUDIO_PLL>,
-			 <&clk IMX91_CLK_SYS_PLL_PFD1_DIV2>;
+	assigned-clocks = <&clk IMX93_CLK_SPDIF>,
+			 <&clk IMX93_CLK_AUDIO_XCVR>;
+	assigned-clock-parents = <&clk IMX93_CLK_AUDIO_PLL>,
+			 <&clk IMX93_CLK_SYS_PLL_PFD1_DIV2>;
 	assigned-clock-rates = <12288000>, <200000000>;
 	status = "okay";
 };

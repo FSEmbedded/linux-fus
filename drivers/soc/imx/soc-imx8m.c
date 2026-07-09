@@ -55,8 +55,6 @@ struct imx8_soc_drvdata {
 	struct clk *clk;
 };
 
-static u64 soc_uid_h;
-
 #ifdef CONFIG_HAVE_ARM_SMCCC
 static u32 imx8mq_soc_revision_from_atf(void)
 {

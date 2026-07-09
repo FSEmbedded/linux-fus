@@ -1277,7 +1277,9 @@ static int nxp_xspi_probe(struct platform_device *pdev)
 	if (ret)
 		return dev_err_probe(dev, ret, "failed to request irq");
 
-	devm_mutex_init(dev, &xspi->lock);
+	ret = devm_mutex_init(dev, &xspi->lock);
+	if (ret)
+		return ret;
 
 	ret = devm_add_action_or_reset(dev, nxp_xspi_cleanup, xspi);
 	if (ret)

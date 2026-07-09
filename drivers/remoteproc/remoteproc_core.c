@@ -1442,7 +1442,6 @@ clean_up_resources:
 	kfree(rproc->cached_table);
 	rproc->cached_table = NULL;
 	rproc->table_ptr = NULL;
-	rproc->table_sz = 0;
 unprepare_rproc:
 	/* release HW resources if needed */
 	rproc_unprepare_device(rproc);
@@ -2092,7 +2091,6 @@ int rproc_detach(struct rproc *rproc)
 	kfree(rproc->cached_table);
 	rproc->cached_table = NULL;
 	rproc->table_ptr = NULL;
-	rproc->table_sz = 0;
 out:
 	mutex_unlock(&rproc->lock);
 	return ret;

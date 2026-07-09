@@ -36,7 +36,6 @@ static bool inv_mpu_i2c_aux_bus(struct device *dev)
 	case INV_ICM20602:
 	case INV_IAM20380:
 	case INV_IAM20680:
-	case INV_IAM20380:
 		/* no i2c auxiliary bus on the chip */
 		return false;
 	case INV_MPU9150:

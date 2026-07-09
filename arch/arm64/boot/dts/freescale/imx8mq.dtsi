@@ -11,6 +11,7 @@
 #include "dt-bindings/input/input.h"
 #include <dt-bindings/interrupt-controller/arm-gic.h>
 #include <dt-bindings/thermal/thermal.h>
+#include <dt-bindings/interconnect/imx8mq.h>
 #include "imx8mq-pinfunc.h"
 
 / {
@@ -287,7 +288,35 @@
 						<&A53_1 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
 						<&A53_2 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
 						<&A53_3 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
-						<&gpu3d 0 1>;
+						<&imx8_gpu_ss 0 1>;
+				};
+			};
+		};
+
+		gpu-thermal {
+			polling-delay-passive = <250>;
+			polling-delay = <2000>;
+			thermal-sensors = <&tmu 1>;
+
+			trips {
+				gpu_alert: gpu-alert {
+					temperature = <80000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
+				gpu-crit {
+					temperature = <90000>;
+					hysteresis = <2000>;
+					type = "critical";
+				};
+			};
+
+			cooling-maps {
+				map0 {
+					trip = <&gpu_alert>;
+					cooling-device =
+						<&gpu THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
 				};
 			};
 		};
@@ -1084,6 +1113,8 @@
 			mipi_dsi: dsi@30a00000 {
 				compatible = "fsl,imx8mq-nwl-dsi";
 				reg = <0x30a00000 0x300>;
+				#address-cells = <1>;
+				#size-cells = <0>;
 				clocks = <&clk IMX8MQ_CLK_DSI_CORE>,
 					 <&clk IMX8MQ_CLK_DSI_AHB>,
 					 <&clk IMX8MQ_CLK_DSI_IPG_DIV>,
@@ -1407,6 +1438,31 @@
 			};
 		};
 
+		noc: interconnect@32700000 {
+			compatible = "fsl,imx8mq-noc", "fsl,imx8m-noc";
+			reg = <0x32700000 0x100000>;
+			clocks = <&clk IMX8MQ_CLK_NOC>;
+			fsl,ddrc = <&ddrc>;
+			#interconnect-cells = <1>;
+			operating-points-v2 = <&noc_opp_table>;
+
+			noc_opp_table: opp-table {
+				compatible = "operating-points-v2";
+
+				opp-133000000 {
+					opp-hz = /bits/ 64 <133333333>;
+				};
+
+				opp-400000000 {
+					opp-hz = /bits/ 64 <400000000>;
+				};
+
+				opp-800000000 {
+					opp-hz = /bits/ 64 <800000000>;
+				};
+			};
+		};
+
 		aips4: bus@32c00000 { /* AIPS4 */
 			compatible = "fsl,aips-bus", "simple-bus";
 			reg = <0x32c00000 0x400000>;
@@ -1460,6 +1516,31 @@
 							   <400000000>;
 				status = "disabled";
 			};
+		};
+
+		gpu: gpu@38000000 {
+			compatible = "vivante,gc";
+			reg = <0x38000000 0x40000>;
+			interrupts = <GIC_SPI 3 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&clk IMX8MQ_CLK_GPU_ROOT>,
+					 <&clk IMX8MQ_CLK_GPU_SHADER_DIV>,
+					 <&clk IMX8MQ_CLK_GPU_AXI>,
+					 <&clk IMX8MQ_CLK_GPU_AHB>;
+			clock-names = "core", "shader", "bus", "reg";
+			#cooling-cells = <2>;
+			assigned-clocks = <&clk IMX8MQ_CLK_GPU_CORE_SRC>,
+							  <&clk IMX8MQ_CLK_GPU_SHADER_SRC>,
+							  <&clk IMX8MQ_CLK_GPU_AXI>,
+							  <&clk IMX8MQ_CLK_GPU_AHB>,
+							  <&clk IMX8MQ_GPU_PLL_BYPASS>;
+			assigned-clock-parents = <&clk IMX8MQ_GPU_PLL_OUT>,
+									 <&clk IMX8MQ_GPU_PLL_OUT>,
+									 <&clk IMX8MQ_GPU_PLL_OUT>,
+									 <&clk IMX8MQ_GPU_PLL_OUT>,
+									 <&clk IMX8MQ_GPU_PLL>;
+			assigned-clock-rates = <800000000>, <800000000>,
+								   <800000000>, <400000000>, <0>;
+			power-domains = <&pgc_gpu>;
 		};
 
 		usb_dwc3_0: usb@38100000 {
@@ -1557,6 +1638,33 @@
 			dmas = <&dma_apbh 0>;
 			dma-names = "rx-tx";
 			status = "disabled";
+		};
+
+		vpu_g1: video-codec@38300000 {
+			compatible = "nxp,imx8mq-vpu-g1";
+			reg = <0x38300000 0x10000>;
+			interrupts = <GIC_SPI 7 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&clk IMX8MQ_CLK_VPU_G1_ROOT>;
+			power-domains = <&vpu_blk_ctrl IMX8MQ_VPUBLK_PD_G1>;
+		};
+
+		vpu_g2: video-codec@38310000 {
+			compatible = "nxp,imx8mq-vpu-g2";
+			reg = <0x38310000 0x10000>;
+			interrupts = <GIC_SPI 8 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&clk IMX8MQ_CLK_VPU_G2_ROOT>;
+			power-domains = <&vpu_blk_ctrl IMX8MQ_VPUBLK_PD_G2>;
+		};
+
+		vpu_blk_ctrl: blk-ctrl@38320000 {
+			compatible = "fsl,imx8mq-vpu-blk-ctrl";
+			reg = <0x38320000 0x100>;
+			power-domains = <&pgc_vpu>, <&pgc_vpu>, <&pgc_vpu>;
+			power-domain-names = "bus", "g1", "g2";
+			clocks = <&clk IMX8MQ_CLK_VPU_G1_ROOT>,
+				 <&clk IMX8MQ_CLK_VPU_G2_ROOT>;
+			clock-names = "g1", "g2";
+			#power-domain-cells = <1>;
 		};
 
 		pcie0: pcie@33800000 {
@@ -1729,6 +1837,17 @@
 			interrupt-parent = <&gic>;
 		};
 
+		ddrc: memory-controller@3d400000 {
+			compatible = "fsl,imx8mq-ddrc", "fsl,imx8m-ddrc";
+			reg = <0x3d400000 0x400000>;
+			clock-names = "core", "pll", "alt", "apb";
+			clocks = <&clk IMX8MQ_CLK_DRAM_CORE>,
+				 <&clk IMX8MQ_DRAM_PLL_OUT>,
+				 <&clk IMX8MQ_CLK_DRAM_ALT>,
+				 <&clk IMX8MQ_CLK_DRAM_APB>;
+			status = "disabled";
+		};
+
 		ddr-pmu@3d800000 {
 			compatible = "fsl,imx8mq-ddr-pmu", "fsl,imx8m-ddr-pmu";
 			reg = <0x3d800000 0x400000>;
@@ -1752,28 +1871,11 @@
 		};
 	};
 
-	gpu3d: gpu3d@38000000 {
-		compatible = "fsl,imx8mq-gpu", "fsl,imx6q-gpu";
-		reg = <0x0 0x38000000 0x0 0x40000>, <0x0 0x40000000 0x0 0xC0000000>, <0x0 0x0 0x0 0x10000000>;
-		reg-names = "iobase_3d", "phys_baseaddr", "contiguous_mem";
-		interrupts = <GIC_SPI 3 IRQ_TYPE_LEVEL_HIGH>;
-		interrupt-names = "irq_3d";
-		clocks = 	<&clk IMX8MQ_CLK_GPU_ROOT>,
-				<&clk IMX8MQ_CLK_GPU_SHADER_DIV>,
-				<&clk IMX8MQ_CLK_GPU_AXI>,
-				<&clk IMX8MQ_CLK_GPU_AHB>;
-		clock-names = "gpu3d_clk", "gpu3d_shader_clk", "gpu3d_axi_clk", "gpu3d_ahb_clk";
-		assigned-clocks = <&clk IMX8MQ_CLK_GPU_CORE_SRC>,
-				<&clk IMX8MQ_CLK_GPU_SHADER_SRC>,
-				<&clk IMX8MQ_CLK_GPU_AXI>,
-				<&clk IMX8MQ_CLK_GPU_AHB>;
-		assigned-clock-parents = <&clk IMX8MQ_GPU_PLL_OUT>,
-				<&clk IMX8MQ_GPU_PLL_OUT>,
-				<&clk IMX8MQ_GPU_PLL_OUT>,
-				<&clk IMX8MQ_GPU_PLL_OUT>;
-		assigned-clock-rates = <800000000>, <800000000>, <800000000>, <400000000>;
-		power-domains = <&pgc_gpu>;
-		status = "disabled";
+	imx8_gpu_ss: imx8_gpu_ss {
+		compatible = "fsl,imx8mq-gpu", "fsl,imx8-gpu-ss";
+		cores = <&gpu>;
+		reg = <0x0 0x40000000 0x0 0xC0000000>, <0x0 0x0 0x0 0x10000000>;
+		reg-names = "phys_baseaddr", "contiguous_mem";
 
 		throttle,max_state = <1>;
 		#cooling-cells = <2>;

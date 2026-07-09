@@ -41,9 +41,9 @@
 #define MBOX_TXDB_NAME			"txdb"
 #define MBOX_RXDB_NAME			"rxdb"
 
-#define IMX_SE_LOG_PATH "/var/lib/se_"
 #define SE_RCV_MSG_DEFAULT_TIMEOUT	5000
 #define SE_RCV_MSG_LONG_TIMEOUT		5000000
+#define IMX_SE_LOG_PATH			"/var/lib/se_"
 
 #define FW_NAME_SIZE			50
 
@@ -65,6 +65,7 @@ struct se_fw_load_info {
 	struct se_fw_img_name se_fw_img_nm;
 	bool is_fw_loaded;
 	bool imem_mgmt;
+	struct mutex inprogress;
 	struct se_imem_buf imem;
 };
 
@@ -431,7 +432,7 @@ static struct se_if_node_info_list imx8dxl_info = {
 				.rsp_tag = 0xe1,
 				.success_tag = SECO_SUCCESS_IND,
 				.base_api_ver = MESSAGING_VERSION_6,
-				.fw_api_ver = MESSAGING_VERSION_7,
+				.fw_api_ver = MESSAGING_VERSION_6,
 			},
 			.reserved_dma_ranges = false,
 			.start_rng = NULL,
@@ -449,7 +450,7 @@ static struct se_if_node_info_list imx8dxl_info = {
 				.rsp_tag = 0xe1,
 				.success_tag = SECO_SUCCESS_IND,
 				.base_api_ver = MESSAGING_VERSION_6,
-				.fw_api_ver = MESSAGING_VERSION_7,
+				.fw_api_ver = MESSAGING_VERSION_6,
 			},
 			.reserved_dma_ranges = false,
 			.start_rng = NULL,
@@ -467,7 +468,7 @@ static struct se_if_node_info_list imx8dxl_info = {
 				.rsp_tag = 0xe2,
 				.success_tag = SECO_SUCCESS_IND,
 				.base_api_ver = MESSAGING_VERSION_2,
-				.fw_api_ver = MESSAGING_VERSION_7,
+				.fw_api_ver = MESSAGING_VERSION_2,
 			},
 			.reserved_dma_ranges = false,
 			.start_rng = NULL,
@@ -485,7 +486,7 @@ static struct se_if_node_info_list imx8dxl_info = {
 				.rsp_tag = 0xe3,
 				.success_tag = SECO_SUCCESS_IND,
 				.base_api_ver = MESSAGING_VERSION_2,
-				.fw_api_ver = MESSAGING_VERSION_7,
+				.fw_api_ver = MESSAGING_VERSION_2,
 			},
 			.reserved_dma_ranges = false,
 			.start_rng = NULL,
@@ -503,7 +504,7 @@ static struct se_if_node_info_list imx8dxl_info = {
 				.rsp_tag = 0xe4,
 				.success_tag = SECO_SUCCESS_IND,
 				.base_api_ver = MESSAGING_VERSION_2,
-				.fw_api_ver = MESSAGING_VERSION_7,
+				.fw_api_ver = MESSAGING_VERSION_2,
 			},
 			.reserved_dma_ranges = false,
 			.start_rng = NULL,
@@ -521,7 +522,7 @@ static struct se_if_node_info_list imx8dxl_info = {
 				.rsp_tag = 0xe7,
 				.success_tag = SECO_SUCCESS_IND,
 				.base_api_ver = MESSAGING_VERSION_2,
-				.fw_api_ver = MESSAGING_VERSION_7,
+				.fw_api_ver = MESSAGING_VERSION_2,
 			},
 			.reserved_dma_ranges = false,
 			.start_rng = NULL,
@@ -539,7 +540,7 @@ static struct se_if_node_info_list imx8dxl_info = {
 				.rsp_tag = 0xe8,
 				.success_tag = SECO_SUCCESS_IND,
 				.base_api_ver = MESSAGING_VERSION_2,
-				.fw_api_ver = MESSAGING_VERSION_7,
+				.fw_api_ver = MESSAGING_VERSION_2,
 			},
 			.reserved_dma_ranges = false,
 			.start_rng = NULL,
@@ -712,13 +713,13 @@ void *imx_get_se_data_info(uint32_t soc_id, u32 idx)
 	switch (soc_id) {
 	case SOC_ID_OF_IMX8ULP:
 		info_list = &imx8ulp_info; break;
-	case SOC_ID_OF_IMX8DXL:
-	case SOC_ID_OF_IMX8QXP:
-		info_list = &imx8dxl_info; break;
 	case SOC_ID_OF_IMX93:
 		info_list = &imx93_info; break;
 	case SOC_ID_OF_IMX95:
 		info_list = &imx95_info; break;
+	case SOC_ID_OF_IMX8DXL:
+	case SOC_ID_OF_IMX8QXP:
+		info_list = &imx8dxl_info; break;
 	case SOC_ID_OF_IMX94:
 		info_list = &imx94_info; break;
 	default:
@@ -791,8 +792,7 @@ static void get_fw_nm_in_rfs(struct se_if_priv *priv)
 
 static int se_soc_info(struct se_if_priv *priv)
 {
-	const struct se_if_node_info_list *info_list
-			= device_get_match_data(priv->dev);
+	const struct se_if_node_info_list *info_list = device_get_match_data(priv->dev);
 	struct se_fw_load_info *load_fw = get_load_fw_instance(priv);
 	struct soc_device_attribute *attr;
 	struct ele_dev_info *s_info;
@@ -899,13 +899,17 @@ static int se_load_firmware(struct se_if_priv *priv)
 	u8 *se_fw_buf;
 	int ret;
 
-	if (!load_fw || load_fw->is_fw_loaded)
+	if (!load_fw)
+		return 0;
+
+	guard(mutex)(&load_fw->inprogress);
+
+	if (load_fw->is_fw_loaded)
 		return 0;
 
 	se_img_file_to_load = load_fw->se_fw_img_nm.secn_fw.fw_name;
-
-	if (load_fw->imem.state == ELE_IMEM_STATE_BAD &&
-			load_fw->se_fw_img_nm.prim_fw.is_fw_name_valid)
+	if (load_fw->se_fw_img_nm.prim_fw.is_fw_name_valid &&
+			load_fw->imem.state == ELE_IMEM_STATE_BAD)
 		se_img_file_to_load = load_fw->se_fw_img_nm.prim_fw.fw_name;
 
 	do {
@@ -955,8 +959,6 @@ static int se_load_firmware(struct se_if_priv *priv)
 		dev_err(priv->dev, "Failed to fetch FW version");
 
 	if (!ret) {
-		load_fw->is_fw_loaded = true;
-
 		/* ELE INIT FW not to be sent for SoC: i.MX8ULP and i.MX8DXL. */
 		if (get_se_soc_id(priv) != SOC_ID_OF_IMX8ULP &&
 		    get_se_soc_id(priv) != SOC_ID_OF_IMX8DXL) {
@@ -966,6 +968,10 @@ static int se_load_firmware(struct se_if_priv *priv)
 				ret = -EPERM;
 			}
 		}
+		/* FW-version API(s) are mandated to be exchanged with FW,
+		 * only after ele-init-fw().
+		 */
+		load_fw->is_fw_loaded = true;
 	}
 exit:
 	return ret;
@@ -1008,7 +1014,6 @@ int se_dump_to_logfl(struct se_if_device_ctx *dev_ctx,
 		caller_type_str = "MU_RCV";
 		break;
 	default:
-
 		is_hex = false;
 		caller_type_str = "SE_DBG";
 		va_start(args, buf);
@@ -1356,6 +1361,17 @@ static int init_device_context(struct se_if_priv *priv, int ch_id,
 	return ret;
 }
 
+static void manage_sess_hdl(struct se_if_device_ctx *dev_ctx, struct se_api_msg *rx_msg)
+{
+	if (rx_msg->header.command == SE_OPEN_SESS_REQ &&
+	    rx_msg->data[0] == dev_ctx->priv->if_defs->success_tag)
+		dev_ctx->sess_hdl = rx_msg->data[1];
+
+	if (rx_msg->header.command == SE_CLOSE_SESS_REQ &&
+	    rx_msg->data[0] == dev_ctx->priv->if_defs->success_tag)
+		dev_ctx->sess_hdl = 0;
+}
+
 static int se_ioctl_cmd_snd_rcv_rsp_handler(struct se_if_device_ctx *dev_ctx,
 					    u64 arg)
 {
@@ -1422,9 +1438,12 @@ static int se_ioctl_cmd_snd_rcv_rsp_handler(struct se_if_device_ctx *dev_ctx,
 			       cmd_snd_rcv_rsp_info.tx_buf_sz,
 			       rx_msg,
 			       cmd_snd_rcv_rsp_info.rx_buf_sz);
-
 	if (err < 0)
 		goto exit;
+
+	if (rx_msg->header.command == SE_OPEN_SESS_REQ ||
+	    rx_msg->header.command == SE_CLOSE_SESS_REQ)
+		manage_sess_hdl(dev_ctx, rx_msg);
 
 	dev_dbg(priv->dev,
 		"%s: %s %s\n",
@@ -1733,17 +1752,11 @@ static int se_ioctl_signed_msg_handler(struct file *fp,
  */
 static int se_ioctl_get_time(struct se_if_device_ctx *dev_ctx, unsigned long arg)
 {
-	struct se_if_priv *priv = dev_ctx->priv;
 	int err = -EINVAL;
 	struct se_time_frame time_frame;
 
-	if (!priv) {
-		err = -EINVAL;
-		goto exit;
-	}
-
-	time_frame.t_start = priv->time_frame.t_start;
-	time_frame.t_end = priv->time_frame.t_end;
+	time_frame.t_start = dev_ctx->time_frame.t_start;
+	time_frame.t_end = dev_ctx->time_frame.t_end;
 	err = (int)copy_to_user((u8 *)arg, (u8 *)(&time_frame), sizeof(time_frame));
 	if (err) {
 		dev_err(dev_ctx->priv->dev,
@@ -1918,6 +1931,9 @@ static int se_if_fops_close(struct inode *nd, struct file *fp)
 	if (mutex_lock_interruptible(&dev_ctx->fops_lock))
 		return -EBUSY;
 
+	if (dev_ctx->sess_hdl && se_close_session(priv, dev_ctx->sess_hdl))
+		dev_err(priv->dev, "failed to close session.\n");
+
 	/* check if this device was registered as command receiver. */
 	if (priv->cmd_receiver_clbk_hdl.dev_ctx == dev_ctx) {
 		priv->cmd_receiver_clbk_hdl.dev_ctx = NULL;
@@ -1946,7 +1962,7 @@ static long se_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 {
 	struct se_if_device_ctx *dev_ctx = fp->private_data;
 	struct se_if_priv *priv = dev_ctx->priv;
-	int err = -EINVAL;
+	int err;
 
 	/* Prevent race during change of device context */
 	if (mutex_lock_interruptible(&dev_ctx->fops_lock))
@@ -2137,7 +2153,6 @@ static int se_if_probe(struct platform_device *pdev)
 			dev->of_node->name,
 			info_list->num_mu - 1);
 		ret = -EINVAL;
-
 		return ret;
 	}
 
@@ -2268,6 +2283,7 @@ static int se_if_probe(struct platform_device *pdev)
 		if (load_fw) {
 			load_fw->is_fw_loaded = runtime_fw_status(priv);
 
+			mutex_init(&load_fw->inprogress);
 			if (load_fw->se_fw_img_nm.prim_fw.is_fw_name_valid) {
 				/* allocate buffer where SE store encrypted IMEM */
 				load_fw->imem.buf = dmam_alloc_coherent(priv->dev,
@@ -2326,11 +2342,12 @@ static int se_suspend(struct device *dev)
 	int ret = 0;
 
 	se_rcv_msg_timeout = SE_RCV_MSG_DEFAULT_TIMEOUT;
+
 	if (priv->if_defs->se_if_type == SE_TYPE_ID_V2X_DBG) {
 		ret = v2x_suspend(priv);
 		if (ret) {
 			dev_err(dev, "Failure V2X-FW suspend[0x%x].", ret);
-			goto exit;
+			return ret;
 		}
 	}
 
@@ -2341,14 +2358,9 @@ static int se_suspend(struct device *dev)
 
 	load_fw = get_load_fw_instance(priv);
 
-	if (load_fw && load_fw->imem_mgmt) {
+	if (load_fw && load_fw->imem_mgmt)
 		ret = se_save_imem_state(priv, &load_fw->imem);
-		if (ret) {
-			dev_err(dev, "Failure saving IMEM state[0x%x]", ret);
-			goto exit;
-		}
-	}
-exit:
+
 	return ret;
 }
 
@@ -2360,8 +2372,7 @@ static int se_resume(struct device *dev)
 	int ret = 0;
 
 	if (priv->if_defs->se_if_type == SE_TYPE_ID_V2X_DBG) {
-		ret = v2x_resume(priv);
-		if (ret)
+		if (v2x_resume(priv))
 			dev_err(dev, "Failure V2X-FW resume[0x%x].", ret);
 	}
 
@@ -2375,11 +2386,8 @@ static int se_resume(struct device *dev)
 
 	load_fw = get_load_fw_instance(priv);
 
-	if (load_fw && load_fw->imem_mgmt) {
-		ret = se_restore_imem_state(priv, &load_fw->imem);
-		if (ret)
-			dev_err(dev, "Failure restoring IMEM state[0x%x]", ret);
-	}
+	if (load_fw && load_fw->imem_mgmt)
+		se_restore_imem_state(priv, &load_fw->imem);
 
 	return ret;
 }

@@ -531,16 +531,11 @@ static int hantrodec_choose_core(int is_g1)
 	unsigned int blk_base = BLK_CTL_BASE;
 
 	PDEBUG("hantrodec_choose_core\n");
-	if (!request_mem_region(blk_base, 0x1000, "blk_ctl"))	{
-		pr_err("blk_ctl: failed to reserve HW regs\n");
-		return -EBUSY;
-	}
 
 	reg = ioremap(blk_base, 0x1000);
 
 	if (reg == NULL) {
 		pr_err("blk_ctl: failed to ioremap HW regs\n");
-		release_mem_region(blk_base, 0x1000);
 		return -EBUSY;
 	}
 
@@ -552,7 +547,6 @@ static int hantrodec_choose_core(int is_g1)
 
 	if (reg)
 		iounmap(reg);
-	release_mem_region(blk_base, 0x1000);
 	PDEBUG("hantrodec_choose_core OK!\n");
 	return 0;
 }

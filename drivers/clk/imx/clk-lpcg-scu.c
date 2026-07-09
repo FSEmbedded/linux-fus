@@ -44,13 +44,11 @@ struct clk_lpcg_scu {
 #define to_clk_lpcg_scu(_hw) container_of(_hw, struct clk_lpcg_scu, hw)
 
 /* e10858 -LPCG clock gating register synchronization errata */
-static void do_lpcg_workaround(u32 rate, void __iomem *reg, u32 val)
+static void lpcg_e10858_writel(unsigned long rate, void __iomem *reg, u32 val)
 {
 	writel(val, reg);
 
-	if (rate >= 24000000 || rate == 0) {
-		u32 reg1;
-
+	if (rate >= 24 * HZ_PER_MHZ || rate == 0) {
 		/*
 		 * The time taken to access the LPCG registers from the AP core
 		 * through the interconnect is longer than the minimum delay
@@ -58,7 +56,7 @@ static void do_lpcg_workaround(u32 rate, void __iomem *reg, u32 val)
 		 * Adding a readl will provide sufficient delay to prevent
 		 * back-to-back writes.
 		 */
-		reg1 = readl(reg);
+		readl(reg);
 	} else {
 		/*
 		 * For clocks running below 24MHz, wait a minimum of
@@ -85,7 +83,7 @@ static int clk_lpcg_scu_enable(struct clk_hw *hw)
 
 	reg |= val << clk->bit_idx;
 
-	do_lpcg_workaround(clk_hw_get_rate(hw), clk->reg, reg);
+	lpcg_e10858_writel(clk_hw_get_rate(hw), clk->reg, reg);
 
 	spin_unlock_irqrestore(&imx_lpcg_scu_lock, flags);
 
@@ -102,7 +100,7 @@ static void clk_lpcg_scu_disable(struct clk_hw *hw)
 
 	reg = readl_relaxed(clk->reg);
 	reg &= ~(CLK_GATE_SCU_LPCG_MASK << clk->bit_idx);
-	do_lpcg_workaround(clk_hw_get_rate(hw), clk->reg, reg);
+	lpcg_e10858_writel(clk_hw_get_rate(hw), clk->reg, reg);
 
 	spin_unlock_irqrestore(&imx_lpcg_scu_lock, flags);
 }
@@ -180,7 +178,7 @@ static int __maybe_unused imx_clk_lpcg_scu_resume(struct device *dev)
 		return 0;
 
 	writel(clk->state, clk->reg);
-	do_lpcg_workaround(0, clk->reg, clk->state);
+	lpcg_e10858_writel(0, clk->reg, clk->state);
 	dev_dbg(dev, "restore lpcg state 0x%x\n", clk->state);
 
 	return 0;

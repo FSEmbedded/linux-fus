@@ -93,6 +93,9 @@ struct fsl_micfil_soc_data {
 	bool volume_sx;
 	u64  formats;
 	int  fifo_offset;
+	enum quality default_quality;
+	/* stores const value in formula to calculate range */
+	int rangeadj_const[3][2];
 };
 
 static struct fsl_micfil_soc_data fsl_micfil_imx8mm = {
@@ -103,6 +106,7 @@ static struct fsl_micfil_soc_data fsl_micfil_imx8mm = {
 	.formats = SNDRV_PCM_FMTBIT_S16_LE,
 	.volume_sx = true,
 	.fifo_offset = 0,
+	.default_quality = QUALITY_VLOW0,
 };
 
 static struct fsl_micfil_soc_data fsl_micfil_imx8mp = {
@@ -113,6 +117,8 @@ static struct fsl_micfil_soc_data fsl_micfil_imx8mp = {
 	.formats = SNDRV_PCM_FMTBIT_S32_LE,
 	.volume_sx = false,
 	.fifo_offset = 0,
+	.default_quality = QUALITY_MEDIUM,
+	.rangeadj_const = {{27, 7}, {27, 7}, {26, 7}},
 };
 
 static struct fsl_micfil_soc_data fsl_micfil_imx93 = {
@@ -125,6 +131,8 @@ static struct fsl_micfil_soc_data fsl_micfil_imx93 = {
 	.use_verid = true,
 	.volume_sx = false,
 	.fifo_offset = 0,
+	.default_quality = QUALITY_MEDIUM,
+	.rangeadj_const = {{30, 6}, {30, 6}, {29, 6}},
 };
 
 static struct fsl_micfil_soc_data fsl_micfil_imx943 = {
@@ -137,6 +145,8 @@ static struct fsl_micfil_soc_data fsl_micfil_imx943 = {
 	.use_verid = true,
 	.volume_sx = false,
 	.fifo_offset = -4,
+	.default_quality = QUALITY_MEDIUM,
+	.rangeadj_const = {{34, 6}, {34, 6}, {33, 6}},
 };
 
 static const struct of_device_id fsl_micfil_dt_ids[] = {

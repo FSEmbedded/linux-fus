@@ -106,5 +106,3 @@
 	assigned-clock-parents = <0>, <&clk IMX8MP_VPU_PLL_OUT>;
 	assigned-clock-rates = <600000000>, <600000000>;
 };
-
-/delete-node/ &{noc_opp_table/opp-1000000000};

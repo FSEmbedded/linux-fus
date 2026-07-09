@@ -42,6 +42,7 @@
 #include <media/v4l2-ctrls.h>
 #include <media/v4l2-dev.h>
 #include <media/v4l2-device.h>
+#include <media/v4l2-fh.h>
 #include <media/v4l2-ioctl.h>
 #include <media/videobuf2-core.h>
 #include <media/videobuf2-dma-contig.h>
@@ -301,6 +302,7 @@ struct mx6s_csi_dev {
 
 	struct vb2_queue			vb2_vidq;
 	struct v4l2_ctrl_handler	ctrl_handler;
+	struct v4l2_fh fh;
 
 	struct mutex		lock;
 	spinlock_t			slock;
@@ -345,6 +347,11 @@ struct mx6s_csi_dev {
 };
 
 static const struct of_device_id mx6s_csi_dt_ids[];
+
+static inline struct mx6s_csi_dev *file_to_csidev(struct file *filp)
+{
+	return container_of(file_to_v4l2_fh(filp), struct mx6s_csi_dev, fh);
+}
 
 static inline int csi_read(struct mx6s_csi_dev *csi, unsigned int offset)
 {
@@ -1179,8 +1186,6 @@ static int mx6s_csi_open(struct file *file)
 	struct vb2_queue *q = &csi_dev->vb2_vidq;
 	int ret = 0;
 
-	file->private_data = csi_dev;
-
 	if (mutex_lock_interruptible(&csi_dev->lock))
 		return -ERESTARTSYS;
 
@@ -1205,6 +1210,8 @@ static int mx6s_csi_open(struct file *file)
 		v4l2_subdev_call(sd, core, s_power, 1);
 		mx6s_csi_init(csi_dev);
 
+		v4l2_fh_init(&csi_dev->fh, video_devdata(file));
+		v4l2_fh_add(&csi_dev->fh, file);
 	}
 	mutex_unlock(&csi_dev->lock);
 
@@ -1232,6 +1239,9 @@ static int mx6s_csi_close(struct file *file)
 		release_bus_freq(BUS_FREQ_HIGH);
 
 		pm_runtime_put_sync_suspend(csi_dev->dev);
+
+		v4l2_fh_del(&csi_dev->fh, file);
+		v4l2_fh_exit(&csi_dev->fh);
 	}
 	mutex_unlock(&csi_dev->lock);
 
@@ -1321,9 +1331,9 @@ static int mx6s_vidioc_g_std(struct file *file, void *priv, v4l2_std_id *a)
 static int mx6s_vidioc_reqbufs(struct file *file, void *priv,
 			      struct v4l2_requestbuffers *p)
 {
-	struct mx6s_csi_dev *csi_dev = video_drvdata(file);
+	struct mx6s_csi_dev *csi_dev = file_to_csidev(file);
 
-	WARN_ON(priv != file->private_data);
+	WARN_ON(!csi_dev);
 
 	return vb2_reqbufs(&csi_dev->vb2_vidq, p);
 }
@@ -1331,10 +1341,10 @@ static int mx6s_vidioc_reqbufs(struct file *file, void *priv,
 static int mx6s_vidioc_querybuf(struct file *file, void *priv,
 			       struct v4l2_buffer *p)
 {
-	struct mx6s_csi_dev *csi_dev = video_drvdata(file);
+	struct mx6s_csi_dev *csi_dev = file_to_csidev(file);
 	int ret;
 
-	WARN_ON(priv != file->private_data);
+	WARN_ON(!csi_dev);
 
 	ret = vb2_querybuf(&csi_dev->vb2_vidq, p);
 
@@ -1350,9 +1360,9 @@ static int mx6s_vidioc_querybuf(struct file *file, void *priv,
 static int mx6s_vidioc_qbuf(struct file *file, void *priv,
 			   struct v4l2_buffer *p)
 {
-	struct mx6s_csi_dev *csi_dev = video_drvdata(file);
+	struct mx6s_csi_dev *csi_dev = file_to_csidev(file);
 
-	WARN_ON(priv != file->private_data);
+	WARN_ON(!csi_dev);
 
 	return vb2_qbuf(&csi_dev->vb2_vidq, NULL, p);
 }
@@ -1360,9 +1370,9 @@ static int mx6s_vidioc_qbuf(struct file *file, void *priv,
 static int mx6s_vidioc_dqbuf(struct file *file, void *priv,
 			    struct v4l2_buffer *p)
 {
-	struct mx6s_csi_dev *csi_dev = video_drvdata(file);
+	struct mx6s_csi_dev *csi_dev = file_to_csidev(file);
 
-	WARN_ON(priv != file->private_data);
+	WARN_ON(!csi_dev);
 
 	return vb2_dqbuf(&csi_dev->vb2_vidq, p, file->f_flags & O_NONBLOCK);
 }
@@ -1370,7 +1380,7 @@ static int mx6s_vidioc_dqbuf(struct file *file, void *priv,
 static int mx6s_vidioc_enum_fmt_vid_cap(struct file *file, void  *priv,
 				       struct v4l2_fmtdesc *f)
 {
-	struct mx6s_csi_dev *csi_dev = video_drvdata(file);
+	struct mx6s_csi_dev *csi_dev = file_to_csidev(file);
 	struct v4l2_subdev *sd = csi_dev->sd;
 	struct v4l2_subdev_mbus_code_enum code = {
 		.which = V4L2_SUBDEV_FORMAT_ACTIVE,
@@ -1379,7 +1389,7 @@ static int mx6s_vidioc_enum_fmt_vid_cap(struct file *file, void  *priv,
 	struct mx6s_fmt *fmt;
 	int ret;
 
-	WARN_ON(priv != file->private_data);
+	WARN_ON(!csi_dev);
 
 	ret = v4l2_subdev_call(sd, pad, enum_mbus_code, NULL, &code);
 	if (ret < 0) {
@@ -1478,9 +1488,9 @@ static int mx6s_vidioc_s_fmt_vid_cap(struct file *file, void *priv,
 static int mx6s_vidioc_g_fmt_vid_cap(struct file *file, void *priv,
 				    struct v4l2_format *f)
 {
-	struct mx6s_csi_dev *csi_dev = video_drvdata(file);
+	struct mx6s_csi_dev *csi_dev = file_to_csidev(file);
 
-	WARN_ON(priv != file->private_data);
+	WARN_ON(!csi_dev);
 
 	f->fmt.pix = csi_dev->pix;
 
@@ -1490,9 +1500,9 @@ static int mx6s_vidioc_g_fmt_vid_cap(struct file *file, void *priv,
 static int mx6s_vidioc_querycap(struct file *file, void  *priv,
 			       struct v4l2_capability *cap)
 {
-	struct mx6s_csi_dev *csi_dev = video_drvdata(file);
+	struct mx6s_csi_dev *csi_dev = file_to_csidev(file);
 
-	WARN_ON(priv != file->private_data);
+	WARN_ON(!csi_dev);
 
 	/* cap->name is set by the friendly caller:-> */
 	strscpy(cap->driver, MX6S_CAM_DRV_NAME, sizeof(cap->driver));
@@ -1523,7 +1533,7 @@ static int mx6s_vidioc_streamon(struct file *file, void *priv,
 	struct v4l2_subdev *sd = csi_dev->sd;
 	int ret;
 
-	WARN_ON(priv != file->private_data);
+	WARN_ON(!csi_dev);
 
 	if (i != V4L2_BUF_TYPE_VIDEO_CAPTURE)
 		return -EINVAL;
@@ -1538,11 +1548,11 @@ static int mx6s_vidioc_streamon(struct file *file, void *priv,
 static int mx6s_vidioc_streamoff(struct file *file, void *priv,
 				enum v4l2_buf_type i)
 {
-	struct mx6s_csi_dev *csi_dev = video_drvdata(file);
+	struct mx6s_csi_dev *csi_dev = file_to_csidev(file);
 	struct v4l2_subdev *sd = csi_dev->sd;
 	int ret;
 
-	WARN_ON(priv != file->private_data);
+	WARN_ON(!csi_dev);
 
 	if (i != V4L2_BUF_TYPE_VIDEO_CAPTURE)
 		return -EINVAL;

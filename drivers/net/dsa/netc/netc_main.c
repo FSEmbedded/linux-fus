@@ -8,12 +8,17 @@
 #include <linux/etherdevice.h>
 #include <linux/fsl/enetc_mdio.h>
 #include <linux/if_bridge.h>
+#include <linux/if_hsr.h>
 #include <linux/if_vlan.h>
 #include <linux/of_mdio.h>
 #include <linux/pcs/pcs-xpcs.h>
 #include <linux/unaligned.h>
 
 #include "netc_switch.h"
+
+#define NETC_SUPPORTED_HSR_FEATURES \
+	(NETIF_F_HW_HSR_TAG_INS | NETIF_F_HW_HSR_TAG_RM | \
+	 NETIF_F_HW_HSR_FWD | NETIF_F_HW_HSR_DUP)
 
 static struct netc_fdb_entry *netc_lookup_fdb_entry(struct netc_switch *priv,
 						    const unsigned char *addr,
@@ -254,9 +259,11 @@ static int netc_port_create_internal_mdiobus(struct netc_port *port)
 		xpcs_ver = DW_XPCS_VER_MX94;
 		break;
 	default:
+		err = -EOPNOTSUPP;
 		dev_err(dev, "unsupported xpcs version\n");
 		goto unregister_mdiobus;
 	}
+
 	netc_xpcs_port_init(port->index);
 	pcs = xpcs_create_mdiodev_with_phy(bus, 0, 16, port->index, xpcs_ver,
 					   port->phy_mode);
@@ -401,39 +408,35 @@ remove_internal_mdiobus:
 
 static void netc_init_ntmp_tbl_versions(struct netc_switch *priv)
 {
-	struct netc_cbdrs *cbdrs = &priv->ntmp.cbdrs;
+	struct ntmp_user *user = &priv->user;
 
 	/* All tables default to version 0 */
-	memset(&cbdrs->tbl, 0, sizeof(cbdrs->tbl));
+	memset(&user->tbl, 0, sizeof(user->tbl));
 
 	if (priv->revision == NETC_SWITCH_REV_4_3)
-		cbdrs->tbl.ist_ver = 1;
+		user->tbl.ist_ver = 1;
 }
 
 static int netc_init_all_cbdrs(struct netc_switch *priv)
 {
-	struct netc_cbdrs *cbdrs = &priv->ntmp.cbdrs;
 	struct netc_switch_regs *regs = &priv->regs;
+	struct ntmp_user *user = &priv->user;
 	int i, j, err;
 
-	cbdrs->cbdr_num = NETC_CBDR_NUM;
-	cbdrs->cbdr_size = NETC_CBDR_BD_NUM;
-	cbdrs->ring = kcalloc(cbdrs->cbdr_num, sizeof(*cbdrs->ring),
-			      GFP_KERNEL);
-	if (!cbdrs->ring)
+	user->cbdr_num = NETC_CBDR_NUM;
+	user->dev = priv->dev;
+	user->ring = kcalloc(user->cbdr_num, sizeof(struct netc_cbdr),
+			     GFP_KERNEL);
+	if (!user->ring)
 		return -ENOMEM;
-
-	cbdrs->dma_dev = priv->dev;
-
-	netc_init_ntmp_tbl_versions(priv);
 
 	/* Set the system attributes of reads and writes of command
 	 * descriptor and data.
 	 */
 	netc_base_wr(regs, NETC_CCAR, NETC_DEFAULT_CMD_CACHE_ATTR);
 
-	for (i = 0; i < cbdrs->cbdr_num; i++) {
-		struct netc_cbdr *cbdr = &cbdrs->ring[i];
+	for (i = 0; i < user->cbdr_num; i++) {
+		struct netc_cbdr *cbdr = &user->ring[i];
 		struct netc_cbdr_regs cbdr_regs;
 
 		cbdr_regs.pir = regs->base + NETC_CBDRPIR(i);
@@ -443,15 +446,14 @@ static int netc_init_all_cbdrs(struct netc_switch *priv)
 		cbdr_regs.bar1 = regs->base + NETC_CBDRBAR1(i);
 		cbdr_regs.lenr = regs->base + NETC_CBDRLENR(i);
 
-		err = netc_setup_cbdr(cbdrs->dma_dev, cbdrs->cbdr_size,
-				      &cbdr_regs, cbdr);
+		err = ntmp_init_cbdr(cbdr, user->dev, &cbdr_regs);
 		if (err) {
 			for (j = 0; j < i; j++)
-				netc_teardown_cbdr(cbdrs->dma_dev,
-						   &cbdrs->ring[j]);
+				ntmp_free_cbdr(&user->ring[j]);
 
-			kfree(cbdrs->ring);
-			cbdrs->dma_dev = NULL;
+			kfree(user->ring);
+			user->dev = NULL;
+
 			return err;
 		}
 	}
@@ -461,154 +463,169 @@ static int netc_init_all_cbdrs(struct netc_switch *priv)
 
 static void netc_remove_all_cbdrs(struct netc_switch *priv)
 {
-	struct netc_cbdrs *cbdrs = &priv->ntmp.cbdrs;
+	struct ntmp_user *user = &priv->user;
 	int i;
 
 	for (i = 0; i < NETC_CBDR_NUM; i++)
-		netc_teardown_cbdr(cbdrs->dma_dev, &cbdrs->ring[i]);
+		ntmp_free_cbdr(&user->ring[i]);
 
-	cbdrs->dma_dev = NULL;
-	kfree(cbdrs->ring);
+	kfree(user->ring);
+	user->dev = NULL;
 }
 
 static void netc_get_ntmp_capabilities(struct netc_switch *priv)
 {
 	struct netc_switch_regs *regs = &priv->regs;
-	struct ntmp_priv *ntmp = &priv->ntmp;
+	struct ntmp_user *user = &priv->user;
 	u32 val;
 
 	val = netc_base_rd(regs, NETC_ETTCAPR);
-	ntmp->caps.ett_num_entries = NETC_GET_NUM_ENTRIES(val);
+	user->caps.ett_num_entries = NETC_GET_NUM_ENTRIES(val);
 
 	val = netc_base_rd(regs, NETC_ECTCAPR);
-	ntmp->caps.ect_num_entries = NETC_GET_NUM_ENTRIES(val);
+	user->caps.ect_num_entries = NETC_GET_NUM_ENTRIES(val);
 
 	val = netc_base_rd(regs, NETC_RPITCAPR);
-	ntmp->caps.rpt_num_entries = NETC_GET_NUM_ENTRIES(val);
+	user->caps.rpt_num_entries = NETC_GET_NUM_ENTRIES(val);
 
 	val = netc_base_rd(regs, NETC_ISCITCAPR);
-	ntmp->caps.isct_num_entries = NETC_GET_NUM_ENTRIES(val);
+	user->caps.isct_num_entries = NETC_GET_NUM_ENTRIES(val);
 
 	val = netc_base_rd(regs, NETC_ISITCAPR);
-	ntmp->caps.ist_num_entries = NETC_GET_NUM_ENTRIES(val);
+	user->caps.ist_num_entries = NETC_GET_NUM_ENTRIES(val);
 
 	val = netc_base_rd(regs, NETC_SGIITCAPR);
-	ntmp->caps.sgit_num_entries = NETC_GET_NUM_ENTRIES(val);
+	user->caps.sgit_num_entries = NETC_GET_NUM_ENTRIES(val);
 
 	val = netc_base_rd(regs, NETC_SGCLITCAPR);
-	ntmp->caps.sgclt_num_words = NETC_GET_NUM_WORDS(val);
+	user->caps.sgclt_num_words = NETC_GET_NUM_WORDS(val);
+
+	val = netc_base_rd(regs, NETC_ISQGITCAPR);
+	user->caps.isgt_num_entries = NETC_GET_NUM_ENTRIES(val);
 }
 
 static int netc_init_ntmp_bitmaps(struct netc_switch *priv)
 {
-	struct ntmp_priv *ntmp = &priv->ntmp;
+	struct ntmp_user *user = &priv->user;
 
-	ntmp->ett_bitmap_size = ntmp->caps.ett_num_entries / priv->num_ports;
-	ntmp->ett_gid_bitmap = bitmap_zalloc(ntmp->ett_bitmap_size, GFP_KERNEL);
-	if (!ntmp->ett_gid_bitmap)
+	user->ett_bitmap_size = user->caps.ett_num_entries / priv->num_ports;
+	user->ett_gid_bitmap = bitmap_zalloc(user->ett_bitmap_size, GFP_KERNEL);
+	if (!user->ett_gid_bitmap)
 		return -ENOMEM;
 
-	ntmp->ect_bitmap_size = ntmp->caps.ect_num_entries / priv->num_ports;
-	ntmp->ect_gid_bitmap = bitmap_zalloc(ntmp->ect_bitmap_size, GFP_KERNEL);
-	if (!ntmp->ect_gid_bitmap)
+	user->ect_bitmap_size = user->caps.ect_num_entries / priv->num_ports;
+	user->ect_gid_bitmap = bitmap_zalloc(user->ect_bitmap_size, GFP_KERNEL);
+	if (!user->ect_gid_bitmap)
 		goto free_ett_gid_bitmap;
 
-	ntmp->ist_eid_bitmap = bitmap_zalloc(ntmp->caps.ist_num_entries,
+	user->ist_eid_bitmap = bitmap_zalloc(user->caps.ist_num_entries,
 					     GFP_KERNEL);
-	if (!ntmp->ist_eid_bitmap)
+	if (!user->ist_eid_bitmap)
 		goto free_ect_gid_bitmap;
 
-	ntmp->rpt_eid_bitmap = bitmap_zalloc(ntmp->caps.rpt_num_entries,
+	user->rpt_eid_bitmap = bitmap_zalloc(user->caps.rpt_num_entries,
 					     GFP_KERNEL);
-	if (!ntmp->rpt_eid_bitmap)
+	if (!user->rpt_eid_bitmap)
 		goto free_ist_eid_bitmap;
 
-	ntmp->sgit_eid_bitmap = bitmap_zalloc(ntmp->caps.sgit_num_entries,
+	user->sgit_eid_bitmap = bitmap_zalloc(user->caps.sgit_num_entries,
 					      GFP_KERNEL);
-	if (!ntmp->sgit_eid_bitmap)
+	if (!user->sgit_eid_bitmap)
 		goto free_rpt_eid_bitmap;
 
-	ntmp->isct_eid_bitmap = bitmap_zalloc(ntmp->caps.isct_num_entries,
+	user->isct_eid_bitmap = bitmap_zalloc(user->caps.isct_num_entries,
 					      GFP_KERNEL);
-	if (!ntmp->isct_eid_bitmap)
+	if (!user->isct_eid_bitmap)
 		goto free_sgit_eid_bitmap;
 
-	ntmp->sgclt_word_bitmap = bitmap_zalloc(ntmp->caps.sgclt_num_words,
+	user->sgclt_word_bitmap = bitmap_zalloc(user->caps.sgclt_num_words,
 						GFP_KERNEL);
-	if (!ntmp->sgclt_word_bitmap)
+	if (!user->sgclt_word_bitmap)
 		goto free_isct_eid_bitmap;
+
+	user->isgt_eid_bitmap = bitmap_zalloc(user->caps.isgt_num_entries,
+					      GFP_KERNEL);
+	if (!user->isgt_eid_bitmap)
+		goto free_sgclt_word_bitmap;
 
 	return 0;
 
+free_sgclt_word_bitmap:
+	bitmap_free(user->sgclt_word_bitmap);
+	user->sgclt_word_bitmap = NULL;
 free_isct_eid_bitmap:
-	bitmap_free(ntmp->isct_eid_bitmap);
-	ntmp->isct_eid_bitmap = NULL;
+	bitmap_free(user->isct_eid_bitmap);
+	user->isct_eid_bitmap = NULL;
 free_sgit_eid_bitmap:
-	bitmap_free(ntmp->sgit_eid_bitmap);
-	ntmp->sgit_eid_bitmap = NULL;
+	bitmap_free(user->sgit_eid_bitmap);
+	user->sgit_eid_bitmap = NULL;
 free_rpt_eid_bitmap:
-	bitmap_free(ntmp->rpt_eid_bitmap);
-	ntmp->rpt_eid_bitmap = NULL;
+	bitmap_free(user->rpt_eid_bitmap);
+	user->rpt_eid_bitmap = NULL;
 free_ist_eid_bitmap:
-	bitmap_free(ntmp->ist_eid_bitmap);
-	ntmp->ist_eid_bitmap = NULL;
+	bitmap_free(user->ist_eid_bitmap);
+	user->ist_eid_bitmap = NULL;
 free_ect_gid_bitmap:
-	bitmap_free(ntmp->ect_gid_bitmap);
-	ntmp->ect_gid_bitmap = NULL;
+	bitmap_free(user->ect_gid_bitmap);
+	user->ect_gid_bitmap = NULL;
 free_ett_gid_bitmap:
-	bitmap_free(ntmp->ett_gid_bitmap);
-	ntmp->ett_gid_bitmap = NULL;
+	bitmap_free(user->ett_gid_bitmap);
+	user->ett_gid_bitmap = NULL;
 
 	return -ENOMEM;
 }
 
 static void netc_free_ntmp_bitmaps(struct netc_switch *priv)
 {
-	struct ntmp_priv *ntmp = &priv->ntmp;
+	struct ntmp_user *user = &priv->user;
 
-	bitmap_free(ntmp->sgclt_word_bitmap);
-	ntmp->sgclt_word_bitmap = NULL;
+	bitmap_free(user->isgt_eid_bitmap);
+	user->isgt_eid_bitmap = NULL;
 
-	bitmap_free(ntmp->isct_eid_bitmap);
-	ntmp->isct_eid_bitmap = NULL;
+	bitmap_free(user->sgclt_word_bitmap);
+	user->sgclt_word_bitmap = NULL;
 
-	bitmap_free(ntmp->sgit_eid_bitmap);
-	ntmp->sgit_eid_bitmap = NULL;
+	bitmap_free(user->isct_eid_bitmap);
+	user->isct_eid_bitmap = NULL;
 
-	bitmap_free(ntmp->rpt_eid_bitmap);
-	ntmp->rpt_eid_bitmap = NULL;
+	bitmap_free(user->sgit_eid_bitmap);
+	user->sgit_eid_bitmap = NULL;
 
-	bitmap_free(ntmp->ist_eid_bitmap);
-	ntmp->ist_eid_bitmap = NULL;
+	bitmap_free(user->rpt_eid_bitmap);
+	user->rpt_eid_bitmap = NULL;
 
-	bitmap_free(ntmp->ect_gid_bitmap);
-	ntmp->ect_gid_bitmap = NULL;
+	bitmap_free(user->ist_eid_bitmap);
+	user->ist_eid_bitmap = NULL;
 
-	bitmap_free(ntmp->ett_gid_bitmap);
-	ntmp->ett_gid_bitmap = NULL;
+	bitmap_free(user->ect_gid_bitmap);
+	user->ect_gid_bitmap = NULL;
+
+	bitmap_free(user->ett_gid_bitmap);
+	user->ett_gid_bitmap = NULL;
 }
 
-struct pci_dev *netc_switch_get_timer(struct netc_switch *priv)
+struct pci_dev *netc_get_ptp_timer(struct netc_switch *priv)
 {
-	int domain = pci_domain_nr(priv->pdev->bus);
+	struct pci_bus *bus = priv->pdev->bus;
 	u32 devfn = priv->info->tmr_devfn;
-	u8 bus = priv->pdev->bus->number;
 
-	return pci_get_domain_bus_and_slot(domain, bus, devfn);
+	return pci_get_domain_bus_and_slot(pci_domain_nr(bus),
+					   bus->number, devfn);
 }
 
-static u64 netc_switch_adjust_base_time(struct ntmp_priv *ntmp, u64 base_time,
+static u64 netc_switch_adjust_base_time(struct ntmp_user *user, u64 base_time,
 					u32 cycle_time)
 {
-	struct netc_switch *priv = ntmp_to_netc_switch(ntmp);
+	struct netc_switch *priv = ntmp_to_netc_switch(user);
 	u64 current_time, delta, n;
 	struct pci_dev *tmr_dev;
 
-	tmr_dev = netc_switch_get_timer(priv);
+	tmr_dev = netc_get_ptp_timer(priv);
 	if (!tmr_dev)
 		return base_time;
 
 	current_time = netc_timer_get_current_time(tmr_dev);
+	pci_dev_put(tmr_dev);
 	if (base_time >= current_time)
 		return base_time;
 
@@ -619,9 +636,9 @@ static u64 netc_switch_adjust_base_time(struct ntmp_priv *ntmp, u64 base_time,
 	return base_time;
 }
 
-static u32 netc_switch_get_tgst_free_words(struct ntmp_priv *ntmp)
+static u32 netc_switch_get_tgst_free_words(struct ntmp_user *user)
 {
-	struct netc_switch *priv = ntmp_to_netc_switch(ntmp);
+	struct netc_switch *priv = ntmp_to_netc_switch(user);
 	struct netc_switch_regs *regs = &priv->regs;
 	u32 words_in_use;
 	u32 total_words;
@@ -635,42 +652,46 @@ static u32 netc_switch_get_tgst_free_words(struct ntmp_priv *ntmp)
 	return total_words - words_in_use;
 }
 
-static int netc_init_ntmp_priv(struct netc_switch *priv)
+static const struct ntmp_ops ntmp_ops = {
+	.adjust_base_time = netc_switch_adjust_base_time,
+	.get_tgst_free_words = netc_switch_get_tgst_free_words,
+};
+
+static int netc_init_ntmp_user(struct netc_switch *priv)
 {
-	struct ntmp_priv *ntmp = &priv->ntmp;
+	struct ntmp_user *user = &priv->user;
 	int err;
 
-	ntmp->dev_type = NETC_DEV_SWITCH;
+	user->dev_type = NETC_DEV_SWITCH;
+	user->ops = &ntmp_ops;
+	netc_init_ntmp_tbl_versions(priv);
+	netc_get_ntmp_capabilities(priv);
 
-	err = netc_init_all_cbdrs(priv);
+	err = netc_init_ntmp_bitmaps(priv);
 	if (err)
 		return err;
 
-	netc_get_ntmp_capabilities(priv);
-	err = netc_init_ntmp_bitmaps(priv);
+	err = netc_init_all_cbdrs(priv);
 	if (err)
-		goto free_all_cbdrs;
+		goto free_ntmp_bitmaps;
 
-	ntmp->adjust_base_time = netc_switch_adjust_base_time;
-	ntmp->get_tgst_free_words = netc_switch_get_tgst_free_words;
-
-	INIT_HLIST_HEAD(&ntmp->flower_list);
-	mutex_init(&ntmp->flower_lock);
+	INIT_HLIST_HEAD(&user->flower_list);
+	mutex_init(&user->flower_lock);
 
 	return 0;
 
-free_all_cbdrs:
-	netc_remove_all_cbdrs(priv);
+free_ntmp_bitmaps:
+	netc_free_ntmp_bitmaps(priv);
 
 	return err;
 }
 
-static void netc_deinit_ntmp_priv(struct netc_switch *priv)
+static void netc_deinit_ntmp_user(struct netc_switch *priv)
 {
 	netc_destroy_flower_list(priv);
-	mutex_destroy(&priv->ntmp.flower_lock);
-	netc_free_ntmp_bitmaps(priv);
+	mutex_destroy(&priv->user.flower_lock);
 	netc_remove_all_cbdrs(priv);
+	netc_free_ntmp_bitmaps(priv);
 }
 
 static void netc_clean_fdbt_aging_entries(struct work_struct *work)
@@ -682,12 +703,12 @@ static void netc_clean_fdbt_aging_entries(struct work_struct *work)
 
 	/* We should first update the activity element in FDB table */
 	scoped_guard(mutex, &priv->fdbt_lock) {
-		ntmp_fdbt_update_activity_element(&priv->ntmp.cbdrs);
+		ntmp_fdbt_update_activity_element(&priv->user);
 
 		/* After the activity element is updated, we delete the aging
 		 * entries in the FDB table.
 		 */
-		ntmp_fdbt_delete_aging_entries(&priv->ntmp.cbdrs,
+		ntmp_fdbt_delete_aging_entries(&priv->user,
 					       priv->fdbt_aging_act_cnt);
 	}
 
@@ -739,13 +760,6 @@ static void netc_switch_isit_key_config(struct netc_switch *priv)
 	netc_base_wr(regs, NETC_ISIDKCCR0(1), val);
 }
 
-void netc_switch_fixed_config(struct netc_switch *priv)
-{
-	netc_switch_dos_default_config(priv);
-	netc_switch_vfht_default_config(priv);
-	netc_switch_isit_key_config(priv);
-}
-
 static void netc_port_set_max_frame_size(struct netc_port *port,
 					 u32 max_frame_size)
 {
@@ -755,28 +769,38 @@ static void netc_port_set_max_frame_size(struct netc_port *port,
 	netc_mac_port_wr(port, NETC_PM_MAXFRM(0), val);
 }
 
+void netc_switch_fixed_config(struct netc_switch *priv)
+{
+	netc_switch_dos_default_config(priv);
+	netc_switch_vfht_default_config(priv);
+	netc_switch_isit_key_config(priv);
+}
+
 static void netc_port_set_tc_max_sdu(struct netc_port *port,
 				     int tc, u32 max_sdu)
 {
-	u32 val;
+	u32 val = max_sdu & PTCTMSDUR_MAXSDU;
 
-	val = max_sdu + ETH_HLEN + ETH_FCS_LEN;
-	if (dsa_port_is_cpu(port->dp))
-		val += NETC_TAG_MAX_LEN;
-
-	val &= PTCTMSDUR_MAXSDU;
 	val = u32_replace_bits(val, SDU_TYPE_MPDU, PTCTMSDUR_SDU_TYPE);
 	netc_port_wr(port, NETC_PTCTMSDUR(tc), val);
 }
 
 void netc_port_set_all_tc_msdu(struct netc_port *port, u32 *max_sdu)
 {
-	u32 msdu = NETC_MAX_FRAME_LEN;
+	u32 overhead = ETH_FCS_LEN + VLAN_ETH_HLEN;
 	int tc;
 
+	if (dsa_port_is_cpu(port->dp))
+		overhead += NETC_TAG_MAX_LEN;
+
 	for (tc = 0; tc < NETC_TC_NUM; tc++) {
-		if (max_sdu)
-			msdu = max_sdu[tc] + VLAN_ETH_HLEN;
+		u32 msdu = NETC_MAX_FRAME_LEN;
+
+		if (max_sdu && max_sdu[tc])
+			msdu = max_sdu[tc] + overhead;
+
+		if (msdu > NETC_MAX_FRAME_LEN)
+			msdu = NETC_MAX_FRAME_LEN;
 
 		netc_port_set_tc_max_sdu(port, tc, msdu);
 	}
@@ -794,8 +818,7 @@ static void netc_port_set_mlo(struct netc_port *port, int mlo)
 
 void netc_port_fixed_config(struct netc_port *port)
 {
-	u32 pqnt = 0xffff;
-	u32 qth = 0xff00;
+	u32 pqnt = 0xffff, qth = 0xff00;
 	u32 val;
 
 	/* Default IPV and DR setting */
@@ -813,19 +836,37 @@ void netc_port_fixed_config(struct netc_port *port)
 	val |= PISIDCR_KC0EN | PISIDCR_KC1EN;
 	netc_port_wr(port, NETC_PISIDCR, val);
 
-	if (dsa_port_is_user(port->dp)) {
-		/* Enable ingress port filter table lookup */
-		netc_port_wr(port, NETC_PIPFCR, PIPFCR_EN);
+	/* Enable ingress port filter table lookup */
+	netc_port_wr(port, NETC_PIPFCR, PIPFCR_EN);
 
-		/* Set the quanta value of tx PAUSE frame */
-		netc_port_wr(port, NETC_PM_PAUSE_QUANTA(0), pqnt);
+	/* Set the quanta value of TX PAUSE frame */
+	netc_mac_port_wr(port, NETC_PM_PAUSE_QUANTA(0), pqnt);
 
-		/* When a quanta timer counts down and reaches this value, the MAC
-		 * sends a refresh PAUSE frame with the programmed full quanta value
-		 * if a pause condition still exists.
-		 */
-		netc_port_wr(port, NETC_PM_PAUSE_TRHESH(0), qth);
-	}
+	/* When a quanta timer counts down and reaches this value,
+	 * the MAC sends a refresh PAUSE frame with the programmed
+	 * full quanta value if a pause condition still exists.
+	 */
+	netc_mac_port_wr(port, NETC_PM_PAUSE_TRHESH(0), qth);
+}
+
+static void netc_port_enable_mac_station_move(struct netc_port *port, bool enabled)
+{
+	u32 val, old_val;
+
+	old_val = netc_port_rd(port, NETC_BPCR);
+	val = u32_replace_bits(old_val, enabled ? 0 : 1, BPCR_STAMVD);
+	if (old_val != val)
+		netc_port_wr(port, NETC_BPCR, val);
+}
+
+static void netc_port_set_group(struct netc_port *port, u32 groupid)
+{
+	u32 val, old_val;
+
+	old_val = netc_port_rd(port, NETC_PGCR);
+	val = u32_replace_bits(old_val, groupid, PGCR_PGID);
+	if (old_val != val)
+		netc_port_wr(port, NETC_PGCR, val);
 }
 
 static void netc_port_default_config(struct netc_port *port)
@@ -880,7 +921,7 @@ static int netc_setup(struct dsa_switch *ds)
 	if (err)
 		return err;
 
-	err = netc_init_ntmp_priv(priv);
+	err = netc_init_ntmp_user(priv);
 	if (err)
 		goto free_internal_mdiobus;
 
@@ -903,7 +944,7 @@ static int netc_setup(struct dsa_switch *ds)
 
 	err = netc_switch_bpt_default_config(priv);
 	if (err)
-		goto deinit_ntmp_priv;
+		goto free_ntmp_user;
 
 	schedule_delayed_work(&priv->fdbt_clean, priv->fdbt_acteu_interval);
 
@@ -911,8 +952,8 @@ static int netc_setup(struct dsa_switch *ds)
 
 	return 0;
 
-deinit_ntmp_priv:
-	netc_deinit_ntmp_priv(priv);
+free_ntmp_user:
+	netc_deinit_ntmp_user(priv);
 free_internal_mdiobus:
 	netc_remove_all_ports_internal_mdiobus(ds);
 
@@ -941,7 +982,7 @@ static void netc_teardown(struct dsa_switch *ds)
 
 	cancel_delayed_work_sync(&priv->fdbt_clean);
 	netc_destroy_all_lists(priv);
-	netc_deinit_ntmp_priv(priv);
+	netc_deinit_ntmp_user(priv);
 	netc_remove_all_ports_internal_mdiobus(ds);
 	netc_free_ports_taprio(priv);
 }
@@ -1109,7 +1150,7 @@ static void netc_switch_get_ip_revision(struct netc_switch *priv)
 static int netc_add_or_update_ett_entry(struct netc_switch *priv, bool add,
 					bool untagged, u32 ett_eid, u32 ect_eid)
 {
-	struct netc_cbdrs *cbdrs = &priv->ntmp.cbdrs;
+	struct ntmp_user *user = &priv->user;
 	struct ett_cfge_data ett_cfge = {};
 	u32 vuda_sqta = FMTEID_VUDA_SQTA;
 	u16 efm_cfg = 0;
@@ -1131,7 +1172,8 @@ static int netc_add_or_update_ett_entry(struct netc_switch *priv, bool add,
 	ett_cfge.efm_eid = cpu_to_le32(vuda_sqta);
 	ett_cfge.efm_cfg = cpu_to_le16(efm_cfg);
 
-	return ntmp_ett_add_or_update_entry(cbdrs, ett_eid, add, &ett_cfge);
+	return ntmp_ett_add_or_update_entry(user, ett_eid,
+					    add, &ett_cfge);
 }
 
 int netc_add_ett_group_entries(struct netc_switch *priv,
@@ -1139,7 +1181,7 @@ int netc_add_ett_group_entries(struct netc_switch *priv,
 			       u32 ett_base_eid,
 			       u32 ect_base_eid)
 {
-	struct netc_cbdrs *cbdrs = &priv->ntmp.cbdrs;
+	struct ntmp_user *user = &priv->user;
 	u32 ett_eid = ett_base_eid;
 	int i, err;
 
@@ -1160,7 +1202,7 @@ int netc_add_ett_group_entries(struct netc_switch *priv,
 
 clear_ett_entries:
 	for (i--, ett_eid--; i >= 0; i--, ett_eid--)
-		ntmp_ett_delete_entry(cbdrs, ett_eid);
+		ntmp_ett_delete_entry(user, ett_eid);
 
 	return err;
 }
@@ -1168,29 +1210,26 @@ clear_ett_entries:
 static int netc_switch_add_vlan_egress_rule(struct netc_switch *priv,
 					    struct netc_vlan_entry *entry)
 {
-	struct netc_cbdrs *cbdrs = &priv->ntmp.cbdrs;
+	struct ntmp_user *user = &priv->user;
 	u32 ect_eid = NTMP_NULL_ENTRY_ID;
 	u32 ett_eid, ett_gid, ect_gid;
 	int i, err;
 
 	/* step1: find available ect entries and update these entries */
-	ect_gid = ntmp_lookup_free_eid(priv->ntmp.ect_gid_bitmap,
-				       priv->ntmp.ect_bitmap_size);
+	ect_gid = ntmp_lookup_free_eid(user->ect_gid_bitmap,
+				       user->ect_bitmap_size);
 	if (ect_gid == NTMP_NULL_ENTRY_ID) {
 		dev_warn(priv->dev, "No ECT entries available\n");
 	} else {
 		ect_eid = ect_gid * priv->num_ports;
-		for (i = 0; i < priv->num_ports; i++, ect_eid++)
+		for (i = 0; i < priv->num_ports; i++)
 			/* Reset the counters of ECT entry */
-			ntmp_ect_update_entry(cbdrs, ect_eid);
-
-		/* Restore ect_eid to the first index */
-		ect_eid = ect_gid * priv->num_ports;
+			ntmp_ect_update_entry(user, ect_eid + i);
 	}
 
 	/* step2: find available ett entries and add these entries */
-	ett_gid = ntmp_lookup_free_eid(priv->ntmp.ett_gid_bitmap,
-				       priv->ntmp.ett_bitmap_size);
+	ett_gid = ntmp_lookup_free_eid(user->ett_gid_bitmap,
+				       user->ett_bitmap_size);
 	if (ett_gid == NTMP_NULL_ENTRY_ID) {
 		dev_err(priv->dev, "No free ETT entries found\n");
 		err = -ENOSPC;
@@ -1209,12 +1248,12 @@ static int netc_switch_add_vlan_egress_rule(struct netc_switch *priv,
 	return 0;
 
 clear_ett_gid:
-	ntmp_clear_eid_bitmap(priv->ntmp.ett_gid_bitmap, ett_gid);
+	ntmp_clear_eid_bitmap(user->ett_gid_bitmap, ett_gid);
 
 clear_ect_gid:
 	/* ECT is a static index table, no need to delete the entries */
 	if (ect_gid != NTMP_NULL_ENTRY_ID)
-		ntmp_clear_eid_bitmap(priv->ntmp.ect_gid_bitmap, ect_gid);
+		ntmp_clear_eid_bitmap(user->ect_gid_bitmap, ect_gid);
 
 	return err;
 }
@@ -1222,24 +1261,25 @@ clear_ect_gid:
 void netc_switch_delete_vlan_egress_rule(struct netc_switch *priv,
 					 struct netc_vlan_entry *entry)
 {
-	u32 ett_eid, ett_eid_bit;
+	struct ntmp_user *user = &priv->user;
+	u32 ett_eid, ett_gid;
 	int i;
 
 	ett_eid = le32_to_cpu(entry->cfge.et_eid);
 	if (ett_eid == NTMP_NULL_ENTRY_ID)
 		return;
 
-	ett_eid_bit = ett_eid / priv->num_ports;
-	ntmp_clear_eid_bitmap(priv->ntmp.ett_gid_bitmap, ett_eid_bit);
-	for (i = 0; i < priv->num_ports; i++, ett_eid++)
-		ntmp_ett_delete_entry(&priv->ntmp.cbdrs, ett_eid);
+	ett_gid = ett_eid / priv->num_ports;
+	ntmp_clear_eid_bitmap(user->ett_gid_bitmap, ett_gid);
+	for (i = 0; i < priv->num_ports; i++)
+		ntmp_ett_delete_entry(user, ett_eid + i);
 
 	entry->cfge.et_eid = cpu_to_le32(NTMP_NULL_ENTRY_ID);
 
 	if (entry->ect_gid == NTMP_NULL_ENTRY_ID)
 		return;
 
-	ntmp_clear_eid_bitmap(priv->ntmp.ect_gid_bitmap, entry->ect_gid);
+	ntmp_clear_eid_bitmap(user->ect_gid_bitmap, entry->ect_gid);
 	entry->ect_gid = NTMP_NULL_ENTRY_ID;
 }
 
@@ -1249,21 +1289,75 @@ static int netc_port_update_vlan_egress_rule(struct netc_port *port,
 	bool untagged = !!(entry->untagged_port_bitmap & BIT(port->index));
 	u32 ett_eid = le32_to_cpu(entry->cfge.et_eid);
 	struct netc_switch *priv = port->switch_priv;
-	struct netc_cbdrs *cbdrs = &priv->ntmp.cbdrs;
 	u32 ect_eid = NTMP_NULL_ENTRY_ID;
 
 	if (ett_eid == NTMP_NULL_ENTRY_ID)
 		return 0;
 
-	ett_eid += port->index;
 	if (entry->ect_gid != NTMP_NULL_ENTRY_ID) {
-		ect_eid = entry->ect_gid * priv->num_ports;
-		ect_eid += port->index;
-		ntmp_ect_update_entry(cbdrs, ect_eid);
+		ect_eid = entry->ect_gid * priv->num_ports + port->index;
+		ntmp_ect_update_entry(&priv->user, ect_eid);
 	}
+
+	ett_eid += port->index;
 
 	return netc_add_or_update_ett_entry(priv, false, untagged,
 					    ett_eid, ect_eid);
+}
+
+static int netc_port_update_vlan_egress_seq_tag(struct netc_port *port,
+						u16 vid, bool removed)
+{
+	struct netc_switch *priv = port->switch_priv;
+	struct ett_cfge_data ett_cfge = {};
+	struct netc_vlan_entry *entry;
+	bool vlan_removed = false;
+	u32 efmid_old;
+	u32 ett_eid;
+	int err;
+	u8 len;
+
+	guard(mutex)(&priv->vft_lock);
+
+	entry = netc_lookup_vlan_entry(priv, vid);
+	if (!entry)
+		return 0;
+
+	ett_eid = le32_to_cpu(entry->cfge.et_eid);
+	ett_eid += port->index;
+	err = ntmp_ett_query_entry(&priv->user, ett_eid, &ett_cfge);
+	if (err)
+		return err;
+
+	if ((ett_cfge.efm_eid & FRMEOD_VARA_VID) ||
+	    !(ett_cfge.efm_eid & FMTEID_VUDA_SQTA))
+		return -EOPNOTSUPP;
+
+	efmid_old = ett_cfge.efm_eid;
+	ett_cfge.efm_eid &= ~FMTEID_SQTA;
+	if (removed)
+		ett_cfge.efm_eid |= FIELD_PREP(FMTEID_SQTA, FMTEID_SQTA_DEL);
+
+	if (ett_cfge.efm_eid == efmid_old)
+		return 0;
+
+	if ((ett_cfge.efm_eid & FMTEID_VUDA) == FMTEID_VUDA_DEL_OTAG)
+		vlan_removed = true;
+
+	if (removed && vlan_removed)
+		len = ETT_FRM_LEN_DEL_VLAN_RTAG;
+	else if (removed)
+		len = ETT_FRM_LEN_DEL_RTAG;
+	else if (vlan_removed)
+		len = ETT_FRM_LEN_DEL_VLAN;
+	else
+		len = 0;
+
+	ett_cfge.efm_cfg &= ~ETT_EFM_LEN_CHANGE;
+	ett_cfge.efm_cfg |= FIELD_PREP(ETT_EFM_LEN_CHANGE, len);
+
+	/* Update the ETT entry */
+	return ntmp_ett_add_or_update_entry(&priv->user, ett_eid, false, &ett_cfge);
 }
 
 static int netc_port_add_vlan_entry(struct netc_port *port, u16 vid,
@@ -1308,8 +1402,8 @@ static int netc_port_add_vlan_entry(struct netc_port *port, u16 vid,
 			return err;
 	}
 
-	err = ntmp_vft_add_entry(&priv->ntmp.cbdrs, &entry->entry_id,
-				 vid, &entry->cfge);
+	err = ntmp_vft_add_entry(&priv->user, &entry->entry_id, vid,
+				 &entry->cfge);
 	if (err)
 		goto delete_vlan_egress_rule;
 
@@ -1378,7 +1472,7 @@ static int netc_port_set_vlan_entry(struct netc_port *port, u16 vid,
 		return 0;
 
 	entry->cfge.bitmap_stg ^= cpu_to_le32(BIT(port_id));
-	err = ntmp_vft_update_entry(&priv->ntmp.cbdrs, vid, &entry->cfge);
+	err = ntmp_vft_update_entry(&priv->user, vid, &entry->cfge);
 	if (err) {
 		dev_err(priv->dev, "Port:%d failed to update VLAN %u entry\n",
 			port_id, vid);
@@ -1414,7 +1508,7 @@ static int netc_port_del_vlan_entry(struct netc_port *port, u16 vid)
 			   VFT_PORT_MEMBERSHIP;
 	/* If the VLAN only belongs to the current port */
 	if (vlan_port_bitmap == BIT(port_id)) {
-		ntmp_vft_delete_entry(&priv->ntmp.cbdrs, vid);
+		ntmp_vft_delete_entry(&priv->user, vid);
 		if (vid != NETC_STANDALONE_PVID)
 			netc_switch_delete_vlan_egress_rule(priv, entry);
 
@@ -1427,7 +1521,7 @@ static int netc_port_del_vlan_entry(struct netc_port *port, u16 vid)
 		return 0;
 
 	entry->cfge.bitmap_stg ^= cpu_to_le32(BIT(port_id));
-	err = ntmp_vft_update_entry(&priv->ntmp.cbdrs, vid, &entry->cfge);
+	err = ntmp_vft_update_entry(&priv->user, vid, &entry->cfge);
 	if (err) {
 		entry->cfge.bitmap_stg ^= cpu_to_le32(BIT(port_id));
 
@@ -1463,8 +1557,7 @@ static int netc_port_add_fdb_entry(struct netc_port *port,
 	cfge->cfg = cpu_to_le32(cfg);
 	cfge->et_eid = cpu_to_le32(NTMP_NULL_ENTRY_ID);
 
-	err = ntmp_fdbt_add_entry(&priv->ntmp.cbdrs, &entry->entry_id,
-				  keye, cfge);
+	err = ntmp_fdbt_add_entry(&priv->user, &entry->entry_id, keye, cfge);
 	if (err)
 		return err;
 
@@ -1505,8 +1598,7 @@ static int netc_port_set_fdb_entry(struct netc_port *port,
 	 */
 	port_bitmap ^= BIT(port_id);
 	entry->cfge.port_bitmap = cpu_to_le32(port_bitmap);
-	err = ntmp_fdbt_update_entry(&priv->ntmp.cbdrs, entry->entry_id,
-				     &entry->cfge);
+	err = ntmp_fdbt_update_entry(&priv->user, entry->entry_id, &entry->cfge);
 	if (err) {
 		port_bitmap ^= BIT(port_id);
 		entry->cfge.port_bitmap = cpu_to_le32(port_bitmap);
@@ -1521,6 +1613,7 @@ static int netc_port_del_fdb_entry(struct netc_port *port,
 				   const unsigned char *addr, u16 vid)
 {
 	struct netc_switch *priv = port->switch_priv;
+	struct ntmp_user *user = &priv->user;
 	struct netc_fdb_entry *entry;
 	int port_id = port->index;
 	u32 port_bitmap;
@@ -1542,8 +1635,7 @@ static int netc_port_del_fdb_entry(struct netc_port *port,
 		 */
 		port_bitmap ^= BIT(port_id);
 		entry->cfge.port_bitmap = cpu_to_le32(port_bitmap);
-		err = ntmp_fdbt_update_entry(&priv->ntmp.cbdrs, entry->entry_id,
-					     &entry->cfge);
+		err = ntmp_fdbt_update_entry(user, entry->entry_id, &entry->cfge);
 		if (err) {
 			port_bitmap ^= BIT(port_id);
 			entry->cfge.port_bitmap = cpu_to_le32(port_bitmap);
@@ -1555,7 +1647,7 @@ static int netc_port_del_fdb_entry(struct netc_port *port,
 		/* If the entry only exists on this port, just delete
 		 * it from the FDB table.
 		 */
-		err = ntmp_fdbt_delete_entry(&priv->ntmp.cbdrs, entry->entry_id);
+		err = ntmp_fdbt_delete_entry(user, entry->entry_id);
 		if (err)
 			return err;
 
@@ -1679,7 +1771,10 @@ static void netc_port_stp_state_set(struct dsa_switch *ds, int port_id, u8 state
 static int netc_port_change_mtu(struct dsa_switch *ds, int port_id, int new_mtu)
 {
 	struct netc_port *port = NETC_PORT(NETC_PRIV(ds), port_id);
-	u32 max_frame_size = new_mtu + ETH_HLEN + ETH_FCS_LEN;
+	u32 max_frame_size = new_mtu + VLAN_ETH_HLEN + ETH_FCS_LEN;
+
+	if (dsa_is_cpu_port(ds, port_id))
+		max_frame_size += NETC_TAG_MAX_LEN;
 
 	netc_port_set_max_frame_size(port, max_frame_size);
 
@@ -1688,7 +1783,7 @@ static int netc_port_change_mtu(struct dsa_switch *ds, int port_id, int new_mtu)
 
 static int netc_port_max_mtu(struct dsa_switch *ds, int port_id)
 {
-	int mtu = NETC_MAX_FRAME_LEN - ETH_HLEN - ETH_FCS_LEN;
+	int mtu = NETC_MAX_FRAME_LEN - VLAN_ETH_HLEN - ETH_FCS_LEN;
 
 	if (dsa_is_cpu_port(ds, port_id))
 		mtu -= NETC_TAG_MAX_LEN;
@@ -1751,7 +1846,7 @@ static int netc_port_fdb_del(struct dsa_switch *ds, int port_id,
 static int netc_port_fdb_dump(struct dsa_switch *ds, int port_id,
 			      dsa_fdb_dump_cb_t *cb, void *data)
 {
-	struct fdbt_query_data *entry_data __free(kfree);
+	struct fdbt_entry_data *entry_data __free(kfree);
 	struct netc_switch *priv = ds->priv;
 	u32 resume_eid = NTMP_NULL_ENTRY_ID;
 	struct fdbt_keye_data *keye;
@@ -1770,8 +1865,9 @@ static int netc_port_fdb_dump(struct dsa_switch *ds, int port_id,
 	guard(mutex)(&priv->fdbt_lock);
 	do {
 		memset(entry_data, 0, sizeof(*entry_data));
-		err = ntmp_fdbt_search_port_entry(&priv->ntmp.cbdrs, port_id,
-						  &resume_eid, &entry_id, entry_data);
+		err = ntmp_fdbt_search_port_entry(&priv->user, port_id,
+						  &resume_eid, &entry_id,
+						  entry_data);
 		if (err || entry_id == NTMP_NULL_ENTRY_ID)
 			break;
 
@@ -1987,7 +2083,7 @@ static void netc_port_remove_dynamic_entries(struct netc_port *port)
 	struct netc_switch *priv = port->switch_priv;
 
 	guard(mutex)(&priv->fdbt_lock);
-	ntmp_fdbt_delete_port_dynamic_entries(&priv->ntmp.cbdrs, port->index);
+	ntmp_fdbt_delete_port_dynamic_entries(&priv->user, port->index);
 }
 
 static void netc_port_fast_age(struct dsa_switch *ds, int port_id)
@@ -1995,6 +2091,196 @@ static void netc_port_fast_age(struct dsa_switch *ds, int port_id)
 	struct netc_port *port = NETC_PORT(NETC_PRIV(ds), port_id);
 
 	netc_port_remove_dynamic_entries(port);
+}
+
+static int netc_add_sequence_generate(struct netc_switch *priv, u32 entry_id,
+				      u8 tag)
+{
+	struct ntmp_user *user = &priv->user;
+	struct isgt_cfge_data cfge = {};
+
+	cfge.sq_tag = cpu_to_le16(FIELD_PREP(ISGT_SQ_TAG, tag));
+
+	return ntmp_isgt_add_or_update_entry(user, entry_id, true, &cfge);
+}
+
+int netc_port_set_hsr(struct netc_port *port, enum netc_port_hsr_type type)
+{
+	struct netc_switch *priv = port->switch_priv;
+	bool remove_seq_tag = false;
+	bool is_sr_port = false;
+	bool enable_sdf = true;
+	u32 isgt_eid = 0xffff;
+	u32 val, old_val;
+	u8 pathid = 0;
+	u8 stp_state;
+	int err;
+
+	if (type == NETC_HSR_DISABLED) {
+		netc_port_del_vlan_entry(port, NETC_VLAN_UNAWARE_PVID);
+		port->pvid = NETC_STANDALONE_PVID;
+		netc_port_set_mlo(port, MLO_DISABLE);
+
+		if (port->hsr_data.isgt_eid != 0xffff) {
+			ntmp_isgt_delete_entry(&priv->user,
+					       port->hsr_data.isgt_eid);
+			ntmp_clear_eid_bitmap(priv->user.isgt_eid_bitmap,
+					      port->hsr_data.isgt_eid);
+			port->hsr_data.isgt_eid = 0xffff;
+		}
+	} else {
+		err = netc_port_set_vlan_entry(port, NETC_VLAN_UNAWARE_PVID, false);
+		if (err)
+			return err;
+
+		/* Clean the ISGT_EID bitmap when switch is resumed. */
+		if (port->hsr_data.isgt_eid != 0xffff) {
+			ntmp_clear_eid_bitmap(priv->user.isgt_eid_bitmap,
+					      port->hsr_data.isgt_eid);
+			port->hsr_data.isgt_eid = 0xffff;
+		}
+
+		port->pvid = NETC_VLAN_UNAWARE_PVID;
+		netc_port_set_mlo(port, MLO_NOT_OVERRIDE);
+	}
+
+	netc_port_set_pvid(port, port->pvid);
+
+	if (netif_carrier_ok(port->dp->user))
+		stp_state = BR_STATE_FORWARDING;
+	else
+		stp_state = BR_STATE_DISABLED;
+
+	netc_port_stp_state_set(port->dp->ds, port->dp->index, stp_state);
+
+	if (type == NETC_HSR_PORT_A || type == NETC_HSR_PORT_B) {
+		netc_port_set_group(port, NETC_PGID_HSR);
+		netc_port_enable_mac_station_move(port, false);
+
+		pathid = (type == NETC_HSR_PORT_A) ? 0 : 1;
+		is_sr_port = true;
+	} else if (type == NETC_HSR_REDBOX_INTERLINK || type == NETC_HSR_UPPER) {
+		remove_seq_tag = true;
+
+		isgt_eid = ntmp_lookup_free_eid(priv->user.isgt_eid_bitmap,
+						priv->user.caps.isgt_num_entries);
+
+		if (isgt_eid == NTMP_NULL_ENTRY_ID) {
+			dev_warn(priv->dev, "No ISGT entries available\n");
+			return -ENOSPC;
+		}
+
+		err = netc_add_sequence_generate(priv, isgt_eid, ISGT_SQ_TAG_HSR);
+		if (err)
+			goto clear_isgt_eid;
+
+		err = netc_port_update_vlan_egress_seq_tag(port, port->pvid, true);
+		if (err)
+			goto del_isgt_entries;
+	} else {
+		enable_sdf = false;
+		netc_port_set_group(port, 0);
+		netc_port_enable_mac_station_move(port, true);
+	}
+
+	old_val = netc_port_rd(port, NETC_PSRCR);
+	val = u32_replace_bits(old_val, is_sr_port, PSRCR_SR_PORT);
+	val = u32_replace_bits(val, enable_sdf, PSRCR_SDFA);
+	val = u32_replace_bits(val, remove_seq_tag, PSRCR_TX_SQTA);
+	val = u32_replace_bits(val, pathid, PSRCR_PATHID);
+	val = u32_replace_bits(val, isgt_eid, PSRCR_ISQG_EID);
+	if (old_val != val)
+		netc_port_wr(port, NETC_PSRCR, val);
+
+	port->hsr_data.type = type;
+	port->hsr_data.isgt_eid = isgt_eid;
+
+	return 0;
+
+del_isgt_entries:
+	ntmp_isgt_delete_entry(&priv->user, isgt_eid);
+clear_isgt_eid:
+	ntmp_clear_eid_bitmap(priv->user.isgt_eid_bitmap, isgt_eid);
+
+	return err;
+}
+
+static int netc_port_hsr_join(struct dsa_switch *ds, int port_id,
+			      struct net_device *hsr,
+			      struct netlink_ext_ack *extack)
+{
+	struct net_device *user = dsa_to_port(ds, port_id)->user;
+	struct netc_switch *priv = ds->priv;
+	struct dsa_port *cpu_dp, *hsr_dp;
+	enum netc_port_hsr_type type = 0;
+	struct netc_port *port;
+	enum hsr_version ver;
+	int err;
+
+	err = hsr_get_version(hsr, &ver);
+	if (err)
+		return err;
+
+	if (!(ver == HSR_V0 || ver == HSR_V1)) {
+		NL_SET_ERR_MSG_MOD(extack, "Only HSR v0/1 can be offloaded");
+		return -EOPNOTSUPP;
+	}
+
+	dsa_hsr_foreach_port(hsr_dp, ds, hsr)
+		type++;
+
+	port = priv->ports[port_id];
+	err = netc_port_set_hsr(port, type);
+	if (err)
+		return err;
+
+	if (type == NETC_HSR_PORT_B) {
+		dsa_switch_for_each_cpu_port(cpu_dp, ds) {
+			port = priv->ports[cpu_dp->index];
+			err = netc_port_set_hsr(port, NETC_HSR_UPPER);
+			if (err)
+				goto disable_hsr;
+		}
+	}
+
+	user->features |= NETC_SUPPORTED_HSR_FEATURES;
+	port->hsr_enabled = true;
+
+	return 0;
+
+disable_hsr:
+	netc_port_set_hsr(priv->ports[port_id], NETC_HSR_DISABLED);
+
+	return err;
+}
+
+static int netc_port_hsr_leave(struct dsa_switch *ds, int port_id,
+			       struct net_device *hsr)
+{
+	struct net_device *user = dsa_to_port(ds, port_id)->user;
+	enum netc_port_hsr_type type = NETC_HSR_DISABLED;
+	struct netc_switch *priv = ds->priv;
+	struct dsa_port *cpu_dp, *hsr_dp;
+	struct netc_port *port;
+	int hsr_num = 0;
+
+	user->features &= ~NETC_SUPPORTED_HSR_FEATURES;
+	port = priv->ports[port_id];
+	port->hsr_enabled = false;
+
+	netc_port_set_hsr(port, type);
+
+	dsa_hsr_foreach_port(hsr_dp, ds, hsr)
+		hsr_num++;
+
+	if (!hsr_num) {
+		dsa_switch_for_each_cpu_port(cpu_dp, ds) {
+			port = priv->ports[cpu_dp->index];
+			netc_port_set_hsr(port, type);
+		}
+	}
+
+	return 0;
 }
 
 static int netc_port_bridge_join(struct dsa_switch *ds, int port_id,
@@ -2149,10 +2435,8 @@ static void netc_mac_config(struct phylink_config *config, unsigned int mode,
 
 static void netc_port_set_speed(struct netc_port *port, int speed)
 {
-	u32 val;
-
-	val = netc_port_rd(port, NETC_PCR);
-	val &= ~PCR_PSPEED;
+	u32 old_val = netc_port_rd(port, NETC_PCR);
+	u32 val = old_val & (~PCR_PSPEED);
 
 	switch (speed) {
 	case SPEED_10:
@@ -2168,7 +2452,8 @@ static void netc_port_set_speed(struct netc_port *port, int speed)
 	}
 
 	port->speed = speed;
-	netc_port_wr(port, NETC_PCR, val);
+	if (val != old_val)
+		netc_port_wr(port, NETC_PCR, val);
 }
 
 /* If the RGMII device does not support the In-Band Status (IBS), we need
@@ -2356,10 +2641,8 @@ static void netc_mac_link_up(struct phylink_config *config,
 	netc_port_enable_mac_path(port, true);
 	netc_port_update_mm_link_state(port, true);
 
-	if (phy && port->tx_lpi_enabled) {
-		if (phy_init_eee(phy, false) >= 0)
-			netc_port_set_tx_lpi(port, true);
-	}
+	if (dp->user->features & NETIF_F_HW_HSR_FWD)
+		netc_port_stp_state_set(dp->ds, dp->index, BR_STATE_FORWARDING);
 }
 
 static void netc_mac_link_down(struct phylink_config *config, unsigned int mode,
@@ -2373,7 +2656,51 @@ static void netc_mac_link_down(struct phylink_config *config, unsigned int mode,
 	netc_port_update_mm_link_state(port, false);
 	netc_port_enable_mac_path(port, false);
 	netc_port_remove_dynamic_entries(port);
-	netc_port_set_tx_lpi(port, false);
+
+	if (dp->user->features & NETIF_F_HW_HSR_FWD)
+		netc_port_stp_state_set(dp->ds, dp->index, BR_STATE_DISABLED);
+}
+
+static void netc_port_disable_tx_lpi(struct netc_switch *priv,
+				     int port_id)
+{
+	struct netc_port *port = NETC_PORT(priv, port_id);
+
+	netc_mac_port_wr(port, NETC_PM_SLEEP_TIMER(0), 0);
+	netc_mac_port_wr(port, NETC_PM_LPWAKE_TIMER(0), 0);
+}
+
+static void netc_port_enable_tx_lpi(struct netc_switch *priv,
+				    int port_id, u32 timer)
+{
+	struct netc_port *port = NETC_PORT(priv, port_id);
+	u64 clk_freq = priv->info->sysclk_freq;
+	u32 sleep_cycles, lpwake_cycles;
+
+	sleep_cycles = netc_us_to_cycles(clk_freq, timer);
+	lpwake_cycles = netc_us_to_cycles(clk_freq, NETC_LPWAKE_US);
+
+	netc_mac_port_wr(port, NETC_PM_SLEEP_TIMER(0), sleep_cycles);
+	netc_mac_port_wr(port, NETC_PM_LPWAKE_TIMER(0), lpwake_cycles);
+}
+
+static void netc_mac_disable_tx_lpi(struct phylink_config *config)
+{
+	struct dsa_port *dp = dsa_phylink_to_port(config);
+	struct netc_switch *priv = dp->ds->priv;
+
+	netc_port_disable_tx_lpi(priv, dp->index);
+}
+
+static int netc_mac_enable_tx_lpi(struct phylink_config *config,
+				  u32 timer, bool tx_clock_stop)
+{
+	struct dsa_port *dp = dsa_phylink_to_port(config);
+	struct netc_switch *priv = dp->ds->priv;
+
+	netc_port_enable_tx_lpi(priv, dp->index, timer);
+
+	return 0;
 }
 
 static const struct phylink_mac_ops netc_phylink_mac_ops = {
@@ -2381,6 +2708,8 @@ static const struct phylink_mac_ops netc_phylink_mac_ops = {
 	.mac_config		= netc_mac_config,
 	.mac_link_up		= netc_mac_link_up,
 	.mac_link_down		= netc_mac_link_down,
+	.mac_disable_tx_lpi	= netc_mac_disable_tx_lpi,
+	.mac_enable_tx_lpi	= netc_mac_enable_tx_lpi,
 };
 
 static const struct dsa_switch_ops netc_switch_ops = {
@@ -2422,10 +2751,12 @@ static const struct dsa_switch_ops netc_switch_ops = {
 	.get_rmon_stats			= netc_port_get_rmon_stats,
 	.get_eth_ctrl_stats		= netc_port_get_eth_ctrl_stats,
 	.get_eth_mac_stats		= netc_port_get_eth_mac_stats,
-	.get_mac_eee			= netc_port_get_mac_eee,
+	.support_eee			= dsa_supports_eee,
 	.set_mac_eee			= netc_port_set_mac_eee,
 	.resume				= netc_resume,
 	.suspend			= netc_suspend,
+	.port_hsr_join			= netc_port_hsr_join,
+	.port_hsr_leave			= netc_port_hsr_leave,
 };
 
 static int netc_switch_probe(struct pci_dev *pdev, const struct pci_device_id *id)

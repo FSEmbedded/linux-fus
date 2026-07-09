@@ -18,7 +18,7 @@
 #ifndef _UAPI_IMX_DRM_H_
 #define _UAPI_IMX_DRM_H_
 
-#include "drm.h"
+#include <drm/drm.h>
 
 #if defined(__cplusplus)
 extern "C" {

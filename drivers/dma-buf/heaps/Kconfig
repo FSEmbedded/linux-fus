@@ -22,3 +22,11 @@ config DMABUF_HEAPS_CMA_LEGACY
 	  from the CMA area's devicetree node, or "reserved" if the area is not
 	  defined in the devicetree. This uses the same underlying allocator as
 	  CONFIG_DMABUF_HEAPS_CMA.
+
+config DMABUF_HEAPS_DSP
+        tristate "DMA-BUF DSP Heap"
+        depends on DMABUF_HEAPS
+        help
+          Choose this option to enable the dsp dmabuf heap. The dsp heap
+          is allocated by gen allocater. it's allocated according the dts.
+          If in doubt, say Y.

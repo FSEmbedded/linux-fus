@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0+ */
 /*
- * Copyright 2024-2025 NXP
+ * Copyright 2024 NXP
  */
 
 #ifndef __SE_API_H__
@@ -13,8 +13,8 @@
 #define SOC_ID_OF_IMX8QM		0x1
 #define SOC_ID_OF_IMX8QXP		0x2
 #define SOC_ID_OF_IMX93			0x9300
-#define SOC_ID_OF_IMX95			0x9500
 #define SOC_ID_OF_IMX94			0x9430
+#define SOC_ID_OF_IMX95			0x9500
 
 #define OTP_UNIQ_ID			0x01
 #define OTFAD_CONFIG			0x2

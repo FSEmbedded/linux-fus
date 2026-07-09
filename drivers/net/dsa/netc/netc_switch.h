@@ -57,7 +57,10 @@
 /* Software defined host reason */
 #define NETC_HR_TRAP			0x8
 
-#define NETC_SYSCLK_333M		333333333ULL
+#define NETC_SYSCLK_333M		333333333UL
+#define NETC_LPWAKE_US			50
+
+#define NETC_PGID_HSR			1
 
 struct netc_switch;
 struct netc_port;
@@ -111,6 +114,19 @@ struct netc_port_db {
 	u32 pbpmcr1;
 };
 
+enum netc_port_hsr_type {
+	NETC_HSR_DISABLED,
+	NETC_HSR_PORT_A,
+	NETC_HSR_PORT_B,
+	NETC_HSR_REDBOX_INTERLINK,
+	NETC_HSR_UPPER,
+};
+
+struct netc_port_hsr_data {
+	enum netc_port_hsr_type type;
+	u32 isgt_eid;
+};
+
 struct netc_port {
 	struct netc_switch *switch_priv;
 	struct netc_port_caps caps;
@@ -130,6 +146,7 @@ struct netc_port {
 	u16 vlan_aware:1;
 	u16 tx_pause:1;
 	u16 enabled:1;
+	u16 hsr_enabled:1;
 
 	enum netc_port_offloads offloads;
 
@@ -145,11 +162,9 @@ struct netc_port {
 	struct sk_buff_head skb_txtstamp_queue;
 	int ptp_filter;
 	u32 ptp_ipft_eid[NETC_PTP_MAX];
-
-	bool tx_lpi_enabled;
-	u32 tx_lpi_timer;
 	struct netc_port_db db;
 	struct tc_taprio_qopt_offload *taprio;
+	struct netc_port_hsr_data hsr_data;
 };
 
 enum netc_port_mac {
@@ -196,7 +211,7 @@ struct netc_switch {
 	struct netc_port **ports;
 	u32 num_ports;
 
-	struct ntmp_priv ntmp;
+	struct ntmp_user user;
 
 	struct hlist_head fdb_list;
 	struct hlist_head vlan_list;
@@ -209,13 +224,9 @@ struct netc_switch {
 
 	struct netc_switch_caps caps;
 	struct bpt_cfge_data *bpt_list;
-
 	struct netc_switch_dbgfs dbg_params;
 	struct dentry *debugfs_root;
 };
-
-#define NETC_PRIV(ds)			((struct netc_switch *)((ds)->priv))
-#define NETC_PORT(priv, port_id)	((priv)->ports[(port_id)])
 
 struct netc_fdb_entry {
 	u32 entry_id;
@@ -232,6 +243,9 @@ struct netc_vlan_entry {
 	struct vft_cfge_data cfge;
 	struct hlist_node node;
 };
+
+#define NETC_PRIV(ds)			((struct netc_switch *)((ds)->priv))
+#define NETC_PORT(priv, port_id)	((priv)->ports[(port_id)])
 
 /* Generic interfaces for writing/reading Switch registers */
 #define netc_reg_rd(addr)		netc_read(addr)
@@ -250,13 +264,13 @@ struct netc_vlan_entry {
 #define netc_glb_rd(r, o)		netc_read((r)->global + (o))
 #define netc_glb_wr(r, o, v)		netc_write((r)->global + (o), v)
 
-#define ntmp_to_netc_switch(ntmp_priv)	\
-	container_of((ntmp_priv), struct netc_switch, ntmp)
+#define ntmp_to_netc_switch(ntmp_user)	\
+	container_of((ntmp_user), struct netc_switch, user)
 
 int netc_switch_platform_probe(struct netc_switch *priv);
 void netc_port_set_tx_pause(struct netc_port *port, bool tx_pause);
 void netc_port_set_all_tc_msdu(struct netc_port *port, u32 *max_sdu);
-struct pci_dev *netc_switch_get_timer(struct netc_switch *priv);
+struct pci_dev *netc_get_ptp_timer(struct netc_switch *priv);
 void netc_mac_port_wr(struct netc_port *port, u32 reg, u32 val);
 u32 netc_mac_port_rd(struct netc_port *port, u32 reg);
 void netc_destroy_fdb_list(struct netc_switch *priv);
@@ -305,27 +319,24 @@ void netc_port_get_eth_ctrl_stats(struct dsa_switch *ds, int port_id,
 				  struct ethtool_eth_ctrl_stats *ctrl_stats);
 void netc_port_get_eth_mac_stats(struct dsa_switch *ds, int port_id,
 				 struct ethtool_eth_mac_stats *mac_stats);
-void netc_port_get_strings(struct dsa_switch *ds, int port_id, u32 sset, u8 *data);
-void netc_port_get_ethtool_stats(struct dsa_switch *ds, int port_id, u64 *data);
-int netc_port_get_sset_count(struct dsa_switch *ds, int port_id, int sset);
-void netc_port_set_tx_lpi(struct netc_port *port, bool enable);
-int netc_port_get_mac_eee(struct dsa_switch *ds, int port_id,
-			  struct ethtool_keee *e);
 int netc_port_set_mac_eee(struct dsa_switch *ds, int port_id,
-			  struct ethtool_keee *e);
+			  struct ethtool_keee *eee);
 
 /* PTP APIs */
 int netc_get_ts_info(struct dsa_switch *ds, int port_id,
 		     struct kernel_ethtool_ts_info *info);
 int netc_port_hwtstamp_set(struct dsa_switch *ds, int port_id,
-			   struct ifreq *ifr);
+			   struct kernel_hwtstamp_config *config,
+			   struct netlink_ext_ack *extack);
 int netc_port_hwtstamp_get(struct dsa_switch *ds, int port_id,
-			   struct ifreq *ifr);
+			   struct kernel_hwtstamp_config *config);
 bool netc_port_rxtstamp(struct dsa_switch *ds, int port,
 			struct sk_buff *skb, unsigned int type);
 void netc_port_txtstamp(struct dsa_switch *ds, int port_id,
 			struct sk_buff *skb);
 int netc_port_set_ptp_filter(struct netc_port *port, int ptp_filter);
+
+int netc_port_set_hsr(struct netc_port *port, enum netc_port_hsr_type type);
 
 /* Power Management */
 int netc_suspend(struct dsa_switch *ds);
@@ -371,6 +382,16 @@ static inline void netc_del_vlan_entry(struct netc_vlan_entry *entry)
 {
 	hlist_del(&entry->node);
 	kfree(entry);
+}
+
+static inline u64 netc_us_to_cycles(u64 clk_freq, u32 us)
+{
+	return mul_u64_u32_div(clk_freq, us, 1000000U);
+}
+
+static inline u64 netc_cycles_to_us(u64 clk_freq, u32 cycles)
+{
+	return mul_u64_u64_div_u64(cycles, 1000000ULL, clk_freq);
 }
 
 #endif

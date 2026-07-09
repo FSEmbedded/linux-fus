@@ -1,22 +1,96 @@
 // SPDX-License-Identifier: (GPL-2.0+ OR BSD-3-Clause)
 /*
  * NETC NTMP (NETC Table Management Protocol) 2.0 driver
- * Copyright 2024 NXP
+ * Copyright 2025 NXP
  */
+
 #include <linux/fsl/netc_lib.h>
 
 #include "ntmp_private.h"
 
-#define SDU_TYPE_MPDU				1
+int netc_setup_taprio(struct ntmp_user *user, u32 entry_id,
+		      struct tc_taprio_qopt_offload *f)
+{
+	struct tgst_cfge_data *cfge __free(kfree) = NULL;
+	struct netlink_ext_ack *extack = f->extack;
+	u64 base_time = f->base_time;
+	u64 max_cycle_time;
+	int i, err;
+	u32 size;
+
+	if (!user->ops->get_tgst_free_words) {
+		NL_SET_ERR_MSG_MOD(extack, "get_tgst_free_words() is undefined");
+		return -EINVAL;
+	}
+
+	max_cycle_time = f->cycle_time + f->cycle_time_extension;
+	if (max_cycle_time > U32_MAX) {
+		NL_SET_ERR_MSG_MOD(extack, "Max cycle time exceeds U32_MAX");
+		return -EINVAL;
+	}
+
+	/* Delete the pending administrative control list if it exists */
+	err = ntmp_tgst_delete_admin_gate_list(user, entry_id);
+	if (err)
+		return err;
+
+	if (f->num_entries > user->ops->get_tgst_free_words(user)) {
+		NL_SET_ERR_MSG_MOD(extack, "TGST doesn't have enough free words");
+		return -EINVAL;
+	}
+
+	size = struct_size(cfge, ge, f->num_entries);
+	cfge = kzalloc(size, GFP_KERNEL);
+	if (!cfge)
+		return -ENOMEM;
+
+	if (user->ops->adjust_base_time)
+		base_time = user->ops->adjust_base_time(user, base_time,
+							f->cycle_time);
+
+	cfge->admin_bt = cpu_to_le64(base_time);
+	cfge->admin_ct = cpu_to_le32(f->cycle_time);
+	cfge->admin_ct_ext = cpu_to_le32(f->cycle_time_extension);
+	cfge->admin_cl_len = cpu_to_le16(f->num_entries);
+	for (i = 0; i < f->num_entries; i++) {
+		struct tc_taprio_sched_entry *temp_entry = &f->entries[i];
+
+		switch (temp_entry->command) {
+		case TC_TAPRIO_CMD_SET_GATES:
+			cfge->ge[i].hr_cb = HR_CB_SET_GATES;
+			break;
+		case TC_TAPRIO_CMD_SET_AND_HOLD:
+			cfge->ge[i].hr_cb = HR_CB_SET_AND_HOLD;
+			break;
+		case TC_TAPRIO_CMD_SET_AND_RELEASE:
+			cfge->ge[i].hr_cb = HR_CB_SET_AND_RELEASE;
+			break;
+		default:
+			return -EOPNOTSUPP;
+		}
+
+		cfge->ge[i].tc_state = temp_entry->gate_mask;
+		cfge->ge[i].interval = cpu_to_le32(temp_entry->interval);
+	}
+
+	err = ntmp_tgst_update_admin_gate_list(user, entry_id, cfge);
+	if (err) {
+		NL_SET_ERR_MSG_MOD(extack, "Update control list failed");
+		return err;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(netc_setup_taprio);
 
 struct netc_flower_rule *
-netc_find_flower_rule_by_cookie(struct ntmp_priv *priv, int port_id,
+netc_find_flower_rule_by_cookie(struct ntmp_user *user, int port_id,
 				unsigned long cookie)
 {
 	struct netc_flower_rule *rule;
 
-	hlist_for_each_entry(rule, &priv->flower_list, node) {
-		if (priv->dev_type == NETC_DEV_SWITCH) {
+	hlist_for_each_entry(rule, &user->flower_list, node) {
+		if (user->dev_type == NETC_DEV_SWITCH) {
 			if (rule->port_id == port_id && rule->cookie == cookie)
 				return rule;
 		} else {
@@ -52,14 +126,14 @@ static bool netc_flower_ipft_key_matched(const struct ipft_keye_data *key1,
 }
 
 struct netc_flower_rule *
-netc_find_flower_rule_by_key(struct ntmp_priv *priv,
+netc_find_flower_rule_by_key(struct ntmp_user *user,
 			     enum netc_key_tbl_type tbl_type,
 			     void *key)
 {
 	struct netc_flower_key_tbl *key_tbl;
 	struct netc_flower_rule *rule;
 
-	hlist_for_each_entry(rule, &priv->flower_list, node) {
+	hlist_for_each_entry(rule, &user->flower_list, node) {
 		key_tbl = rule->key_tbl;
 		if (key_tbl->tbl_type != tbl_type)
 			continue;
@@ -76,7 +150,7 @@ netc_find_flower_rule_by_key(struct ntmp_priv *priv,
 }
 EXPORT_SYMBOL_GPL(netc_find_flower_rule_by_key);
 
-static int netc_psfp_flower_key_validate(struct ntmp_priv *priv,
+static int netc_psfp_flower_key_validate(struct ntmp_user *user,
 					 struct isit_keye_data *keye, int prio,
 					 struct netc_flower_key_tbl **key_tbl,
 					 struct netlink_ext_ack *extack)
@@ -85,7 +159,7 @@ static int netc_psfp_flower_key_validate(struct ntmp_priv *priv,
 	struct netc_flower_key_tbl *tmp_tbl;
 
 	/* Find the first rule with the same ISIT key */
-	rule = netc_find_flower_rule_by_key(priv, FLOWER_KEY_TBL_ISIT, keye);
+	rule = netc_find_flower_rule_by_key(user, FLOWER_KEY_TBL_ISIT, keye);
 	if (!rule)
 		return 0;
 
@@ -109,7 +183,7 @@ static int netc_psfp_flower_key_validate(struct ntmp_priv *priv,
 	}
 
 	/* If there are other rules using the same key, an error is returned */
-	hlist_for_each_entry(tmp_rule, &priv->flower_list, node) {
+	hlist_for_each_entry(tmp_rule, &user->flower_list, node) {
 		tmp_tbl = tmp_rule->key_tbl;
 		if (tmp_tbl->tbl_type != FLOWER_KEY_TBL_ISIT)
 			continue;
@@ -131,11 +205,11 @@ static int netc_psfp_flower_key_validate(struct ntmp_priv *priv,
 }
 
 static struct netc_gate_tbl *
-netc_find_flower_gate_table(struct ntmp_priv *priv, u32 index)
+netc_find_flower_gate_table(struct ntmp_user *user, u32 index)
 {
 	struct netc_flower_rule *rule;
 
-	hlist_for_each_entry(rule, &priv->flower_list, node) {
+	hlist_for_each_entry(rule, &user->flower_list, node) {
 		struct netc_gate_tbl *gate_tbl = rule->gate_tbl;
 
 		if (!gate_tbl)
@@ -148,50 +222,49 @@ netc_find_flower_gate_table(struct ntmp_priv *priv, u32 index)
 	return NULL;
 }
 
-static int netc_psfp_gate_entry_validate(struct ntmp_priv *priv,
-					 struct flow_action_entry *gate_entry,
-					 struct netc_gate_tbl **gate_tbl,
+static int netc_psfp_gate_entry_validate(struct ntmp_user *user,
+					 struct flow_action_entry *entry,
+					 struct netc_gate_tbl **tbl,
 					 struct netlink_ext_ack *extack)
 {
 	u64 max_cycle_time;
 	u32 num_gates;
 
-	if (!gate_entry) {
+	if (!entry) {
 		NL_SET_ERR_MSG_MOD(extack, "No gate entries");
 		return -EINVAL;
 	}
 
-	num_gates = gate_entry->gate.num_entries;
+	num_gates = entry->gate.num_entries;
 	if (num_gates > SGCLT_MAX_GE_NUM) {
 		NL_SET_ERR_MSG_MOD(extack, "Gate number exceeds 256");
 		return -EINVAL;
 	}
 
-	max_cycle_time = gate_entry->gate.cycletime + gate_entry->gate.cycletimeext;
-	if (max_cycle_time > SGIT_MAX_CT_PLUS_CT_EXT) {
+	max_cycle_time = entry->gate.cycletime + entry->gate.cycletimeext;
+	if (max_cycle_time > SGIT_MAX_CYCLE_TIME) {
 		NL_SET_ERR_MSG_MOD(extack, "Max cycle time exceeds 0x3ffffff ns");
 		return -EINVAL;
 	}
 
-	if (gate_entry->hw_index >= priv->caps.sgit_num_entries) {
+	if (entry->hw_index >= user->caps.sgit_num_entries) {
 		NL_SET_ERR_MSG_FMT_MOD(extack, "Gate hw index cannot exceed %u",
-				       priv->caps.sgit_num_entries - 1);
+				       user->caps.sgit_num_entries - 1);
 		return -EINVAL;
 	}
 
-	if (test_and_set_bit(gate_entry->hw_index, priv->sgit_eid_bitmap))
-		*gate_tbl = netc_find_flower_gate_table(priv,
-							gate_entry->hw_index);
+	if (test_and_set_bit(entry->hw_index, user->sgit_eid_bitmap))
+		*tbl = netc_find_flower_gate_table(user, entry->hw_index);
 
 	return 0;
 }
 
 static struct netc_police_tbl *
-netc_find_flower_police_table(struct ntmp_priv *priv, u32 index)
+netc_find_flower_police_table(struct ntmp_user *user, u32 index)
 {
 	struct netc_flower_rule *rule;
 
-	hlist_for_each_entry(rule, &priv->flower_list, node) {
+	hlist_for_each_entry(rule, &user->flower_list, node) {
 		struct netc_police_tbl *police_tbl = rule->police_tbl;
 
 		if (!police_tbl)
@@ -204,59 +277,58 @@ netc_find_flower_police_table(struct ntmp_priv *priv, u32 index)
 	return NULL;
 }
 
-int netc_police_entry_validate(struct ntmp_priv *priv,
+int netc_police_entry_validate(struct ntmp_user *user,
 			       const struct flow_action *action,
-			       const struct flow_action_entry *police_entry,
-			       struct netc_police_tbl **police_tbl,
+			       const struct flow_action_entry *entry,
+			       struct netc_police_tbl **tbl,
 			       struct netlink_ext_ack *extack)
 {
-	if (police_entry->police.exceed.act_id != FLOW_ACTION_DROP) {
+	if (entry->police.exceed.act_id != FLOW_ACTION_DROP) {
 		NL_SET_ERR_MSG_MOD(extack,
 				   "Offload not supported when exceed action is not drop");
 		return -EOPNOTSUPP;
 	}
 
-	if (police_entry->police.notexceed.act_id != FLOW_ACTION_PIPE &&
-	    police_entry->police.notexceed.act_id != FLOW_ACTION_ACCEPT) {
+	if (entry->police.notexceed.act_id != FLOW_ACTION_PIPE &&
+	    entry->police.notexceed.act_id != FLOW_ACTION_ACCEPT) {
 		NL_SET_ERR_MSG_MOD(extack,
 				   "Offload not supported when conform action is not pipe or ok");
 		return -EOPNOTSUPP;
 	}
 
-	if (police_entry->police.notexceed.act_id == FLOW_ACTION_ACCEPT &&
-	    !flow_action_is_last_entry(action, police_entry)) {
+	if (entry->police.notexceed.act_id == FLOW_ACTION_ACCEPT &&
+	    !flow_action_is_last_entry(action, entry)) {
 		NL_SET_ERR_MSG_MOD(extack,
 				   "Offload not supported when conform action is ok, but action is not last");
 		return -EOPNOTSUPP;
 	}
 
-	if (police_entry->police.peakrate_bytes_ps ||
-	    police_entry->police.avrate || police_entry->police.overhead) {
+	if (entry->police.peakrate_bytes_ps ||
+	    entry->police.avrate || entry->police.overhead) {
 		NL_SET_ERR_MSG_MOD(extack,
 				   "Offload not supported when peakrate/avrate/overhead is configured");
 		return -EOPNOTSUPP;
 	}
 
-	if (police_entry->police.rate_pkt_ps) {
+	if (entry->police.rate_pkt_ps) {
 		NL_SET_ERR_MSG_MOD(extack,
 				   "QoS offload not support packets per second");
 		return -EOPNOTSUPP;
 	}
 
-	if (!police_entry->police.rate_bytes_ps && !police_entry->police.burst) {
+	if (!entry->police.rate_bytes_ps && !entry->police.burst) {
 		NL_SET_ERR_MSG_MOD(extack, "Burst and rate cannot be all 0");
 		return -EINVAL;
 	}
 
-	if (police_entry->hw_index >= priv->caps.rpt_num_entries) {
+	if (entry->hw_index >= user->caps.rpt_num_entries) {
 		NL_SET_ERR_MSG_FMT_MOD(extack, "Police index cannot exceed %u",
-				       priv->caps.rpt_num_entries - 1);
+				       user->caps.rpt_num_entries - 1);
 		return -EINVAL;
 	}
 
-	if (test_and_set_bit(police_entry->hw_index, priv->rpt_eid_bitmap))
-		*police_tbl = netc_find_flower_police_table(priv,
-							    police_entry->hw_index);
+	if (test_and_set_bit(entry->hw_index, user->rpt_eid_bitmap))
+		*tbl = netc_find_flower_police_table(user, entry->hw_index);
 
 	return 0;
 }
@@ -344,26 +416,28 @@ static int netc_psfp_isit_keye_construct(struct flow_rule *rule, int port_index,
 	return 0;
 }
 
-static void netc_psfp_gate_entry_config(struct ntmp_priv *priv,
-					struct flow_action_entry *gate_entry,
+static void netc_psfp_gate_entry_config(struct ntmp_user *user,
+					struct flow_action_entry *entry,
 					struct ntmp_sgit_entry *sgit_entry,
 					struct ntmp_sgclt_entry *sgclt_entry)
 {
-	u32 cycle_time_ext = gate_entry->gate.cycletimeext;
-	u32 num_gates = gate_entry->gate.num_entries;
-	u32 cycle_time = gate_entry->gate.cycletime;
-	u64 base_time = gate_entry->gate.basetime;
-	u8 sgit_cfg, sgit_icfg = SGIT_GST;
+	u32 cycle_time_ext = entry->gate.cycletimeext;
+	u32 num_gates = entry->gate.num_entries;
+	u32 cycle_time = entry->gate.cycletime;
+	u64 base_time = entry->gate.basetime;
 	u8 sgclt_extcfg = SGCLT_EXT_GTST;
+	u8 sgit_icfg = SGIT_GST;
+	u8 sgit_cfg;
 	int i;
 
-	if (gate_entry->gate.prio >= 0) {
-		sgit_icfg |= FIELD_PREP(SGIT_IPV, gate_entry->gate.prio);
+	if (entry->gate.prio >= 0) {
+		sgit_icfg |= FIELD_PREP(SGIT_IPV, entry->gate.prio);
 		sgit_icfg |= SGIT_OIPV;
 	}
 
-	if (priv->adjust_base_time)
-		base_time = priv->adjust_base_time(priv, base_time, cycle_time);
+	if (user->ops->adjust_base_time)
+		base_time = user->ops->adjust_base_time(user, base_time,
+							cycle_time);
 
 	sgit_cfg = FIELD_PREP(SGIT_SDU_TYPE, SDU_TYPE_MPDU);
 	sgit_entry->acfge.admin_base_time = cpu_to_le64(base_time);
@@ -374,14 +448,14 @@ static void netc_psfp_gate_entry_config(struct ntmp_priv *priv,
 
 	sgclt_entry->cfge.cycle_time = cpu_to_le32(cycle_time);
 	sgclt_entry->cfge.list_length = num_gates - 1;
-	if (gate_entry->gate.prio >= 0) {
-		sgclt_extcfg |= FIELD_PREP(SGCLT_EXT_IPV, gate_entry->gate.prio);
+	if (entry->gate.prio >= 0) {
+		sgclt_extcfg |= FIELD_PREP(SGCLT_EXT_IPV, entry->gate.prio);
 		sgclt_extcfg |= SGCLT_EXT_OIPV;
 	}
 	sgclt_entry->cfge.ext_cfg = sgclt_extcfg;
 
 	for (i = 0; i < num_gates; i++) {
-		struct action_gate_entry *from = &gate_entry->gate.entries[i];
+		struct action_gate_entry *from = &entry->gate.entries[i];
 		struct sgclt_ge *to = &sgclt_entry->cfge.ge[i];
 		u32 sgclt_cfg = 0;
 
@@ -403,21 +477,21 @@ static void netc_psfp_gate_entry_config(struct ntmp_priv *priv,
 	}
 }
 
-void netc_rpt_entry_config(struct flow_action_entry *police_entry,
+void netc_rpt_entry_config(struct flow_action_entry *entry,
 			   struct ntmp_rpt_entry *rpt_entry)
 {
 	u64 rate_bps;
 	u32 cir, cbs;
 	u16 cfg;
 
-	rpt_entry->entry_id = police_entry->hw_index;
+	rpt_entry->entry_id = entry->hw_index;
 
 	/* The unit of rate_bytes_ps is 1Bps, the uint of cir is 3.725bps,
 	 * so convert it.
 	 */
-	rate_bps = police_entry->police.rate_bytes_ps * 8;
+	rate_bps = entry->police.rate_bytes_ps * 8;
 	cir = div_u64(rate_bps * 1000, 3725);
-	cbs = police_entry->police.burst;
+	cbs = entry->police.burst;
 	cfg = FIELD_PREP(RPT_SDU_TYPE, SDU_TYPE_MPDU);
 	rpt_entry->cfge.cir = cpu_to_le32(cir);
 	rpt_entry->cfge.cbs = cpu_to_le32(cbs);
@@ -426,10 +500,9 @@ void netc_rpt_entry_config(struct flow_action_entry *police_entry,
 }
 EXPORT_SYMBOL_GPL(netc_rpt_entry_config);
 
-static int netc_delete_sgclt_entry(struct ntmp_priv *priv, u32 entry_id)
+static int netc_delete_sgclt_entry(struct ntmp_user *user, u32 entry_id)
 {
 	struct ntmp_sgclt_entry *sgclt_entry __free(kfree);
-	struct netc_cbdrs *cbdrs = &priv->cbdrs;
 	u32 max_data_size, max_cfge_size;
 	u32 num_gates, entry_size;
 	int err;
@@ -444,26 +517,25 @@ static int netc_delete_sgclt_entry(struct ntmp_priv *priv, u32 entry_id)
 	if (!sgclt_entry)
 		return -ENOMEM;
 
-	err = ntmp_sgclt_query_entry(cbdrs, entry_id, sgclt_entry, max_cfge_size);
+	err = ntmp_sgclt_query_entry(user, entry_id, sgclt_entry, max_cfge_size);
 	if (err)
 		return err;
 
 	/* entry_size equals to 1 + ROUNDUP(N / 2) where N is number of gates */
 	num_gates = sgclt_entry->cfge.list_length + 1;
 	entry_size = 1 + DIV_ROUND_UP(num_gates, 2);
-	err = ntmp_sgclt_delete_entry(cbdrs, entry_id);
+	err = ntmp_sgclt_delete_entry(user, entry_id);
 	if (err)
 		return err;
 
-	ntmp_clear_words_bitmap(priv->sgclt_word_bitmap, entry_id, entry_size);
+	ntmp_clear_words_bitmap(user->sgclt_word_bitmap, entry_id, entry_size);
 
 	return 0;
 }
 
-static int netc_delete_sgit_entry(struct ntmp_priv *priv, u32 entry_id)
+static int netc_delete_sgit_entry(struct ntmp_user *user, u32 entry_id)
 {
 	struct ntmp_sgit_entry *entry __free(kfree);
-	struct netc_cbdrs *cbdrs = &priv->cbdrs;
 	struct ntmp_sgit_entry new_entry = {0};
 	u32 sgcl_eid;
 	int err;
@@ -479,7 +551,7 @@ static int netc_delete_sgit_entry(struct ntmp_priv *priv, u32 entry_id)
 	 * the entry id of the administrative gate control list and the
 	 * opertational gate control list.
 	 */
-	err = ntmp_sgit_query_entry(cbdrs, entry_id, entry);
+	err = ntmp_sgit_query_entry(user, entry_id, entry);
 	if (err)
 		return err;
 
@@ -488,32 +560,32 @@ static int netc_delete_sgit_entry(struct ntmp_priv *priv, u32 entry_id)
 	 */
 	new_entry.acfge.admin_sgcl_eid = cpu_to_le32(NTMP_NULL_ENTRY_ID);
 	new_entry.entry_id = entry_id;
-	err = ntmp_sgit_add_or_update_entry(cbdrs, &new_entry);
+	err = ntmp_sgit_add_or_update_entry(user, false, &new_entry);
 	if (err)
 		return err;
 
 	/* Step3: Delete the stream gate instance table entry. */
-	err = ntmp_sgit_delete_entry(cbdrs, entry_id);
+	err = ntmp_sgit_delete_entry(user, entry_id);
 	if (err)
 		return err;
 
-	ntmp_clear_eid_bitmap(priv->sgit_eid_bitmap, entry_id);
+	ntmp_clear_eid_bitmap(user->sgit_eid_bitmap, entry_id);
 
 	/* Step4: Delete the administrative gate control list
 	 * and the operational gate control list.
 	 */
 	sgcl_eid = le32_to_cpu(entry->acfge.admin_sgcl_eid);
-	err = netc_delete_sgclt_entry(priv, sgcl_eid);
+	err = netc_delete_sgclt_entry(user, sgcl_eid);
 	if (err)
 		return err;
 
 	sgcl_eid = le32_to_cpu(entry->sgise.oper_sgcl_eid);
-	err = netc_delete_sgclt_entry(priv, sgcl_eid);
+	err = netc_delete_sgclt_entry(user, sgcl_eid);
 
 	return err;
 }
 
-static int netc_psfp_set_related_tables(struct ntmp_priv *priv,
+static int netc_psfp_set_related_tables(struct ntmp_user *user,
 					struct netc_psfp_tbl_entries *tbl)
 {
 	struct ntmp_sgclt_entry *sgclt_entry = tbl->sgclt_entry;
@@ -523,50 +595,49 @@ static int netc_psfp_set_related_tables(struct ntmp_priv *priv,
 	struct ntmp_isct_entry *isct_entry = tbl->isct_entry;
 	struct ntmp_ist_entry *ist_entry = tbl->ist_entry;
 	struct ntmp_rpt_entry *rpt_entry = tbl->rpt_entry;
-	struct netc_cbdrs *cbdrs = &priv->cbdrs;
 	int err;
 
-	err = ntmp_isct_operate_entry(cbdrs, isct_entry->entry_id,
-				      NTMP_CMD_ADD, NULL);
+	err = ntmp_isct_set_entry(user, isct_entry->entry_id,
+				  NTMP_CMD_ADD, NULL);
 	if (err)
 		return err;
 
 	if (sgclt_entry) {
-		err = ntmp_sgclt_add_entry(cbdrs, sgclt_entry);
+		err = ntmp_sgclt_add_entry(user, sgclt_entry);
 		if (err)
 			goto delete_isct_entry;
 	}
 
 	if (sgit_entry) {
-		err = ntmp_sgit_add_or_update_entry(cbdrs, sgit_entry);
+		err = ntmp_sgit_add_or_update_entry(user, true, sgit_entry);
 		if (err) {
 			if (sgclt_entry)
-				ntmp_sgclt_delete_entry(cbdrs,
+				ntmp_sgclt_delete_entry(user,
 							sgclt_entry->entry_id);
 			goto delete_isct_entry;
 		}
 	}
 
 	if (rpt_entry) {
-		err = ntmp_rpt_add_or_update_entry(cbdrs, rpt_entry);
+		err = ntmp_rpt_add_entry(user, rpt_entry);
 		if (err)
 			goto delete_sgit_entry;
 	}
 
 	if (ist_entry) {
-		err = ntmp_ist_add_or_update_entry(cbdrs, ist_entry);
+		err = ntmp_ist_add_entry(user, ist_entry);
 		if (err)
 			goto delete_rpt_entry;
 	}
 
 	if (isft_entry) {
-		err = ntmp_isft_add_or_update_entry(cbdrs, true, isft_entry);
+		err = ntmp_isft_add_entry(user, isft_entry);
 		if (err)
 			goto delete_ist_entry;
 	}
 
 	if (isit_entry) {
-		err = ntmp_isit_add_or_update_entry(cbdrs, true, isit_entry);
+		err = ntmp_isit_add_entry(user, isit_entry);
 		if (err)
 			goto delete_isft_entry;
 	}
@@ -575,28 +646,27 @@ static int netc_psfp_set_related_tables(struct ntmp_priv *priv,
 
 delete_isft_entry:
 	if (isft_entry)
-		ntmp_isft_delete_entry(cbdrs, isft_entry->entry_id);
+		ntmp_isft_delete_entry(user, isft_entry->entry_id);
 
 delete_ist_entry:
 	if (ist_entry)
-		ntmp_ist_delete_entry(cbdrs, ist_entry->entry_id);
+		ntmp_ist_delete_entry(user, ist_entry->entry_id);
 
 delete_rpt_entry:
 	if (rpt_entry)
-		ntmp_rpt_delete_entry(cbdrs, rpt_entry->entry_id);
+		ntmp_rpt_delete_entry(user, rpt_entry->entry_id);
 
 delete_sgit_entry:
 	if (sgit_entry)
-		netc_delete_sgit_entry(priv, sgit_entry->entry_id);
+		netc_delete_sgit_entry(user, sgit_entry->entry_id);
 
 delete_isct_entry:
-	ntmp_isct_operate_entry(cbdrs, isct_entry->entry_id,
-				NTMP_CMD_DELETE, NULL);
+	ntmp_isct_set_entry(user, isct_entry->entry_id, NTMP_CMD_DELETE, NULL);
 
 	return err;
 }
 
-void netc_init_ist_entry_eids(struct ntmp_priv *priv,
+void netc_init_ist_entry_eids(struct ntmp_user *user,
 			      struct ntmp_ist_entry *ist_entry)
 {
 	struct ist_cfge_data *cfge = &ist_entry->cfge;
@@ -605,7 +675,7 @@ void netc_init_ist_entry_eids(struct ntmp_priv *priv,
 	cfge->sgi_eid = cpu_to_le32(NTMP_NULL_ENTRY_ID);
 	cfge->isc_eid = cpu_to_le32(NTMP_NULL_ENTRY_ID);
 
-	if (priv->dev_type == NETC_DEV_SWITCH) {
+	if (user->dev_type == NETC_DEV_SWITCH) {
 		cfge->isqg_eid = cpu_to_le32(NTMP_NULL_ENTRY_ID);
 		cfge->ifm_eid = cpu_to_le32(NTMP_NULL_ENTRY_ID);
 		cfge->et_eid = cpu_to_le32(NTMP_NULL_ENTRY_ID);
@@ -613,7 +683,7 @@ void netc_init_ist_entry_eids(struct ntmp_priv *priv,
 }
 EXPORT_SYMBOL_GPL(netc_init_ist_entry_eids);
 
-static int netc_add_psfp_key_tbl(struct ntmp_priv *priv,
+static int netc_add_psfp_key_tbl(struct ntmp_user *user,
 				 struct netc_flower_key_tbl **key_tbl,
 				 struct isit_keye_data *isit_key,
 				 struct netlink_ext_ack *extack)
@@ -638,16 +708,16 @@ static int netc_add_psfp_key_tbl(struct ntmp_priv *priv,
 	new_tbl->tbl_type = FLOWER_KEY_TBL_ISIT;
 	refcount_set(&new_tbl->refcount, 1);
 
-	ist_entry->entry_id = ntmp_lookup_free_eid(priv->ist_eid_bitmap,
-						   priv->caps.ist_num_entries);
+	ist_entry->entry_id = ntmp_lookup_free_eid(user->ist_eid_bitmap,
+						   user->caps.ist_num_entries);
 	if (ist_entry->entry_id == NTMP_NULL_ENTRY_ID) {
 		NL_SET_ERR_MSG_MOD(extack, "No available IST entry is found");
 		return -ENOSPC;
 	}
 
-	switch (priv->cbdrs.tbl.ist_ver) {
+	switch (user->tbl.ist_ver) {
 	case NTMP_TBL_VER0:
-		if (priv->dev_type == NETC_DEV_SWITCH)
+		if (user->dev_type == NETC_DEV_SWITCH)
 			ist_cfg |= FIELD_PREP(IST_V0_FA, IST_SWITCH_FA_BF);
 		else
 			ist_cfg |= FIELD_PREP(IST_V0_FA, IST_FA_NO_SI_BITMAP);
@@ -655,7 +725,7 @@ static int netc_add_psfp_key_tbl(struct ntmp_priv *priv,
 		ist_cfg |= FIELD_PREP(IST_V0_SDU_TYPE, SDU_TYPE_MPDU);
 		break;
 	case NTMP_TBL_VER1:
-		if (priv->dev_type == NETC_DEV_SWITCH)
+		if (user->dev_type == NETC_DEV_SWITCH)
 			ist_cfg |= FIELD_PREP(IST_V1_FA, IST_SWITCH_FA_BF);
 		else
 			ist_cfg |= FIELD_PREP(IST_V1_FA, IST_FA_NO_SI_BITMAP);
@@ -664,14 +734,14 @@ static int netc_add_psfp_key_tbl(struct ntmp_priv *priv,
 		break;
 	default:
 		NL_SET_ERR_MSG_MOD(extack, "Unknown IST version");
-		ntmp_clear_eid_bitmap(priv->ist_eid_bitmap,
+		ntmp_clear_eid_bitmap(user->ist_eid_bitmap,
 				      ist_entry->entry_id);
 
 		return -EINVAL;
 	}
 
 	ist_entry->cfge.cfg = cpu_to_le32(ist_cfg);
-	netc_init_ist_entry_eids(priv, ist_entry);
+	netc_init_ist_entry_eids(user, ist_entry);
 
 	isit_entry->is_eid = cpu_to_le32(ist_entry->entry_id);
 	isit_entry->keye = *isit_key;
@@ -683,7 +753,7 @@ static int netc_add_psfp_key_tbl(struct ntmp_priv *priv,
 	return 0;
 }
 
-void netc_free_flower_key_tbl(struct ntmp_priv *priv,
+void netc_free_flower_key_tbl(struct ntmp_user *user,
 			      struct netc_flower_key_tbl *key_tbl)
 {
 	struct ntmp_ist_entry *ist_entry;
@@ -693,7 +763,7 @@ void netc_free_flower_key_tbl(struct ntmp_priv *priv,
 
 	ist_entry = key_tbl->ist_entry;
 	if (ist_entry) {
-		ntmp_clear_eid_bitmap(priv->ist_eid_bitmap, ist_entry->entry_id);
+		ntmp_clear_eid_bitmap(user->ist_eid_bitmap, ist_entry->entry_id);
 		kfree(key_tbl->ist_entry);
 	}
 
@@ -710,7 +780,7 @@ void netc_free_flower_key_tbl(struct ntmp_priv *priv,
 }
 EXPORT_SYMBOL_GPL(netc_free_flower_key_tbl);
 
-int netc_setup_psfp(struct ntmp_priv *priv, int port_id,
+int netc_setup_psfp(struct ntmp_user *user, int port_id,
 		    struct flow_cls_offload *f)
 {
 	struct flow_action_entry *gate_entry = NULL, *police_entry = NULL;
@@ -740,8 +810,8 @@ int netc_setup_psfp(struct ntmp_priv *priv, int port_id,
 	int i, err, priority = -1;
 	u16 msdu = 0;
 
-	guard(mutex)(&priv->flower_lock);
-	if (netc_find_flower_rule_by_cookie(priv, port_id, cookie)) {
+	guard(mutex)(&user->flower_lock);
+	if (netc_find_flower_rule_by_cookie(user, port_id, cookie)) {
 		NL_SET_ERR_MSG_MOD(extack,
 				   "Cannot add new rule with same cookie");
 		return -EINVAL;
@@ -762,14 +832,14 @@ int netc_setup_psfp(struct ntmp_priv *priv, int port_id,
 		else if (action_entry->id == FLOW_ACTION_POLICE)
 			police_entry = action_entry;
 
-	err = netc_psfp_gate_entry_validate(priv, gate_entry,
+	err = netc_psfp_gate_entry_validate(user, gate_entry,
 					    &reused_gate_tbl, extack);
 	if (err)
 		return err;
 
 	if (police_entry) {
 		msdu = police_entry->police.mtu;
-		err = netc_police_entry_validate(priv, &cls_rule->action,
+		err = netc_police_entry_validate(user, &cls_rule->action,
 						 police_entry, &reused_police_tbl,
 						 extack);
 		if (err)
@@ -781,13 +851,13 @@ int netc_setup_psfp(struct ntmp_priv *priv, int port_id,
 	if (err)
 		goto clear_rpt_eid_bit;
 
-	err = netc_psfp_flower_key_validate(priv, &isit_keye, priority,
+	err = netc_psfp_flower_key_validate(user, &isit_keye, priority,
 					    &reused_key_tbl, extack);
 	if (err)
 		goto clear_rpt_eid_bit;
 
 	if (!reused_key_tbl) {
-		err = netc_add_psfp_key_tbl(priv, &key_tbl, &isit_keye, extack);
+		err = netc_add_psfp_key_tbl(user, &key_tbl, &isit_keye, extack);
 		if (err)
 			goto clear_rpt_eid_bit;
 
@@ -834,8 +904,8 @@ int netc_setup_psfp(struct ntmp_priv *priv, int port_id,
 	sgit_entry->entry_id = sgit_eid;
 	num_gates = gate_entry->gate.num_entries;
 	sgclt_entry_size = 1 + DIV_ROUND_UP(num_gates, 2);
-	sgclt_eid = ntmp_lookup_free_words(priv->sgclt_word_bitmap,
-					   priv->caps.sgclt_num_words,
+	sgclt_eid = ntmp_lookup_free_words(user->sgclt_word_bitmap,
+					   user->caps.sgclt_num_words,
 					   sgclt_entry_size);
 	if (sgclt_eid == NTMP_NULL_ENTRY_ID) {
 		NL_SET_ERR_MSG_MOD(extack, "No Stream Gate Control List resource");
@@ -851,11 +921,12 @@ int netc_setup_psfp(struct ntmp_priv *priv, int port_id,
 	}
 
 	sgclt_entry->entry_id = sgclt_eid;
-	netc_psfp_gate_entry_config(priv, gate_entry, sgit_entry, sgclt_entry);
+	refcount_set(&gate_tbl->refcount, 1);
+	netc_psfp_gate_entry_config(user, gate_entry, sgit_entry, sgclt_entry);
 
 config_isct:
-	isct_eid = ntmp_lookup_free_eid(priv->isct_eid_bitmap,
-					priv->caps.isct_num_entries);
+	isct_eid = ntmp_lookup_free_eid(user->isct_eid_bitmap,
+					user->caps.isct_num_entries);
 	if (isct_eid == NTMP_NULL_ENTRY_ID) {
 		NL_SET_ERR_MSG_MOD(extack, "No available ISCT entry is found");
 		err = -ENOSPC;
@@ -918,7 +989,7 @@ config_isct:
 	psfp_tbl.sgit_entry = sgit_entry;
 	psfp_tbl.isct_entry = isct_entry;
 	psfp_tbl.sgclt_entry = sgclt_entry;
-	err = netc_psfp_set_related_tables(priv, &psfp_tbl);
+	err = netc_psfp_set_related_tables(user, &psfp_tbl);
 	if (err)
 		goto clear_isct_eid_bit;
 
@@ -952,48 +1023,46 @@ config_isct:
 		rule->police_tbl = no_free_ptr(police_tbl);
 	}
 
-	hlist_add_head(&no_free_ptr(rule)->node, &priv->flower_list);
+	hlist_add_head(&no_free_ptr(rule)->node, &user->flower_list);
 
 	return 0;
 
 clear_isct_eid_bit:
-	ntmp_clear_eid_bitmap(priv->isct_eid_bitmap, isct_eid);
+	ntmp_clear_eid_bitmap(user->isct_eid_bitmap, isct_eid);
 
 clear_sgclt_eid_words:
 	if (sgclt_entry_size)
-		ntmp_clear_words_bitmap(priv->sgclt_word_bitmap, sgclt_eid,
+		ntmp_clear_words_bitmap(user->sgclt_word_bitmap, sgclt_eid,
 					sgclt_entry_size);
 
 free_psfp_key_tbl:
-	netc_free_flower_key_tbl(priv, key_tbl);
+	netc_free_flower_key_tbl(user, key_tbl);
 
 clear_rpt_eid_bit:
 	if (police_entry && !reused_police_tbl)
-		ntmp_clear_eid_bitmap(priv->rpt_eid_bitmap,
+		ntmp_clear_eid_bitmap(user->rpt_eid_bitmap,
 				      police_entry->hw_index);
 
 clear_sgit_eid_bit:
 	if (!reused_gate_tbl)
-		ntmp_clear_eid_bitmap(priv->sgit_eid_bitmap,
+		ntmp_clear_eid_bitmap(user->sgit_eid_bitmap,
 				      gate_entry->hw_index);
 
 	return err;
 }
 EXPORT_SYMBOL_GPL(netc_setup_psfp);
 
-void netc_free_flower_police_tbl(struct ntmp_priv *priv,
+void netc_free_flower_police_tbl(struct ntmp_user *user,
 				 struct netc_police_tbl *police_tbl)
 {
-	struct netc_cbdrs *cbdrs = &priv->cbdrs;
-
 	if (!police_tbl)
 		return;
 
 	if (refcount_dec_and_test(&police_tbl->refcount)) {
 		struct ntmp_rpt_entry *rpt_entry = police_tbl->rpt_entry;
 
-		ntmp_rpt_delete_entry(cbdrs, rpt_entry->entry_id);
-		ntmp_clear_eid_bitmap(priv->rpt_eid_bitmap,
+		ntmp_rpt_delete_entry(user, rpt_entry->entry_id);
+		ntmp_clear_eid_bitmap(user->rpt_eid_bitmap,
 				      rpt_entry->entry_id);
 		kfree(rpt_entry);
 		kfree(police_tbl);
@@ -1001,47 +1070,47 @@ void netc_free_flower_police_tbl(struct ntmp_priv *priv,
 }
 EXPORT_SYMBOL_GPL(netc_free_flower_police_tbl);
 
-void netc_delete_psfp_flower_rule(struct ntmp_priv *priv,
+void netc_delete_psfp_flower_rule(struct ntmp_user *user,
 				  struct netc_flower_rule *rule)
 {
 	struct ntmp_isft_entry *isft_entry = rule->isft_entry;
 	struct netc_flower_key_tbl *key_tbl = rule->key_tbl;
 	struct netc_gate_tbl *gate_tbl = rule->gate_tbl;
-	struct netc_cbdrs *cbdrs = &priv->cbdrs;
 	struct ntmp_isit_entry *isit_entry;
 	struct ntmp_ist_entry *ist_entry;
 
 	if (refcount_dec_and_test(&key_tbl->refcount)) {
 		isit_entry = key_tbl->isit_entry;
 		ist_entry = key_tbl->ist_entry;
-		ntmp_isit_delete_entry(cbdrs, isit_entry->entry_id);
-		ntmp_ist_delete_entry(cbdrs, ist_entry->entry_id);
-		netc_free_flower_key_tbl(priv, key_tbl);
+
+		ntmp_isit_delete_entry(user, isit_entry->entry_id);
+		ntmp_ist_delete_entry(user, ist_entry->entry_id);
+		netc_free_flower_key_tbl(user, key_tbl);
 	}
 
 	if (isft_entry) {
-		ntmp_isft_delete_entry(cbdrs, isft_entry->entry_id);
+		ntmp_isft_delete_entry(user, isft_entry->entry_id);
 		kfree(isft_entry);
 	}
 
-	ntmp_isct_operate_entry(cbdrs, rule->isct_eid, NTMP_CMD_DELETE, NULL);
-	ntmp_clear_eid_bitmap(priv->isct_eid_bitmap, rule->isct_eid);
+	ntmp_isct_set_entry(user, rule->isct_eid, NTMP_CMD_DELETE, NULL);
+	ntmp_clear_eid_bitmap(user->isct_eid_bitmap, rule->isct_eid);
 
 	if (gate_tbl && refcount_dec_and_test(&gate_tbl->refcount)) {
-		netc_delete_sgit_entry(priv, gate_tbl->sgit_entry->entry_id);
+		netc_delete_sgit_entry(user, gate_tbl->sgit_entry->entry_id);
 		kfree(gate_tbl->sgit_entry);
 		kfree(gate_tbl->sgclt_entry);
 		kfree(gate_tbl);
 	}
 
-	netc_free_flower_police_tbl(priv, rule->police_tbl);
+	netc_free_flower_police_tbl(user, rule->police_tbl);
 
 	hlist_del(&rule->node);
 	kfree(rule);
 }
 EXPORT_SYMBOL_GPL(netc_delete_psfp_flower_rule);
 
-int netc_psfp_flower_stat(struct ntmp_priv *priv, struct netc_flower_rule *rule,
+int netc_psfp_flower_stat(struct ntmp_user *user, struct netc_flower_rule *rule,
 			  u64 *byte_cnt, u64 *pkt_cnt, u64 *drop_cnt)
 {
 	struct ntmp_ist_entry *ist_entry = rule->key_tbl->ist_entry;
@@ -1056,14 +1125,13 @@ int netc_psfp_flower_stat(struct ntmp_priv *priv, struct netc_flower_rule *rule,
 		isct_eid = le32_to_cpu(ist_entry->cfge.isc_eid);
 
 	/* Query, followed by update will reset statistics */
-	err = ntmp_isct_operate_entry(&priv->cbdrs, isct_eid,
-				      NTMP_CMD_QU, &stse);
+	err = ntmp_isct_set_entry(user, isct_eid, NTMP_CMD_QU, &stse);
 	if (err)
 		return err;
 
 	sg_drop_cnt = le32_to_cpu(stse.sg_drop_count);
 	/* Workaround for ERR052134 on i.MX95 platform */
-	if (priv->errata & NTMP_ERR052134) {
+	if (user->errata & NTMP_ERR052134) {
 		u32 tmp;
 
 		sg_drop_cnt >>= 9;
@@ -1079,80 +1147,6 @@ int netc_psfp_flower_stat(struct ntmp_priv *priv, struct netc_flower_rule *rule,
 	return 0;
 }
 EXPORT_SYMBOL_GPL(netc_psfp_flower_stat);
-
-int netc_setup_taprio(struct ntmp_priv *priv, u32 entry_id,
-		      struct tc_taprio_qopt_offload *f)
-{
-	struct tgst_cfge_data *cfge __free(kfree) = NULL;
-	struct netlink_ext_ack *extack = f->extack;
-	u64 base_time = f->base_time;
-	u64 max_cycle_time;
-	int i, err;
-	u32 size;
-
-	if (!priv->get_tgst_free_words) {
-		NL_SET_ERR_MSG_MOD(extack, "get_tgst_free_words() is undefined");
-		return -EINVAL;
-	}
-
-	max_cycle_time = f->cycle_time + f->cycle_time_extension;
-	if (max_cycle_time > U32_MAX) {
-		NL_SET_ERR_MSG_MOD(extack, "Max cycle time exceeds U32_MAX");
-		return -EINVAL;
-	}
-
-	/* Delete the pending administrative control list if it exists */
-	err = ntmp_tgst_delete_admin_gate_list(&priv->cbdrs, entry_id);
-	if (err)
-		return err;
-
-	if (f->num_entries > priv->get_tgst_free_words(priv)) {
-		NL_SET_ERR_MSG_MOD(extack, "TGST doesn't have enough free words");
-		return -EINVAL;
-	}
-
-	size = struct_size(cfge, ge, f->num_entries);
-	cfge = kzalloc(size, GFP_KERNEL);
-	if (!cfge)
-		return -ENOMEM;
-
-	if (priv->adjust_base_time)
-		base_time = priv->adjust_base_time(priv, base_time, f->cycle_time);
-
-	cfge->admin_bt = cpu_to_le64(base_time);
-	cfge->admin_ct = cpu_to_le32(f->cycle_time);
-	cfge->admin_ct_ext = cpu_to_le32(f->cycle_time_extension);
-	cfge->admin_cl_len = cpu_to_le16(f->num_entries);
-	for (i = 0; i < f->num_entries; i++) {
-		struct tc_taprio_sched_entry *temp_entry = &f->entries[i];
-
-		switch (temp_entry->command) {
-		case TC_TAPRIO_CMD_SET_GATES:
-			cfge->ge[i].hr_cb = HR_CB_SET_GATES;
-			break;
-		case TC_TAPRIO_CMD_SET_AND_HOLD:
-			cfge->ge[i].hr_cb = HR_CB_SET_AND_HOLD;
-			break;
-		case TC_TAPRIO_CMD_SET_AND_RELEASE:
-			cfge->ge[i].hr_cb = HR_CB_SET_AND_RELEASE;
-			break;
-		default:
-			return -EOPNOTSUPP;
-		}
-
-		cfge->ge[i].tc_state = temp_entry->gate_mask;
-		cfge->ge[i].interval = cpu_to_le32(temp_entry->interval);
-	}
-
-	err = ntmp_tgst_update_admin_gate_list(&priv->cbdrs, entry_id, cfge);
-	if (err) {
-		NL_SET_ERR_MSG_MOD(extack, "Update control list failed");
-		return err;
-	}
-
-	return 0;
-}
-EXPORT_SYMBOL_GPL(netc_setup_taprio);
 
 int netc_ipft_keye_construct(struct flow_rule *rule, int port_id,
 			     u16 prio, struct ipft_keye_data *keye,
@@ -1272,9 +1266,9 @@ int netc_ipft_keye_construct(struct flow_rule *rule, int port_id,
 }
 EXPORT_SYMBOL_GPL(netc_ipft_keye_construct);
 
-static int netc_add_police_key_tbl(struct ntmp_priv *priv, u32 rpt_eid,
-				   struct netc_flower_key_tbl **key_tbl,
-				   struct ipft_keye_data *ipft_key)
+static int netc_add_police_key_tbl(struct netc_flower_key_tbl **key_tbl,
+				   struct ipft_keye_data *ipft_key,
+				   u32 rpt_eid)
 {
 	struct netc_flower_key_tbl *new_tbl __free(kfree);
 	struct ntmp_ipft_entry *ipft_entry __free(kfree);
@@ -1305,20 +1299,19 @@ static int netc_add_police_key_tbl(struct ntmp_priv *priv, u32 rpt_eid,
 	return 0;
 }
 
-static int netc_set_police_tables(struct ntmp_priv *priv,
+static int netc_set_police_tables(struct ntmp_user *user,
 				  struct ntmp_ipft_entry *ipft_entry,
 				  struct ntmp_rpt_entry *rpt_entry)
 {
-	struct netc_cbdrs *cbdrs = &priv->cbdrs;
 	int err;
 
 	if (rpt_entry) {
-		err = ntmp_rpt_add_or_update_entry(cbdrs, rpt_entry);
+		err = ntmp_rpt_add_entry(user, rpt_entry);
 		if (err)
 			return err;
 	}
 
-	err = ntmp_ipft_add_entry(cbdrs, &ipft_entry->entry_id, ipft_entry);
+	err = ntmp_ipft_add_entry(user, ipft_entry);
 	if (err)
 		goto delete_rpt_entry;
 
@@ -1326,12 +1319,12 @@ static int netc_set_police_tables(struct ntmp_priv *priv,
 
 delete_rpt_entry:
 	if (rpt_entry)
-		ntmp_rpt_delete_entry(cbdrs, rpt_entry->entry_id);
+		ntmp_rpt_delete_entry(user, rpt_entry->entry_id);
 
 	return err;
 }
 
-int netc_setup_police(struct ntmp_priv *priv, int port_id,
+int netc_setup_police(struct ntmp_user *user, int port_id,
 		      struct flow_cls_offload *f)
 {
 	struct flow_rule *cls_rule = flow_cls_offload_flow_rule(f);
@@ -1350,8 +1343,8 @@ int netc_setup_police(struct ntmp_priv *priv, int port_id,
 	u16 prio = f->common.prio;
 	int i, err;
 
-	guard(mutex)(&priv->flower_lock);
-	if (netc_find_flower_rule_by_cookie(priv, port_id, cookie)) {
+	guard(mutex)(&user->flower_lock);
+	if (netc_find_flower_rule_by_cookie(user, port_id, cookie)) {
 		NL_SET_ERR_MSG_MOD(extack,
 				   "Cannot add new rule with same cookie");
 		return -EINVAL;
@@ -1384,7 +1377,7 @@ int netc_setup_police(struct ntmp_priv *priv, int port_id,
 	if (err)
 		return err;
 
-	old_rule = netc_find_flower_rule_by_key(priv, FLOWER_KEY_TBL_IPFT,
+	old_rule = netc_find_flower_rule_by_key(user, FLOWER_KEY_TBL_IPFT,
 						ipft_keye);
 	if (old_rule) {
 		NL_SET_ERR_MSG_MOD(extack,
@@ -1392,7 +1385,7 @@ int netc_setup_police(struct ntmp_priv *priv, int port_id,
 		return -EINVAL;
 	}
 
-	err = netc_police_entry_validate(priv, &cls_rule->action, police_act,
+	err = netc_police_entry_validate(user, &cls_rule->action, police_act,
 					 &reused_police_tbl, extack);
 	if (err)
 		return err;
@@ -1413,18 +1406,17 @@ int netc_setup_police(struct ntmp_priv *priv, int port_id,
 		netc_rpt_entry_config(police_act, rpt_entry);
 	}
 
-	err = netc_add_police_key_tbl(priv, police_act->hw_index, &key_tbl,
-				      ipft_keye);
+	err = netc_add_police_key_tbl(&key_tbl, ipft_keye, police_act->hw_index);
 	if (err) {
 		NL_SET_ERR_MSG_MOD(extack, "Failed to add police key table");
 		goto clear_rpt_eid_bit;
 	}
 
 	ipft_entry = key_tbl->ipft_entry;
-	err = netc_set_police_tables(priv, ipft_entry, rpt_entry);
+	err = netc_set_police_tables(user, ipft_entry, rpt_entry);
 	if (err) {
 		NL_SET_ERR_MSG_MOD(extack, "Failed to add police table entries");
-		goto clear_rpt_eid_bit;
+		goto free_key_tbl;
 	}
 
 	rule->lastused = jiffies;
@@ -1439,38 +1431,41 @@ int netc_setup_police(struct ntmp_priv *priv, int port_id,
 		rule->police_tbl = no_free_ptr(police_tbl);
 	}
 
-	hlist_add_head(&no_free_ptr(rule)->node, &priv->flower_list);
+	hlist_add_head(&no_free_ptr(rule)->node, &user->flower_list);
 
 	return 0;
 
+free_key_tbl:
+	kfree(key_tbl->ipft_entry);
+	kfree(key_tbl);
 clear_rpt_eid_bit:
 	if (!reused_police_tbl)
-		ntmp_clear_eid_bitmap(priv->rpt_eid_bitmap, police_act->hw_index);
+		ntmp_clear_eid_bitmap(user->rpt_eid_bitmap,
+				      police_act->hw_index);
 
 	return err;
 }
 EXPORT_SYMBOL_GPL(netc_setup_police);
 
-void netc_delete_police_flower_rule(struct ntmp_priv *priv,
+void netc_delete_police_flower_rule(struct ntmp_user *user,
 				    struct netc_flower_rule *rule)
 {
 	struct netc_police_tbl *police_tbl = rule->police_tbl;
 	struct netc_flower_key_tbl *key_tbl = rule->key_tbl;
-	struct netc_cbdrs *cbdrs = &priv->cbdrs;
 	struct ntmp_ipft_entry *ipft_entry;
 
 	ipft_entry = key_tbl->ipft_entry;
-	ntmp_ipft_delete_entry(cbdrs, ipft_entry->entry_id);
+	ntmp_ipft_delete_entry(user, ipft_entry->entry_id);
 
-	netc_free_flower_police_tbl(priv, police_tbl);
-	netc_free_flower_key_tbl(priv, key_tbl);
+	netc_free_flower_police_tbl(user, police_tbl);
+	netc_free_flower_key_tbl(user, key_tbl);
 
 	hlist_del(&rule->node);
 	kfree(rule);
 }
 EXPORT_SYMBOL_GPL(netc_delete_police_flower_rule);
 
-int netc_police_flower_stat(struct ntmp_priv *priv,
+int netc_police_flower_stat(struct ntmp_user *user,
 			    struct netc_flower_rule *rule,
 			    u64 *pkt_cnt)
 {
@@ -1482,7 +1477,7 @@ int netc_police_flower_stat(struct ntmp_priv *priv,
 	if (!ipft_query)
 		return -ENOMEM;
 
-	err = ntmp_ipft_query_entry(&priv->cbdrs, ipft_entry->entry_id,
+	err = ntmp_ipft_query_entry(user, ipft_entry->entry_id,
 				    true, ipft_query);
 	if (err)
 		return err;
@@ -1493,12 +1488,11 @@ int netc_police_flower_stat(struct ntmp_priv *priv,
 }
 EXPORT_SYMBOL_GPL(netc_police_flower_stat);
 
-static int netc_restore_gate_table(struct ntmp_priv *priv,
+static int netc_restore_gate_table(struct ntmp_user *user,
 				   struct netc_gate_tbl *gate_tbl)
 {
 	struct ntmp_sgclt_entry *sgclt_entry = gate_tbl->sgclt_entry;
 	struct ntmp_sgit_entry *sgit_entry = gate_tbl->sgit_entry;
-	struct netc_cbdrs *cbdrs = &priv->cbdrs;
 	u32 cycle_time;
 	u64 base_time;
 	int err;
@@ -1506,18 +1500,19 @@ static int netc_restore_gate_table(struct ntmp_priv *priv,
 	if (gate_tbl->restored)
 		return 0;
 
-	err = ntmp_sgclt_add_entry(cbdrs, sgclt_entry);
+	err = ntmp_sgclt_add_entry(user, sgclt_entry);
 	if (err)
 		return err;
 
-	if (priv->adjust_base_time) {
+	if (user->ops->adjust_base_time) {
 		cycle_time = le32_to_cpu(sgclt_entry->cfge.cycle_time);
 		base_time = le64_to_cpu(sgit_entry->acfge.admin_base_time);
-		base_time = priv->adjust_base_time(priv, base_time, cycle_time);
+		base_time = user->ops->adjust_base_time(user, base_time,
+							cycle_time);
 		sgit_entry->acfge.admin_base_time = cpu_to_le64(base_time);
 	}
 
-	err = ntmp_sgit_add_or_update_entry(cbdrs, sgit_entry);
+	err = ntmp_sgit_add_or_update_entry(user, true, sgit_entry);
 	if (err)
 		goto del_sgit_entry;
 
@@ -1526,28 +1521,27 @@ static int netc_restore_gate_table(struct ntmp_priv *priv,
 	return 0;
 
 del_sgit_entry:
-	ntmp_sgclt_delete_entry(cbdrs, sgclt_entry->entry_id);
+	ntmp_sgclt_delete_entry(user, sgclt_entry->entry_id);
 
 	return err;
 }
 
-static void netc_remove_gate_table(struct ntmp_priv *priv,
+static void netc_remove_gate_table(struct ntmp_user *user,
 				   struct netc_gate_tbl *gate_tbl)
 {
 	struct ntmp_sgclt_entry *sgclt_entry = gate_tbl->sgclt_entry;
 	struct ntmp_sgit_entry *sgit_entry = gate_tbl->sgit_entry;
-	struct netc_cbdrs *cbdrs = &priv->cbdrs;
 	struct ntmp_sgit_entry null_entry = {};
 
 	null_entry.acfge.admin_sgcl_eid = cpu_to_le32(NTMP_NULL_ENTRY_ID);
 	null_entry.entry_id = sgit_entry->entry_id;
-	ntmp_sgit_add_or_update_entry(cbdrs, &null_entry);
-	ntmp_sgit_delete_entry(cbdrs, sgit_entry->entry_id);
-	ntmp_sgclt_delete_entry(cbdrs, sgclt_entry->entry_id);
+	ntmp_sgit_add_or_update_entry(user, false, &null_entry);
+	ntmp_sgit_delete_entry(user, sgit_entry->entry_id);
+	ntmp_sgclt_delete_entry(user, sgclt_entry->entry_id);
 	gate_tbl->restored = false;
 }
 
-static int netc_restore_police_table(struct ntmp_priv *priv,
+static int netc_restore_police_table(struct ntmp_user *user,
 				     struct netc_police_tbl *police_tbl)
 {
 	struct ntmp_rpt_entry *rpt_entry = police_tbl->rpt_entry;
@@ -1556,7 +1550,7 @@ static int netc_restore_police_table(struct ntmp_priv *priv,
 	if (police_tbl->restored)
 		return 0;
 
-	err = ntmp_rpt_add_or_update_entry(&priv->cbdrs, rpt_entry);
+	err = ntmp_rpt_add_entry(user, rpt_entry);
 	if (err)
 		return err;
 
@@ -1565,43 +1559,38 @@ static int netc_restore_police_table(struct ntmp_priv *priv,
 	return 0;
 }
 
-static void netc_remove_police_table(struct ntmp_priv *priv,
+static void netc_remove_police_table(struct ntmp_user *user,
 				     struct netc_police_tbl *police_tbl)
 {
 	struct ntmp_rpt_entry *rpt_entry = police_tbl->rpt_entry;
 
-	ntmp_rpt_delete_entry(&priv->cbdrs, rpt_entry->entry_id);
+	ntmp_rpt_delete_entry(user, rpt_entry->entry_id);
 	police_tbl->restored = false;
 }
 
-static int netc_restore_key_table(struct ntmp_priv *priv,
+static int netc_restore_key_table(struct ntmp_user *user,
 				  struct netc_flower_key_tbl *key_tbl)
 {
 	struct ntmp_ist_entry *ist_entry = key_tbl->ist_entry;
-	struct netc_cbdrs *cbdrs = &priv->cbdrs;
-	struct ntmp_ipft_entry *ipft_entry;
 	int err;
 
 	if (key_tbl->restored)
 		return 0;
 
 	if (ist_entry) {
-		err = ntmp_ist_add_or_update_entry(cbdrs, ist_entry);
+		err = ntmp_ist_add_entry(user, ist_entry);
 		if (err)
 			return err;
 	}
 
 	switch (key_tbl->tbl_type) {
 	case FLOWER_KEY_TBL_ISIT:
-		err = ntmp_isit_add_or_update_entry(cbdrs, true,
-						    key_tbl->isit_entry);
+		err = ntmp_isit_add_entry(user, key_tbl->isit_entry);
 		if (err)
 			goto del_ist_entry;
 		break;
 	case FLOWER_KEY_TBL_IPFT:
-		ipft_entry = key_tbl->ipft_entry;
-		err = ntmp_ipft_add_entry(cbdrs, &ipft_entry->entry_id,
-					  ipft_entry);
+		err = ntmp_ipft_add_entry(user, key_tbl->ipft_entry);
 		if (err)
 			goto del_ist_entry;
 		break;
@@ -1613,65 +1602,62 @@ static int netc_restore_key_table(struct ntmp_priv *priv,
 
 del_ist_entry:
 	if (ist_entry)
-		ntmp_ist_delete_entry(&priv->cbdrs, ist_entry->entry_id);
+		ntmp_ist_delete_entry(user, ist_entry->entry_id);
 
 	return err;
 }
 
-static void netc_remove_key_table(struct ntmp_priv *priv,
+static void netc_remove_key_table(struct ntmp_user *user,
 				  struct netc_flower_key_tbl *key_tbl)
 {
 	struct ntmp_ist_entry *ist_entry = key_tbl->ist_entry;
-	struct netc_cbdrs *cbdrs = &priv->cbdrs;
 
 	switch (key_tbl->tbl_type) {
 	case FLOWER_KEY_TBL_ISIT:
-		ntmp_isit_delete_entry(cbdrs, key_tbl->isit_entry->entry_id);
+		ntmp_isit_delete_entry(user, key_tbl->isit_entry->entry_id);
 		break;
 	case FLOWER_KEY_TBL_IPFT:
-		ntmp_ipft_delete_entry(cbdrs, key_tbl->ipft_entry->entry_id);
+		ntmp_ipft_delete_entry(user, key_tbl->ipft_entry->entry_id);
 		break;
 	}
 
 	if (ist_entry)
-		ntmp_ist_delete_entry(&priv->cbdrs, ist_entry->entry_id);
+		ntmp_ist_delete_entry(user, ist_entry->entry_id);
 
 	key_tbl->restored = false;
 }
 
-static int netc_restore_flower_tables(struct ntmp_priv *priv,
+static int netc_restore_flower_tables(struct ntmp_user *user,
 				      struct netc_flower_rule *rule)
 {
-	struct netc_cbdrs *cbdrs = &priv->cbdrs;
 	int err;
 
 	if (rule->isct_eid != NTMP_NULL_ENTRY_ID) {
-		err = ntmp_isct_operate_entry(cbdrs, rule->isct_eid,
-					      NTMP_CMD_ADD, NULL);
+		err = ntmp_isct_set_entry(user, rule->isct_eid,
+					  NTMP_CMD_ADD, NULL);
 		if (err)
 			return err;
 	}
 
 	if (rule->gate_tbl) {
-		err = netc_restore_gate_table(priv, rule->gate_tbl);
+		err = netc_restore_gate_table(user, rule->gate_tbl);
 		if (err)
 			goto del_isct_entry;
 	}
 
 	if (rule->police_tbl) {
-		err = netc_restore_police_table(priv, rule->police_tbl);
+		err = netc_restore_police_table(user, rule->police_tbl);
 		if (err)
 			goto del_gate_table;
 	}
 
 	if (rule->isft_entry) {
-		err = ntmp_isft_add_or_update_entry(cbdrs, true,
-						    rule->isft_entry);
+		err = ntmp_isft_add_entry(user, rule->isft_entry);
 		if (err)
 			goto del_police_table;
 	}
 
-	err = netc_restore_key_table(priv, rule->key_tbl);
+	err = netc_restore_key_table(user, rule->key_tbl);
 	if (err)
 		goto del_isft_entry;
 
@@ -1679,44 +1665,43 @@ static int netc_restore_flower_tables(struct ntmp_priv *priv,
 
 del_isft_entry:
 	if (rule->isft_entry)
-		ntmp_isft_delete_entry(cbdrs, rule->isft_entry->entry_id);
+		ntmp_isft_delete_entry(user, rule->isft_entry->entry_id);
 del_police_table:
 	if (rule->police_tbl)
-		netc_remove_police_table(priv, rule->police_tbl);
+		netc_remove_police_table(user, rule->police_tbl);
 del_gate_table:
 	if (rule->gate_tbl)
-		netc_remove_gate_table(priv, rule->gate_tbl);
+		netc_remove_gate_table(user, rule->gate_tbl);
 del_isct_entry:
 	if (rule->isct_eid != NTMP_NULL_ENTRY_ID)
-		ntmp_isct_operate_entry(cbdrs, rule->isct_eid,
-					NTMP_CMD_DELETE, NULL);
+		ntmp_isct_set_entry(user, rule->isct_eid,
+				    NTMP_CMD_DELETE, NULL);
 
 	return err;
 }
 
-static void netc_remove_flower_tables(struct ntmp_priv *priv,
+static void netc_remove_flower_tables(struct ntmp_user *user,
 				      struct netc_flower_rule *rule)
 {
 	struct ntmp_isft_entry *isft_entry = rule->isft_entry;
-	struct netc_cbdrs *cbdrs = &priv->cbdrs;
 
-	netc_remove_key_table(priv, rule->key_tbl);
+	netc_remove_key_table(user, rule->key_tbl);
 
 	if (isft_entry)
-		ntmp_isft_delete_entry(cbdrs, isft_entry->entry_id);
+		ntmp_isft_delete_entry(user, isft_entry->entry_id);
 
 	if (rule->police_tbl)
-		netc_remove_police_table(priv, rule->police_tbl);
+		netc_remove_police_table(user, rule->police_tbl);
 
 	if (rule->gate_tbl)
-		netc_remove_gate_table(priv, rule->gate_tbl);
+		netc_remove_gate_table(user, rule->gate_tbl);
 
 	if (rule->isct_eid != NTMP_NULL_ENTRY_ID)
-		ntmp_isct_operate_entry(cbdrs, rule->isct_eid,
-					NTMP_CMD_DELETE, NULL);
+		ntmp_isct_set_entry(user, rule->isct_eid,
+				    NTMP_CMD_DELETE, NULL);
 }
 
-static void netc_free_flower_rule(struct ntmp_priv *priv,
+static void netc_free_flower_rule(struct ntmp_user *user,
 				  struct netc_flower_rule *rule)
 {
 	struct netc_police_tbl *police_tbl = rule->police_tbl;
@@ -1724,7 +1709,7 @@ static void netc_free_flower_rule(struct ntmp_priv *priv,
 	struct netc_gate_tbl *gate_tbl = rule->gate_tbl;
 
 	if (refcount_dec_and_test(&key_tbl->refcount))
-		netc_free_flower_key_tbl(priv, key_tbl);
+		netc_free_flower_key_tbl(user, key_tbl);
 
 	kfree(rule->isft_entry);
 
@@ -1743,48 +1728,48 @@ static void netc_free_flower_rule(struct ntmp_priv *priv,
 	kfree(rule);
 }
 
-int netc_restore_flower_list_config(struct ntmp_priv *priv)
+int netc_restore_flower_list_config(struct ntmp_user *user)
 {
 	struct netc_flower_rule *rule, *iterator;
 	struct hlist_node *tmp;
 	int err;
 
-	mutex_lock(&priv->flower_lock);
+	mutex_lock(&user->flower_lock);
 
-	hlist_for_each_entry(rule, &priv->flower_list, node) {
-		err = netc_restore_flower_tables(priv, rule);
+	hlist_for_each_entry(rule, &user->flower_list, node) {
+		err = netc_restore_flower_tables(user, rule);
 		if (err)
 			goto del_flower_tables;
 	}
 
-	mutex_unlock(&priv->flower_lock);
+	mutex_unlock(&user->flower_lock);
 
 	return 0;
 
 del_flower_tables:
-	hlist_for_each_entry(iterator, &priv->flower_list, node) {
+	hlist_for_each_entry(iterator, &user->flower_list, node) {
 		if (iterator == rule)
 			break;
 
-		netc_remove_flower_tables(priv, iterator);
+		netc_remove_flower_tables(user, iterator);
 	}
 
-	hlist_for_each_entry_safe(iterator, tmp, &priv->flower_list, node)
-		netc_free_flower_rule(priv, iterator);
+	hlist_for_each_entry_safe(iterator, tmp, &user->flower_list, node)
+		netc_free_flower_rule(user, iterator);
 
-	mutex_unlock(&priv->flower_lock);
+	mutex_unlock(&user->flower_lock);
 
 	return err;
 }
 EXPORT_SYMBOL_GPL(netc_restore_flower_list_config);
 
-void netc_clear_flower_table_restored_flag(struct ntmp_priv *priv)
+void netc_clear_flower_table_restored_flag(struct ntmp_user *user)
 {
 	struct netc_flower_rule *rule;
 
-	mutex_lock(&priv->flower_lock);
+	mutex_lock(&user->flower_lock);
 
-	hlist_for_each_entry(rule, &priv->flower_list, node) {
+	hlist_for_each_entry(rule, &user->flower_list, node) {
 		rule->key_tbl->restored = false;
 
 		if (rule->gate_tbl)
@@ -1794,6 +1779,6 @@ void netc_clear_flower_table_restored_flag(struct ntmp_priv *priv)
 			rule->police_tbl->restored = false;
 	}
 
-	mutex_unlock(&priv->flower_lock);
+	mutex_unlock(&user->flower_lock);
 }
 EXPORT_SYMBOL_GPL(netc_clear_flower_table_restored_flag);

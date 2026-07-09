@@ -757,7 +757,8 @@ static const struct mipi_dsi_host_ops sec_mipi_dsim_host_ops = {
 };
 
 static int sec_mipi_dsim_bridge_attach(struct drm_bridge *bridge,
-					enum drm_bridge_attach_flags flags)
+				       struct drm_encoder *encoder,
+				       enum drm_bridge_attach_flags flags)
 {
 	int ret;
 	bool attach_bridge = false;
@@ -766,7 +767,6 @@ static int sec_mipi_dsim_bridge_attach(struct drm_bridge *bridge,
 	struct device_node *np = dev->of_node;
 	struct device_node *endpoint, *remote = NULL;
 	struct drm_bridge *next = ERR_PTR(-ENODEV);
-	struct drm_encoder *encoder = dsim->encoder;
 
 	/* TODO: All bridges and planes should have already been added */
 
@@ -822,8 +822,8 @@ static int sec_mipi_dsim_bridge_attach(struct drm_bridge *bridge,
 	WARN_ON(bridge == next || drm_bridge_get_next_bridge(bridge) || dsim->next);
 
 	dsim->next = next;
-	next->encoder = encoder;
-	ret = drm_bridge_attach(encoder, next, bridge, flags);
+	next->encoder = dsim->encoder;
+	ret = drm_bridge_attach(dsim->encoder, next, bridge, flags);
 	if (ret) {
 		dev_err(dev, "Unable to attach bridge %s: %d\n",
 			remote->name, ret);
@@ -928,10 +928,12 @@ static void sec_mipi_dsim_config_dpi(struct sec_mipi_dsim *dsim)
 {
 	uint32_t config = 0, rgb_status = 0, data_lanes_en;
 
-	if (dsim->mode_flags & MIPI_DSI_MODE_VIDEO)
+	if (dsim->mode_flags & MIPI_DSI_MODE_VIDEO) {
 		rgb_status &= ~RGB_STATUS_CMDMODE_INSEL;
-	else
+	} else {
 		rgb_status |= RGB_STATUS_CMDMODE_INSEL;
+		config |= CONFIG_MFLUSH_VS;
+	}
 
 	dsim_write(dsim, rgb_status, DSIM_RGB_STATUS);
 
@@ -940,9 +942,6 @@ static void sec_mipi_dsim_config_dpi(struct sec_mipi_dsim *dsim)
 		if (dsim->mode_flags & MIPI_DSI_MODE_VIDEO)
 			config |= CONFIG_CLKLANE_STOP_START;
 	}
-
-	if (dsim->mode_flags & MIPI_DSI_MODE_VSYNC_FLUSH)
-		config |= CONFIG_MFLUSH_VS;
 
 	/* disable EoT packets in HS mode */
 	if (dsim->mode_flags & MIPI_DSI_MODE_NO_EOT_PACKET)
@@ -1322,13 +1321,11 @@ struct drm_crtc *sec_mipi_dsim_get_new_crtc(struct sec_mipi_dsim *dsim,
 	return conn_state->crtc;
 }
 
-static void
-sec_mipi_dsim_bridge_atomic_enable(struct drm_bridge *bridge,
-				   struct drm_bridge_state *old_bridge_state)
+static void sec_mipi_dsim_bridge_atomic_enable(struct drm_bridge *bridge,
+					       struct drm_atomic_state *state)
 {
 	int ret;
 	struct sec_mipi_dsim *dsim = bridge->driver_private;
-	struct drm_atomic_state *old_state = old_bridge_state->base.state;
 	struct drm_crtc *crtc;
 	struct drm_crtc_state *old_crtc_state;
 
@@ -1336,13 +1333,13 @@ sec_mipi_dsim_bridge_atomic_enable(struct drm_bridge *bridge,
 	 * already been enabled. So the dsim can be configed here
 	 */
 
-	crtc = sec_mipi_dsim_get_new_crtc(dsim, old_state);
+	crtc = sec_mipi_dsim_get_new_crtc(dsim, state);
 	if (!crtc) {
 		dev_err(dsim->dev, "bridge is enabling without CRTC\n");
 		return;
 	}
 
-	old_crtc_state = drm_atomic_get_old_crtc_state(old_state, crtc);
+	old_crtc_state = drm_atomic_get_old_crtc_state(state, crtc);
 	/* Don't do enablement operation if we're coming back from PSR. */
 	if (old_crtc_state && old_crtc_state->self_refresh_active &&
 	    dsim->enabled)
@@ -1370,26 +1367,12 @@ sec_mipi_dsim_bridge_atomic_enable(struct drm_bridge *bridge,
 	/* initialize FIFO pointers */
 	sec_mipi_dsim_init_fifo_pointers(dsim);
 
-	/* prepare panel if exists */
-	if (dsim->panel) {
-		ret = drm_panel_prepare(dsim->panel);
-		if (unlikely(ret)) {
-			dev_err(dsim->dev, "panel prepare failed: %d\n", ret);
-			return;
-		}
-	}
+	drm_panel_prepare(dsim->panel);
 
 	/* config esc clock, byte clock and etc */
 	sec_mipi_dsim_config_clkctrl(dsim);
 
-	/* enable panel if exists */
-	if (dsim->panel) {
-		ret = drm_panel_enable(dsim->panel);
-		if (unlikely(ret)) {
-			dev_err(dsim->dev, "panel enable failed: %d\n", ret);
-			goto panel_unprepare;
-		}
-	}
+	drm_panel_enable(dsim->panel);
 
 	/* enable data transfer of dsim */
 	sec_mipi_dsim_set_standby(dsim, true);
@@ -1397,11 +1380,6 @@ sec_mipi_dsim_bridge_atomic_enable(struct drm_bridge *bridge,
 	dsim->enabled = true;
 
 	return;
-
-panel_unprepare:
-	ret = drm_panel_unprepare(dsim->panel);
-	if (unlikely(ret))
-		dev_err(dsim->dev, "panel unprepare failed: %d\n", ret);
 }
 
 static void sec_mipi_dsim_disable_clkctrl(struct sec_mipi_dsim *dsim)
@@ -1430,22 +1408,19 @@ static void sec_mipi_dsim_disable_pll(struct sec_mipi_dsim *dsim)
 	dsim_write(dsim, pllctrl, DSIM_PLLCTRL);
 }
 
-static void
-sec_mipi_dsim_bridge_atomic_disable(struct drm_bridge *bridge,
-				    struct drm_bridge_state *old_bridge_state)
+static void sec_mipi_dsim_bridge_atomic_disable(struct drm_bridge *bridge,
+						struct drm_atomic_state *state)
 {
-	int ret;
 	struct sec_mipi_dsim *dsim = bridge->driver_private;
-	struct drm_atomic_state *old_state = old_bridge_state->base.state;
 	struct drm_crtc *crtc;
 	struct drm_crtc_state *new_crtc_state;
 
-	crtc = sec_mipi_dsim_get_new_crtc(dsim, old_state);
+	crtc = sec_mipi_dsim_get_new_crtc(dsim, state);
 	/* No CRTC means we're doing a full shutdown. */
 	if (!crtc)
 		goto disable;
 
-	new_crtc_state = drm_atomic_get_new_crtc_state(old_state, crtc);
+	new_crtc_state = drm_atomic_get_new_crtc_state(state, crtc);
 	/* Don't do disablement operation if we're entering PSR. */
 	if (!new_crtc_state || new_crtc_state->self_refresh_active)
 		return;
@@ -1454,12 +1429,7 @@ disable:
 	if (!dsim->enabled)
 		return;
 
-	/* disable panel if exists */
-	if (dsim->panel) {
-		ret = drm_panel_disable(dsim->panel);
-		if (unlikely(ret))
-			dev_err(dsim->dev, "panel disable failed: %d\n", ret);
-	}
+	drm_panel_disable(dsim->panel);
 
 	/* disable data transfer of dsim */
 	sec_mipi_dsim_set_standby(dsim, false);
@@ -1470,12 +1440,7 @@ disable:
 	/* disable dsim pll */
 	sec_mipi_dsim_disable_pll(dsim);
 
-	/* unprepare panel if exists */
-	if (dsim->panel) {
-		ret = drm_panel_unprepare(dsim->panel);
-		if (unlikely(ret))
-			dev_err(dsim->dev, "panel unprepare failed: %d\n", ret);
-	}
+	drm_panel_unprepare(dsim->panel);
 
 	dsim->enabled = false;
 }
@@ -1641,6 +1606,16 @@ static int sec_mipi_dsim_bridge_atomic_check(struct drm_bridge *bridge,
 	if (!strcmp(adjusted_mode->name, "1920x1080") &&
 	    drm_mode_vrefresh(adjusted_mode) == 24 &&
 	    dsim->lanes == 4		    &&
+	    dsim->mode_flags & MIPI_DSI_MODE_VIDEO_SYNC_PULSE) {
+		adjusted_mode->hsync_start += 2;
+		adjusted_mode->hsync_end   += 2;
+		adjusted_mode->htotal      += 2;
+	}
+
+	/* workaround for Raydium RM692C9 OLED panel */
+	if (!strcmp(adjusted_mode->name, "1080x2340") &&
+	    drm_mode_vrefresh(adjusted_mode) == 57 &&
+	    dsim->lanes == 4 &&
 	    dsim->mode_flags & MIPI_DSI_MODE_VIDEO_SYNC_PULSE) {
 		adjusted_mode->hsync_start += 2;
 		adjusted_mode->hsync_end   += 2;
@@ -2022,7 +1997,8 @@ int sec_mipi_dsim_bind(struct device *dev, struct device *master, void *data,
 	init_completion(&dsim->rx_done);
 
 	/* Initialize and attach sec dsim bridge */
-	bridge = devm_kzalloc(dev, sizeof(*bridge), GFP_KERNEL);
+	bridge = __devm_drm_bridge_alloc(dev, sizeof(struct drm_bridge), 0,
+					 &sec_mipi_dsim_bridge_funcs);
 	if (!bridge) {
 		dev_err(dev, "Unable to allocate 'bridge'\n");
 		return -ENOMEM;
@@ -2047,7 +2023,6 @@ int sec_mipi_dsim_bind(struct device *dev, struct device *master, void *data,
 
 	dsim->bridge = bridge;
 	bridge->driver_private = dsim;
-	bridge->funcs = &sec_mipi_dsim_bridge_funcs;
 	bridge->of_node = dev->of_node;
 	bridge->encoder = encoder;
 

@@ -9,7 +9,6 @@
 /delete-node/ &mipi_csi;
 /delete-node/ &dphy_rx;
 /delete-node/ &ap1302;
-/delete-node/ &lpspi3;
 /delete-node/ &tpm3;
 /delete-node/ &tpm4;
 
@@ -194,4 +193,8 @@
 			};
 		};
 	};
+};
+
+&lpspi3 {
+	status = "disabled";
 };

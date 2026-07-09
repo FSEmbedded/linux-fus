@@ -131,6 +131,7 @@ int ele_service_swap(struct se_if_priv *priv,
 		     phys_addr_t addr,
 		     u32 addr_size, u16 flag);
 int ele_fw_authenticate(struct se_if_priv *priv, phys_addr_t addr);
+int ele_debug_dump(struct se_if_priv *priv);
 int ele_start_rng(struct se_if_priv *priv);
 int ele_write_fuse(struct se_if_priv *priv, uint16_t fuse_index,
 		   u32 value, bool block);
@@ -139,7 +140,6 @@ int read_common_fuse(struct se_if_priv *priv,
 		     uint16_t fuse_id, u32 *value);
 int ele_get_v2x_fw_state(struct se_if_priv *priv, uint32_t *state);
 int ele_v2x_fw_authenticate(struct se_if_priv *priv, phys_addr_t addr);
-int ele_debug_dump(struct se_if_priv *priv);
 int ele_get_fw_version(struct se_if_priv *priv, u32 *fw_ver_word,
 		       u32 *commit_sha1);
 #endif

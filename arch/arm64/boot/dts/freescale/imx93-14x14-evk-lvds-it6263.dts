@@ -25,7 +25,7 @@
 
 &lpi2c1 {
 	lvds_bridge: lvds-to-hdmi-bridge@4c {
-		compatible = "ite,it6263";
+		compatible = "ite,it6263-nxp";
 		reg = <0x4c>;
 		reset-gpio = <&pcal6524_2 6 GPIO_ACTIVE_LOW>;
 		status = "okay";

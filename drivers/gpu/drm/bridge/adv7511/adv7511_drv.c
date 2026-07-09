@@ -8,7 +8,6 @@
 #include <linux/clk.h>
 #include <linux/device.h>
 #include <linux/gpio/consumer.h>
-#include <linux/media-bus-format.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_graph.h>
@@ -408,16 +407,17 @@ static bool adv7511_hpd(struct adv7511 *adv7511)
 static void adv7511_hpd_work(struct work_struct *work)
 {
 	struct adv7511 *adv7511 = container_of(work, struct adv7511, hpd_work);
-	enum drm_connector_status status = connector_status_disconnected;
+	enum drm_connector_status status;
 	unsigned int val;
 	int ret;
 
 	ret = regmap_read(adv7511->regmap, ADV7511_REG_STATUS, &val);
-	if (ret >= 0 && (val & ADV7511_STATUS_HPD))
+	if (ret < 0)
+		status = connector_status_disconnected;
+	else if (val & ADV7511_STATUS_HPD)
 		status = connector_status_connected;
-
-	DRM_DEV_DEBUG_DRIVER(adv7511->connector.kdev, "HDMI HPD event: %s\n",
-		drm_get_connector_status_name(status));
+	else
+		status = connector_status_disconnected;
 
 	/*
 	 * The bridge resets its registers on unplug. So when we get a plug
@@ -657,13 +657,20 @@ adv7511_detect(struct adv7511 *adv7511)
 }
 
 static void adv7511_mode_set(struct adv7511 *adv7511,
+			     const struct drm_display_mode *mode,
 			     const struct drm_display_mode *adj_mode)
 {
 	unsigned int low_refresh_rate;
 	unsigned int hsync_polarity = 0;
 	unsigned int vsync_polarity = 0;
 
-	if (adv7511->embedded_sync) {
+	if ((adv7511->info->type == ADV7533) ||
+	    (adv7511->info->type == ADV7535)) {
+		if (mode->flags & DRM_MODE_FLAG_NHSYNC)
+			hsync_polarity = 1;
+		if (mode->flags & DRM_MODE_FLAG_NVSYNC)
+			vsync_polarity = 1;
+	} else if (adv7511->embedded_sync) {
 		unsigned int hsync_offset, hsync_len;
 		unsigned int vsync_offset, vsync_len;
 
@@ -809,7 +816,7 @@ static void adv7511_bridge_atomic_enable(struct drm_bridge *bridge,
 
 	adv7511_set_config_csc(adv, connector, adv->rgb);
 
-	adv7511_mode_set(adv, &crtc_state->adjusted_mode);
+	adv7511_mode_set(adv, &crtc_state->mode, &crtc_state->adjusted_mode);
 
 	drm_atomic_helper_connector_hdmi_update_infoframes(connector, state);
 }
@@ -990,13 +997,12 @@ static void adv7511_bridge_detach(struct drm_bridge *bridge)
 		mipi_dsi_detach(adv->dsi);
 		mipi_dsi_device_unregister(adv->dsi);
 	}
-
-	drm_connector_cleanup(&adv->connector);
 }
 
 static const struct drm_bridge_funcs adv7511_bridge_funcs = {
 	.mode_valid = adv7511_bridge_mode_valid,
 	.attach = adv7511_bridge_attach,
+	.detach = adv7511_bridge_detach,
 	.detect = adv7511_bridge_detect,
 	.edid_read = adv7511_bridge_edid_read,
 
@@ -1348,8 +1354,8 @@ static int adv7511_probe(struct i2c_client *i2c)
 		goto err_i2c_unregister_packet;
 	}
 
-	regmap_write(adv7511->regmap, ADV7511_REG_PACKET_I2C_ADDR,
-		     adv7511->i2c_packet->addr << 1);
+	regmap_write(adv7511->regmap, ADV7511_REG_CEC_I2C_ADDR,
+			cec_i2c_addr);
 
 	ret = adv7511_init_cec_regmap(adv7511);
 	if (ret)
@@ -1415,8 +1421,7 @@ static int adv7511_probe(struct i2c_client *i2c)
 
 	return 0;
 
-err_unregister_audio:
-	drm_bridge_remove(&adv7511->bridge);
+err_unregister_cec:
 	i2c_unregister_device(adv7511->i2c_cec);
 	clk_disable_unprepare(adv7511->cec_clk);
 err_i2c_unregister_packet:

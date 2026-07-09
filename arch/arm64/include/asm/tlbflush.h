@@ -517,7 +517,8 @@ static inline void flush_tlb_kernel_range(unsigned long start, unsigned long end
 	end = round_up(end, stride);
 	pages = (end - start) >> PAGE_SHIFT;
 
-	if (__flush_tlb_range_limit_excess(start, end, pages, stride)) {
+	if (__flush_tlb_range_limit_excess(start, end, pages, stride)
+	    || (TKT340553_SW_WORKAROUND)) {
 		flush_tlb_all();
 		return;
 	}

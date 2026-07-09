@@ -1089,17 +1089,6 @@ static void dw_mipi_dsi_mode_set(struct dw_mipi_dsi *dsi,
 		phy_ops->power_on(dsi->plat_data->priv_data);
 }
 
-static void dw_mipi_dsi_bridge_atomic_pre_enable(struct drm_bridge *bridge,
-						 struct drm_atomic_state *state)
-{
-	struct dw_mipi_dsi *dsi = bridge_to_dsi(bridge);
-
-	/* Power up the dsi ctl into a command mode */
-	dw_mipi_dsi_mode_set(dsi, &dsi->mode);
-	if (dsi->slave)
-		dw_mipi_dsi_mode_set(dsi->slave, &dsi->mode);
-}
-
 static void dw_mipi_dsi_bridge_mode_set(struct drm_bridge *bridge,
 					const struct drm_display_mode *mode,
 					const struct drm_display_mode *adjusted_mode)

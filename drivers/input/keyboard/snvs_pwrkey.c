@@ -151,7 +151,6 @@ static int imx_snvs_pwrkey_probe(struct platform_device *pdev)
 	int error;
 	unsigned int val;
 	unsigned int bpt;
-	u32 vid;
 
 	/* Get SNVS register Page */
 	np = pdev->dev.of_node;
@@ -206,8 +205,19 @@ static int imx_snvs_pwrkey_probe(struct platform_device *pdev)
 				   bpt << SNVS_LPCR_BPT_SHIFT);
 	}
 
-	regmap_read(pdata->snvs, SNVS_HPVIDR1_REG, &vid);
-	pdata->minor_rev = vid & 0xff;
+	pdata->emulate_press = of_property_read_bool(np, "emulate-press");
+
+	pdata->clk = devm_clk_get(&pdev->dev, "snvs");
+	if (IS_ERR(pdata->clk)) {
+		pdata->clk = NULL;
+	} else {
+		error = clk_prepare_enable(pdata->clk);
+		if (error) {
+			dev_err(&pdev->dev,
+				"Could not enable the snvs clock\n");
+			return error;
+		}
+	}
 
 	regmap_update_bits(pdata->snvs, SNVS_LPCR_REG, SNVS_LPCR_DEP_EN, SNVS_LPCR_DEP_EN);
 

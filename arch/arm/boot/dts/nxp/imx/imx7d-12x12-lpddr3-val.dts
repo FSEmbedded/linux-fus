@@ -178,7 +178,6 @@
 };
 
 &ecspi1 {
-	fsl,spi-num-chipselects = <1>;
 	cs-gpios = <&gpio4 19 0>;
 	pinctrl-names = "default", "sleep";
 	pinctrl-0 = <&pinctrl_ecspi1_1 &pinctrl_ecspi1_cs_1>;

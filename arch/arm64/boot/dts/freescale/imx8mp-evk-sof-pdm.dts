@@ -42,11 +42,12 @@
 &dsp {
 	#sound-dai-cells = <1>;
 	compatible = "fsl,imx8mp-dsp";
+	reg-names = "iram";
 
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pdm>;
 
-	power-domains = <&audiomix_pd>;
+	power-domains = <&pgc_audio>;
 
 	assigned-clocks = <&clk IMX8MP_CLK_PDM>;
 	assigned-clock-parents = <&clk IMX8MP_AUDIO_PLL1_OUT>;
@@ -64,6 +65,7 @@
 	mboxes = <&mu2 2 0>, <&mu2 2 1>,
 		 <&mu2 3 0>, <&mu2 3 1>;
 	memory-region = <&dsp_reserved>;
+	memory-region-names = "sram";
 	/delete-property/ firmware-name;
 
 	tplg-name = "sof-imx8mp-wm8960.tplg";
@@ -75,8 +77,13 @@
 
 		port@0 { reg = <0>; endpoint { /* not used */ }; };
 		port@1 { reg = <1>; endpoint { /* not used */ }; };
-		cpu: port@2 {
-			reg = <2>;
+		port@2 { reg = <2>; endpoint { /* not used */ }; };
+		port@3 { reg = <3>; endpoint { /* not used */ }; };
+		port@4 { reg = <4>; endpoint { /* not used */ }; };
+		port@5 { reg = <5>; endpoint { /* not used */ }; };
+
+		cpu: port@6 {
+			reg = <6>;
 			capture-only;
 			cpu_ep: endpoint { remote-endpoint = <&codec_ep>; };
 		};

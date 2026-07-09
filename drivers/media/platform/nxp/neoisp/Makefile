@@ -6,7 +6,5 @@ neoisp-objs := neoisp_ctx.o \
 	neoisp_debugfs.o \
 	neoisp_fmt.o \
 	neoisp_main.o \
-	neoisp_nodes.o \
-	neoisp_params.o \
-	neoisp_regs.o
+	neoisp_nodes.o
 

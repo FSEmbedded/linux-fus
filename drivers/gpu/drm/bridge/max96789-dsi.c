@@ -91,7 +91,7 @@ static void max96789_dsi_setup_for_dual_link(struct max96789_dsi *max96789_dsi)
 }
 
 static void max96789_dsi_bridge_atomic_pre_enable(struct drm_bridge *bridge,
-						  struct drm_bridge_state *old_bridge_state)
+						  struct drm_atomic_state *state)
 {
 	struct max96789_dsi *max96789_dsi = container_of(bridge, struct max96789_dsi, bridge);
 	struct max96789 *mfd = max96789_dsi->max96789_mfd;
@@ -158,7 +158,7 @@ static void max96789_dsi_bridge_atomic_pre_enable(struct drm_bridge *bridge,
 }
 
 static void max96789_dsi_bridge_atomic_disable(struct drm_bridge *bridge,
-					       struct drm_bridge_state *old_bridge_state)
+					       struct drm_atomic_state *state)
 {
 	struct max96789_dsi *max96789_dsi = container_of(bridge, struct max96789_dsi, bridge);
 	struct max96789 *mfd = max96789_dsi->max96789_mfd;
@@ -176,6 +176,7 @@ static void max96789_dsi_bridge_atomic_disable(struct drm_bridge *bridge,
 }
 
 static int max96789_dsi_bridge_attach(struct drm_bridge *bridge,
+				      struct drm_encoder *encoder,
 				      enum drm_bridge_attach_flags flags)
 {
 	struct max96789_dsi *max96789_dsi = container_of(bridge, struct max96789_dsi, bridge);
@@ -193,7 +194,7 @@ static int max96789_dsi_bridge_attach(struct drm_bridge *bridge,
 		return PTR_ERR(max96789_dsi->remote_bridge);
 	}
 
-	ret = drm_bridge_attach(bridge->encoder, max96789_dsi->remote_bridge, bridge, flags);
+	ret = drm_bridge_attach(encoder, max96789_dsi->remote_bridge, bridge, flags);
 	if (ret) {
 		dev_err(dev, "Cannot attach remote bridge: %d\n", ret);
 		return ret;
@@ -352,7 +353,6 @@ static int max96789_dsi_dt_parse(struct max96789_dsi *max96789_dsi)
 	max96789_dsi->data_lanes = data_lanes;
 
 	max96789_dsi->bridge.driver_private = max96789_dsi;
-	max96789_dsi->bridge.funcs = &max96789_dsi_bridge_funcs;
 	max96789_dsi->bridge.of_node = dev->of_node;
 
 	drm_bridge_add(&max96789_dsi->bridge);
@@ -410,9 +410,10 @@ static int max96789_dsi_drm_probe(struct platform_device *pdev)
 	if (!mfd->link_setup_finished)
 		return -EPROBE_DEFER;
 
-	max96789_dsi = devm_kzalloc(dev, sizeof(*max96789_dsi), GFP_KERNEL);
-	if (!max96789_dsi)
-		return -ENOMEM;
+	max96789_dsi = devm_drm_bridge_alloc(dev, struct max96789_dsi, bridge,
+					     &max96789_dsi_bridge_funcs);
+	if (IS_ERR(max96789_dsi))
+		return PTR_ERR(max96789_dsi);
 
 	max96789_dsi->dev = dev;
 	max96789_dsi->max96789_mfd = mfd;

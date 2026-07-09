@@ -104,6 +104,8 @@
 };
 
 &adma_lcdif {
+	#address-cells = <1>;
+	#size-cells = <0>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_lcdif>;
 	status = "okay";
@@ -121,6 +123,7 @@
 
 	port@0 {
 		reg = <0>;
+
 		lcdif_out: endpoint {
 			remote-endpoint = <&panel_in>;
 		};

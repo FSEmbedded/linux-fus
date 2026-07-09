@@ -368,7 +368,7 @@ static enum mode_type lpm_get_tartget_mode(void)
 }
 
 static ssize_t lpm_enable_store(struct device *dev,
-			        struct device_attribute *attr,
+				struct device_attribute *attr,
 				const char *buf, size_t count)
 {
 	u16 new_mode;
@@ -583,7 +583,7 @@ static int imx93_lpm_probe(struct platform_device *pdev)
 	 * get the supported frequency number, if only
 	 * one setpoint, then no mode switching can be supported.
 	 * if three setpoints(f0,f1,f2) available, we asuming fsp2
-	 * is used for DDR SWFFC in LD mode 
+	 * is used for DDR SWFFC in LD mode
 	 */
 	arm_smccc_smc(FSL_SIP_DDR_DVFS, DDR_DFS_GET_FSP_COUNT, 0,
 		0, 0, 0, 0, 0, &res);
@@ -594,7 +594,7 @@ static int imx93_lpm_probe(struct platform_device *pdev)
 	}
 
 	/* get the available ddr fsp info */
-	for (i = 0; i <num_fsp; i++) {
+	for (i = 0; i < num_fsp; i++) {
 		arm_smccc_smc(FSL_SIP_DDR_DVFS, DDR_DFS_GET_FSP_INFO, i,
 			0, 0, 0, 0, 0, &res);
 		err = res.a0;

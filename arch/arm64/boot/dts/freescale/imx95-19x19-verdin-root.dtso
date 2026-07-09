@@ -19,11 +19,11 @@
 	status = "disabled";
 };
 
-&pcie_4ca00000 {
+&netc_bus0 {
 	linux,pci-domain = <2>;
 };
 
-&pcie_4cb00000 {
+&netc_bus1 {
 	linux,pci-domain = <3>;
 };
 

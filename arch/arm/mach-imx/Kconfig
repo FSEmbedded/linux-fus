@@ -177,6 +177,7 @@ config SOC_IMX6SX
 	bool "i.MX6 SoloX support"
 	select ARM_ERRATA_754322
 	select ARM_ERRATA_775420
+	select HAVE_IMX_AMP
 	select SOC_IMX6
 	select HAVE_IMX_MU
 	select IMX_MBOX

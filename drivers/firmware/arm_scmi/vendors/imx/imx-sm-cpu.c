@@ -13,6 +13,7 @@
 #include <linux/scmi_protocol.h>
 #include <linux/scmi_imx_protocol.h>
 
+#include "../../common.h"
 #include "../../protocols.h"
 #include "../../notify.h"
 
@@ -194,7 +195,7 @@ static int scmi_imx_cpu_protocol_attributes_get(const struct scmi_protocol_handl
 	ret = ph->xops->do_xfer(ph, t);
 	if (!ret) {
 		info->nr_cpu = le32_get_bits(attr->attributes, SCMI_IMX_CPU_NR_CPU_MASK);
-		dev_info(ph->dev, "i.MX SM CPU: %d cpus\n",
+		dev_info(ph->dev, "i.MX SM MAX CPU: %d cpus\n",
 			 info->nr_cpu);
 	}
 
@@ -222,7 +223,10 @@ static int scmi_imx_cpu_attributes_get(const struct scmi_protocol_handle *ph,
 		strscpy(name, out->name, SCMI_SHORT_NAME_MAX_SIZE);
 		dev_info(ph->dev, "i.MX CPU: name: %s\n", name);
 	} else {
-		dev_err(ph->dev, "i.MX cpu: Failed to get info of cpu(%u)\n", cpuid);
+		dev_err(ph->dev, "i.MX cpu: CPU unavailable cpu(%u)\n", cpuid);
+		/* CPU is disabled in fuses */
+		if (ret == -ENOENT)
+			ret = 0;
 	}
 
 	ph->xops->xfer_put(ph, t);

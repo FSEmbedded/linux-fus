@@ -35,7 +35,7 @@ struct imx95_blk_ctl {
 
 	void __iomem *base;
 	/* clock gate register */
-	u32 clk_reg_restore;
+	u32 *clk_reg_restore;
 	const struct imx95_blk_ctl_dev_data *pdata;
 };
 
@@ -215,7 +215,6 @@ static const struct imx95_blk_ctl_clk_dev_data imx95_lvds_clk_dev_data[] = {
 static const struct imx95_blk_ctl_dev_data imx95_lvds_csr_dev_data = {
 	.num_clks = ARRAY_SIZE(imx95_lvds_clk_dev_data),
 	.clk_dev_data = imx95_lvds_clk_dev_data,
-	.clk_reg_offset = 0,
 };
 
 static const char * const imx95_disp_engine_parents[] = {
@@ -248,7 +247,6 @@ static const struct imx95_blk_ctl_clk_dev_data imx95_dispmix_csr_clk_dev_data[] 
 static const struct imx95_blk_ctl_dev_data imx95_dispmix_csr_dev_data = {
 	.num_clks = ARRAY_SIZE(imx95_dispmix_csr_clk_dev_data),
 	.clk_dev_data = imx95_dispmix_csr_clk_dev_data,
-	.clk_reg_offset = 0,
 };
 
 static const struct imx95_blk_ctl_clk_dev_data netxmix_clk_dev_data[] = {
@@ -297,24 +295,6 @@ static const struct imx95_blk_ctl_dev_data hsio_blk_ctl_dev_data = {
 	.clk_dev_data = hsio_blk_ctl_clk_dev_data,
 };
 
-static const struct imx95_blk_ctl_clk_dev_data hsio_usb_blk_ctl_clk_dev_data[] = {
-	[0] = {
-		.name = "usb_phy_ref_clk_sel",
-		.parent_names = (const char *[]){"osc24m", "hsiopll"},
-		.num_parents = 2,
-		.reg = 0,
-		.bit_idx = 6,
-		.bit_width = 1,
-		.type = CLK_MUX,
-		.flags = CLK_SET_RATE_NO_REPARENT | CLK_SET_RATE_PARENT,
-	}
-};
-
-static const struct imx95_blk_ctl_dev_data hsio_usb_blk_ctl_dev_data = {
-	.num_clks = 1,
-	.clk_dev_data = hsio_usb_blk_ctl_clk_dev_data,
-};
-
 static const struct imx95_blk_ctl_clk_dev_data imx94_lvds_clk_dev_data[] = {
 	[IMX94_CLK_DISPMIX_LVDS_CLK_GATE] = {
 		.name = "lvds_clk_gate",
@@ -332,65 +312,6 @@ static const struct imx95_blk_ctl_clk_dev_data imx94_lvds_clk_dev_data[] = {
 static const struct imx95_blk_ctl_dev_data imx94_lvds_csr_dev_data = {
 	.num_clks = ARRAY_SIZE(imx94_lvds_clk_dev_data),
 	.clk_dev_data = imx94_lvds_clk_dev_data,
-	.rpm_enabled = true,
-};
-
-static const struct imx95_blk_ctl_clk_dev_data imx94_dispmix_csr_clk_dev_data[] = {
-	[IMX94_CLK_DISPMIX_CLK_SEL] = {
-		.name = "disp_clk_sel",
-		.parent_names = (const char *[]){"disppix", "ldb_pll_div7"},
-		.num_parents = 2,
-		.reg = 0,
-		.bit_idx = 1,
-		.bit_width = 1,
-		.type = CLK_MUX,
-		.flags = CLK_SET_RATE_NO_REPARENT | CLK_SET_RATE_PARENT,
-	},
-};
-
-static const struct imx95_blk_ctl_dev_data imx94_dispmix_csr_dev_data = {
-	.num_clks = ARRAY_SIZE(imx94_dispmix_csr_clk_dev_data),
-	.clk_dev_data = imx94_dispmix_csr_clk_dev_data,
-	.rpm_enabled = true,
-};
-
-static const struct imx95_blk_ctl_clk_dev_data hsio_blk_ctl_clk_dev_data[] = {
-	[0] = {
-		.name = "hsio_blk_ctl_clk",
-		.parent_names = (const char *[]){ "hsio_pll", },
-		.num_parents = 1,
-		.reg = 0,
-		.bit_idx = 6,
-		.bit_width = 1,
-		.type = CLK_GATE,
-		.flags = CLK_SET_RATE_PARENT,
-	}
-};
-
-static const struct imx95_blk_ctl_dev_data hsio_blk_ctl_dev_data = {
-	.num_clks = 1,
-	.clk_dev_data = hsio_blk_ctl_clk_dev_data,
-	.clk_reg_offset = 0,
-};
-
-static const struct imx95_blk_ctl_clk_dev_data imx94_lvds_clk_dev_data[] = {
-	[IMX94_CLK_DISPMIX_LVDS_CLK_GATE] = {
-		.name = "lvds_clk_gate",
-		.parent_names = (const char *[]){ "ldbpll", },
-		.num_parents = 1,
-		.reg = 0,
-		.bit_idx = 1,
-		.bit_width = 1,
-		.type = CLK_GATE,
-		.flags = CLK_SET_RATE_PARENT,
-		.flags2 = CLK_GATE_SET_TO_DISABLE,
-	},
-};
-
-static const struct imx95_blk_ctl_dev_data imx94_lvds_csr_dev_data = {
-	.num_clks = ARRAY_SIZE(imx94_lvds_clk_dev_data),
-	.clk_dev_data = imx94_lvds_clk_dev_data,
-	.clk_reg_offset = 0,
 	.rpm_enabled = true,
 };
 
@@ -414,7 +335,6 @@ static const struct imx95_blk_ctl_clk_dev_data imx94_dispmix_csr_clk_dev_data[] 
 static const struct imx95_blk_ctl_dev_data imx94_dispmix_csr_dev_data = {
 	.num_clks = ARRAY_SIZE(imx94_dispmix_csr_clk_dev_data),
 	.clk_dev_data = imx94_dispmix_csr_clk_dev_data,
-	.clk_reg_offset = 0,
 	.rpm_enabled = true,
 };
 
@@ -453,6 +373,10 @@ static int imx95_bc_probe(struct platform_device *pdev)
 	bc->pdata = of_device_get_match_data(dev);
 	if (!bc->pdata)
 		return devm_of_platform_populate(dev);
+
+	bc->clk_reg_restore = devm_kzalloc(bc->dev, sizeof(u32) * bc->pdata->num_clks, GFP_KERNEL);
+	if (!bc->clk_reg_restore)
+		return -ENOMEM;
 
 	clk_hw_data = devm_kzalloc(dev, struct_size(clk_hw_data, hws, bc->pdata->num_clks),
 				   GFP_KERNEL);
@@ -521,14 +445,13 @@ cleanup:
 
 static void __maybe_unused imx95_bc_reg_operation(struct imx95_blk_ctl *bc, bool save)
 {
-	const struct imx95_blk_ctl_dev_data *bc_data = of_device_get_match_data(bc->dev);
 	void *last_reg = NULL;
 
-	if (!bc_data)
+	if (!bc->pdata)
 		return;
 
-	for (int i = 0; i < bc_data->num_clks; i++) {
-		void *reg = bc->base + bc_data->clk_dev_data[i].reg;
+	for (int i = 0; i < bc->pdata->num_clks; i++) {
+		void *reg = bc->base + bc->pdata->clk_dev_data[i].reg;
 
 		if (last_reg == reg)
 			continue;
@@ -541,22 +464,12 @@ static void __maybe_unused imx95_bc_reg_operation(struct imx95_blk_ctl *bc, bool
 	}
 }
 
-static void __maybe_unused imx95_bc_save_reg(struct imx95_blk_ctl *bc)
-{
-	imx95_bc_reg_operation(bc, true);
-}
-
-static void __maybe_unused imx95_bc_restore_reg(struct imx95_blk_ctl *bc)
-{
-	imx95_bc_reg_operation(bc, false);
-}
-
 #ifdef CONFIG_PM
 static int imx95_bc_runtime_suspend(struct device *dev)
 {
 	struct imx95_blk_ctl *bc = dev_get_drvdata(dev);
 
-	bc->clk_reg_restore = readl(bc->base + bc->pdata->clk_reg_offset);
+	imx95_bc_reg_operation(bc, true);
 	clk_disable_unprepare(bc->clk_apb);
 
 	return 0;
@@ -571,7 +484,7 @@ static int imx95_bc_runtime_resume(struct device *dev)
 	if (ret)
 		return ret;
 
-	writel(bc->clk_reg_restore, bc->base + bc->pdata->clk_reg_offset);
+	imx95_bc_reg_operation(bc, false);
 
 	return 0;
 }
@@ -585,7 +498,7 @@ static int imx95_bc_suspend(struct device *dev)
 	if (pm_runtime_suspended(dev))
 		return 0;
 
-	bc->clk_reg_restore = readl(bc->base + bc->pdata->clk_reg_offset);
+	imx95_bc_reg_operation(bc, true);
 	clk_disable_unprepare(bc->clk_apb);
 
 	return 0;
@@ -603,7 +516,7 @@ static int imx95_bc_resume(struct device *dev)
 	if (ret)
 		return ret;
 
-	writel(bc->clk_reg_restore, bc->base + bc->pdata->clk_reg_offset);
+	imx95_bc_reg_operation(bc, false);
 
 	return 0;
 }
@@ -624,10 +537,6 @@ static const struct of_device_id imx95_bc_of_match[] = {
 	{ .compatible = "nxp,imx95-hsio-blk-ctl", .data = &hsio_blk_ctl_dev_data },
 	{ .compatible = "nxp,imx95-vpu-csr", .data = &vpublk_dev_data },
 	{ .compatible = "nxp,imx95-netcmix-blk-ctrl", .data = &netcmix_dev_data},
-	{ .compatible = "nxp,imx95-hsio-blk-ctl", .data = &hsio_blk_ctl_dev_data },
-	{ .compatible = "nxp,imx95-hsio-usb-blk-ctl", .data = &hsio_usb_blk_ctl_dev_data },
-	{ .compatible = "nxp,imx94-lvds-csr", .data = &imx94_lvds_csr_dev_data },
-	{ .compatible = "nxp,imx94-display-csr", .data = &imx94_dispmix_csr_dev_data },
 	{ /* Sentinel */ },
 };
 MODULE_DEVICE_TABLE(of, imx95_bc_of_match);

@@ -606,7 +606,7 @@ static int mxc_isi_m2m_open(struct file *file)
 		kfree(mxc_ctx);
 		goto unlock;
 	}
-	v4l2_fh_add(&mxc_ctx->fh);
+	v4l2_fh_add(&mxc_ctx->fh, file);
 
 	isi_m2m_fmt_init(&isi_m2m->src_f, &mxc_isi_input_formats[0]);
 	isi_m2m_fmt_init(&isi_m2m->dst_f, &mxc_isi_out_formats[0]);
@@ -634,7 +634,7 @@ static int mxc_isi_m2m_release(struct file *file)
 	mutex_lock(&isi_m2m->lock);
 	isi_m2m->refcnt--;
 	if (isi_m2m->refcnt == 0) {
-		v4l2_fh_del(&mxc_ctx->fh);
+		v4l2_fh_del(&mxc_ctx->fh, file);
 		v4l2_fh_exit(&mxc_ctx->fh);
 
 		v4l2_m2m_ctx_release(mxc_ctx->fh.m2m_ctx);

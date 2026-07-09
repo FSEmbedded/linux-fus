@@ -130,14 +130,14 @@ static inline void rpmsg_iio_event_report(struct rpmsg_iio_msg *msg)
 	ts = iio_get_time_ns(indio_dev);
 	if (msg->header.cmd == RPMSG_IIO_DETECTOR_CMD) {
 		iio_push_event(indio_dev,
-			       IIO_EVENT_CODE(IIO_ACTIVITY, 0, IIO_NO_MOD,
+			       _IIO_EVENT_CODE(IIO_ACTIVITY, 0, IIO_NO_MOD,
 					      IIO_EV_DIR_RISING,
 					      IIO_EV_TYPE_THRESH, 0, 0, 0),
 			       ts);
 	} else if (msg->header.cmd == RPMSG_IIO_COUNTER_CMD) {
 		iio_rpmsg->steps = msg->instruct.val;
 		iio_push_event(indio_dev,
-			       IIO_EVENT_CODE(IIO_STEPS, 0, IIO_NO_MOD,
+			       _IIO_EVENT_CODE(IIO_STEPS, 0, IIO_NO_MOD,
 					      IIO_EV_DIR_NONE,
 					      IIO_EV_TYPE_CHANGE, 0, 0, 0),
 			       ts);

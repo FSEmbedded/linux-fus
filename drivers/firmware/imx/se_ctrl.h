@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0+ */
 /*
- * Copyright 2024 NXP
+ * Copyright 2024-2025 NXP
  */
 
 #ifndef SE_MU_H
@@ -78,11 +78,14 @@ struct se_if_device_ctx {
 	struct se_if_priv *priv;
 	struct miscdevice *miscdev;
 	const char *devname;
+	u32 sess_hdl;
 
 	struct mutex fops_lock;
 
 	struct se_shared_mem_mgmt_info se_shared_mem_mgmt;
 	struct list_head link;
+
+	struct se_time_frame time_frame;
 };
 
 /* Header of the messages exchange with the EdgeLock Enclave */
@@ -147,8 +150,6 @@ struct se_if_priv {
 	struct list_head dev_ctx_list;
 	u32 active_devctx_count;
 	u32 dev_ctx_mono_count;
-
-	struct se_time_frame time_frame;
 };
 
 #define SE_DUMP_IOCTL_BUFS	0
@@ -156,9 +157,9 @@ struct se_if_priv {
 #define SE_DUMP_MU_RCV_BUFS	2
 #define SE_DUMP_KDEBUG_BUFS	3
 
-char *get_se_if_name(u8 se_if_id);
 uint32_t get_se_soc_id(struct se_if_priv *priv);
 int se_dump_to_logfl(struct se_if_device_ctx *dev_ctx,
 		     u8 caller_type, int buf_size,
 		     const char *buf, ...);
+char *get_se_if_name(u8 se_if_id);
 #endif

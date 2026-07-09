@@ -697,7 +697,7 @@ static int pll_delta_k_set(void *data, u64 val)
 	pr_debug("the delta k is %d\n", delta_k);
 	return 0;
 }
-DEFINE_DEBUGFS_ATTRIBUTE(delta_k_fops, NULL, pll_delta_k_set, "%lld\n");
+DEFINE_DEBUGFS_ATTRIBUTE_SIGNED(delta_k_fops, NULL, pll_delta_k_set, "%lld\n");
 
 static int pll_setting_show(struct seq_file *s, void *data)
 {

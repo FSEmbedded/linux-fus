@@ -137,11 +137,6 @@ static struct class *hantro_class;
 
 //static struct device *hantro_dev[HXDEC_MAX_CORES];
 
-typedef struct {
-	struct clk *dec;
-	struct clk *bus;
-} hantrodec_clk;
-
 static int irq_dec_err_count;
 module_param(irq_dec_err_count, int, 0444);
 
@@ -175,7 +170,8 @@ typedef struct {
 	//int cores;
 	//struct fasync_struct *async_queue_dec;
 	//struct fasync_struct *async_queue_pp;
-	hantrodec_clk clk;
+	struct clk_bulk_data *clks;
+	int num_clks;
 	u32 dec_regs[DEC_IO_SIZE_MAX/4];
 	struct semaphore dec_core_sem;
 	struct semaphore pp_core_sem;
@@ -243,29 +239,17 @@ static DECLARE_WAIT_QUEUE_HEAD(hw_queue);
 
 static int hantro_device_id(struct device *dev)
 {
-	if (strcmp("vpu_g1", dev->of_node->name) == 0 ||
-	    strcmp("vpu_g2", dev->of_node->name) == 0) {
-		return cores;
-	}
-
-	return HANTRO_CORE_ID_INVALID;
+	return cores;
 }
 
-static int hantro_clk_enable(hantrodec_clk *clk)
+static int hantro_clk_enable(hantrodec_t *dev)
 {
-	clk_prepare(clk->dec);
-	clk_enable(clk->dec);
-	clk_prepare(clk->bus);
-	clk_enable(clk->bus);
-	return 0;
+	return clk_bulk_prepare_enable(dev->num_clks, dev->clks);
 }
 
-static int hantro_clk_disable(hantrodec_clk *clk)
+static int hantro_clk_disable(hantrodec_t *dev)
 {
-	clk_disable(clk->dec);
-	clk_unprepare(clk->dec);
-	clk_disable(clk->bus);
-	clk_unprepare(clk->bus);
+	clk_bulk_disable_unprepare(dev->num_clks, dev->clks);
 	return 0;
 }
 
@@ -278,7 +262,7 @@ static int hantro_ctrlblk_reset(hantrodec_t *dev)
 		return 0;
 
 	//config G1/G2
-	hantro_clk_enable(&dev->clk);
+	hantro_clk_enable(dev);
 	iobase = ioremap(BLK_CTL_BASE, 0x10000);
 	if (IS_G1(dev->hw_id)) {
 		val = ioread32(iobase);
@@ -309,7 +293,7 @@ static int hantro_ctrlblk_reset(hantrodec_t *dev)
 		iowrite32(0xFFFFFFFF, iobase + 0x10); // all G2 fuse dec enable
 	}
 	iounmap(iobase);
-	hantro_clk_disable(&dev->clk);
+	hantro_clk_disable(dev);
 	return 0;
 }
 
@@ -1385,7 +1369,7 @@ static long hantrodec_ioctl(struct file *filp, unsigned int cmd, unsigned long a
 		if (ctx->core_id == HANTRO_CORE_ID_INVALID) {
 			ctx->core_id = id;
 			/*power on decoder core*/
-			hantro_clk_enable(&hantrodec_data[id].clk);
+			hantro_clk_enable(&hantrodec_data[id]);
 			hantro_power_on_disirq(&hantrodec_data[id]);
 		}
 		return id;
@@ -1549,7 +1533,7 @@ static int hantrodec_release(struct inode *inode, struct file *filp)
 
 	if (ctx->core_id != HANTRO_CORE_ID_INVALID && ctx->core_id < HXDEC_MAX_CORES) {
 		pm_runtime_put_sync(hantrodec_data[ctx->core_id].dev);
-		hantro_clk_disable(&hantrodec_data[ctx->core_id].clk);
+		hantro_clk_disable(&hantrodec_data[ctx->core_id]);
 	}
 
 	hantro_free_instance(ctx->inst_id);
@@ -1660,7 +1644,7 @@ static int hantrodec_init(struct platform_device *pdev, int id)
 	ResetAsic(&hantrodec_data[id]);
 
 	/* register irq for each core*/
-	irq = platform_get_irq_byname(pdev, "irq_hantro");
+	irq = platform_get_irq(pdev, 0);
 	if (irq > 0) {
 		hantrodec_data[id].irq = irq;
 		result = request_irq(irq, hantrodec_isr, 0,
@@ -1957,6 +1941,7 @@ static int hantro_dev_probe(struct platform_device *pdev)
 	struct resource *res;
 	int id;
 	struct device_node *node;
+	int ret;
 
 	id = hantro_device_id(&pdev->dev);
 	if (id == HANTRO_CORE_ID_INVALID || id >= HXDEC_MAX_CORES) {
@@ -1967,21 +1952,20 @@ static int hantro_dev_probe(struct platform_device *pdev)
 	hantrodec_data[id].dev = &pdev->dev;
 	hantrodec_data[id].core_id = id;
 	platform_set_drvdata(pdev, &hantrodec_data[id]);
-	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "regs_hantro");
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res) {
 		pr_err("hantro: unable to get vpu base addr\n");
 		return -ENODEV;
 	}
 	multicorebase[id] = res->start;
 
-	hantrodec_data[id].clk.dec = clk_get(&pdev->dev, "clk_hantro");
-	hantrodec_data[id].clk.bus = clk_get(&pdev->dev, "clk_hantro_bus");
-	if (IS_ERR(hantrodec_data[id].clk.dec) || IS_ERR(hantrodec_data[id].clk.bus)) {
-		pr_err("hantro: get clock failed\n");
+	ret = devm_clk_bulk_get_all(&pdev->dev, &hantrodec_data[id].clks);
+	if (ret < 0) {
+		pr_err("hantro decoder[%d]: unable to get clocks: %d\n", id, ret);
 		return -ENODEV;
 	}
-	pr_debug("hantro: dec, bus clock: 0x%lX, 0x%lX\n", clk_get_rate(hantrodec_data[id].clk.dec),
-				clk_get_rate(hantrodec_data[id].clk.bus));
+	hantrodec_data[id].num_clks = ret;
+	pr_debug("hantro decoder[%d] clk %lu\n", id, clk_get_rate(hantrodec_data[id].clks[0].clk));
 
 	/*
 	 * If integrate power-domains into blk-ctrl driver, vpu driver don't
@@ -1995,7 +1979,7 @@ static int hantro_dev_probe(struct platform_device *pdev)
 	of_node_put(node);
 
 	pm_runtime_enable(&pdev->dev);
-	hantro_clk_enable(&hantrodec_data[id].clk);
+	hantro_clk_enable(&hantrodec_data[id]);
 
 	err = hantrodec_init(pdev, id);
 	if (err != 0) {
@@ -2021,7 +2005,7 @@ static int hantro_dev_probe(struct platform_device *pdev)
 error:
 	pr_err("hantro probe failed\n");
 out:
-	hantro_clk_disable(&hantrodec_data[id].clk);
+	hantro_clk_disable(&hantrodec_data[id]);
 	return err;
 }
 
@@ -2029,7 +2013,7 @@ static void hantro_dev_remove(struct platform_device *pdev)
 {
 	hantrodec_t *dev = platform_get_drvdata(pdev);
 
-	hantro_clk_enable(&dev->clk);
+	hantro_clk_enable(dev);
 	pm_runtime_get_sync(&pdev->dev);
 #ifdef CONFIG_DEVICE_THERMAL_HANTRO
 	thermal_cooling_device_unregister(hantrodec_data[dev->core_id].cooling);
@@ -2037,11 +2021,8 @@ static void hantro_dev_remove(struct platform_device *pdev)
 	hantrodec_cleanup(dev->core_id);
 	pm_runtime_put_sync(&pdev->dev);
 	pm_runtime_disable(&pdev->dev);
-	hantro_clk_disable(&dev->clk);
-	if (!IS_ERR(dev->clk.dec))
-		clk_put(dev->clk.dec);
-	if (!IS_ERR(dev->clk.bus))
-		clk_put(dev->clk.bus);
+	hantro_clk_disable(dev);
+	clk_bulk_put(dev->num_clks, dev->clks);
 
 	if (--cores < 0) {
 		pr_err("hantro: decrease cores count incorrect.\n");
@@ -2104,7 +2085,9 @@ static const struct dev_pm_ops hantro_pm_ops = {
 #endif //CONFIG_PM
 
 static const struct of_device_id hantro_of_match[] = {
-	{ .compatible = "nxp,imx8mm-hantro", },
+	{ .compatible = "nxp,imx8mm-vpu-g1", },
+	{ .compatible = "nxp,imx8mm-vpu-g2", },
+	{ .compatible = "nxp,imx8mq-vpu-g2", },
 	{/* sentinel */}
 };
 MODULE_DEVICE_TABLE(of, hantro_of_match);

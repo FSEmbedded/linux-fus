@@ -194,7 +194,7 @@
 };
 
 &iomuxc {
-	pinctrl_audmux: audmuxgrp {
+	pinctrl_audmux: audmux {
 		fsl,pins = <
 			MX6QDL_PAD_CSI0_DAT7__AUD3_RXD		0x130b0
 			MX6QDL_PAD_CSI0_DAT4__AUD3_TXC		0x130b0
@@ -205,7 +205,7 @@
 		>;
 	};
 
-	pinctrl_bt: btgrp {
+	pinctrl_bt: bt {
 		fsl,pins = <
 			/* Bluetooth enable */
 			MX6QDL_PAD_SD3_DAT6__GPIO6_IO18		0x1b0b1

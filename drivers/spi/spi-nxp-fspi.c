@@ -333,9 +333,6 @@
 /* Disable DTR */
 #define FSPI_QUIRK_DISABLE_DTR	BIT(1)
 
-/* Disable DTR */
-#define FSPI_QUIRK_DISABLE_DTR	BIT(1)
-
 struct nxp_fspi_devtype_data {
 	unsigned int rxfifo;
 	unsigned int txfifo;
@@ -839,7 +836,7 @@ static void nxp_fspi_select_mem(struct nxp_fspi *f, struct spi_device *spi,
 
 	nxp_fspi_clk_disable_unprep(f);
 
-	ret = clk_set_rate(f->clk, serial_root_clk_rate);
+	ret = clk_set_rate(f->clk, rate);
 	if (ret)
 		return;
 
@@ -851,7 +848,7 @@ static void nxp_fspi_select_mem(struct nxp_fspi *f, struct spi_device *spi,
 	 * If clock rate > 100MHz, then switch from DLL override mode to
 	 * DLL calibration mode.
 	 */
-	if (serial_root_clk_rate > 100000000)
+	if (rate > 100000000)
 		nxp_fspi_dll_calibration(f);
 	else
 		nxp_fspi_dll_override(f);
@@ -941,45 +938,14 @@ static void nxp_fspi_read_rxfifo(struct nxp_fspi *f,
 {
 	void __iomem *base = f->iobase;
 	int i, ret;
-	int len, cnt;
+	int len = op->data.nbytes;
 	u8 *buf = (u8 *) op->data.buf.in;
-
-	/* DTR with ODD address need read one more byte */
-	len = (f->flags & FSPI_DTR_ODD_ADDR) ? op->data.nbytes + 1 : op->data.nbytes;
-
-	/* handle the DTR with ODD address case */
-	if (f->flags & FSPI_DTR_ODD_ADDR) {
-		u8 tmp[8];
-		/* Wait for RXFIFO available */
-		ret = fspi_readl_poll_tout(f, f->iobase + FSPI_INTR,
-					   FSPI_INTR_IPRXWA, 0,
-					   POLL_TOUT, true);
-		WARN_ON(ret);
-		/*
-		 * DTR read always start from 2bytes alignment address,
-		 * if read from an odd address A, it actually read from
-		 * address A-1, need to discard the first byte here
-		 */
-		*(u32 *)tmp = fspi_readl(f, base + FSPI_RFDR);
-		*(u32 *)(tmp + 4) = fspi_readl(f, base + FSPI_RFDR + 4);
-		cnt = min(len, 8);
-		/* discard the first byte */
-		memcpy(buf, tmp + 1, cnt - 1);
-		len -= cnt;
-		buf = op->data.buf.in + cnt - 1;
-		f->flags &= ~FSPI_DTR_ODD_ADDR;
-
-		/* move the FIFO pointer */
-		fspi_writel(f, FSPI_INTR_IPRXWA, base + FSPI_INTR);
-	}
 
 	/*
 	 * Default value of water mark level is 8 bytes, hence in single
 	 * read request controller can read max 8 bytes of data.
 	 */
-	cnt = ALIGN_DOWN(len, 8);
-
-	for (i = 0; i < cnt;) {
+	for (i = 0; i < ALIGN_DOWN(len, 8); i += 8) {
 		/* Wait for RXFIFO available */
 		ret = fspi_readl_poll_tout(f, f->iobase + FSPI_INTR,
 					   FSPI_INTR_IPRXWA, 0,
@@ -988,7 +954,6 @@ static void nxp_fspi_read_rxfifo(struct nxp_fspi *f,
 
 		*(u32 *)(buf + i) = fspi_readl(f, base + FSPI_RFDR);
 		*(u32 *)(buf + i + 4) = fspi_readl(f, base + FSPI_RFDR + 4);
-		i += 8;
 		/* move the FIFO pointer */
 		fspi_writel(f, FSPI_INTR_IPRXWA, base + FSPI_INTR);
 	}
@@ -997,14 +962,14 @@ static void nxp_fspi_read_rxfifo(struct nxp_fspi *f,
 		u32 tmp;
 		int size, j;
 
-		buf += i;
-		len -= i;
+		buf = op->data.buf.in + i;
 		/* Wait for RXFIFO available */
 		ret = fspi_readl_poll_tout(f, f->iobase + FSPI_INTR,
 					   FSPI_INTR_IPRXWA, 0,
 					   POLL_TOUT, true);
 		WARN_ON(ret);
 
+		len = op->data.nbytes - i;
 		for (j = 0; j < op->data.nbytes - i; j += 4) {
 			tmp = fspi_readl(f, base + FSPI_RFDR + j);
 			size = min(len, 4);
@@ -1017,7 +982,6 @@ static void nxp_fspi_read_rxfifo(struct nxp_fspi *f,
 	fspi_writel(f, FSPI_IPRXFCR_CLR, base + FSPI_IPRXFCR);
 	/* move the FIFO pointer */
 	fspi_writel(f, FSPI_INTR_IPRXWA, base + FSPI_INTR);
-
 }
 
 static int nxp_fspi_do_op(struct nxp_fspi *f, const struct spi_mem_op *op)
@@ -1036,28 +1000,16 @@ static int nxp_fspi_do_op(struct nxp_fspi *f, const struct spi_mem_op *op)
 	init_completion(&f->c);
 
 	fspi_writel(f, op->addr.val, base + FSPI_IPCR0);
-
 	/*
 	 * Always start the sequence at the same index since we update
 	 * the LUT at each exec_op() call. And also specify the DATA
 	 * length, since it's has not been specified in the LUT.
-	 *
-	 * OCTAL DTR read always start from 2bytes alignment address,
-	 * if read from an odd address A, it actually read from
-	 * address A-1, need to read one more byte to get all
-	 * data needed.
 	 */
 	seqid_lut = f->devtype_data->lut_num - 1;
-	if (f->flags & FSPI_DTR_ODD_ADDR)
-		fspi_writel(f, (op->data.nbytes + 1) |
-			 (seqid_lut << FSPI_IPCR1_SEQID_SHIFT) |
-			 (seqnum << FSPI_IPCR1_SEQNUM_SHIFT),
-			 base + FSPI_IPCR1);
-	else
-		fspi_writel(f, op->data.nbytes |
-			 (seqid_lut << FSPI_IPCR1_SEQID_SHIFT) |
-			 (seqnum << FSPI_IPCR1_SEQNUM_SHIFT),
-			 base + FSPI_IPCR1);
+	fspi_writel(f, op->data.nbytes |
+		 (seqid_lut << FSPI_IPCR1_SEQID_SHIFT) |
+		 (seqnum << FSPI_IPCR1_SEQNUM_SHIFT),
+		 base + FSPI_IPCR1);
 
 	/* Trigger the LUT now. */
 	fspi_writel(f, FSPI_IPCMD_TRG, base + FSPI_IPCMD);
@@ -1084,12 +1036,6 @@ static int nxp_fspi_exec_op(struct spi_mem *mem, const struct spi_mem_op *op)
 	if (err < 0) {
 		dev_err(f->dev, "Failed to enable clock %d\n", __LINE__);
 		return err;
-	}
-
-	err = pm_runtime_get_sync(f->dev);
-	if (err < 0) {
-		dev_err(f->dev, "Failed to enable clock %d\n", __LINE__);
-		goto err_mutex;
 	}
 
 	/* Wait for controller being ready. */
@@ -1122,11 +1068,6 @@ static int nxp_fspi_exec_op(struct spi_mem *mem, const struct spi_mem_op *op)
 
 	pm_runtime_put_autosuspend(f->dev);
 
-	mutex_unlock(&f->lock);
-	return err;
-
-err_mutex:
-	mutex_unlock(&f->lock);
 	return err;
 }
 
@@ -1138,33 +1079,17 @@ static int nxp_fspi_adjust_op_size(struct spi_mem *mem, struct spi_mem_op *op)
 		if (op->data.nbytes > f->devtype_data->txfifo)
 			op->data.nbytes = f->devtype_data->txfifo;
 	} else {
-		/* need to handle the OCTAL DTR read with odd dtr case */
-		if ((op->addr.val & 1) && op->cmd.dtr && op->addr.dtr &&
-			op->dummy.dtr && op->data.dtr) {
-			f->flags |= FSPI_DTR_ODD_ADDR;
-		}
-
 		if (op->data.nbytes > f->devtype_data->ahb_buf_size)
 			op->data.nbytes = f->devtype_data->ahb_buf_size;
 		else if (op->data.nbytes > (f->devtype_data->rxfifo - 4))
 			op->data.nbytes = ALIGN_DOWN(op->data.nbytes, 8);
-
-		/* Limit data bytes to RX FIFO in case of IP read only */
-		if (needs_ip_only(f) &&
-			(op->data.nbytes >= f->devtype_data->rxfifo)) {
-			/*
-			 * adjust size to odd number so the OCTAL DTR
-			 * read with odd address only triggers once, when
-			 * reading large chunks of data
-			 */
-			if (f->flags & FSPI_DTR_ODD_ADDR) {
-				op->data.nbytes = f->devtype_data->rxfifo
-							- 4 - 1;
-			} else {
-				op->data.nbytes = f->devtype_data->rxfifo;
-			}
-		}
 	}
+
+	/* Limit data bytes to RX FIFO in case of IP read only */
+	if (op->data.dir == SPI_MEM_DATA_IN &&
+	    needs_ip_only(f) &&
+	    op->data.nbytes > f->devtype_data->rxfifo)
+		op->data.nbytes = f->devtype_data->rxfifo;
 
 	return 0;
 }
@@ -1249,8 +1174,10 @@ static int nxp_fspi_default_setup(struct nxp_fspi *f)
 	/* enable module */
 	reg = FSPI_MCR0_AHB_TIMEOUT(0xFF) | FSPI_MCR0_IP_TIMEOUT(0xFF);
 
-	/* if there are individual devices connected to each fspi port, */
-	/* please enable individual mode in DT. */
+	/*
+	 * if there are individual devices connected to each fspi port,
+	 * please enable individual mode in DT.
+	 */
 	if (!f->individual_mode)
 		reg |= FSPI_MCR0_OCTCOMB_EN;
 
@@ -1451,6 +1378,10 @@ static int nxp_fspi_probe(struct platform_device *pdev)
 	if (ret)
 		return dev_err_probe(dev, ret, "Failed to request irq\n");
 
+	/* check if the controller work in combination or individual mode */
+	f->individual_mode = fwnode_property_read_bool(fwnode,
+						   "nxp,fspi-individual-mode");
+
 	ret = devm_mutex_init(dev, &f->lock);
 	if (ret)
 		return dev_err_probe(dev, ret, "Failed to initialize lock\n");
@@ -1458,10 +1389,6 @@ static int nxp_fspi_probe(struct platform_device *pdev)
 	ctlr->bus_num = -1;
 	ctlr->num_chipselect = NXP_FSPI_MAX_CHIPSELECT;
 	ctlr->mem_ops = &nxp_fspi_mem_ops;
-	if (f->devtype_data->quirks & FSPI_QUIRK_DISABLE_DTR)
-		ctlr->mem_caps = &nxp_fspi_mem_caps_quirks;
-	else
-		ctlr->mem_caps = &nxp_fspi_mem_caps;
 
 	if (f->devtype_data->quirks & FSPI_QUIRK_DISABLE_DTR)
 		ctlr->mem_caps = &nxp_fspi_mem_caps_disable_dtr;

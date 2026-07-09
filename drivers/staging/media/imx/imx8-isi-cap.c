@@ -707,7 +707,7 @@ static int mxc_isi_capture_open(struct file *file)
 	isi_cap->is_link_setup = is_entity_link_setup(isi_cap);
 	if (!isi_cap->is_link_setup) {
 		mutex_unlock(&isi_cap->lock);
-		return 0;
+		return -EPIPE;
 	}
 	mutex_unlock(&isi_cap->lock);
 

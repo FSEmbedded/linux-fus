@@ -5131,7 +5131,11 @@ static void run_state_machine(struct tcpm_port *port)
 		ret = tcpm_snk_attach(port);
 		if (ret < 0)
 			tcpm_set_state(port, SNK_UNATTACHED, 0);
-		else
+		else if (port->port_type == TYPEC_PORT_SRC &&
+			 port->typec_caps.data == TYPEC_PORT_DRD) {
+			tcpm_typec_connect(port);
+			tcpm_log(port, "Keep at SNK_ATTACHED for USB data.");
+		} else
 			/*
 			 * For Type C port controllers that use Battery Charging
 			 * Detection (based on BCv1.2 spec) to detect USB

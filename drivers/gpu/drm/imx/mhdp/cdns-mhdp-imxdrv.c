@@ -12,7 +12,7 @@
 #include <drm/drm_of.h>
 #include <drm/drm_vblank.h>
 #include <drm/drm_crtc_helper.h>
-#include <drm/drm_encoder_slave.h>
+#include <drm/drm_encoder.h>
 #include <drm/drm_modeset_helper_vtables.h>
 
 #include "cdns-mhdp-imx.h"
@@ -21,7 +21,8 @@
 
 static void cdns_mhdp_imx_encoder_disable(struct drm_encoder *encoder)
 {
-	struct drm_bridge *bridge = drm_bridge_chain_get_first_bridge(encoder);
+	struct drm_bridge *bridge __free(drm_bridge_put) =
+							drm_bridge_chain_get_first_bridge(encoder);
 	struct cdns_mhdp_device *mhdp = bridge->driver_private;
 
 	if (mhdp->is_dp)
@@ -34,7 +35,8 @@ static void cdns_mhdp_imx_encoder_disable(struct drm_encoder *encoder)
 
 static void cdns_mhdp_imx_encoder_enable(struct drm_encoder *encoder)
 {
-	struct drm_bridge *bridge = drm_bridge_chain_get_first_bridge(encoder);
+	struct drm_bridge *bridge __free(drm_bridge_put) =
+							drm_bridge_chain_get_first_bridge(encoder);
 	struct cdns_mhdp_device *mhdp = bridge->driver_private;
 
 	cdns_mhdp_plat_call(mhdp, plat_init);
@@ -49,7 +51,8 @@ static int cdns_mhdp_imx_encoder_atomic_check(struct drm_encoder *encoder,
 				    struct drm_connector_state *conn_state)
 {
 	struct imx_crtc_state *imx_crtc_state = to_imx_crtc_state(crtc_state);
-	struct drm_bridge *bridge = drm_bridge_chain_get_first_bridge(encoder);
+	struct drm_bridge *bridge __free(drm_bridge_put) =
+							drm_bridge_chain_get_first_bridge(encoder);
 	struct cdns_mhdp_device *mhdp = bridge->driver_private;
 
 	if (mhdp->plat_data->video_format != 0)
@@ -275,5 +278,6 @@ static struct platform_driver cdns_mhdp_imx_platform_driver = {
 module_platform_driver(cdns_mhdp_imx_platform_driver);
 
 MODULE_AUTHOR("Sandor YU <sandor.yu@nxp.com>");
+MODULE_DESCRIPTION("NXP i.MX MX8 DRM HDMI/DP");
 MODULE_LICENSE("GPL");
 MODULE_ALIAS("platform:cdnhdmi-imx");

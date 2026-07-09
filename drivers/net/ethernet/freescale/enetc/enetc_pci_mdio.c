@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: (GPL-2.0+ OR BSD-3-Clause)
 /* Copyright 2019 NXP */
 #include <linux/fsl/enetc_mdio.h>
-#include <linux/fsl/netc_global.h>
 #include <linux/of_mdio.h>
-#include <linux/of_platform.h>
-#include <linux/pinctrl/consumer.h>
-#include "enetc_pf.h"
 #include <linux/regulator/consumer.h>
+
+#include "enetc_pf.h"
 
 #define NETC_EMDIO_VEN_ID	0x1131
 #define NETC_EMDIO_DEV_ID	0xee00
@@ -40,15 +38,12 @@ static void enetc_emdio_disable_err050089(struct pci_dev *pdev)
 static int enetc_pci_mdio_probe(struct pci_dev *pdev,
 				const struct pci_device_id *ent)
 {
-	struct device_node *node = pdev->dev.of_node;
 	struct enetc_mdio_priv *mdio_priv;
 	struct device *dev = &pdev->dev;
 	void __iomem *port_regs;
 	struct enetc_hw *hw;
 	struct mii_bus *bus;
 	int err;
-
-	pinctrl_pm_select_default_state(dev);
 
 	port_regs = pci_iomap(pdev, 0, 0);
 	if (!port_regs) {
@@ -131,7 +126,6 @@ err_mdiobus_alloc:
 err_hw_alloc:
 	iounmap(port_regs);
 err_ioremap:
-
 	return err;
 }
 
@@ -147,6 +141,7 @@ static void enetc_pci_mdio_remove(struct pci_dev *pdev)
 	mdio_priv = bus->priv;
 	if (mdio_priv->regulator)
 		regulator_disable(mdio_priv->regulator);
+
 	iounmap(mdio_priv->hw->port);
 	pci_release_region(pdev, 0);
 	pci_disable_device(pdev);

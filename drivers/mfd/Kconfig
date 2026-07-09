@@ -1131,6 +1131,7 @@ config MFD_MAX96752_I2C
 	tristate "Analog Devices MAX96752 Deserializer with I2C"
 	depends on MFD_MAX96752
 	depends on I2C
+	select I2C_MUX
 	select REGMAP_I2C
 	help
 	  Support for Analog Devices MAX96752 GMSL deserializer over I2C.
@@ -1149,6 +1150,7 @@ config MFD_MAX96789_I2C
 	tristate "Analog Devices MAX96789 DSI Serializer with I2C"
 	depends on MFD_MAX96789
 	depends on I2C
+	select I2C_MUX
 	select REGMAP_I2C
 	help
 	  Support for Analog Devices MAX96789 MIPI-DSI serializer over I2C.

@@ -39,11 +39,10 @@
 };
 
 &mipi0_dsi_host {
-	status = "okay";
-	fsl,clock-drop-level = <2>;
-
 	#address-cells = <1>;
 	#size-cells = <0>;
+	status = "okay";
+	fsl,clock-drop-level = <2>;
 
 	panel@0 {
 		compatible = "raydium,rm67191";
@@ -78,11 +77,10 @@
 };
 
 &mipi1_dsi_host {
-	status = "okay";
-	fsl,clock-drop-level = <2>;
-
 	#address-cells = <1>;
 	#size-cells = <0>;
+	status = "okay";
+	fsl,clock-drop-level = <2>;
 
 	panel@0 {
 		compatible = "raydium,rm67191";

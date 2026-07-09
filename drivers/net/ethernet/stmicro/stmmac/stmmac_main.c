@@ -872,19 +872,6 @@ static void stmmac_mac_link_down(struct phylink_config *config,
 		ethtool_mmsv_link_state_handle(&priv->fpe_cfg.mmsv, false);
 }
 
-static void stmmac_wait_wol_resume_reset(struct stmmac_priv *priv)
-{
-	unsigned long orig_jiffies = jiffies;
-
-	while (!priv->wol_resume_reset) {
-		if (time_after(jiffies, orig_jiffies + msecs_to_jiffies(100))) {
-			netdev_dbg(priv->dev, "wait wol resume reset timeout\n");
-			break;
-		}
-		schedule();
-	}
-}
-
 static void stmmac_mac_link_up(struct phylink_config *config,
 			       struct phy_device *phy,
 			       unsigned int mode, phy_interface_t interface,
@@ -899,8 +886,6 @@ static void stmmac_mac_link_up(struct phylink_config *config,
 	if ((priv->plat->flags & STMMAC_FLAG_SERDES_UP_AFTER_PHY_LINKUP) &&
 	    priv->plat->serdes_powerup)
 		priv->plat->serdes_powerup(priv->dev, priv->plat->bsp_priv);
-
-	stmmac_wait_wol_resume_reset(priv);
 
 	old_ctrl = readl(priv->ioaddr + MAC_CTRL_REG);
 	ctrl = old_ctrl & ~priv->hw->link.speed_mask;
@@ -4057,6 +4042,7 @@ static void __stmmac_release(struct net_device *dev)
 
 	/* Stop and disconnect the PHY */
 	phylink_stop(priv->phylink);
+	priv->is_phy_started = false;
 
 	stmmac_disable_all_queues(priv);
 
@@ -7427,8 +7413,6 @@ int stmmac_dvr_probe(struct device *device,
 	priv->device = device;
 	priv->dev = ndev;
 
-	priv->wol_resume_reset = true;
-
 	for (i = 0; i < MTL_MAX_RX_QUEUES; i++)
 		u64_stats_init(&priv->xstats.rxq_stats[i].napi_syncp);
 	for (i = 0; i < MTL_MAX_TX_QUEUES; i++) {
@@ -7800,6 +7784,9 @@ int stmmac_suspend(struct device *dev)
 		phylink_speed_down(priv->phylink, false);
 
 	phylink_suspend(priv->phylink, stmmac_wol_enabled_mac(priv));
+
+	if (device_may_wakeup(priv->device) && !priv->plat->pmt)
+		pinctrl_pm_select_sleep_state(priv->device);
 	rtnl_unlock();
 
 	if (stmmac_fpe_supported(priv))

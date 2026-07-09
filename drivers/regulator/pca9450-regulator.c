@@ -616,7 +616,7 @@ static struct pca9450_regulator_desc pca9450a_regulators[] = {
 			.n_linear_ranges = ARRAY_SIZE(pca9450_ldo5_volts),
 			.vsel_reg = PCA9450_REG_LDO5CTRL_H,
 			.vsel_mask = LDO5HOUT_MASK,
-			.enable_reg = PCA9450_REG_LDO5CTRL_H,
+			.enable_reg = PCA9450_REG_LDO5CTRL_L,
 			.enable_mask = LDO5H_EN_MASK,
 			.owner = THIS_MODULE,
 		},
@@ -851,7 +851,7 @@ static struct pca9450_regulator_desc pca9450bc_regulators[] = {
 			.n_linear_ranges = ARRAY_SIZE(pca9450_ldo5_volts),
 			.vsel_reg = PCA9450_REG_LDO5CTRL_H,
 			.vsel_mask = LDO5HOUT_MASK,
-			.enable_reg = PCA9450_REG_LDO5CTRL_H,
+			.enable_reg = PCA9450_REG_LDO5CTRL_L,
 			.enable_mask = LDO5H_EN_MASK,
 			.owner = THIS_MODULE,
 		},
@@ -1091,7 +1091,7 @@ static struct pca9450_regulator_desc pca9451a_regulators[] = {
 			.n_linear_ranges = ARRAY_SIZE(pca9450_ldo5_volts),
 			.vsel_reg = PCA9450_REG_LDO5CTRL_H,
 			.vsel_mask = LDO5HOUT_MASK,
-			.enable_reg = PCA9450_REG_LDO5CTRL_H,
+			.enable_reg = PCA9450_REG_LDO5CTRL_L,
 			.enable_mask = LDO5H_EN_MASK,
 			.owner = THIS_MODULE,
 		},
@@ -1173,10 +1173,9 @@ static int pca9450_i2c_probe(struct i2c_client *i2c)
 
 	pca9450->regmap = devm_regmap_init_i2c(i2c,
 					       &pca9450_regmap_config);
-	if (IS_ERR(pca9450->regmap)) {
-		dev_err(&i2c->dev, "regmap initialization failed\n");
-		return PTR_ERR(pca9450->regmap);
-	}
+	if (IS_ERR(pca9450->regmap))
+		return dev_err_probe(&i2c->dev, PTR_ERR(pca9450->regmap),
+				     "regmap initialization failed\n");
 
 	ret = regmap_read(pca9450->regmap, PCA9450_REG_PWRCTRL, &val);
 	if (ret) {
@@ -1212,12 +1211,6 @@ static int pca9450_i2c_probe(struct i2c_client *i2c)
 
 	dev_set_drvdata(&i2c->dev, pca9450);
 
-	pca9450->regmap = devm_regmap_init_i2c(i2c,
-					       &pca9450_regmap_config);
-	if (IS_ERR(pca9450->regmap))
-		return dev_err_probe(&i2c->dev, PTR_ERR(pca9450->regmap),
-				     "regmap initialization failed\n");
-
 	ret = regmap_read(pca9450->regmap, PCA9450_REG_DEV_ID, &device_id);
 	if (ret)
 		return dev_err_probe(&i2c->dev, ret, "Read device id error\n");
@@ -1235,20 +1228,16 @@ static int pca9450_i2c_probe(struct i2c_client *i2c)
 		struct regulator_dev *rdev;
 		const struct pca9450_regulator_desc *r;
 
-		if ((type == PCA9450_TYPE_PCA9451A || type == PCA9450_TYPE_PCA9452) &&
+		if (type == PCA9450_TYPE_PCA9451A &&
 		    !strcmp((&regulator_desc[i])->desc.name, "buck1") && pmic_trim) {
 			r = &regulator_desc[i + 1];
 			i = i + 1;
-		} else if ((type == PCA9450_TYPE_PCA9451A || type == PCA9450_TYPE_PCA9452) &&
+		} else if (type == PCA9450_TYPE_PCA9451A &&
 			   !strcmp((&regulator_desc[i])->desc.name, "buck1")) {
 			r = &regulator_desc[i];
 			i = i + 1;
-		} else if (type == PCA9450_TYPE_PCA9451A &&
-			 !strcmp((&regulator_desc[i])->desc.name, "ldo3"))
-			continue;
-		else
+		} else
 			r = &regulator_desc[i];
-
 		desc = &r->desc;
 
 		if (type == PCA9450_TYPE_PCA9451A && !strcmp(desc->name, "ldo3"))

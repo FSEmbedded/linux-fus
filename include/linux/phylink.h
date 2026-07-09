@@ -175,6 +175,7 @@ enum phylink_op_type {
  * @lpi_capabilities: MAC speeds which can support LPI signalling
  * @lpi_timer_default: Default EEE LPI timer setting.
  * @eee_enabled_default: If set, EEE will be enabled by phylink at creation time
+ * @cfg_link_an_mode: see %phylink_pcs. Necessary for %mac_select_pcs.
  */
 struct phylink_config {
 	struct device *dev;
@@ -192,6 +193,7 @@ struct phylink_config {
 	unsigned long lpi_capabilities;
 	u32 lpi_timer_default;
 	bool eee_enabled_default;
+	unsigned int cfg_link_an_mode;
 };
 
 void phylink_limit_mac_speed(struct phylink_config *config, u32 max_speed);
@@ -837,6 +839,8 @@ int phylink_mii_c22_pcs_config(struct mdio_device *pcs,
 void phylink_mii_c22_pcs_an_restart(struct mdio_device *pcs);
 
 void phylink_resolve_c73(struct phylink_link_state *state);
+
+phy_interface_t phylink_c73_linkmode_to_interface(unsigned long *supported);
 
 void phylink_mii_c45_pcs_get_state(struct mdio_device *pcs,
 				   struct phylink_link_state *state);

@@ -36,81 +36,6 @@ module_param(legacyfb_depth, int, 0444);
 
 DEFINE_DRM_GEM_DMA_FOPS(imx_drm_driver_fops);
 
-static int imx_drm_atomic_check(struct drm_device *dev,
-				struct drm_atomic_state *state)
-{
-	int ret;
-
-	ret = drm_atomic_helper_check(dev, state);
-	if (ret)
-		return ret;
-
-	/*
-	 * Check modeset again in case crtc_state->mode_changed is
-	 * updated in plane's ->atomic_check callback.
-	 */
-	ret = drm_atomic_helper_check_modeset(dev, state);
-	if (ret)
-		return ret;
-
-	/* Assign PRG/PRE channels and check if all constrains are satisfied. */
-	ret = ipu_planes_assign_pre(dev, state);
-	if (ret)
-		return ret;
-
-	return ret;
-}
-
-static const struct drm_mode_config_funcs imx_drm_mode_config_funcs = {
-	.fb_create = drm_gem_fb_create,
-	.atomic_check = imx_drm_atomic_check,
-	.atomic_commit = drm_atomic_helper_commit,
-};
-
-static void imx_drm_atomic_commit_tail(struct drm_atomic_state *state)
-{
-	struct drm_device *dev = state->dev;
-	struct drm_plane *plane;
-	struct drm_plane_state *old_plane_state, *new_plane_state;
-	bool plane_disabling = false;
-	int i;
-
-	drm_atomic_helper_commit_modeset_disables(dev, state);
-
-	drm_atomic_helper_commit_planes(dev, state,
-				DRM_PLANE_COMMIT_ACTIVE_ONLY |
-				DRM_PLANE_COMMIT_NO_DISABLE_AFTER_MODESET);
-
-	drm_atomic_helper_commit_modeset_enables(dev, state);
-
-	for_each_oldnew_plane_in_state(state, plane, old_plane_state, new_plane_state, i) {
-		if (drm_atomic_plane_disabling(old_plane_state, new_plane_state))
-			plane_disabling = true;
-	}
-
-	/*
-	 * The flip done wait is only strictly required by imx-drm if a deferred
-	 * plane disable is in-flight. As the core requires blocking commits
-	 * to wait for the flip it is done here unconditionally. This keeps the
-	 * workitem around a bit longer than required for the majority of
-	 * non-blocking commits, but we accept that for the sake of simplicity.
-	 */
-	drm_atomic_helper_wait_for_flip_done(dev, state);
-
-	if (plane_disabling) {
-		for_each_old_plane_in_state(state, plane, old_plane_state, i)
-			ipu_plane_disable_deferred(plane);
-
-	}
-
-	drm_atomic_helper_commit_hw_done(state);
-}
-
-static const struct drm_mode_config_helper_funcs imx_drm_mode_config_helpers = {
-	.atomic_commit_tail = imx_drm_atomic_commit_tail,
-};
-
-
 int imx_drm_encoder_parse_of(struct drm_device *drm,
 	struct drm_encoder *encoder, struct device_node *np)
 {
@@ -157,7 +82,7 @@ static int imx_drm_ipu_dumb_create(struct drm_file *file_priv,
 
 static const struct drm_driver imx_drm_driver = {
 	.driver_features	= DRIVER_MODESET | DRIVER_GEM | DRIVER_ATOMIC,
-	DRM_GEM_DMA_DRIVER_OPS_WITH_DUMB_CREATE(imx_drm_dumb_create),
+	DRM_GEM_DMA_DRIVER_OPS,
 	DRM_FBDEV_DMA_DRIVER_OPS,
 	.ioctls			= imx_drm_ioctls,
 	.num_ioctls		= ARRAY_SIZE(imx_drm_ioctls),
@@ -177,7 +102,6 @@ static const struct drm_driver imx_drm_ipu_driver = {
 	.fops			= &imx_drm_driver_fops,
 	.name			= "imx-drm",
 	.desc			= "i.MX DRM graphics",
-	.date			= "20120507",
 	.major			= 1,
 	.minor			= 0,
 	.patchlevel		= 0,
@@ -187,12 +111,12 @@ static const struct drm_driver imx_drm_dpu_driver = {
 	.driver_features	= DRIVER_MODESET | DRIVER_GEM | DRIVER_ATOMIC |
 				  DRIVER_RENDER,
 	DRM_GEM_DMA_DRIVER_OPS,
+	DRM_FBDEV_DMA_DRIVER_OPS,
 	.ioctls			= imx_drm_dpu_ioctls,
 	.num_ioctls		= ARRAY_SIZE(imx_drm_dpu_ioctls),
 	.fops			= &imx_drm_driver_fops,
 	.name			= "imx-drm",
 	.desc			= "i.MX DRM graphics",
-	.date			= "20120507",
 	.major			= 1,
 	.minor			= 0,
 	.patchlevel		= 0,

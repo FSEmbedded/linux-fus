@@ -2,8 +2,7 @@
 /*
  * NEOISP supported formats definition
  *
- * Copyright 2023-2024 NXP
- * Author: Aymen Sghaier (aymen.sghaier@nxp.com)
+ * Copyright 2023-2025 NXP
  *
  */
 
@@ -166,7 +165,7 @@ const struct neoisp_fmt_s formats_vcap[NEOISP_FMT_VCAP_COUNT] = {
 		.colorspace_default = V4L2_COLORSPACE_SMPTE170M,
 		.type = NEOISP_FMT_VIDEO_CAPTURE
 	}, {
-		.fourcc = V4L2_PIX_FMT_GREY,	/* 8-bit Monochrome */
+		.fourcc = V4L2_PIX_FMT_GREY,     /* 8-bit Monochrome */
 		.align = 32,
 		.bit_depth = 8,
 		.num_planes = 1,
@@ -176,7 +175,7 @@ const struct neoisp_fmt_s formats_vcap[NEOISP_FMT_VCAP_COUNT] = {
 		.colorspace_default = V4L2_COLORSPACE_RAW,
 		.type = NEOISP_FMT_VIDEO_CAPTURE
 	}, {
-		.fourcc = V4L2_PIX_FMT_Y10,	/* 10-bit Monochrome */
+		.fourcc = V4L2_PIX_FMT_Y10,     /* 10-bit Monochrome */
 		.align = 32,
 		.bit_depth = 10,
 		.num_planes = 1,
@@ -186,7 +185,7 @@ const struct neoisp_fmt_s formats_vcap[NEOISP_FMT_VCAP_COUNT] = {
 		.colorspace_default = V4L2_COLORSPACE_RAW,
 		.type = NEOISP_FMT_VIDEO_CAPTURE
 	}, {
-		.fourcc = V4L2_PIX_FMT_Y12,	/* 12-bit Monochrome */
+		.fourcc = V4L2_PIX_FMT_Y12,    /* 12-bit Monochrome */
 		.align = 32,
 		.bit_depth = 12,
 		.num_planes = 1,
@@ -196,7 +195,7 @@ const struct neoisp_fmt_s formats_vcap[NEOISP_FMT_VCAP_COUNT] = {
 		.colorspace_default = V4L2_COLORSPACE_RAW,
 		.type = NEOISP_FMT_VIDEO_CAPTURE
 	}, {
-		.fourcc = V4L2_PIX_FMT_Y16,	/* 16-bit Monochrome */
+		.fourcc = V4L2_PIX_FMT_Y16,    /* 16-bit Monochrome */
 		.align = 32,
 		.bit_depth = 16,
 		.num_planes = 1,
@@ -206,7 +205,7 @@ const struct neoisp_fmt_s formats_vcap[NEOISP_FMT_VCAP_COUNT] = {
 		.colorspace_default = V4L2_COLORSPACE_RAW,
 		.type = NEOISP_FMT_VIDEO_CAPTURE
 	}, {
-		.fourcc = V4L2_PIX_FMT_Y16_BE,	/* 16-bit big-endian Monochrome */
+		.fourcc = V4L2_PIX_FMT_Y16_BE, /* 16-bit big-endian Monochrome */
 		.align = 32,
 		.bit_depth = 16,
 		.num_planes = 1,
@@ -220,7 +219,7 @@ const struct neoisp_fmt_s formats_vcap[NEOISP_FMT_VCAP_COUNT] = {
 
 const struct neoisp_fmt_s formats_vcap_ir[NEOISP_FMT_VCAP_IR_COUNT] = {
 	{
-		.fourcc = V4L2_PIX_FMT_GREY,      /* 8-bit Greyscale */
+		.fourcc = V4L2_PIX_FMT_GREY,   /* 8-bit Greyscale */
 		.align = 32,
 		.bit_depth = 8,
 		.num_planes = 1,
@@ -229,7 +228,7 @@ const struct neoisp_fmt_s formats_vcap_ir[NEOISP_FMT_VCAP_IR_COUNT] = {
 		.colorspace_default = V4L2_COLORSPACE_RAW,
 		.type = NEOISP_FMT_VIDEO_CAPTURE
 	}, {
-		.fourcc = V4L2_PIX_FMT_Y16,      /* 16-bit Greyscale */
+		.fourcc = V4L2_PIX_FMT_Y16,    /* 16-bit Greyscale */
 		.align = 32,
 		.bit_depth = 16,
 		.num_planes = 1,
@@ -242,7 +241,7 @@ const struct neoisp_fmt_s formats_vcap_ir[NEOISP_FMT_VCAP_IR_COUNT] = {
 
 const struct neoisp_fmt_s formats_vout[NEOISP_FMT_VOUT_COUNT] = {
 	{
-		.fourcc = V4L2_PIX_FMT_SRGGB8,    /* 8-bit Bayer RGRG/GBGB */
+		.fourcc = V4L2_PIX_FMT_SRGGB8,   /* 8-bit Bayer RGRG/GBGB */
 		.align = 32,
 		.bit_depth = 8,
 		.bpp_enc = 6,
@@ -251,7 +250,7 @@ const struct neoisp_fmt_s formats_vout[NEOISP_FMT_VOUT_COUNT] = {
 		.colorspace_default = V4L2_COLORSPACE_RAW,
 		.type = NEOISP_FMT_VIDEO_OUTPUT
 	}, {
-		.fourcc = V4L2_PIX_FMT_SRGGB10,   /* 10-bit Bayer RGRG/GBGB */
+		.fourcc = V4L2_PIX_FMT_SRGGB10,  /* 10-bit Bayer RGRG/GBGB */
 		.align = 32,
 		.bit_depth = 10,
 		.bpp_enc = 4,
@@ -260,16 +259,7 @@ const struct neoisp_fmt_s formats_vout[NEOISP_FMT_VOUT_COUNT] = {
 		.colorspace_default = V4L2_COLORSPACE_RAW,
 		.type = NEOISP_FMT_VIDEO_OUTPUT
 	}, {
-		.fourcc = V4L2_PIX_FMT_SRGGB10P,  /* 10-bit Bayer RGRG/GBGB packed */
-		.align = 32,
-		.bit_depth = 10,
-		.bpp_enc = 5, /* FIXME this may be wrong for 10bits packed format ISP */
-		.num_planes = 1,
-		.colorspace_mask = NEOISP_COLORSPACE_MASK_RAW,
-		.colorspace_default = V4L2_COLORSPACE_RAW,
-		.type = NEOISP_FMT_VIDEO_OUTPUT
-	}, {
-		.fourcc = V4L2_PIX_FMT_SRGGB12,   /* 12-bit Bayer RGRG/GBGB */
+		.fourcc = V4L2_PIX_FMT_SRGGB12,  /* 12-bit Bayer RGRG/GBGB */
 		.align = 32,
 		.bit_depth = 12,
 		.bpp_enc = 0,
@@ -278,7 +268,7 @@ const struct neoisp_fmt_s formats_vout[NEOISP_FMT_VOUT_COUNT] = {
 		.colorspace_default = V4L2_COLORSPACE_RAW,
 		.type = NEOISP_FMT_VIDEO_OUTPUT
 	}, {
-		.fourcc = V4L2_PIX_FMT_SRGGB14,   /* 14-bit Bayer RGRG/GBGB */
+		.fourcc = V4L2_PIX_FMT_SRGGB14,  /* 14-bit Bayer RGRG/GBGB */
 		.align = 32,
 		.bit_depth = 14,
 		.bpp_enc = 1,
@@ -287,7 +277,7 @@ const struct neoisp_fmt_s formats_vout[NEOISP_FMT_VOUT_COUNT] = {
 		.colorspace_default = V4L2_COLORSPACE_RAW,
 		.type = NEOISP_FMT_VIDEO_OUTPUT
 	}, {
-		.fourcc = V4L2_PIX_FMT_SRGGB16,   /* 16-bit Bayer RGRG/GBGB */
+		.fourcc = V4L2_PIX_FMT_SRGGB16,  /* 16-bit Bayer RGRG/GBGB */
 		.align = 32,
 		.bit_depth = 16,
 		.bpp_enc = 2,
@@ -309,15 +299,6 @@ const struct neoisp_fmt_s formats_vout[NEOISP_FMT_VOUT_COUNT] = {
 		.align = 32,
 		.bit_depth = 10,
 		.bpp_enc = 4,
-		.num_planes = 1,
-		.colorspace_mask = NEOISP_COLORSPACE_MASK_RAW,
-		.colorspace_default = V4L2_COLORSPACE_RAW,
-		.type = NEOISP_FMT_VIDEO_OUTPUT
-	}, {
-		.fourcc = V4L2_PIX_FMT_SBGGR10P,
-		.align = 32,
-		.bit_depth = 10,
-		.bpp_enc = 5,
 		.num_planes = 1,
 		.colorspace_mask = NEOISP_COLORSPACE_MASK_RAW,
 		.colorspace_default = V4L2_COLORSPACE_RAW,
@@ -368,15 +349,6 @@ const struct neoisp_fmt_s formats_vout[NEOISP_FMT_VOUT_COUNT] = {
 		.colorspace_default = V4L2_COLORSPACE_RAW,
 		.type = NEOISP_FMT_VIDEO_OUTPUT
 	}, {
-		.fourcc = V4L2_PIX_FMT_SGBRG10P,
-		.align = 32,
-		.bit_depth = 10,
-		.bpp_enc = 5,
-		.num_planes = 1,
-		.colorspace_mask = NEOISP_COLORSPACE_MASK_RAW,
-		.colorspace_default = V4L2_COLORSPACE_RAW,
-		.type = NEOISP_FMT_VIDEO_OUTPUT
-	}, {
 		.fourcc = V4L2_PIX_FMT_SGBRG12,
 		.align = 32,
 		.bit_depth = 12,
@@ -417,15 +389,6 @@ const struct neoisp_fmt_s formats_vout[NEOISP_FMT_VOUT_COUNT] = {
 		.align = 32,
 		.bit_depth = 10,
 		.bpp_enc = 4,
-		.num_planes = 1,
-		.colorspace_mask = NEOISP_COLORSPACE_MASK_RAW,
-		.colorspace_default = V4L2_COLORSPACE_RAW,
-		.type = NEOISP_FMT_VIDEO_OUTPUT
-	}, {
-		.fourcc = V4L2_PIX_FMT_SGRBG10P,
-		.align = 32,
-		.bit_depth = 10,
-		.bpp_enc = 5,
 		.num_planes = 1,
 		.colorspace_mask = NEOISP_COLORSPACE_MASK_RAW,
 		.colorspace_default = V4L2_COLORSPACE_RAW,
@@ -508,7 +471,14 @@ const struct neoisp_fmt_s formats_vout[NEOISP_FMT_VOUT_COUNT] = {
 /* META OUTPUT */
 const struct neoisp_fmt_s formats_mout[NEOISP_FMT_MOUT_COUNT] = {
 	{
-		.fourcc = V4L2_META_FMT_NEO_ISP_PARAMS, /* NXP neo isp 3A parameters */
+		.fourcc = V4L2_META_FMT_NEO_ISP_PARAMS, /* NXP neoisp 3A parameters */
+		.align = 32,
+		.bit_depth = 8,
+		.num_planes = 1,
+		.type = NEOISP_FMT_META_OUTPUT
+	},
+	{
+		.fourcc = V4L2_META_FMT_NEO_ISP_EXT_PARAMS, /* NXP neoisp extended 3A parameters */
 		.align = 32,
 		.bit_depth = 8,
 		.num_planes = 1,
@@ -519,7 +489,14 @@ const struct neoisp_fmt_s formats_mout[NEOISP_FMT_MOUT_COUNT] = {
 /* META CAPTURE */
 const struct neoisp_fmt_s formats_mcap[NEOISP_FMT_MCAP_COUNT] = {
 	{
-		.fourcc = V4L2_META_FMT_NEO_ISP_STATS, /* NXP neo isp 3A Statistics */
+		.fourcc = V4L2_META_FMT_NEO_ISP_STATS, /* NXP neoisp 3A Statistics */
+		.align = 32,
+		.bit_depth = 8,
+		.num_planes = 1,
+		.type = NEOISP_FMT_META_CAPTURE
+	},
+	{
+		.fourcc = V4L2_META_FMT_NEO_ISP_EXT_STATS, /* NXP neoisp extended 3A Statistics */
 		.align = 32,
 		.bit_depth = 8,
 		.num_planes = 1,

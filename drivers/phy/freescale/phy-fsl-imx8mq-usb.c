@@ -79,64 +79,6 @@
 #define PHY_STS0_FSVPLUS		BIT(3)
 #define PHY_STS0_FSVMINUS		BIT(2)
 
-/*
- *  ##############  TCA Block ################
- */
-
-#define TCA_CLK_RST			0x00
-#define TCA_CLK_RST_SW			BIT(9)
-#define TCA_CLK_RST_REF_CLK_EN		BIT(1)
-#define TCA_CLK_RST_SUSPEND_CLK_EN	BIT(0)
-
-#define TCA_INTR_EN			0x04
-#define TCA_INTR_STS			0x08
-
-#define TCA_GCFG			0x10
-#define TCA_GCFG_ROLE_HSTDEV		BIT(4)
-#define TCA_GCFG_OP_MODE		GENMASK(1, 0)
-#define TCA_GCFG_OP_MODE_SYSMODE	0
-#define TCA_GCFG_OP_MODE_SYNCMODE	1
-
-#define TCA_TCPC			0x14
-#define TCA_TCPC_VALID			BIT(4)
-#define TCA_TCPC_LOW_POWER_EN		BIT(3)
-#define TCA_TCPC_ORIENTATION_NORMAL	BIT(2)
-#define TCA_TCPC_MUX_CONTRL		GENMASK(1, 0)
-#define TCA_TCPC_MUX_CONTRL_NO_CONN	0
-#define TCA_TCPC_MUX_CONTRL_USB_CONN	1
-
-#define TCA_SYSMODE_CFG			0x18
-#define TCA_SYSMODE_TCPC_DISABLE	BIT(3)
-#define TCA_SYSMODE_TCPC_FLIP		BIT(2)
-
-#define TCA_CTRLSYNCMODE_CFG0		0x20
-#define TCA_CTRLSYNCMODE_CFG1           0x20
-
-#define TCA_PSTATE			0x30
-#define TCA_PSTATE_CM_STS		BIT(4)
-#define TCA_PSTATE_TX_STS		BIT(3)
-#define TCA_PSTATE_RX_PLL_STS		BIT(2)
-#define TCA_PSTATE_PIPE0_POWER_DOWN	GENMASK(1, 0)
-
-#define TCA_GEN_STATUS			0x34
-#define TCA_GEN_DEV_POR			BIT(12)
-#define TCA_GEN_REF_CLK_SEL		BIT(8)
-#define TCA_GEN_TYPEC_FLIP_INVERT	BIT(4)
-#define TCA_GEN_PHY_TYPEC_DISABLE	BIT(3)
-#define TCA_GEN_PHY_TYPEC_FLIP		BIT(2)
-
-#define TCA_VBUS_CTRL			0x40
-#define TCA_VBUS_STATUS			0x44
-
-#define TCA_INFO			0xFC
-
-struct tca_blk {
-	struct typec_switch_dev *sw;
-	void __iomem *base;
-	struct mutex mutex;
-	enum typec_orientation orientation;
-};
-
 #define TCA_CLK_RST			0x00
 #define TCA_CLK_RST_SW			BIT(9)
 #define TCA_CLK_RST_REF_CLK_EN		BIT(1)
@@ -1085,16 +1027,16 @@ static void imx8mq_phy_disable_chg_det(struct imx8mq_usb_phy *imx_phy)
 static int imx8mq_phy_charger_detect(struct imx8mq_usb_phy *imx_phy)
 {
 	struct device *dev = &imx_phy->phy->dev;
-	struct device_node *np = dev->parent->of_node;
 	union power_supply_propval propval;
 	u32 value;
 	int ret = 0;
 
-	if (!np)
+	if (!dev_fwnode(dev->parent))
 		return 0;
 
-	imx_phy->vbus_power_supply = power_supply_get_by_phandle(np,
-						"vbus-power-supply");
+	imx_phy->vbus_power_supply =
+			power_supply_get_by_reference(dev_fwnode(dev->parent),
+						      "vbus-power-supply");
 	if (IS_ERR_OR_NULL(imx_phy->vbus_power_supply))
 		return 0;
 
@@ -1149,16 +1091,16 @@ static int imx8mq_phy_usb_vbus_notify(struct notifier_block *nb,
 	struct imx8mq_usb_phy *imx_phy = container_of(nb, struct imx8mq_usb_phy,
 						      chg_det_nb);
 	struct device *dev = &imx_phy->phy->dev;
-	struct device_node *np = dev->parent->of_node;
 	union power_supply_propval propval;
 	struct power_supply *psy = v;
 	int ret;
 
-	if (!np)
+	if (!dev_fwnode(dev->parent))
 		return NOTIFY_DONE;
 
-	imx_phy->vbus_power_supply = power_supply_get_by_phandle(np,
-						"vbus-power-supply");
+	imx_phy->vbus_power_supply =
+			power_supply_get_by_reference(dev_fwnode(dev->parent),
+						      "vbus-power-supply");
 	if (IS_ERR_OR_NULL(imx_phy->vbus_power_supply)) {
 		dev_err(dev, "failed to get power supply\n");
 		return NOTIFY_DONE;
@@ -1266,12 +1208,6 @@ static int imx8mq_usb_phy_probe(struct platform_device *pdev)
 		power_supply_reg_notifier(&imx_phy->chg_det_nb);
 	}
 
-	if (device_is_compatible(dev, "fsl,imx95-usb-phy") &&
-		imx95_usb_phy_get_tca(pdev, imx_phy) < 0) {
-		dev_err(dev, "failed to get tca\n");
-		return -ENODEV;
-	}
-
 	imx_phy->tca = imx95_usb_phy_get_tca(pdev, imx_phy);
 	if (IS_ERR(imx_phy->tca))
 		return dev_err_probe(dev, PTR_ERR(imx_phy->tca),
@@ -1293,6 +1229,11 @@ static void imx8mq_usb_phy_remove(struct platform_device *pdev)
 	struct imx8mq_usb_phy *imx_phy = platform_get_drvdata(pdev);
 
 	imx95_usb_phy_put_tca(imx_phy);
+
+	if (device_property_present(&pdev->dev, "vbus-power-supply"))
+		power_supply_unreg_notifier(&imx_phy->chg_det_nb);
+
+	debug_remove_files(imx_phy);
 }
 
 static struct platform_driver imx8mq_usb_phy_driver = {

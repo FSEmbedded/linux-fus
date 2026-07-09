@@ -109,12 +109,16 @@ struct dw_xpcs {
 	struct dw_xpcs_info info;
 	const struct dw_xpcs_desc *desc;
 	struct mdio_device *mdiodev;
+	struct mdio_device *phydev;
 	struct clk_bulk_data clks[DW_XPCS_NUM_CLKS];
 	struct phylink_pcs pcs;
 	phy_interface_t interface;
 	bool need_reset;
 	u8 eee_mult_fact;
+	u8 portid;
 };
+
+#define phylink_pcs_to_xpcs(pl_pcs) container_of((pl_pcs), struct dw_xpcs, pcs)
 
 int xpcs_read(struct dw_xpcs *xpcs, int dev, u32 reg);
 int xpcs_write(struct dw_xpcs *xpcs, int dev, u32 reg, u16 val);

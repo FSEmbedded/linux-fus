@@ -72,6 +72,9 @@
 #include <net/tso.h>
 #include <soc/imx/cpuidle.h>
 
+#include <linux/pm_runtime.h>
+#include <linux/busfreq-imx.h>
+
 #include "fec.h"
 
 static void set_multicast_list(struct net_device *ndev);

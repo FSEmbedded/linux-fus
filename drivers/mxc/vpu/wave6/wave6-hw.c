@@ -414,7 +414,18 @@ static void wave6_get_dec_seq_result(struct vpu_instance *inst, struct dec_initi
 				info->profile = HEVC_PROFILE_MAIN;
 		}
 	} else if (inst->std == W_AVC_DEC) {
-		info->profile = (reg_val >> 24) & 0x7f;
+		if (info->profile == 2)
+			info->profile = H264_PROFILE_BP;
+		else if (info->profile == 4)
+			info->profile = H264_PROFILE_HP;
+		else if (info->profile == 13)
+			info->profile = H264_PROFILE_MP;
+		else if (info->profile == 14)
+			info->profile = H264_PROFILE_HIGH10;
+		else if (info->profile == 24)
+			info->profile = H264_PROFILE_EXTENDED;
+		else
+			info->profile = H264_PROFILE_BP;
 	}
 
 	reg_val = vpu_read_reg(inst->dev, W6_RET_DEC_COLOR_CONFIG);
@@ -454,39 +465,21 @@ int wave6_vpu_dec_get_seq_info(struct vpu_instance *inst, struct dec_initial_inf
 }
 
 int wave6_vpu_dec_register_frame_buffer(struct vpu_instance *inst,
-					struct frame_buffer *fb_arr,
-					enum tiled_map_type map_type, u32 offset, u32 count)
+					struct frame_buffer fb)
 {
 	struct dec_info *p_dec_info = &inst->codec_info->dec_info;
-	size_t fbc_num, fbc_remain, mv_remain, fbc_idx = offset, mv_idx = offset;
-	size_t i, k, group_num, mv_count;
+	u32 idx = fb.index;
 	dma_addr_t fbc_cr_tbl_addr;
 	u32 reg_val;
 	u32 endian;
 	int ret;
 
-	fbc_num = p_dec_info->initial_info.min_frame_buffer_count;
-	mv_count = p_dec_info->initial_info.req_mv_buffer_count;
-
-	trace_set_fb(inst, offset, count, fbc_num, mv_count);
-
-	fbc_remain = count;
-	mv_remain = mv_count - offset;
-	if (count + offset < fbc_num) {
-		if (mv_remain > count)
-			mv_remain = count;
-	}
-
-	for (i = 0; i < count; i++) {
-		if (!p_dec_info->vb_fbc_y_tbl[i + offset].daddr)
-			return -EINVAL;
-		if (!p_dec_info->vb_fbc_c_tbl[i + offset].daddr)
-			return -EINVAL;
-	}
-	for (i = 0; i < mv_remain; i++) {
-		if (!p_dec_info->vb_mv[i + offset].daddr)
-			return -EINVAL;
-	}
+	if (!p_dec_info->vb_fbc_y_tbl[idx].daddr)
+		return -EINVAL;
+	if (!p_dec_info->vb_fbc_c_tbl[idx].daddr)
+		return -EINVAL;
+	if (!p_dec_info->vb_mv[idx].daddr)
+		return -EINVAL;
 
 	endian = wave6_vdi_convert_endian(p_dec_info->open_param.frame_endian);
 
@@ -501,60 +494,34 @@ int wave6_vpu_dec_register_frame_buffer(struct vpu_instance *inst,
 	vpu_write_reg(inst->dev, W6_CMD_DEC_SET_FB_SEGMAP, 0);
 	vpu_write_reg(inst->dev, W6_CMD_DEC_SET_FB_MV_COL_PRE_ENT, 0);
 
-	group_num = (count >= mv_remain) ? ((ALIGN(count, 16) / 16) - 1) :
-					 ((ALIGN(mv_remain, 16) / 16) - 1);
-	for (i = 0; i <= group_num; i++) {
-		bool first_group = ((offset == 0) && (i == 0)) ? true : false;
-		bool last_group = (i == group_num) ? true : false;
-		u32 set_fbc_num = (fbc_remain >= 16) ? 16 : fbc_remain;
-		u32 set_mv_num = (mv_remain >= 16) ? 16 : mv_remain;
-		u32 fbc_start_no = i * 16 + offset;
-		u32 fbc_end_no = fbc_start_no + set_fbc_num - 1;
-		u32 mv_start_no = i * 16 + offset;
-		u32 mv_end_no = mv_start_no + set_mv_num - 1;
+	reg_val = (p_dec_info->open_param.enable_non_ref_fbc_write << 26) |
+		  (endian << 16) |
+		  (1 << 4) |
+		  ((!idx) << 3);
+	vpu_write_reg(inst->dev, W6_CMD_DEC_SET_FB_OPTION, reg_val);
 
-		reg_val = (p_dec_info->open_param.enable_non_ref_fbc_write << 26) |
-			  (endian << 16) |
-			  (last_group << 4) |
-			  (first_group << 3);
-		vpu_write_reg(inst->dev, W6_CMD_DEC_SET_FB_OPTION, reg_val);
+	reg_val = (idx << 24) | (idx << 16) | (idx << 5) | idx;
+	vpu_write_reg(inst->dev, W6_CMD_DEC_SET_FB_NUM, reg_val);
 
-		reg_val = (fbc_start_no << 24) | (fbc_end_no << 16) |
-			  (mv_start_no << 5) | mv_end_no;
-		vpu_write_reg(inst->dev, W6_CMD_DEC_SET_FB_NUM, reg_val);
+	vpu_write_reg(inst->dev, W6_CMD_DEC_SET_FB_FBC_Y0, fb.buf_y);
+	vpu_write_reg(inst->dev, W6_CMD_DEC_SET_FB_FBC_C0, fb.buf_cb);
+	vpu_write_reg(inst->dev, W6_CMD_DEC_SET_FB_FBC_CR0, fb.buf_cr);
+	vpu_write_reg(inst->dev, W6_CMD_DEC_SET_FB_FBC_Y_OFFSET0,
+		      p_dec_info->vb_fbc_y_tbl[idx].daddr);
+	vpu_write_reg(inst->dev, W6_CMD_DEC_SET_FB_FBC_C_OFFSET0,
+		      p_dec_info->vb_fbc_c_tbl[idx].daddr);
+	fbc_cr_tbl_addr = p_dec_info->vb_fbc_c_tbl[idx].daddr +
+			  (p_dec_info->vb_fbc_c_tbl[idx].size >> 1);
+	vpu_write_reg(inst->dev, W6_CMD_DEC_SET_FB_FBC_CR_OFFSET0,
+		      fbc_cr_tbl_addr);
+	vpu_write_reg(inst->dev, W6_CMD_DEC_SET_FB_MV_COL0,
+		      p_dec_info->vb_mv[idx].daddr);
 
-		for (k = 0; k < set_fbc_num; k++) {
-			vpu_write_reg(inst->dev, W6_CMD_DEC_SET_FB_FBC_Y0 + (k * 24),
-				      fb_arr[fbc_idx].buf_y);
-			vpu_write_reg(inst->dev, W6_CMD_DEC_SET_FB_FBC_C0 + (k * 24),
-				      fb_arr[fbc_idx].buf_cb);
-			vpu_write_reg(inst->dev, W6_CMD_DEC_SET_FB_FBC_CR0 + (k * 8),
-				      fb_arr[fbc_idx].buf_cr);
-			vpu_write_reg(inst->dev, W6_CMD_DEC_SET_FB_FBC_Y_OFFSET0 + (k * 24),
-				      p_dec_info->vb_fbc_y_tbl[fbc_idx].daddr);
-			vpu_write_reg(inst->dev, W6_CMD_DEC_SET_FB_FBC_C_OFFSET0 + (k * 24),
-				      p_dec_info->vb_fbc_c_tbl[fbc_idx].daddr);
-			fbc_cr_tbl_addr = p_dec_info->vb_fbc_c_tbl[fbc_idx].daddr +
-						(p_dec_info->vb_fbc_c_tbl[fbc_idx].size >> 1);
-			vpu_write_reg(inst->dev, W6_CMD_DEC_SET_FB_FBC_CR_OFFSET0 + (k * 8),
-				      fbc_cr_tbl_addr);
-			fbc_idx++;
-		}
-		fbc_remain -= k;
-
-		for (k = 0; k < set_mv_num; k++) {
-			vpu_write_reg(inst->dev, W6_CMD_DEC_SET_FB_MV_COL0 + (k * 24),
-				      p_dec_info->vb_mv[mv_idx].daddr);
-			mv_idx++;
-		}
-		mv_remain -= k;
-
-		wave6_send_command(inst->dev, inst->id, inst->std, W6_CMD_SET_FB);
-		ret = wave6_wait_vpu_busy(inst->dev, W6_VPU_BUSY_STATUS);
-		if (ret) {
-			dev_err(inst->dev->dev, "%s: timeout\n", __func__);
-			return ret;
-		}
+	wave6_send_command(inst->dev, inst->id, inst->std, W6_CMD_SET_FB);
+	ret = wave6_wait_vpu_busy(inst->dev, W6_VPU_BUSY_STATUS);
+	if (ret) {
+		dev_err(inst->dev->dev, "%s: timeout\n", __func__);
+		return ret;
 	}
 
 	if (!vpu_read_reg(inst->dev, W6_RET_SUCCESS))
@@ -747,11 +714,10 @@ int wave6_vpu_decode(struct vpu_instance *inst, struct dec_param *option, u32 *f
 	vpu_write_reg(inst->dev, W6_CMD_DEC_PIC_TEMPORAL_ID_PLUS1, reg_val);
 	vpu_write_reg(inst->dev, W6_CMD_DEC_PIC_SEQ_CHANGE_ENABLE_FLAG,
 		      p_dec_info->seq_change_mask);
-	reg_val = ((option->timestamp.hour & 0x1F) << 26) |
-		  ((option->timestamp.min & 0x3F) << 20) |
-		  ((option->timestamp.sec & 0x3F) << 14) |
-		  (option->timestamp.ms & 0x3FFF);
-	vpu_write_reg(inst->dev, W6_CMD_DEC_PIC_TIMESTAMP, reg_val);
+	reg_val = lower_32_bits(option->timestamp);
+	vpu_write_reg(inst->dev, W6_CMD_DEC_PIC_TIMESTAMP_LOW, reg_val);
+	reg_val = upper_32_bits(option->timestamp);
+	vpu_write_reg(inst->dev, W6_CMD_DEC_PIC_TIMESTAMP_HIGH, reg_val);
 
 	wave6_send_command(inst->dev, inst->id, inst->std, W6_CMD_DEC_PIC);
 	ret = wave6_wait_vpu_busy(inst->dev, W6_VPU_BUSY_STATUS);
@@ -898,11 +864,9 @@ int wave6_vpu_dec_get_result(struct vpu_instance *inst, struct dec_output_info *
 
 	result->last_frame_in_au = vpu_read_reg(inst->dev, W6_RET_DEC_LAST_FRAME_FLAG);
 
-	reg_val = vpu_read_reg(inst->dev, W6_RET_DEC_TIMESTAMP);
-	result->timestamp.hour = (reg_val >> 26) & 0x1F;
-	result->timestamp.min = (reg_val >> 20) & 0x3F;
-	result->timestamp.sec = (reg_val >> 14) & 0x3F;
-	result->timestamp.ms = reg_val & 0x3FFF;
+	reg_val = vpu_read_reg(inst->dev, W6_RET_DEC_TIMESTAMP_LOW);
+	result->timestamp = vpu_read_reg(inst->dev, W6_RET_DEC_TIMESTAMP_HIGH);
+	result->timestamp = (result->timestamp << 32) | reg_val;
 
 	result->cycle.host_cmd_s = vpu_read_reg(inst->dev, W6_RET_CQ_IN_TICK);
 	result->cycle.host_cmd_e = vpu_read_reg(inst->dev, W6_RET_RQ_OUT_TICK);
@@ -1474,7 +1438,7 @@ static void wave6_gen_change_param_reg_common(struct vpu_instance *inst,
 
 int wave6_vpu_enc_init_seq(struct vpu_instance *inst)
 {
-	struct enc_cmd_set_param_reg reg = { 0 };
+	struct enc_cmd_set_param_reg reg = {0};
 	struct enc_info *p_enc_info = &inst->codec_info->enc_info;
 	u32 i;
 	int ret;
@@ -1582,7 +1546,7 @@ int wave6_vpu_enc_get_seq_info(struct vpu_instance *inst, struct enc_initial_inf
 
 int wave6_vpu_enc_change_seq(struct vpu_instance *inst, bool *changed)
 {
-	struct enc_cmd_change_param_reg reg = { 0 };
+	struct enc_cmd_change_param_reg reg = {0};
 	struct enc_info *p_enc_info = &inst->codec_info->enc_info;
 	int ret;
 
@@ -1782,7 +1746,8 @@ struct enc_cmd_enc_pic_reg {
 	u32 prefix_sei_info;
 	u32 suffix_sei_nal_addr;
 	u32 suffix_sei_info;
-	u32 timestamp;
+	u32 timestamp_low;
+	u32 timestamp_high;
 	u32 csc_coeff[MAX_CSC_COEFF_NUM];
 };
 
@@ -2030,14 +1995,30 @@ static void wave6_gen_enc_pic_reg(struct enc_info *p_enc_info, bool cbcr_interle
 	}
 
 	src_frame_format = (nv21 << 2) | (cbcr_interleave << 1);
-	switch (open.packed_format) {
-	case PACKED_YUYV:
+	switch (open.src_format) {
+	case FORMAT_YUYV:
+	case FORMAT_YUYV_P10_16BIT_MSB:
+	case FORMAT_YUYV_P10_16BIT_LSB:
+	case FORMAT_YUYV_P10_32BIT_MSB:
+	case FORMAT_YUYV_P10_32BIT_LSB:
 		src_frame_format = 1; break;
-	case PACKED_YVYU:
+	case FORMAT_YVYU:
+	case FORMAT_YVYU_P10_16BIT_MSB:
+	case FORMAT_YVYU_P10_16BIT_LSB:
+	case FORMAT_YVYU_P10_32BIT_MSB:
+	case FORMAT_YVYU_P10_32BIT_LSB:
 		src_frame_format = 5; break;
-	case PACKED_UYVY:
+	case FORMAT_UYVY:
+	case FORMAT_UYVY_P10_16BIT_MSB:
+	case FORMAT_UYVY_P10_16BIT_LSB:
+	case FORMAT_UYVY_P10_32BIT_MSB:
+	case FORMAT_UYVY_P10_32BIT_LSB:
 		src_frame_format = 9; break;
-	case PACKED_VYUY:
+	case FORMAT_VYUY:
+	case FORMAT_VYUY_P10_16BIT_MSB:
+	case FORMAT_VYUY_P10_16BIT_LSB:
+	case FORMAT_VYUY_P10_32BIT_MSB:
+	case FORMAT_VYUY_P10_32BIT_LSB:
 		src_frame_format = 13; break;
 	default:
 		break;
@@ -2089,10 +2070,8 @@ static void wave6_gen_enc_pic_reg(struct enc_info *p_enc_info, bool cbcr_interle
 			 (opt->force_pic_qp_i << 2) |
 			 (opt->force_pic_qp_enable << 1) |
 			 opt->skip_picture;
-	reg->timestamp = ((opt->timestamp.hour & 0x1F) << 26) |
-			 ((opt->timestamp.min & 0x3F) << 20) |
-			 ((opt->timestamp.sec & 0x3F) << 14) |
-			 ((opt->timestamp.ms & 0x3FFF));
+	reg->timestamp_low = lower_32_bits(opt->timestamp);
+	reg->timestamp_high = upper_32_bits(opt->timestamp);
 	reg->csc_coeff[0] = ((opt->csc.coef_ry & 0x3FF) << 20) |
 			    ((opt->csc.coef_gy & 0x3FF) << 10) |
 			    (opt->csc.coef_by & 0x3FF);
@@ -2141,7 +2120,8 @@ int wave6_vpu_encode(struct vpu_instance *inst, struct enc_param *option, u32 *f
 	vpu_write_reg(inst->dev, W6_CMD_ENC_PIC_PREFIX_SEI_INFO, reg.prefix_sei_info);
 	vpu_write_reg(inst->dev, W6_CMD_ENC_PIC_SUFFIX_SEI_NAL_ADDR, reg.suffix_sei_nal_addr);
 	vpu_write_reg(inst->dev, W6_CMD_ENC_PIC_SUFFIX_SEI_INFO, reg.suffix_sei_info);
-	vpu_write_reg(inst->dev, W6_CMD_ENC_PIC_TIMESTAMP, reg.timestamp);
+	vpu_write_reg(inst->dev, W6_CMD_ENC_PIC_TIMESTAMP_LOW, reg.timestamp_low);
+	vpu_write_reg(inst->dev, W6_CMD_ENC_PIC_TIMESTAMP_HIGH, reg.timestamp_high);
 	vpu_write_reg(inst->dev, W6_CMD_ENC_PIC_CSC_COEFF_0, reg.csc_coeff[0]);
 	vpu_write_reg(inst->dev, W6_CMD_ENC_PIC_CSC_COEFF_1, reg.csc_coeff[1]);
 	vpu_write_reg(inst->dev, W6_CMD_ENC_PIC_CSC_COEFF_2, reg.csc_coeff[2]);
@@ -2228,11 +2208,9 @@ int wave6_vpu_enc_get_result(struct vpu_instance *inst, struct enc_output_info *
 	result->prefix_sei_nal_addr = vpu_read_reg(inst->dev, W6_RET_ENC_PREFIX_SEI_NAL_ADDR);
 	result->suffix_sei_nal_addr = vpu_read_reg(inst->dev, W6_RET_ENC_SUFFIX_SEI_NAL_ADDR);
 
-	reg_val = vpu_read_reg(inst->dev, W6_RET_ENC_TIMESTAMP);
-	result->timestamp.hour = (reg_val >> 26) & 0x1F;
-	result->timestamp.min = (reg_val >> 20) & 0x3F;
-	result->timestamp.sec = (reg_val >> 14) & 0x3F;
-	result->timestamp.ms = reg_val & 0x3FFF;
+	reg_val = vpu_read_reg(inst->dev, W6_RET_ENC_TIMESTAMP_LOW);
+	result->timestamp = vpu_read_reg(inst->dev, W6_RET_ENC_TIMESTAMP_HIGH);
+	result->timestamp = (result->timestamp << 32) | reg_val;
 
 	result->bitstream_buffer = vpu_read_reg(inst->dev, W6_RET_ENC_RD_PTR);
 
@@ -2671,16 +2649,6 @@ int wave6_vpu_enc_check_open_param(struct vpu_instance *inst, struct enc_open_pa
 	}
 	if (pop->pic_height < W6_MIN_ENC_PIC_HEIGHT || pop->pic_height > W6_MAX_ENC_PIC_HEIGHT) {
 		dev_err(dev, "pic_height: %d\n", pop->pic_height);
-		return -EINVAL;
-	}
-
-	if (pop->packed_format && inst->cbcr_interleave == 1) {
-		dev_err(dev, "packed_format: %d, cbcr_interleave: %d\n",
-			pop->packed_format, inst->cbcr_interleave);
-		return -EINVAL;
-	}
-	if (pop->packed_format && inst->nv21 == 1) {
-		dev_err(dev, "packed_format: %d, nv21: %d\n", pop->packed_format, inst->nv21);
 		return -EINVAL;
 	}
 	if (pop->src_format == FORMAT_RGB_32BIT_PACKED ||

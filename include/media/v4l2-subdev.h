@@ -90,7 +90,6 @@ struct v4l2_decode_vbi_line {
 /*
  * Core ops: it is highly recommended to implement at least these ops:
  *
- * g_chip_ident
  * log_status
  * g_register
  * s_register
@@ -195,7 +194,6 @@ struct v4l2_subdev_io_pin_config {
  * @unsubscribe_event: remove event subscription from the control framework.
  */
 struct v4l2_subdev_core_ops {
-	int (*g_chip_ident)(struct v4l2_subdev *sd, struct v4l2_dbg_chip_ident *chip);
 	int (*log_status)(struct v4l2_subdev *sd);
 	int (*s_io_pin_config)(struct v4l2_subdev *sd, size_t n,
 				      struct v4l2_subdev_io_pin_config *pincfg);
@@ -463,6 +461,10 @@ enum v4l2_subdev_pre_streamon_flags {
  *	but use the v4l2_subdev_enable_streams() and
  *	v4l2_subdev_disable_streams() helpers.
  *
+ * @g_parm: callback for VIDIOC_G_PARM() ioctl handler code.
+ *
+ * @s_parm: callback for VIDIOC_S_PARM() ioctl handler code.
+ *
  * @s_rx_buffer: set a host allocated memory buffer for the subdev. The subdev
  *	can adjust @size to a lower value and must not write more data to the
  *	buffer starting at @data than the original value of @size.
@@ -492,6 +494,8 @@ struct v4l2_subdev_video_ops {
 	int (*g_tvnorms_output)(struct v4l2_subdev *sd, v4l2_std_id *std);
 	int (*g_input_status)(struct v4l2_subdev *sd, u32 *status);
 	int (*s_stream)(struct v4l2_subdev *sd, int enable);
+	int (*g_parm)(struct v4l2_subdev *sd, struct v4l2_streamparm *param);
+	int (*s_parm)(struct v4l2_subdev *sd, struct v4l2_streamparm *param);
 	int (*s_rx_buffer)(struct v4l2_subdev *sd, void *buf,
 			   unsigned int *size);
 	int (*pre_streamon)(struct v4l2_subdev *sd, u32 flags);

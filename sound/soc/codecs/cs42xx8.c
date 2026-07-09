@@ -244,17 +244,21 @@ static int cs42xx8_set_dai_fmt(struct snd_soc_dai *codec_dai,
 			   CS42XX8_INTF_DAC_DIF_MASK |
 			   CS42XX8_INTF_ADC_DIF_MASK, val);
 
-	/* Set master/slave audio interface */
-	switch (format & SND_SOC_DAIFMT_MASTER_MASK) {
-	case SND_SOC_DAIFMT_CBC_CFC:
-		cs42xx8->slave_mode = true;
-		break;
-	case SND_SOC_DAIFMT_CBP_CFP:
-		cs42xx8->slave_mode = false;
-		break;
-	default:
-		dev_err(component->dev, "unsupported master/slave mode\n");
-		return -EINVAL;
+	if (cs42xx8->slave_mode[0] == cs42xx8->slave_mode[1]) {
+		/* Set master/slave audio interface */
+		switch (format & SND_SOC_DAIFMT_MASTER_MASK) {
+		case SND_SOC_DAIFMT_CBC_CFC:
+			cs42xx8->slave_mode[0] = true;
+			cs42xx8->slave_mode[1] = true;
+			break;
+		case SND_SOC_DAIFMT_CBP_CFP:
+			cs42xx8->slave_mode[0] = false;
+			cs42xx8->slave_mode[1] = false;
+			break;
+		default:
+			dev_err(component->dev, "unsupported master/slave mode\n");
+			return -EINVAL;
+		}
 	}
 
 	return 0;

@@ -65,7 +65,7 @@
 			 <&clk IMX93_CLK_EDMA2_GATE>,
 			 <&clk IMX93_CLK_AUDIO_PLL>;
 		clock-names = "ipg", "mclk", "dma", "pll8k";
-		audio-codec = <&codec>;
+		audio-codec = <&wm8962>;
 		memory-region = <&audio_reserved>;
 		audio-routing =
 			"IN1R", "MICBIAS",
@@ -100,7 +100,7 @@
 		#size-cells = <0>;
 		status = "okay";
 
-		codec: wm8962@1a {
+		wm8962: codec@1a {
 			compatible = "wlf,wm8962";
 			reg = <0x1a>;
 			DCVDD-supply = <&reg_audio_pwr>;

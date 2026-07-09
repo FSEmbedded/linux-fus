@@ -982,7 +982,7 @@ int mxc_isi_pipe_acquire(struct mxc_isi_pipe *pipe,
 		return ret;
 
 	/* Chain the channel if needed for wide resolutions. */
-	if (sink_fmt->width > MXC_ISI_MAX_WIDTH_UNCHAINED) {
+	if (sink_fmt->width > MXC_ISI_MAX_WIDTH_UNCHAINED && !pipe->bypass) {
 		ret = mxc_isi_channel_chain(pipe);
 		if (ret)
 			mxc_isi_channel_release(pipe);

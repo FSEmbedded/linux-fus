@@ -47,8 +47,7 @@ properties:
       - const: ui
 
   power-domains:
-    minItems: 1
-    maxItems: 2
+    maxItems: 1
 
   resets:
     items:

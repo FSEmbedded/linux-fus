@@ -558,6 +558,9 @@ static int rad_panel_probe(struct mipi_dsi_device *dsi)
 	int ret;
 	u32 video_mode;
 
+	if (!of_id || !of_id->data)
+		return -ENODEV;
+
 	panel = devm_drm_panel_alloc(dev, struct rad_panel, panel,
 				     &rad_panel_funcs,
 				     DRM_MODE_CONNECTOR_DSI);
@@ -591,8 +594,7 @@ static int rad_panel_probe(struct mipi_dsi_device *dsi)
 			break;
 		case 3:
 			/* command mode */
-			dsi->mode_flags |= MIPI_DSI_CLOCK_NON_CONTINUOUS |
-					   MIPI_DSI_MODE_VSYNC_FLUSH;
+			dsi->mode_flags |= MIPI_DSI_CLOCK_NON_CONTINUOUS;
 			break;
 		default:
 			dev_warn(dev, "invalid video mode %d\n", video_mode);

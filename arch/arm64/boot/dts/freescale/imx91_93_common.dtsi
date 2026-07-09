@@ -124,7 +124,7 @@
 		clock-names = "main_clk";
 	};
 
-	soc@0 {
+	soc: soc@0 {
 		compatible = "simple-bus";
 		#address-cells = <1>;
 		#size-cells = <1>;
@@ -375,8 +375,9 @@
 				#clock-cells = <1>;
 				clocks = <&osc_32k>, <&osc_24m>, <&clk_ext1>;
 				clock-names = "osc_32k", "osc_24m", "clk_ext1";
-				assigned-clocks = <&clk IMX93_CLK_AUDIO_PLL>;
-				assigned-clock-rates = <393216000>;
+				assigned-clocks = <&clk IMX93_CLK_AUDIO_PLL>, <&clk IMX93_CLK_VIDEO_PLL>, <&clk IMX93_CLK_A55>;
+				assigned-clock-parents = <0>, <0>, <&clk IMX93_CLK_SYS_PLL_PFD0>;
+				assigned-clock-rates = <393216000>, <594000000>, <500000000>;
 				status = "okay";
 			};
 
@@ -706,7 +707,7 @@
 			};
 
 			flexspi1: spi@425e0000 {
-				compatible = "nxp,imx8mm-fspi";
+				compatible = "nxp,imx93-fspi", "nxp,imx8mm-fspi";
 				reg = <0x425e0000 0x10000>, <0x28000000 0x10000000>;
 				reg-names = "fspi_base", "fspi_mmap";
 				#address-cells = <1>;
@@ -1107,8 +1108,8 @@
 		};
 
 		media_blk_ctrl: system-controller@4ac10000 {
-			compatible = "fsl,imx93-media-blk-ctrl", "syscon";
-			reg = <0x4ac10000 0x10000>;
+			compatible = "fsl,imx93-media-blk-ctrl", "syscon", "simple-mfd";
+			reg = <0x4ac10000 0x70>;
 			power-domains = <&mediamix>;
 			clocks = <&clk IMX93_CLK_MEDIA_APB>,
 				 <&clk IMX93_CLK_MEDIA_AXI>,
@@ -1123,6 +1124,112 @@
 			clock-names = "apb", "axi", "nic", "disp", "cam",
 				      "pxp", "lcdif", "isi", "csi", "dsi";
 			#power-domain-cells = <1>;
+
+			parallel_disp_fmt: dpi {
+				compatible = "fsl,imx93-parallel-display-format";
+				power-domains = <&mediamix>;
+				status = "disabled";
+
+				ports {
+					#address-cells = <1>;
+					#size-cells = <0>;
+
+					port@0 {
+						reg = <0>;
+
+						dpi_to_lcdif: endpoint {
+							remote-endpoint = <&lcdif_to_dpi>;
+						};
+					};
+
+					port@1 {
+						reg = <1>;
+						endpoint {
+						};
+					};
+				};
+			};
+		};
+
+		parallel_csi: pcsi@4ac10070 {
+			compatible = "fsl,imx93-parallel-csi";
+			reg = <0x4ac10070 0x10>;
+			clocks = <&clk IMX93_CLK_MIPI_CSI_GATE>,
+				 <&clk IMX93_CLK_MEDIA_APB>;
+			clock-names = "pixel", "ipg";
+			assigned-clocks = <&clk IMX93_CLK_CAM_PIX>;
+			assigned-clock-parents = <&clk IMX93_CLK_VIDEO_PLL>;
+			assigned-clock-rates = <140000000>;
+			power-domains = <&media_blk_ctrl IMX93_MEDIABLK_PD_MIPI_CSI>;
+			status = "disabled";
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				port@0 {
+					reg = <0>;
+				};
+
+				port@1 {
+					reg = <1>;
+				};
+			};
+		};
+
+		lcdif: lcd-controller@4ae30000 {
+			compatible = "fsl,imx93-lcdif";
+			reg = <0x4ae30000 0x10000>;
+			interrupts = <GIC_SPI 176 IRQ_TYPE_LEVEL_HIGH>;
+			fsl,gpr = <&media_blk_ctrl>;
+			clocks = <&clk IMX93_CLK_MEDIA_DISP_PIX>,
+				 <&clk IMX93_CLK_MEDIA_AXI>,
+				 <&clk IMX93_CLK_LCDIF_GATE>;
+			clock-names = "pix", "disp-axi", "disp-apb";
+			assigned-clocks = <&clk IMX93_CLK_VIDEO_PLL>,
+					  <&clk IMX93_CLK_MEDIA_DISP_PIX>,
+					  <&clk IMX93_CLK_MEDIA_AXI>,
+					  <&clk IMX93_CLK_MEDIA_APB>;
+			assigned-clock-parents = <&clk IMX93_CLK_24M>,
+						 <&clk IMX93_CLK_VIDEO_PLL>,
+						 <&clk IMX93_CLK_SYS_PLL_PFD1>,
+						 <&clk IMX93_CLK_SYS_PLL_PFD1_DIV2>;
+			power-domains = <&media_blk_ctrl IMX93_MEDIABLK_PD_LCDIF>;
+			status = "disabled";
+
+			lcdif_disp: port {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				lcdif_to_dsi: endpoint@0 {
+					reg = <0>;
+				};
+
+				lcdif_to_ldb: endpoint@1 {
+					reg = <1>;
+				};
+
+				lcdif_to_dpi: endpoint@2 {
+					reg = <2>;
+					remote-endpoint = <&dpi_to_lcdif>;
+				};
+			};
+		};
+
+		isi: isi@4ae40000 {
+			compatible = "fsl,imx93-isi";
+			reg = <0x4ae40000 0x10000>;
+			interrupts = <GIC_SPI 172 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&clk IMX93_CLK_ISI_GATE>,
+				 <&clk IMX93_CLK_MEDIA_AXI>;
+			clock-names = "axi", "apb";
+			assigned-clocks = <&clk IMX93_CLK_MEDIA_AXI>,
+					 <&clk IMX93_CLK_MEDIA_APB>;
+			assigned-clock-parents = <&clk IMX93_CLK_SYS_PLL_PFD1>,
+						 <&clk IMX93_CLK_SYS_PLL_PFD1_DIV2>;
+			assigned-clock-rates = <400000000>, <133333333>;
+			fsl,blk-ctrl = <&media_blk_ctrl>;
+			power-domains = <&media_blk_ctrl IMX93_MEDIABLK_PD_ISI>;
 			status = "disabled";
 		};
 
@@ -1170,6 +1277,11 @@
 			#index-cells = <1>;
 		};
 
+		ddrmix_blk_ctrl: blk-ctrl@4e010000 {
+			compatible = "nxp,blk-ctrl-ddrmix", "syscon", "simple-mfd";
+			reg = <0x4e010000 0x1000>;
+		};
+
 		memory-controller@4e300000 {
 			compatible = "nxp,imx9-memory-controller";
 			reg = <0x4e300000 0x800>, <0x4e301000 0x1000>;
@@ -1183,5 +1295,38 @@
 			reg = <0x4e300dc0 0x200>;
 			interrupts = <GIC_SPI 90 IRQ_TYPE_LEVEL_HIGH>;
 		};
+	};
+
+	lpm: imx93-lpm {
+		compatible = "nxp,imx93-lpm";
+		regmap = <&ddrmix_blk_ctrl>;
+		clocks = <&clk IMX93_CLK_M33>, <&clk IMX93_CLK_WAKEUP_AXI>,
+			 <&clk IMX93_CLK_NIC_AXI>, <&clk IMX93_CLK_MEDIA_AXI>,
+			 <&clk IMX93_CLK_MEDIA_APB>, <&clk IMX93_CLK_A55_PERIPH>,
+			 <&clk IMX93_CLK_A55_CORE>, <&clk IMX93_CLK_ML>,
+			 <&clk IMX93_CLK_SYS_PLL_PFD0>, <&clk IMX93_CLK_SYS_PLL_PFD0_DIV2>,
+			 <&clk IMX93_CLK_SYS_PLL_PFD1>, <&clk IMX93_CLK_SYS_PLL_PFD1_DIV2>,
+			 <&clk IMX93_CLK_SYS_PLL_PFD2>, <&clk IMX93_CLK_SYS_PLL_PFD2_DIV2>;
+		clock-names = "m33_root", "wakeup_axi", "nic_axi",
+				  "media_axi", "media_apb", "a55_periph",
+			      "a55_core", "ml_axi", "sys_pll_pfd0", "sys_pll_pfd0_div2",
+			      "sys_pll_pfd1", "sys_pll_pfd1_div2", "sys_pll_pfd2",
+			      "sys_pll_pfd2_div2";
+		#cooling-cells = <2>;
+		status = "disabled";
+	};
+
+	ele_fw2: secure-enclave {
+		compatible = "fsl,imx93-se";
+		interrupts = <GIC_SPI 34 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 35 IRQ_TYPE_LEVEL_HIGH>;
+		mbox-names = "tx", "rx";
+		mboxes = <&s4muap 0 0>,
+			<&s4muap 1 0>;
+	};
+
+	display-subsystem {
+		compatible = "fsl,imx-display-subsystem";
+		ports = <&lcdif_disp>;
 	};
 };

@@ -189,6 +189,9 @@ static int bbnsm_rtc_probe(struct platform_device *pdev)
 	/* clear all the pending events */
 	regmap_write(bbnsm->regmap, BBNSM_EVENTS, 0x7A);
 
+	/* Enable the Real-Time counter */
+	regmap_update_bits(bbnsm->regmap, BBNSM_CTRL, RTC_EN_MSK, RTC_EN);
+
 	ret = devm_device_init_wakeup(&pdev->dev);
 	if (ret)
 		dev_err(&pdev->dev, "failed to init wakeup, %d\n", ret);

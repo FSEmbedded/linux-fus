@@ -2262,7 +2262,11 @@ gckOS_MapPhysical(IN gckOS          Os,
             page = pfn_to_page(pfn);
 
             for (i = 0; i < numPages; i++)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 17, 0)
                 pages[i] = nth_page(page, i);
+#else
+                pages[i] = page + i;
+#endif
 
 #if gcdENABLE_BUFFERABLE_VIDEO_MEMORY
             pgprot = pgprot_writecombine(PAGE_KERNEL);

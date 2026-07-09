@@ -107,6 +107,7 @@
 
 &dsp {
 	compatible = "fsl,imx8qxp-dsp";
+	reg-names = "iram";
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_esai0>;
 
@@ -124,15 +125,15 @@
 			<&pd IMX_SC_R_AUDIO_PLL_1>,
 			<&pd IMX_SC_R_MU_2A>;
 
-		clocks = <&clk_dummy>, <&clk_dummy>, <&clk_dummy>, <&esai0_lpcg 1>, <&esai0_lpcg 0>,  <&esai0_lpcg 1>,
+		clocks = <&clk_dummy>, <&clk_dummy>, <&clk_dummy>, <&esai0_lpcg IMX_LPCG_CLK_4>, <&esai0_lpcg IMX_LPCG_CLK_0>,  <&esai0_lpcg IMX_LPCG_CLK_4>,
 			<&clk_dummy>;
 		clock-names = "ipg", "ocram", "core", "esai0_core", "esai0_extal", "esai0_fsys", "esai0_spba";
 		assigned-clocks = <&acm IMX_ADMA_ACM_ESAI0_MCLK_SEL>,
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_PLL>,
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_MISC0>,
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_MISC1>,
-			<&esai0_lpcg 0>;
-		assigned-clock-parents = <&aud_pll_div0_lpcg 0>;
+			<&esai0_lpcg IMX_LPCG_CLK_0>;
+		assigned-clock-parents = <&aud_pll_div0_lpcg IMX_LPCG_CLK_0>;
 		assigned-clock-rates = <0>, <786432000>, <49152000>, <12288000>, <49152000>;
 
 	mbox-names = "txdb0", "txdb1", "rxdb0", "rxdb1";
@@ -141,6 +142,7 @@
 		<&lsio_mu13 3 0>,
 		<&lsio_mu13 3 1>;
 	memory-region = <&dsp_reserved>;
+	memory-region-names = "sram";
 	/delete-property/ firmware-name;
 
 	reg = <0x596e8000 0x88000>;
@@ -181,7 +183,7 @@
 	assigned-clocks = <&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_PLL>,
 			  <&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_SLV_BUS>,
 			  <&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_MST_BUS>,
-			  <&mclkout0_lpcg 0>;
+			  <&mclkout0_lpcg IMX_LPCG_CLK_0>;
 	assigned-clock-rates = <786432000>, <49152000>, <12288000>, <12288000>;
 	status = "okay";
 

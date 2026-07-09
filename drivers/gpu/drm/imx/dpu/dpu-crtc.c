@@ -18,6 +18,7 @@
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_fb_dma_helper.h>
 #include <drm/drm_gem_dma_helper.h>
+#include <drm/drm_modes.h>
 #include <linux/component.h>
 #include <linux/device.h>
 #include <linux/errno.h>
@@ -584,6 +585,36 @@ static irqreturn_t dpu_crc_shdld_irq_handler(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
+static bool dpu_crtc_mode_valid_pc(struct drm_crtc *crtc,
+				   const struct drm_display_mode *mode)
+{
+	struct videomode vm;
+
+	drm_display_mode_to_videomode(mode, &vm);
+
+	if ((vm.hactive % 2)   || (vm.hfront_porch % 2) ||
+	    (vm.hsync_len % 2) || (vm.hback_porch % 2)) {
+		DRM_DEBUG_KMS("[CRTC:%d:%s] mode " DRM_MODE_FMT " is invalid\n",
+			      crtc->base.id, crtc->name, DRM_MODE_ARG(mode));
+		return false;
+	}
+
+	return true;
+}
+
+static enum drm_mode_status
+dpu_crtc_mode_valid(struct drm_crtc *crtc, const struct drm_display_mode *mode)
+{
+	struct dpu_crtc *dpu_crtc = to_dpu_crtc(crtc);
+
+	if (mode->clock > dpu_crtc->syncmode_min_prate ||
+	    mode->hdisplay > dpu_crtc->singlemode_max_width)
+		if (!dpu_crtc_mode_valid_pc(crtc, mode))
+			return MODE_BAD;
+
+	return MODE_OK;
+}
+
 static int dpu_crtc_atomic_check(struct drm_crtc *crtc,
 				 struct drm_atomic_state *state)
 {
@@ -601,7 +632,6 @@ static int dpu_crtc_atomic_check(struct drm_crtc *crtc,
 	struct dpu_crtc_state *old_dcstate =
 					to_dpu_crtc_state(old_imx_crtc_state);
 	struct drm_display_mode *mode = &crtc_state->adjusted_mode;
-	struct videomode vm;
 	unsigned long encoder_type = DRM_MODE_ENCODER_NONE;
 	u32 encoder_mask;
 	int i = 0;
@@ -622,13 +652,8 @@ static int dpu_crtc_atomic_check(struct drm_crtc *crtc,
 			return -EINVAL;
 		}
 
-		drm_display_mode_to_videomode(mode, &vm);
-		if ((vm.hactive % 2)   || (vm.hfront_porch % 2) ||
-		    (vm.hsync_len % 2) || (vm.hback_porch % 2)) {
-			DRM_DEBUG_KMS("[CRTC:%d:%s] video mode is invalid\n",
-					crtc->base.id, crtc->name);
+		if (!dpu_crtc_mode_valid_pc(crtc, mode))
 			return -EINVAL;
-		}
 	}
 
 	/* disallow to enable CRC when CRTC keeps at inactive status */
@@ -1119,6 +1144,7 @@ static const struct drm_crtc_helper_funcs dpu_helper_funcs = {
 	.atomic_flush = dpu_crtc_atomic_flush,
 	.atomic_enable = dpu_crtc_atomic_enable,
 	.atomic_disable = dpu_crtc_atomic_disable,
+	.mode_valid = dpu_crtc_mode_valid,
 };
 
 static void dpu_crtc_put_resources(struct dpu_crtc *dpu_crtc)

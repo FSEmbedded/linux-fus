@@ -425,8 +425,12 @@ static void spi_imx_buf_tx_swap(struct spi_imx_data *spi_imx)
 
 static void mx53_ecspi_rx_target(struct spi_imx_data *spi_imx)
 {
-	u32 val = ioread32be(spi_imx->base + MXC_CSPIRXDATA);
+	u32 val = readl(spi_imx->base + MXC_CSPIRXDATA);
 
+	if (spi_imx->bits_per_word <= 8)
+		val = be32_to_cpu(val);
+	else if (spi_imx->bits_per_word <= 16)
+		val = (val << 16) | (val >> 16);
 	if (spi_imx->rx_buf) {
 		int n_bytes = spi_imx->target_burst % sizeof(val);
 
@@ -454,12 +458,16 @@ static void mx53_ecspi_tx_target(struct spi_imx_data *spi_imx)
 	if (spi_imx->tx_buf) {
 		memcpy(((u8 *)&val) + sizeof(val) - n_bytes,
 		       spi_imx->tx_buf, n_bytes);
+		if (spi_imx->bits_per_word <= 8)
+			val = cpu_to_be32(val);
+		else if (spi_imx->bits_per_word <= 16)
+			val = (val << 16) | (val >> 16);
 		spi_imx->tx_buf += n_bytes;
 	}
 
 	spi_imx->count -= n_bytes;
 
-	iowrite32be(val, spi_imx->base + MXC_CSPITXDATA);
+	writel(val, spi_imx->base + MXC_CSPITXDATA);
 }
 
 /* MX51 eCSPI */
@@ -1419,8 +1427,10 @@ static int spi_imx_setupxfer(struct spi_device *spi,
 	    (spi_imx->bits_per_word == 8 ||
 	    spi_imx->bits_per_word == 16 ||
 	    spi_imx->bits_per_word == 32)) {
+
 		spi_imx->rx = spi_imx_buf_rx_swap;
 		spi_imx->tx = spi_imx_buf_tx_swap;
+
 	} else {
 		if (spi_imx->bits_per_word <= 8) {
 			spi_imx->rx = spi_imx_buf_rx_u8;
@@ -1432,6 +1442,7 @@ static int spi_imx_setupxfer(struct spi_device *spi,
 			spi_imx->rx = spi_imx_buf_rx_u32;
 			spi_imx->tx = spi_imx_buf_tx_u32;
 		}
+		spi_imx->dynamic_burst = 0;
 	}
 
 	spi_imx->rx_only = ((t->tx_buf == NULL)
@@ -1605,9 +1616,8 @@ static int spi_imx_dma_transfer(struct spi_imx_data *spi_imx,
 	reinit_completion(&spi_imx->dma_tx_completion);
 	dma_async_issue_pending(controller->dma_tx);
 
-	spi_imx->devtype_data->trigger(spi_imx);
-
-	transfer_timeout = spi_imx_calculate_timeout(spi_imx, transfer->len);
+	if (!spi_imx->target_mode) {
+		spi_imx->devtype_data->trigger(spi_imx);
 
 		transfer_timeout = spi_imx_calculate_timeout(spi_imx, transfer->len);
 

@@ -30,7 +30,7 @@
 struct imx93_ldb;
 
 struct imx93_ldb_channel {
-	struct ldb_channel base;
+	struct ldb_channel *base;
 	struct imx93_ldb *imx93_ldb;
 
 	struct drm_encoder encoder;
@@ -100,7 +100,7 @@ imx93_ldb_encoder_atomic_check(struct drm_encoder *encoder,
 {
 	struct imx_crtc_state *imx_crtc_state = to_imx_crtc_state(crtc_state);
 	struct imx93_ldb_channel *imx93_ldb_ch = enc_to_imx93_ldb_ch(encoder);
-	struct ldb_channel *ldb_ch = &imx93_ldb_ch->base;
+	struct ldb_channel *ldb_ch = imx93_ldb_ch->base;
 	struct drm_bridge_state *bridge_state = NULL;
 	struct drm_bridge *bridge;
 
@@ -138,7 +138,7 @@ drm_mode_status imx93_ldb_mode_valid(struct drm_encoder *encoder,
 	if (mode->clock > 80000)
 		return MODE_CLOCK_HIGH;
 
-	if (imx93_ldb_ch->base.panel)
+	if (imx93_ldb_ch->base->panel)
 		return MODE_OK;
 
 	serial_rate = mode->clock * 7000UL;
@@ -172,7 +172,7 @@ imx93_ldb_bind(struct device *dev, struct device *master, void *data)
 	struct imx93_ldb *imx93_ldb = dev_get_drvdata(dev);
 	struct ldb *ldb = &imx93_ldb->base;
 	struct imx93_ldb_channel *imx93_ldb_ch = &imx93_ldb->channel;
-	struct ldb_channel *ldb_ch = &imx93_ldb_ch->base;
+	struct ldb_channel *ldb_ch = imx93_ldb_ch->base;
 	struct drm_encoder *encoder[1];
 	int ret;
 	int i;
@@ -279,12 +279,19 @@ static const struct component_ops imx93_ldb_ops = {
 
 static int imx93_ldb_probe(struct platform_device *pdev)
 {
+	struct imx93_ldb_channel *imx93_ldb_ch;
 	struct device *dev = &pdev->dev;
 	struct imx93_ldb *imx93_ldb;
 
 	imx93_ldb = devm_kzalloc(dev, sizeof(*imx93_ldb), GFP_KERNEL);
 	if (!imx93_ldb)
 		return -ENOMEM;
+
+	imx93_ldb_ch = &imx93_ldb->channel;
+
+	imx93_ldb_ch->base = devm_ldb_channel_alloc(dev);
+	if (IS_ERR(imx93_ldb_ch->base))
+		return PTR_ERR(imx93_ldb_ch->base);
 
 	dev_set_drvdata(dev, imx93_ldb);
 

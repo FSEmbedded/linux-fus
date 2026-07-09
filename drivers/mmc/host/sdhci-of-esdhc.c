@@ -1527,6 +1527,9 @@ static struct platform_driver sdhci_esdhc_driver = {
 		.name = "sdhci-esdhc",
 		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
 		.of_match_table = sdhci_esdhc_of_match,
+#ifdef CONFIG_ACPI
+		.acpi_match_table = sdhci_esdhc_ids,
+#endif
 		.pm = pm_sleep_ptr(&esdhc_of_dev_pm_ops),
 	},
 	.probe = sdhci_esdhc_probe,

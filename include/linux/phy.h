@@ -107,6 +107,9 @@ extern const int phy_basic_ports_array[3];
  * @PHY_INTERFACE_MODE_LAUI: 50 Gigabit Attachment Unit Interface
  * @PHY_INTERFACE_MODE_100GBASEP: 100GBase-P - with Clause 134 FEC
  * @PHY_INTERFACE_MODE_MIILITE: MII-Lite - MII without RXER TXER CRS COL
+ * @PHY_INTERFACE_MODE_25GKR: 25GBASE-KR - with Clause 73 AN
+ * @PHY_INTERFACE_MODE_40GKR4: 40GBASE-KR4 - with Clause 73 AN
+ * @PHY_INTERFACE_MODE_40GBASER: clause 82 40GBASE-R (PCS over 4 lanes)
  * @PHY_INTERFACE_MODE_MAX: Book keeping
  *
  * Describes the interface between the MAC and PHY.
@@ -136,6 +139,7 @@ typedef enum {
 	PHY_INTERFACE_MODE_100BASEX,
 	PHY_INTERFACE_MODE_1000BASEX,
 	PHY_INTERFACE_MODE_2500BASEX,
+	PHY_INTERFACE_MODE_2500SGMII,
 	PHY_INTERFACE_MODE_5GBASER,
 	PHY_INTERFACE_MODE_RXAUI,
 	PHY_INTERFACE_MODE_XAUI,
@@ -152,6 +156,9 @@ typedef enum {
 	PHY_INTERFACE_MODE_LAUI,
 	PHY_INTERFACE_MODE_100GBASEP,
 	PHY_INTERFACE_MODE_MIILITE,
+	PHY_INTERFACE_MODE_25GKR,
+	PHY_INTERFACE_MODE_40GKR4,
+	PHY_INTERFACE_MODE_40GBASER,
 	PHY_INTERFACE_MODE_MAX,
 } phy_interface_t;
 
@@ -288,6 +295,12 @@ static inline const char *phy_modes(phy_interface_t interface)
 		return "100gbase-p";
 	case PHY_INTERFACE_MODE_MIILITE:
 		return "mii-lite";
+	case PHY_INTERFACE_MODE_25GKR:
+		return "25gbase-kr";
+	case PHY_INTERFACE_MODE_40GKR4:
+		return "40gbase-kr4";
+	case PHY_INTERFACE_MODE_40GBASER:
+		return "40gbase-r";
 	default:
 		return "unknown";
 	}
@@ -803,12 +816,6 @@ struct phy_tdr_config {
 };
 #define PHY_PAIR_ALL -1
 
-enum phy_inband_aneg {
-	PHY_INBAND_ANEG_UNKNOWN		= BIT(0),
-	PHY_INBAND_ANEG_OFF		= BIT(1),
-	PHY_INBAND_ANEG_ON		= BIT(2),
-};
-
 /**
  * enum link_inband_signalling - in-band signalling modes that are supported
  *
@@ -1004,22 +1011,6 @@ struct phy_driver {
 	 * if phydev->autoneg is off
 	 */
 	int (*config_aneg)(struct phy_device *phydev);
-
-	/**
-	 * @validate_inband_aneg: Report what types of in-band auto-negotiation
-	 * are available for the given PHY interface type. Returns a bit mask
-	 * of type enum phy_inband_aneg. Returning negative error codes is not
-	 * permitted.
-	 */
-	int (*validate_inband_aneg)(struct phy_device *phydev,
-				    phy_interface_t interface);
-
-	/**
-	 * @config_inband_aneg: Enable or disable in-band auto-negotiation for
-	 * the system-side interface if the PHY operates in a mode that
-	 * requires it: (Q)SGMII, USXGMII, 1000Base-X, etc.
-	 */
-	int (*config_inband_aneg)(struct phy_device *phydev, bool enabled);
 
 	/** @aneg_done: Determines the auto negotiation result */
 	int (*aneg_done)(struct phy_device *phydev);
@@ -1891,9 +1882,6 @@ void phy_stop(struct phy_device *phydev);
 int phy_config_aneg(struct phy_device *phydev);
 int _phy_start_aneg(struct phy_device *phydev);
 int phy_start_aneg(struct phy_device *phydev);
-int phy_validate_inband_aneg(struct phy_device *phydev,
-			     phy_interface_t interface);
-int phy_config_inband_aneg(struct phy_device *phydev, bool enabled);
 int phy_aneg_done(struct phy_device *phydev);
 unsigned int phy_inband_caps(struct phy_device *phydev,
 			     phy_interface_t interface);

@@ -68,19 +68,6 @@ config FSL_DPAA_ADVANCED_DRIVERS
 	  is needed to support advanced scenarios. Select this to also build the advanced
 	  drivers.
 
-config FSL_DPAA_ETH_JUMBO_FRAME
-	bool "Optimize for jumbo frames"
-	default n
-	help
-	  Optimize the DPAA Ethernet driver throughput for large frames
-	  termination traffic (e.g. 4K and above).
-	  NOTE: This option can only be used if FSL_FM_MAX_FRAME_SIZE
-	  is set to 9600 bytes.
-	  Using this option in combination with small frames increases
-	  significantly the driver's memory footprint and may even deplete
-	  the system memory. Also, the skb truesize is altered and messages
-	  from the stack that warn against this are bypassed.
-
 config FSL_DPAA_TS
 	bool "Linux compliant timestamping"
 	depends on FSL_SDK_DPAA_ETH

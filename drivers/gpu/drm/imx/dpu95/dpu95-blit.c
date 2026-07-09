@@ -200,8 +200,8 @@ static int dpu95_be_get_fence(struct dpu_bliteng *dpu_be)
 failed:
 	if (sync)
 		fput(sync->file);
-
-	kfree(fence);
+	else
+		dma_fence_put(&fence->base);
 
 	return -1;
 }
@@ -785,4 +785,4 @@ int dpu95_bliteng_runtime_resume(struct dpu95_drm_device *dpu_drm)
 
 	return 0;
 }
-MODULE_IMPORT_NS(DMA_BUF);
+MODULE_IMPORT_NS("DMA_BUF");

@@ -58,7 +58,6 @@ struct imx95_pinter_channel {
 	struct drm_bridge *next_bridge;
 	struct imx95_pinter *pinter;
 	unsigned int sid;	/* stream id */
-	bool is_available;
 };
 
 struct imx95_pinter {
@@ -67,7 +66,7 @@ struct imx95_pinter {
 	struct regmap *regmap;
 	struct clk *clk_bus;
 	unsigned int irq;
-	struct imx95_pinter_channel ch[STREAMS];
+	struct imx95_pinter_channel *ch[STREAMS];
 	enum imx95_pinter_mode mode;
 };
 
@@ -85,6 +84,7 @@ static void imx95_pinter_sw_reset(struct imx95_pinter_channel *ch)
 }
 
 static int imx95_pinter_bridge_attach(struct drm_bridge *bridge,
+				      struct drm_encoder *encoder,
 				      enum drm_bridge_attach_flags flags)
 {
 	struct imx95_pinter_channel *ch = bridge->driver_private;
@@ -95,12 +95,7 @@ static int imx95_pinter_bridge_attach(struct drm_bridge *bridge,
 		return -EINVAL;
 	}
 
-	if (!bridge->encoder) {
-		dev_err(pinter->dev, "missing encoder\n");
-		return -ENODEV;
-	}
-
-	return drm_bridge_attach(bridge->encoder, ch->next_bridge, bridge,
+	return drm_bridge_attach(encoder, ch->next_bridge, bridge,
 				 DRM_BRIDGE_ATTACH_NO_CONNECTOR);
 }
 
@@ -290,7 +285,14 @@ static int imx95_pinter_probe(struct platform_device *pdev)
 			goto free_child;
 		}
 
-		ch = &pinter->ch[i];
+		ch = devm_drm_bridge_alloc(dev, struct imx95_pinter_channel, bridge,
+					   &imx95_pinter_bridge_funcs);
+		if (IS_ERR(ch)) {
+			ret = PTR_ERR(ch);
+			goto free_child;
+		}
+
+		pinter->ch[i] = ch;
 		ch->pinter = pinter;
 		ch->sid = i;
 
@@ -327,9 +329,7 @@ static int imx95_pinter_probe(struct platform_device *pdev)
 		imx95_pinter_sw_reset(ch);
 
 		ch->bridge.driver_private = ch;
-		ch->bridge.funcs = &imx95_pinter_bridge_funcs;
 		ch->bridge.of_node = child;
-		ch->is_available = true;
 
 		drm_bridge_add(&ch->bridge);
 	}
@@ -339,8 +339,8 @@ static int imx95_pinter_probe(struct platform_device *pdev)
 free_child:
 	of_node_put(child);
 
-	if (i == 1 && pinter->ch[0].next_bridge)
-		drm_bridge_remove(&pinter->ch[0].bridge);
+	if (i == 1 && pinter->ch[0] && pinter->ch[0]->next_bridge)
+		drm_bridge_remove(&pinter->ch[0]->bridge);
 
 	return ret;
 }
@@ -352,13 +352,10 @@ static void imx95_pinter_remove(struct platform_device *pdev)
 	int i;
 
 	for (i = 0; i < 2; i++) {
-		ch = &pinter->ch[i];
+		ch = pinter->ch[i];
 
-		if (!ch->is_available)
-			continue;
-
-		drm_bridge_remove(&ch->bridge);
-		ch->is_available = false;
+		if (ch)
+			drm_bridge_remove(&ch->bridge);
 	}
 }
 

@@ -525,6 +525,8 @@ struct ub960_rxport {
 	/* lock for aliased_addrs and associated registers */
 	struct mutex aliased_addrs_lock;
 	u16 aliased_addrs[UB960_MAX_PORT_ALIASES];
+
+	u32 bc_gpio;
 };
 
 struct ub960_asd {
@@ -2477,7 +2479,7 @@ static int ub960_init_rx_port_ub960(struct ub960_data *priv,
 	/* Back channel GPIOx Select FrameSync signal */
 	ub960_rxport_write(priv, nport,
 			   UB960_RR_BC_GPIO_CTL(rxport->bc_gpio / 2),
-			   (rxport->bc_gpio & BIT(0)) ? 0xa0 : 0x0a);
+			   (rxport->bc_gpio & BIT(0)) ? 0xa0 : 0x0a, &ret);
 
 	/* Enable RX port */
 	ub960_update_bits(priv, UB960_SR_RX_PORT_CTL, BIT(nport), BIT(nport),
@@ -3701,14 +3703,14 @@ static void ub960_set_fsync_period(struct ub960_data *priv)
 	 * [7:4] = 1110 : External FrameSync from GPIO6
 	 * [7:4] = 1111 : External FrameSync from GPIO7
 	 */
-	ub960_update_bits(priv, UB960_SR_FS_CTL, GENMASK(7, 4), 0);
+	ub960_update_bits(priv, UB960_SR_FS_CTL, GENMASK(7, 4), 0, NULL);
 
 	/*
 	 * Initial State
 	 * [2] = 0 : FrameSync initial state is 0
 	 * [2] = 1 : FrameSync initial state is 1
 	 */
-	ub960_update_bits(priv, UB960_SR_FS_CTL, BIT(2), 0);
+	ub960_update_bits(priv, UB960_SR_FS_CTL, BIT(2), 0, NULL);
 
 	switch (rxport->rx_mode) {
 	case RXPORT_MODE_RAW10:
@@ -3740,9 +3742,9 @@ static void ub960_set_fsync_period(struct ub960_data *priv)
 	fs_ltime_1 = (fsync >> 8) & 0xff;
 	fs_ltime_0 = (fsync >> 0) & 0xff;
 
-	ub960_write(priv, UB960_SR_FS_HIGH_TIME_0, fs_htime_0);
-	ub960_write(priv, UB960_SR_FS_LOW_TIME_1, fs_ltime_1);
-	ub960_write(priv, UB960_SR_FS_LOW_TIME_0, fs_ltime_0);
+	ub960_write(priv, UB960_SR_FS_HIGH_TIME_0, fs_htime_0, NULL);
+	ub960_write(priv, UB960_SR_FS_LOW_TIME_1, fs_ltime_1, NULL);
+	ub960_write(priv, UB960_SR_FS_LOW_TIME_0, fs_ltime_0, NULL);
 
 	/*
 	 * FrameSync Generation Enable
@@ -3763,13 +3765,13 @@ static void ub960_set_fsync_period(struct ub960_data *priv)
 	 *	    signal.
 
 	 */
-	ub960_update_bits(priv, UB960_SR_FS_CTL, BIT(0) | BIT(1), 0x3);
+	ub960_update_bits(priv, UB960_SR_FS_CTL, BIT(0) | BIT(1), 0x3, NULL);
 	priv->fsync_enabled = true;
 }
 
 static void ub960_fsync_disabled(struct ub960_data *priv)
 {
-	ub960_write(priv, UB960_SR_FS_CTL, 0);
+	ub960_write(priv, UB960_SR_FS_CTL, 0, NULL);
 	priv->fsync_enabled = false;
 }
 
@@ -4543,6 +4545,7 @@ ub960_parse_dt_rxport_link_properties(struct ub960_data *priv,
 	u32 eq_level;
 	u32 ser_i2c_alias;
 	u32 ser_i2c_addr;
+	u32 bc_gpio;
 	int ret;
 
 	cdr_mode = RXPORT_CDR_FPD3;

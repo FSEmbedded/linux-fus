@@ -892,7 +892,6 @@ static void cdn_dp_pd_event_work(struct work_struct *work)
 						event_work);
 	struct drm_connector *connector = &dp->mhdp.connector.base;
 	struct device *dev = dp->mhdp.dev;
-
 	int ret;
 
 	mutex_lock(&dp->lock);

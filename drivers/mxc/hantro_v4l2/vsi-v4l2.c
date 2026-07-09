@@ -307,7 +307,7 @@ static void put_ctx(struct vsi_v4l2_ctx *ctx)
 	}
 }
 
-static void release_ctx(struct vsi_v4l2_ctx *ctx, int notifydaemon)
+static void release_ctx(struct vsi_v4l2_ctx *ctx, int notifydaemon, struct file *filp)
 {
 	int ret = 0;
 
@@ -335,8 +335,10 @@ static void release_ctx(struct vsi_v4l2_ctx *ctx, int notifydaemon)
 	vb2_queue_release(&ctx->input_que);
 	vb2_queue_release(&ctx->output_que);
 	v4l2_ctrl_handler_free(&ctx->ctrlhdl);
-	v4l2_fh_del(&ctx->fh);
-	v4l2_fh_exit(&ctx->fh);
+	if (filp) {
+		v4l2_fh_del(&ctx->fh, filp);
+		v4l2_fh_exit(&ctx->fh);
+	}
 	vsi_free_dma(&ctx->custom_qp_map);
 	vsi_free_dma(&ctx->zero_qp_map);
 	mutex_unlock(&ctx->ctxlock);
@@ -482,13 +484,13 @@ int vsi_v4l2_reset_ctx(struct vsi_v4l2_ctx *ctx)
 
 int vsi_v4l2_release(struct file *filp)
 {
-	struct vsi_v4l2_ctx *ctx = fh_to_ctx(filp->private_data);
+	struct vsi_v4l2_ctx *ctx = fh_to_ctx(file_to_v4l2_fh(filp));
 
 	vsi_v4l2_remove_dbgfs_file(ctx);
 	/*normal streaming end should fall here*/
 	v4l2_klog(LOGLVL_BRIEF, "%s ctx %llx", __func__, ctx->ctxid);
 	vsi_clear_daemonmsg(CTX_ARRAY_ID(ctx->ctxid));
-	release_ctx(ctx, 1);
+	release_ctx(ctx, 1, filp);
 	vsi_v4l2_quitinstance();
 	return 0;
 }
@@ -1120,7 +1122,7 @@ static void v4l2_remove(struct platform_device *pdev)
 
 	idr_for_each_entry(&vsi_inst_array, obj, id) {
 		if (obj) {
-			release_ctx(obj, 0);
+			release_ctx(obj, 0, 0);
 			vsi_v4l2_quitinstance();
 		}
 	}

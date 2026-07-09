@@ -34,7 +34,7 @@
 struct imx8mp_ldb;
 
 struct imx8mp_ldb_channel {
-	struct ldb_channel base;
+	struct ldb_channel *base;
 	struct imx8mp_ldb *imx8mp_ldb;
 
 	struct drm_encoder encoder;
@@ -144,7 +144,7 @@ imx8mp_ldb_encoder_atomic_check(struct drm_encoder *encoder,
 	struct imx_crtc_state *imx_crtc_state = to_imx_crtc_state(crtc_state);
 	struct imx8mp_ldb_channel *imx8mp_ldb_ch =
 						enc_to_imx8mp_ldb_ch(encoder);
-	struct ldb_channel *ldb_ch = &imx8mp_ldb_ch->base;
+	struct ldb_channel *ldb_ch = imx8mp_ldb_ch->base;
 	struct imx8mp_ldb *imx8mp_ldb = imx8mp_ldb_ch->imx8mp_ldb;
 	struct ldb *ldb = &imx8mp_ldb->base;
 	struct drm_display_mode *mode = &crtc_state->adjusted_mode;
@@ -189,7 +189,7 @@ imx8mp_ldb_encoder_mode_valid(struct drm_encoder *encoder,
 {
 	struct imx8mp_ldb_channel *imx8mp_ldb_ch =
 						enc_to_imx8mp_ldb_ch(encoder);
-	struct ldb_channel *ldb_ch = &imx8mp_ldb_ch->base;
+	struct ldb_channel *ldb_ch = imx8mp_ldb_ch->base;
 	struct imx8mp_ldb *imx8mp_ldb = imx8mp_ldb_ch->imx8mp_ldb;
 	struct ldb *ldb = &imx8mp_ldb->base;
 
@@ -219,7 +219,7 @@ static const struct drm_encoder_helper_funcs imx8mp_ldb_encoder_helper_funcs = {
 };
 
 static const struct of_device_id imx8mp_ldb_dt_ids[] = {
-	{ .compatible = "fsl,imx8mp-ldb", },
+	{ .compatible = "fsl,imx8mp-ldb-nxp", },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, imx8mp_ldb_dt_ids);
@@ -244,7 +244,7 @@ imx8mp_ldb_bind(struct device *dev, struct device *master, void *data)
 
 	for (i = 0; i < LDB_CH_NUM; i++) {
 		imx8mp_ldb->channel[i].imx8mp_ldb = imx8mp_ldb;
-		ldb->channel[i] = &imx8mp_ldb->channel[i].base;
+		ldb->channel[i] = imx8mp_ldb->channel[i].base;
 	}
 
 	imx8mp_ldb->clk_root = devm_clk_get(dev, "ldb");
@@ -314,7 +314,7 @@ get_phy:
 	}
 
 	for (i = 0; i < LDB_CH_NUM; i++) {
-		ldb_ch = &imx8mp_ldb->channel[i].base;
+		ldb_ch = imx8mp_ldb->channel[i].base;
 
 		if (!ldb_ch->is_valid)
 			continue;
@@ -360,12 +360,22 @@ static const struct component_ops imx8mp_ldb_ops = {
 
 static int imx8mp_ldb_probe(struct platform_device *pdev)
 {
+	struct imx8mp_ldb_channel *imx8mp_ldb_ch;
 	struct device *dev = &pdev->dev;
 	struct imx8mp_ldb *imx8mp_ldb;
+	int i;
 
 	imx8mp_ldb = devm_kzalloc(dev, sizeof(*imx8mp_ldb), GFP_KERNEL);
 	if (!imx8mp_ldb)
 		return -ENOMEM;
+
+	for (i = 0; i < LDB_CH_NUM; i++) {
+		imx8mp_ldb_ch = &imx8mp_ldb->channel[i];
+
+		imx8mp_ldb_ch->base = devm_ldb_channel_alloc(dev);
+		if (IS_ERR(imx8mp_ldb_ch->base))
+			return PTR_ERR(imx8mp_ldb_ch->base);
+	}
 
 	dev_set_drvdata(dev, imx8mp_ldb);
 

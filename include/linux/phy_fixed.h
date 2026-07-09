@@ -25,10 +25,6 @@ extern void fixed_phy_unregister(struct phy_device *phydev);
 extern int fixed_phy_set_link_update(struct phy_device *phydev,
 			int (*link_update)(struct net_device *,
 					   struct fixed_phy_status *));
-
-struct phy_device *fwnode_fixed_phy_register(struct fwnode_handle *fwnode_np,
-					     struct fixed_phy_status *status);
-
 #else
 static inline void fixed_phy_add(const struct fixed_phy_status *status) {}
 static inline struct phy_device *

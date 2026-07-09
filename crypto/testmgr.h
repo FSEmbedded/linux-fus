@@ -22,6 +22,7 @@
 
 #include <linux/oid_registry.h>
 #include <crypto/internal/ecc.h>
+#include <linux/netlink.h>
 
 #define MAX_DIGEST_SIZE		64
 #define MAX_TAP			8

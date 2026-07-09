@@ -1389,7 +1389,7 @@ static int pca953x_suspend(struct device *dev)
 static int pca953x_resume(struct device *dev)
 {
 	struct pca953x_chip *chip = dev_get_drvdata(dev);
-	int ret;
+	int ret = 0;
 
 	if (!atomic_read(&chip->wakeup_path) && chip->regulator) {
 		ret = regulator_enable(chip->regulator);

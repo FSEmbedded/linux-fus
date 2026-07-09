@@ -517,6 +517,13 @@ static int vpu_vb2_buf_init(struct vb2_buffer *vb)
 	struct vpu_vb2_buffer *vpu_buf = to_vpu_vb2_buffer(vbuf);
 	struct vpu_inst *inst = vb2_get_drv_priv(vb->vb2_queue);
 
+	if (vb->memory == VB2_MEMORY_MMAP) {
+		for (int i = 0; i < vb->num_planes; i++)
+			imx_mur_long_new_and_add(inst->recorder,
+						 vb->planes[i].length,
+						 vpu_type_name(vb->type));
+	}
+
 	vpu_buf->fs_id = -1;
 	vpu_set_buffer_state(vbuf, VPU_BUF_STATE_IDLE);
 
@@ -778,6 +785,7 @@ int vpu_v4l2_open(struct file *file, struct vpu_inst *inst)
 	inst->min_buffer_out = 2;
 	v4l2_fh_init(&inst->fh, func->vfd);
 	v4l2_fh_add(&inst->fh, file);
+	inst->recorder = imx_mur_create_node(inst->vpu->recorder, "instance");
 
 	ret = call_vop(inst, ctrl_init);
 	if (ret)

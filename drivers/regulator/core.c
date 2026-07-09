@@ -3810,6 +3810,16 @@ static int _regulator_do_set_suspend_voltage(struct regulator_dev *rdev,
 	return 0;
 }
 
+static bool _regulator_is_bypass(struct regulator_dev *rdev)
+{
+	bool bypassed = false;
+
+	if (rdev->desc->ops->get_bypass)
+		rdev->desc->ops->get_bypass(rdev, &bypassed);
+
+	return bypassed;
+}
+
 static int regulator_get_voltage_delta(struct regulator_dev *rdev, int uV)
 {
 	int current_uV = regulator_get_voltage_rdev(rdev);

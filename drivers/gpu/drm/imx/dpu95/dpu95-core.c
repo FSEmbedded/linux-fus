@@ -338,7 +338,7 @@ static void dpu95_comctrl_irq_handle(struct irq_desc *desc, enum dpu95_irq irq)
 	status &= dpu95_comctrl_irq_read(dpu, INTERRUPTENABLE(irq / 32));
 
 	if (status & BIT(irq % 32)) {
-		virq = irq_linear_revmap(dpu->comctrl_irq_domain, irq);
+		virq = irq_find_mapping(dpu->comctrl_irq_domain, irq);
 		if (virq)
 			generic_handle_irq(virq);
 	}
@@ -359,7 +359,7 @@ static void dpu95_disp_irq0_handle(struct irq_desc *desc, enum dpu95_irq irq)
 	status &= dpu95_disp_irq0_read(dpu, INTERRUPTENABLE(irq / 32));
 
 	if (status & BIT(irq % 32)) {
-		virq = irq_linear_revmap(dpu->disp_irq0_domain, irq);
+		virq = irq_find_mapping(dpu->disp_irq0_domain, irq);
 		if (virq)
 			generic_handle_irq(virq);
 	}
@@ -380,7 +380,7 @@ static void dpu95_disp_irq2_handle(struct irq_desc *desc, enum dpu95_irq irq)
 	status &= dpu95_disp_irq2_read(dpu, INTERRUPTENABLE(irq / 32));
 
 	if (status & BIT(irq % 32)) {
-		virq = irq_linear_revmap(dpu->disp_irq2_domain, irq);
+		virq = irq_find_mapping(dpu->disp_irq2_domain, irq);
 		if (virq)
 			generic_handle_irq(virq);
 	}
@@ -483,7 +483,7 @@ static void (* const dpu95_display_irq2_handler[DPU95_IRQ_COUNT])(struct irq_des
 
 int dpu95_map_comctrl_irq(struct dpu95_soc *dpu, int irq)
 {
-	int virq = irq_linear_revmap(dpu->comctrl_irq_domain, irq);
+	int virq = irq_find_mapping(dpu->comctrl_irq_domain, irq);
 
 	if (!virq)
 		virq = irq_create_mapping(dpu->comctrl_irq_domain, irq);
@@ -493,7 +493,7 @@ int dpu95_map_comctrl_irq(struct dpu95_soc *dpu, int irq)
 
 int dpu95_map_disp_irq0(struct dpu95_soc *dpu, int irq)
 {
-	int virq = irq_linear_revmap(dpu->disp_irq0_domain, irq);
+	int virq = irq_find_mapping(dpu->disp_irq0_domain, irq);
 
 	if (!virq)
 		virq = irq_create_mapping(dpu->disp_irq0_domain, irq);
@@ -503,7 +503,7 @@ int dpu95_map_disp_irq0(struct dpu95_soc *dpu, int irq)
 
 int dpu95_map_disp_irq2(struct dpu95_soc *dpu, int irq)
 {
-	int virq = irq_linear_revmap(dpu->disp_irq2_domain, irq);
+	int virq = irq_find_mapping(dpu->disp_irq2_domain, irq);
 
 	if (!virq)
 		virq = irq_create_mapping(dpu->disp_irq2_domain, irq);
@@ -804,22 +804,22 @@ static void devm_dpu95_irq_exit(void *data)
 	pm_runtime_put(parent_domain->pm_dev);
 
 	for (i = 0; i < DPU95_COMCTRL_IRQ_IRQS; i++) {
-		irq = irq_linear_revmap(dpu->comctrl_irq_domain,
-					dpu_comctrl_irq[i]);
+		irq = irq_find_mapping(dpu->comctrl_irq_domain,
+				       dpu_comctrl_irq[i]);
 		if (irq)
 			irq_dispose_mapping(irq);
 	}
 
 	for (i = 0; i < DPU95_DISPLAY_IRQ0_IRQS; i++) {
-		irq = irq_linear_revmap(dpu->disp_irq0_domain,
-					dpu_display_irq0[i]);
+		irq = irq_find_mapping(dpu->disp_irq0_domain,
+				       dpu_display_irq0[i]);
 		if (irq)
 			irq_dispose_mapping(irq);
 	}
 
 	for (i = 0; i < DPU95_DISPLAY_IRQ2_IRQS; i++) {
-		irq = irq_linear_revmap(dpu->disp_irq2_domain,
-					dpu_display_irq2[i]);
+		irq = irq_find_mapping(dpu->disp_irq2_domain,
+				       dpu_display_irq2[i]);
 		if (irq)
 			irq_dispose_mapping(irq);
 	}

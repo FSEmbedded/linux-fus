@@ -719,8 +719,6 @@ static int caam_ctrl_rng_init(struct device *dev)
 			 * Also, if a handle was instantiated, do not change
 			 * the TRNG parameters.
 			 */
-			if (needs_entropy_delay_adjustment())
-				ent_delay = 12000;
 			if (!inst_handles) {
 				dev_info(dev,
 					 "Entropy delay = %u\n",

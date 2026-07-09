@@ -225,7 +225,7 @@ static int fb_check_caps(struct fb_info *info, struct fb_var_screeninfo *var,
 static void fb_lcd_notify_mode_change(struct fb_info *info,
 				      struct fb_videomode *mode)
 {
-	lcd_notify_mode_change_all(info->device, mode->xres, mode->yres);
+	lcd_notify_mode_change_all(info->device, info, mode->xres, mode->yres);
 }
 
 int
@@ -369,7 +369,7 @@ static void fb_lcd_notify_blank(struct fb_info *info)
 		break;
 	}
 
-	lcd_notify_blank_all(info->device, power);
+	lcd_notify_blank_all(info->device, info, power);
 }
 
 static void fb_ledtrig_backlight_notify_blank(struct fb_info *info)

@@ -165,13 +165,6 @@ config UIO_DFL
 
 	  If you compile this as a module, it will be called uio_dfl.
 
-config UIO_IVSHMEM
-	tristate "Inter-VM Shared Memory driver"
-	depends on PCI
-	help
-	  Userspace I/O driver for the inter-VM shared memory PCI device
-	  as provided by QEMU and the Jailhouse hypervisor.
-
 config UIO_V2X_FCE
 	tristate "i.MX V2X Fast Crypto Engine UIO support"
 	default y
@@ -181,4 +174,11 @@ config UIO_V2X_FCE
 
 	  To compile this as a module, choose M here: the module
 	  will be called uio_v2x_fce.
+
+config UIO_IVSHMEM
+	tristate "Inter-VM Shared Memory driver"
+	depends on PCI
+	help
+	  Userspace I/O driver for the inter-VM shared memory PCI device
+	  as provided by QEMU and the Jailhouse hypervisor.
 endif

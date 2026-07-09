@@ -34,11 +34,12 @@ struct imx95_pl_bridge {
 struct imx95_pl {
 	struct device *dev;
 	struct regmap *regmap;
-	struct imx95_pl_bridge bridge[STREAMS];
+	struct imx95_pl_bridge *bridge[STREAMS];
 	struct drm_bridge *next_bridge[STREAMS];
 };
 
 static int imx95_pl_bridge_attach(struct drm_bridge *bridge,
+				  struct drm_encoder *encoder,
 				  enum drm_bridge_attach_flags flags)
 {
 	struct imx95_pl_bridge *pl_bridge = bridge->driver_private;
@@ -49,14 +50,8 @@ static int imx95_pl_bridge_attach(struct drm_bridge *bridge,
 		return -EINVAL;
 	}
 
-	if (!bridge->encoder) {
-		dev_err(pl->dev, "missing encoder\n");
-		return -ENODEV;
-	}
-
-	return drm_bridge_attach(bridge->encoder,
-				 pl->next_bridge[pl_bridge->id], bridge,
-				 DRM_BRIDGE_ATTACH_NO_CONNECTOR);
+	return drm_bridge_attach(encoder, pl->next_bridge[pl_bridge->id],
+				 bridge, DRM_BRIDGE_ATTACH_NO_CONNECTOR);
 }
 
 static void imx95_pl_bridge_disable(struct drm_bridge *bridge)
@@ -173,7 +168,7 @@ static void imx95_pl_bridge_remove(struct imx95_pl *pl)
 		if (!pl->next_bridge[i])
 			continue;
 
-		bridge = &pl->bridge[i];
+		bridge = pl->bridge[i];
 		drm_bridge_remove(&bridge->base);
 	}
 }
@@ -215,12 +210,18 @@ static int imx95_pl_probe(struct platform_device *pdev)
 			goto err;
 		}
 
-		bridge = &pl->bridge[in_port];
+		bridge = devm_drm_bridge_alloc(dev, struct imx95_pl_bridge, base,
+					       &imx95_pl_bridge_funcs);
+		if (IS_ERR(bridge)) {
+			ret = PTR_ERR(bridge);
+			goto err;
+		}
+
+		pl->bridge[in_port] = bridge;
 		bridge->pl = pl;
 		bridge->id = in_port;
 
 		bridge->base.driver_private = bridge;
-		bridge->base.funcs = &imx95_pl_bridge_funcs;
 		bridge->base.of_node = port;
 
 		of_node_put(port);

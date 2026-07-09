@@ -3,7 +3,7 @@
  * Freescale Management Complex (MC) bus driver
  *
  * Copyright (C) 2014-2016 Freescale Semiconductor, Inc.
- * Copyright 2019-2020 NXP
+ * Copyright 2019-2020, 2025 NXP
  * Author: German Rivera <German.Rivera@freescale.com>
  *
  */
@@ -13,6 +13,7 @@
 #include <linux/module.h>
 #include <linux/of_device.h>
 #include <linux/of_address.h>
+#include <linux/iopoll.h>
 #include <linux/ioport.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
@@ -65,6 +66,16 @@ struct fsl_mc_addr_translation_range {
 #define FSL_MC_GCR1	0x0
 #define GCR1_P1_STOP	BIT(31)
 #define GCR1_P2_STOP	BIT(30)
+
+#define FSL_MC_GSR		0x8
+#define FSL_MC_GSR_BOOT_DONE	BIT(0)
+#define FSL_MC_GSR_MCS_MASK	GENMASK(7, 0)
+#define FSL_MC_GSR_MCS_ERR_MASK	GENMASK(7, 1)
+#define FSL_MC_GSR_BC_MASK	GENMASK(15, 8)
+#define FSL_MC_GSR_BC_SHIFT	8
+
+#define FSL_MC_BOOT_POLL_US	USEC_PER_MSEC
+#define FSL_MC_BOOT_TIMEOUT_US	(5 * USEC_PER_SEC)
 
 #define FSL_MC_FAPR	0x28
 #define MC_FAPR_PL	BIT(18)
@@ -457,24 +468,17 @@ static int fsl_mc_driver_remove(struct device *dev)
 	struct fsl_mc_driver *mc_drv = to_fsl_mc_driver(dev->driver);
 	struct fsl_mc_device *mc_dev = to_fsl_mc_device(dev);
 
-	if (mc_drv->remove)
-		mc_drv->remove(mc_dev);
+	mc_drv->remove(mc_dev);
 
 	return 0;
 }
 
 static void fsl_mc_driver_shutdown(struct device *dev)
 {
+	struct fsl_mc_driver *mc_drv = to_fsl_mc_driver(dev->driver);
 	struct fsl_mc_device *mc_dev = to_fsl_mc_device(dev);
-	struct fsl_mc_driver *mc_drv;
 
-	if (!dev->driver)
-		return;
-
-	mc_drv = to_fsl_mc_driver(dev->driver);
-
-	if (mc_drv->shutdown)
-		mc_drv->shutdown(mc_dev);
+	mc_drv->shutdown(mc_dev);
 }
 
 /*
@@ -1043,6 +1047,47 @@ static int get_mc_addr_translation_ranges(struct device *dev,
 	return 0;
 }
 
+static u32 fsl_mc_read_gsr(struct fsl_mc *mc)
+{
+	return readl(mc->fsl_mc_regs + FSL_MC_GSR);
+}
+
+static int fsl_mc_wait_for_firmware_boot(struct platform_device *pdev)
+{
+	struct fsl_mc *mc = platform_get_drvdata(pdev);
+	u32 gsr, boot_code, mcs;
+	int err;
+
+	gsr = fsl_mc_read_gsr(mc);
+	boot_code = (gsr & FSL_MC_GSR_BC_MASK) >> FSL_MC_GSR_BC_SHIFT;
+	if (boot_code == 0xDD) {
+		dev_err(&pdev->dev,
+			"fsl-mc: DPL processing was not started, DPAA2 will not work!\n");
+		return -EOPNOTSUPP;
+	}
+
+	/* Wait until the Management Complex boot process is done, either
+	 * successfull or not.
+	 */
+	err = read_poll_timeout(fsl_mc_read_gsr, gsr,
+				gsr & FSL_MC_GSR_BOOT_DONE,
+				FSL_MC_BOOT_POLL_US, FSL_MC_BOOT_TIMEOUT_US,
+				true, mc);
+	if (err) {
+		dev_err(&pdev->dev, "fsl-mc: firmware boot process timed out!\n");
+		return err;
+	}
+
+	mcs = gsr & FSL_MC_GSR_MCS_MASK;
+	if (mcs & FSL_MC_GSR_MCS_ERR_MASK) {
+		dev_err(&pdev->dev,
+			"fsl-mc: MC boot completed with error 0x%x\n", mcs);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 /*
  * fsl_mc_bus_probe - callback invoked when the root MC bus is being
  * added
@@ -1105,6 +1150,10 @@ static int fsl_mc_bus_probe(struct platform_device *pdev)
 		writel(readl(mc->fsl_mc_regs + FSL_MC_GCR1) &
 			     (~(GCR1_P1_STOP | GCR1_P2_STOP)),
 		       mc->fsl_mc_regs + FSL_MC_GCR1);
+
+		error = fsl_mc_wait_for_firmware_boot(pdev);
+		if (error)
+			return error;
 	}
 
 	/*
@@ -1176,18 +1225,16 @@ error_cleanup_mc_io:
 }
 
 /*
- * fsl_mc_bus_shutdown - callback invoked when the root MC bus is being
- * shutdown
+ * fsl_mc_bus_remove - callback invoked when the root MC bus is being
+ * removed
  */
-static void fsl_mc_bus_shutdown(struct platform_device *pdev)
+static void fsl_mc_bus_remove(struct platform_device *pdev)
 {
 	struct fsl_mc *mc = platform_get_drvdata(pdev);
 	struct fsl_mc_io *mc_io;
 
-	if (!fsl_mc_is_root_dprc(&mc->root_mc_bus_dev->dev))
-		return;
-
 	mc_io = mc->root_mc_bus_dev->mc_io;
+	fsl_mc_device_remove(mc->root_mc_bus_dev);
 	fsl_destroy_mc_io(mc_io);
 
 	bus_unregister_notifier(&fsl_mc_bus_type, &fsl_mc_nb);
@@ -1201,22 +1248,6 @@ static void fsl_mc_bus_shutdown(struct platform_device *pdev)
 		       (GCR1_P1_STOP | GCR1_P2_STOP),
 		       mc->fsl_mc_regs + FSL_MC_GCR1);
 	}
-}
-
-/*
- * fsl_mc_bus_remove - callback invoked when the root MC bus is being
- * removed
- */
-static void fsl_mc_bus_remove(struct platform_device *pdev)
-{
-	struct fsl_mc *mc = platform_get_drvdata(pdev);
-
-	if (!fsl_mc_is_root_dprc(&mc->root_mc_bus_dev->dev))
-		return;
-
-	fsl_mc_device_remove(mc->root_mc_bus_dev);
-
-	fsl_mc_bus_shutdown(pdev);
 }
 
 static const struct of_device_id fsl_mc_bus_match_table[] = {

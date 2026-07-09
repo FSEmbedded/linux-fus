@@ -12,7 +12,7 @@
 #include <linux/sys_soc.h>
 
 #define IMX_SIP_GET_SOC_INFO	0xc2000006
-#define SOC_ID(x)		(((x) & 0xFFFF) >> 8)
+#define SOC_ID(x)		(((x) & 0xFF) ? ((x) & 0xFFFF) >> 4 : ((x) & 0xFFFF) >> 8)
 #define SOC_REV_MAJOR(x)	((((x) >> 28) & 0xF) - 0x9)
 #define SOC_REV_MINOR(x)	(((x) >> 24) & 0xF)
 
@@ -62,6 +62,9 @@ static int imx9_soc_probe(struct platform_device *pdev)
 	uid63_0 = res.a3;
 	attr->serial_number = kasprintf(GFP_KERNEL, "%016llx%016llx", uid127_64, uid63_0);
 
+	if (of_machine_is_compatible("fsl,imx91p"))
+		attr->soc_id = kasprintf(GFP_KERNEL, "i.MX91P");
+
 	sdev = soc_device_register(attr);
 	if (IS_ERR(sdev)) {
 		err = PTR_ERR(sdev);
@@ -83,7 +86,9 @@ attr:
 }
 
 static __maybe_unused const struct of_device_id imx9_soc_match[] = {
+	{ .compatible = "fsl,imx91", },
 	{ .compatible = "fsl,imx93", },
+	{ .compatible = "fsl,imx94", },
 	{ .compatible = "fsl,imx95", },
 	{ }
 };

@@ -23,7 +23,7 @@ lcdif_subsys: bus@5a180000 {
 		#clock-cells = <1>;
 		clocks = <&clk IMX_SC_R_LCD_0 IMX_SC_PM_CLK_PER>,
 			 <&ipg_dma_clk>;
-		bit-offset = <0 16>;
+		clock-indices = <IMX_LPCG_CLK_0>, <IMX_LPCG_CLK_4>;
 		clock-output-names = "lcd_clk_lpcg", "lcd_ipg_clk";
 		power-domains = <&pd IMX_SC_R_LCD_0>;
 	};
@@ -31,8 +31,8 @@ lcdif_subsys: bus@5a180000 {
 	adma_lcdif: lcdif@5a180000 {
 		compatible = "fsl,imx8qxp-lcdif", "fsl,imx28-lcdif";
 		reg = <0x5a180000 0x10000>;
-		clocks = <&lcd_clk_lpcg 0>,
-			 <&lcd_clk_lpcg 1>,
+		clocks = <&lcd_clk_lpcg IMX_LPCG_CLK_0>,
+			 <&lcd_clk_lpcg IMX_LPCG_CLK_4>,
 			 <&clk IMX_SC_R_LCD_0 IMX_SC_PM_CLK_MISC0>;
 		clock-names = "pix", "axi", "disp_axi";
 		assigned-clocks = <&clk IMX_SC_R_LCD_0 IMX_SC_PM_CLK_PER>,

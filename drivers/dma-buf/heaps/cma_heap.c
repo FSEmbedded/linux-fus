@@ -434,10 +434,16 @@ static const struct dma_heap_ops cma_heap_ops = {
 	.allocate = cma_heap_allocate,
 };
 
+static struct dma_heap_ops cma_uncached_heap_ops = {
+	.allocate = cma_uncached_heap_not_initialized,
+};
+
 static int __init __add_cma_heap(struct cma *cma, const char *name)
 {
 	struct dma_heap_export_info exp_info;
 	struct cma_heap *cma_heap;
+	const char *postfixed = "-uncached";
+	char *cma_name;
 
 	cma_heap = kzalloc(sizeof(*cma_heap), GFP_KERNEL);
 	if (!cma_heap)
@@ -461,13 +467,13 @@ static int __init __add_cma_heap(struct cma *cma, const char *name)
 		return -ENOMEM;
 	cma_heap->cma = cma;
 
-	cma_name = kzalloc(strlen(cma_get_name(cma)) + strlen(postfixed) + 1, GFP_KERNEL);
+	cma_name = kzalloc(strlen(name) + strlen(postfixed) + 1, GFP_KERNEL);
 	if (!cma_name) {
 		kfree(cma_heap);
 		return -ENOMEM;
 	}
 
-	exp_info.name = strcat(strcpy(cma_name, cma_get_name(cma)), postfixed);
+	exp_info.name = strcat(strcpy(cma_name, name), postfixed);
 	exp_info.ops = &cma_uncached_heap_ops;
 	exp_info.priv = cma_heap;
 

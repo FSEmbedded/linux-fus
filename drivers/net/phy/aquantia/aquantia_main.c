@@ -35,6 +35,21 @@
 #define PHY_ID_AQR115C	0x31c31c33
 #define PHY_ID_AQR813	0x31c31cb2
 
+#define MDIO_GLOBAL_LED_PROVIS_1		0xC430
+#define MDIO_GLOBAL_LED_PROVIS_1_LED0_5G	BIT(15)
+#define MDIO_GLOBAL_LED_PROVIS_1_LED0_10G	BIT(7)
+#define MDIO_GLOBAL_LED_PROVIS_1_REV_ACT	BIT(3)
+#define MDIO_GLOBAL_LED_PROVIS_1_SEN_ACT	BIT(2)
+#define MDIO_GLOBAL_LED_PROVIS_1_STR_MASK	GENMASK(1, 0)
+#define MDIO_GLOBAL_LED_PROVIS_1_STR(x)		((x) & GENMASK(1, 0))
+#define MDIO_GLOBAL_LED_PROVIS_2		0xC431
+#define MDIO_GLOBAL_LED_PROVIS_2_LED0_2_5G	BIT(14)
+#define MDIO_GLOBAL_LED_PROVIS_2_LED0_1G	BIT(6)
+#define MDIO_GLOBAL_LED_PROVIS_2_REV_ACT	BIT(3)
+#define MDIO_GLOBAL_LED_PROVIS_2_SEN_ACT	BIT(2)
+#define MDIO_GLOBAL_LED_PROVIS_2_STR_MASK	GENMASK(1, 0)
+#define MDIO_GLOBAL_LED_PROVIS_2_STR(x)		((x) & GENMASK(1, 0))
+
 #define MDIO_PHYXS_VEND_PROV2			0xc441
 #define MDIO_PHYXS_VEND_PROV2_USX_AN		BIT(3)
 
@@ -248,109 +263,6 @@ static int aqr_config_aneg(struct phy_device *phydev)
 		changed = true;
 
 	return genphy_c45_check_and_restart_aneg(phydev, changed);
-}
-
-static int aqr_set_low_power(struct phy_device *phydev, bool enable)
-{
-	int val = enable ? VEND1_GLOBAL_SC_LOW_POWER : 0;
-	int err;
-
-	err = phy_write_mmd(phydev, MDIO_MMD_VEND1, VEND1_GLOBAL_SC, val);
-	if (err)
-		return err;
-
-	mdelay(10);
-
-	return 0;
-}
-
-static const struct aqr_syscfg aqr_syscfg[PHY_INTERFACE_MODE_MAX] = {
-	[PHY_INTERFACE_MODE_SGMII] = {
-		.val = VEND1_GLOBAL_CFG_SERDES_SILENCE |
-		       VEND1_GLOBAL_CFG_AN_ENABLE |
-		       VEND1_GLOBAL_CFG_SERDES_MODE_SGMII,
-		.start_reg = VEND1_GLOBAL_CFG_100M,
-		.end_reg = VEND1_GLOBAL_CFG_1G,
-		.start_rate = VEND1_GLOBAL_STARTUP_RATE_1G,
-	},
-	[PHY_INTERFACE_MODE_2500BASEX] = {
-		.val = FIELD_PREP_CONST(VEND1_GLOBAL_CFG_RATE_ADAPT,
-					VEND1_GLOBAL_CFG_RATE_ADAPT_PAUSE) |
-		       VEND1_GLOBAL_CFG_SERDES_SILENCE |
-		       VEND1_GLOBAL_CFG_SERDES_MODE_OCSGMII,
-		.start_reg = VEND1_GLOBAL_CFG_100M,
-		.end_reg = VEND1_GLOBAL_CFG_2_5G,
-		.start_rate = VEND1_GLOBAL_STARTUP_RATE_2_5G,
-	},
-	[PHY_INTERFACE_MODE_10GBASER] = {
-		.val = FIELD_PREP_CONST(VEND1_GLOBAL_CFG_RATE_ADAPT,
-					VEND1_GLOBAL_CFG_RATE_ADAPT_PAUSE) |
-		       VEND1_GLOBAL_CFG_SERDES_MODE_XFI,
-		.start_reg = VEND1_GLOBAL_CFG_100M,
-		.end_reg = VEND1_GLOBAL_CFG_10G,
-		.start_rate = VEND1_GLOBAL_STARTUP_RATE_10G,
-	},
-	[PHY_INTERFACE_MODE_USXGMII] = {
-		.val = FIELD_PREP_CONST(VEND1_GLOBAL_CFG_RATE_ADAPT,
-					VEND1_GLOBAL_CFG_RATE_ADAPT_USX) |
-		       VEND1_GLOBAL_CFG_SERDES_MODE_XFI,
-		.start_reg = VEND1_GLOBAL_CFG_100M,
-		.end_reg = VEND1_GLOBAL_CFG_10G,
-		.start_rate = VEND1_GLOBAL_STARTUP_RATE_10G,
-	},
-};
-
-/* Sets up protocol on system side before calling aqr_config_aneg */
-static int aqr_config_aneg_set_proto(struct phy_device *phydev)
-{
-	const struct aqr_syscfg *syscfg = &aqr_syscfg[phydev->interface];
-	int err, val, i;
-
-	if (!syscfg->start_reg)
-		return 0;
-
-	/* set PHY in low power mode so we can configure protocols */
-	err = aqr_set_low_power(phydev, true);
-	if (err)
-		return err;
-
-	/* set the default rate to enable the SI link */
-	err = phy_write_mmd(phydev, MDIO_MMD_VEND1, VEND1_GLOBAL_STARTUP_RATE,
-			    syscfg->start_rate);
-	if (err)
-		return err;
-
-	for (i = syscfg->start_reg; i <= syscfg->end_reg; i++) {
-		val = phy_read_mmd(phydev, MDIO_MMD_VEND1, i);
-		if (val < 0)
-			return val;
-
-		/* Do not set up protocols for speeds that are not supported by
-		 * FW. Enabling these protocols leads to link issues on system
-		 * side.
-		 */
-		if (!val)
-			continue;
-
-		err = phy_write_mmd(phydev, MDIO_MMD_VEND1, i, syscfg->val);
-		if (err)
-			return err;
-	}
-
-	if (phydev->interface == PHY_INTERFACE_MODE_USXGMII) {
-		err = phy_write_mmd(phydev, MDIO_MMD_PHYXS,
-				    MDIO_PHYXS_VEND_PROV2,
-				    MDIO_PHYXS_VEND_PROV2_USX_AN);
-		if (err)
-			return err;
-	}
-
-	/* wake PHY back up */
-	err = aqr_set_low_power(phydev, false);
-	if (err)
-		return err;
-
-	return aqr_config_aneg(phydev);
 }
 
 static int aqr_config_intr(struct phy_device *phydev)
@@ -701,6 +613,57 @@ static int aqr_gen1_read_status(struct phy_device *phydev)
 	return aqr_gen1_read_rate(phydev);
 }
 
+static int aqr_gen2_update_leds(struct phy_device *phydev)
+{
+	u16 led1 = 0, led2 = 0;
+	int ret;
+
+	switch (phydev->speed) {
+	case SPEED_1000:
+		led2 = MDIO_GLOBAL_LED_PROVIS_2_LED0_1G |
+		       MDIO_GLOBAL_LED_PROVIS_2_REV_ACT |
+		       MDIO_GLOBAL_LED_PROVIS_2_SEN_ACT |
+		       MDIO_GLOBAL_LED_PROVIS_2_STR(0x1);
+		break;
+	case SPEED_2500:
+		led1 = MDIO_GLOBAL_LED_PROVIS_1_REV_ACT |
+		       MDIO_GLOBAL_LED_PROVIS_1_SEN_ACT |
+		       MDIO_GLOBAL_LED_PROVIS_1_STR(0x1);
+		led2 = MDIO_GLOBAL_LED_PROVIS_2_LED0_2_5G;
+		break;
+	case SPEED_5000:
+		led1 = MDIO_GLOBAL_LED_PROVIS_1_LED0_5G |
+		       MDIO_GLOBAL_LED_PROVIS_1_REV_ACT |
+		       MDIO_GLOBAL_LED_PROVIS_1_SEN_ACT |
+		       MDIO_GLOBAL_LED_PROVIS_1_STR(0x1);
+		break;
+	case SPEED_10000:
+		led1 = MDIO_GLOBAL_LED_PROVIS_1_LED0_10G;
+		led2 = MDIO_GLOBAL_LED_PROVIS_2_REV_ACT |
+		       MDIO_GLOBAL_LED_PROVIS_2_SEN_ACT |
+		       MDIO_GLOBAL_LED_PROVIS_2_STR(0x1);
+		break;
+	default:
+		break;
+	}
+
+	ret = phy_modify_mmd(phydev, MDIO_MMD_VEND1, MDIO_GLOBAL_LED_PROVIS_1,
+			     MDIO_GLOBAL_LED_PROVIS_1_LED0_5G |
+			     MDIO_GLOBAL_LED_PROVIS_1_LED0_10G |
+			     MDIO_GLOBAL_LED_PROVIS_1_REV_ACT |
+			     MDIO_GLOBAL_LED_PROVIS_1_SEN_ACT |
+			     MDIO_GLOBAL_LED_PROVIS_1_STR_MASK, led1);
+	if (ret)
+		return ret;
+
+	return phy_modify_mmd(phydev, MDIO_MMD_VEND1, MDIO_GLOBAL_LED_PROVIS_2,
+			      MDIO_GLOBAL_LED_PROVIS_2_LED0_2_5G |
+			      MDIO_GLOBAL_LED_PROVIS_2_LED0_1G |
+			      MDIO_GLOBAL_LED_PROVIS_2_REV_ACT |
+			      MDIO_GLOBAL_LED_PROVIS_2_SEN_ACT |
+			      MDIO_GLOBAL_LED_PROVIS_2_STR_MASK, led2);
+}
+
 static int aqr_gen2_read_status(struct phy_device *phydev)
 {
 	struct aqr107_priv *priv = phydev->priv;
@@ -723,7 +686,7 @@ static int aqr_gen2_read_status(struct phy_device *phydev)
 		break;
 	}
 
-	return 0;
+	return aqr_gen2_update_leds(phydev);
 }
 
 static int aqr107_get_downshift(struct phy_device *phydev, u8 *data)
@@ -1609,30 +1572,6 @@ static struct phy_driver aqr_driver[] = {
 	.led_polarity_set = aqr_phy_led_polarity_set,
 	.inband_caps	= aqr_gen2_inband_caps,
 	.config_inband	= aqr_gen2_config_inband,
-},
-{
-	PHY_ID_MATCH_MODEL(PHY_ID_AQR115),
-	.name		= "Aquantia AQR115",
-	.probe		= aqr107_probe,
-	.get_rate_matching = aqr107_get_rate_matching,
-	.config_init	= aqcs109_config_init,
-	.config_aneg	= aqr_config_aneg,
-	.config_intr	= aqr_config_intr,
-	.handle_interrupt = aqr_handle_interrupt,
-	.read_status	= aqr107_read_status,
-	.get_tunable    = aqr107_get_tunable,
-	.set_tunable    = aqr107_set_tunable,
-	.suspend	= aqr107_suspend,
-	.resume		= aqr107_resume,
-	.get_sset_count	= aqr107_get_sset_count,
-	.get_strings	= aqr107_get_strings,
-	.get_stats	= aqr107_get_stats,
-	.link_change_notify = aqr107_link_change_notify,
-	.led_brightness_set = aqr_phy_led_brightness_set,
-	.led_hw_is_supported = aqr_phy_led_hw_is_supported,
-	.led_hw_control_set = aqr_phy_led_hw_control_set,
-	.led_hw_control_get = aqr_phy_led_hw_control_get,
-	.led_polarity_set = aqr_phy_led_polarity_set,
 },
 {
 	PHY_ID_MATCH_MODEL(PHY_ID_AQR115C),

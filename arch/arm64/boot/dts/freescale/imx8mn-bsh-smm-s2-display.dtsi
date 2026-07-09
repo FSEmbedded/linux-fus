@@ -117,10 +117,6 @@
 	};
 };
 
-&gpu {
-	status = "okay";
-};
-
 &iomuxc {
 	pinctrl_avdd: avddgrp {
 		fsl,pins = <

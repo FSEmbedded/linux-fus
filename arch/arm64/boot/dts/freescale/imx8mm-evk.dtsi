@@ -8,6 +8,7 @@
 #include <dt-bindings/phy/phy-imx8-pcie.h>
 #include <dt-bindings/usb/pd.h>
 #include "imx8mm.dtsi"
+#include "imx8mm-nxp-display.dtsi"
 
 / {
 	chosen {
@@ -174,6 +175,56 @@
 		};
 	};
 
+	sound-ak4458 {
+		compatible = "fsl,imx-audio-card";
+		model = "ak4458-audio";
+		pri-dai-link {
+			link-name = "akcodec";
+			format = "i2s";
+			fsl,mclk-equal-bclk;
+			cpu {
+				sound-dai = <&sai1>;
+			};
+			codec {
+				sound-dai = <&ak4458_1>, <&ak4458_2>;
+			};
+		};
+	};
+
+	sound-ak5558 {
+		compatible = "fsl,imx-audio-card";
+		model = "ak5558-audio";
+		status = "disabled";
+		pri-dai-link {
+			link-name = "akcodec";
+			format = "i2s";
+			fsl,mclk-equal-bclk;
+			cpu {
+				sound-dai = <&sai5>;
+			};
+			codec {
+				sound-dai = <&ak5558>;
+			};
+		};
+	};
+
+	sound-ak4497 {
+		compatible = "fsl,imx-audio-card";
+		model = "ak4497-audio";
+		status = "disabled";
+		pri-dai-link {
+			link-name = "akcodec";
+			format = "i2s";
+			fsl,mclk-equal-bclk;
+			cpu {
+				sound-dai = <&sai1>;
+			};
+			codec {
+				sound-dai = <&ak4497>;
+			};
+		};
+	};
+
 	sound-micfil {
 		compatible = "fsl,imx-audio-card";
 		model = "micfil-audio";
@@ -222,10 +273,13 @@
 	cpu-supply = <&buck2_reg>;
 };
 
+&ddrc {
+	status = "disabled";
+};
+
 &ecspi2 {
 	#address-cells = <1>;
 	#size-cells = <0>;
-	fsl,spi-num-chipselects = <1>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_ecspi2 &pinctrl_ecspi2_cs>;
 	cs-gpios = <&gpio5 13 GPIO_ACTIVE_LOW>;
@@ -372,6 +426,8 @@
 				regulator-name = "LDO5";
 				regulator-min-microvolt = <1800000>;
 				regulator-max-microvolt = <3300000>;
+				regulator-boot-on;
+				regulator-always-on;
 			};
 		};
 	};
@@ -651,6 +707,30 @@
 	status = "okay";
 };
 
+&sai5 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_sai5>;
+	assigned-clocks = <&clk IMX8MM_CLK_SAI5>;
+	assigned-clock-parents = <&clk IMX8MM_AUDIO_PLL1_OUT>;
+	assigned-clock-rates = <49152000>;
+	clocks = <&clk IMX8MM_CLK_SAI5_IPG>, <&clk IMX8MM_CLK_DUMMY>,
+		<&clk IMX8MM_CLK_SAI5_ROOT>, <&clk IMX8MM_CLK_DUMMY>,
+		<&clk IMX8MM_CLK_DUMMY>, <&clk IMX8MM_AUDIO_PLL1_OUT>,
+		<&clk IMX8MM_AUDIO_PLL2_OUT>;
+	clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3", "pll8k", "pll11k";
+	fsl,sai-asynchronous;
+	fsl,sai-multi-lane;
+	fsl,sai-mclk-direction-output;
+	dmas = <&sdma2 8 25 0>, <&sdma2 9 25 0>;
+	status = "disabled";
+};
+
+&sai6 {
+	fsl,sai-monitor-spdif;
+	fsl,sai-asynchronous;
+	status = "okay";
+};
+
 &snvs_pwrkey {
 	status = "okay";
 };
@@ -736,22 +816,6 @@
 	status = "okay";
 };
 
-&vpu_g1 {
-	status = "okay";
-};
-
-&vpu_g2 {
-	status = "okay";
-};
-
-&vpu_h1 {
-	status = "okay";
-};
-
-&vpu_v4l2 {
-	status = "okay";
-};
-
 &wdog1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_wdog>;
@@ -764,8 +828,17 @@
 	pinctrl-0 = <&pinctrl_backlight>;
 };
 
-&gpu {
-	status = "okay";
+&pgc_gpu {
+	assigned-clocks = <&clk IMX8MM_CLK_GPU_AXI>,
+			 <&clk IMX8MM_CLK_GPU_AHB>;
+	assigned-clock-parents = <&clk IMX8MM_SYS_PLL1_800M>,
+				 <&clk IMX8MM_SYS_PLL1_800M>;
+	assigned-clock-rates = <800000000>, <400000000>;
+	/delete-property/ power-domains;
+};
+
+&pgc_gpumix {
+	status = "disabled";
 };
 
 &iomuxc {

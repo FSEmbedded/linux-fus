@@ -152,4 +152,5 @@ int v4l2_int_ioctl_1(struct v4l2_int_device *d, int cmd, void *arg)
 }
 EXPORT_SYMBOL_GPL(v4l2_int_ioctl_1);
 
+MODULE_DESCRIPTION("V4L2 Int device framework");
 MODULE_LICENSE("GPL");

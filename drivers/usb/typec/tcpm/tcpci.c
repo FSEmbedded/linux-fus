@@ -11,7 +11,6 @@
 #include <linux/module.h>
 #include <linux/i2c.h>
 #include <linux/interrupt.h>
-#include <linux/irq.h>
 #include <linux/property.h>
 #include <linux/regmap.h>
 #include <linux/usb/pd.h>

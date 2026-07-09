@@ -34,8 +34,63 @@
 #include <linux/dma-mapping.h>
 #include "dpaa_sys.h"
 
-/* QMan needs global memory areas initialized at boot time */
-static dma_addr_t qman_base_addr;
+/* Currently, the Linux kernel port for arm64 performs the memory
+ * reservations using memblock (the memory allocator for early boot) only for
+ * device tree (arm64_memblock_init() -> early_init_fdt_scan_reserved_mem().
+ * Since we cannot use that same mechanism on ACPI, we will perform CMA for the
+ * BMan FBPR, QMan FQD and PFDR.
+ */
+static int qbman_init_private_mem_acpi(struct device *dev, int idx, dma_addr_t *addr,
+				       size_t *size, int dev_id)
+{
+	unsigned long pool_size_order = 0;
+	phys_addr_t mem_addr, mem_size;
+	struct page *page = NULL;
+	size_t page_sz_count = 0;
+	int val_cnt;
+	u32 val[2];
+	int err;
+
+	switch (dev_id) {
+	case DPAA_BMAN_DEV:
+		val_cnt = 1;
+		break;
+	case DPAA_QMAN_DEV:
+		val_cnt = 2;
+		break;
+	default:
+		return -ENODEV;
+	}
+
+	err = device_property_read_u32_array(dev, "size", val, val_cnt);
+	if (err < 0)
+		return err;
+
+	mem_size = 2 * val[idx];
+	page_sz_count = DIV_ROUND_UP(mem_size, PAGE_SIZE);
+	pool_size_order = get_order(mem_size);
+
+	page = dma_alloc_from_contiguous(dev, page_sz_count,
+					 pool_size_order,
+					 false);
+	if (!page) {
+		pr_info("dma_alloc_from_contiguous failed.\n");
+		return -ENOMEM;
+	}
+	mem_addr = page_to_phys(page);
+	mem_addr = ALIGN(mem_addr, mem_size);
+
+	dev_dbg(dev, "%s %s base [%llx] size [%llx]\n",
+		dev_id == DPAA_BMAN_DEV ? "BMan" : "QMan",
+		dev_id == DPAA_BMAN_DEV ? (idx == 0 ? "FBPR" : "(unknown)") :
+		idx == 0 ? "FQD" : idx == 1 ? "PFDR" : "(unknown)", mem_addr,
+		mem_size);
+
+	*addr = mem_addr;
+	*size = val[idx];
+
+	return 0;
+}
 
 /*
  * Initialize a devices private memory region
@@ -43,117 +98,29 @@ static dma_addr_t qman_base_addr;
 int qbman_init_private_mem(struct device *dev, int idx, const char *compat,
 			   dma_addr_t *addr, size_t *size, int dev_id)
 {
-	struct property_entry properties[2];
-	struct device_node *mem_node = NULL;
-	struct reserved_mem fw_mem;
+	struct device_node *mem_node;
 	struct reserved_mem *rmem;
 	__be32 *res_array;
-	u32 qbman_vals[4];
-	u32 *pr_value;
-	int val_cnt;
-	u32 val[2];
 	int err;
 
-	if (is_of_node(dev->fwnode)) {
-		mem_node = of_parse_phandle(dev->of_node, "memory-region", idx);
+	if (is_acpi_node(dev->fwnode))
+		return qbman_init_private_mem_acpi(dev, idx, addr, size, dev_id);
+
+	mem_node = of_parse_phandle(dev->of_node, "memory-region", idx);
+	if (!mem_node) {
+		mem_node = of_find_compatible_node(NULL, NULL, compat);
 		if (!mem_node) {
-			mem_node = of_find_compatible_node(NULL, NULL, compat);
-			if (!mem_node) {
-				dev_err(dev, "No memory-region found for index %d or compatible '%s'\n",
-					idx, compat);
-				return -ENODEV;
-			}
-		}
-
-		rmem = of_reserved_mem_lookup(mem_node);
-		if (!rmem) {
-			dev_err(dev, "of_reserved_mem_lookup() returned NULL\n");
+			dev_err(dev, "No memory-region found for index %d or compatible '%s'\n",
+				idx, compat);
 			return -ENODEV;
 		}
-	} else {
-		/*
-		 * Fetching reserved memory size from scanning ACPI tables.
-		 * As part of DPAA architecture, QMAN & BMAN h/w nodes need
-		 * a large contiguous memory allocations to store private
-		 * data while the data path is running.
-		 * We will have to request CMA for each h/w node so that
-		 * drivers can fetch and set up h/w in order while probing.
-		 */
-		struct page *page = NULL;
-		size_t page_sz_count = 0;
-		unsigned long pool_size_order = 0;
-
-		switch (dev_id) {
-		case DPAA_BMAN_DEV:
-			val_cnt = 1;
-			break;
-		case DPAA_QMAN_DEV:
-			val_cnt = 2;
-			break;
-		default:
-			return -ENODEV;
-		}
-
-		err = fwnode_property_read_u32_array(dev->fwnode,
-						     "size", val,
-						     val_cnt);
-		if (err < 0)
-			return err;
-
-		fw_mem.size = val[idx];
-
-		if (dev_id == DPAA_BMAN_DEV) {
-			/* In case of Bman, calculate page count and order.
-			 * Try allocating this 16MB chunk in one go.
-			 */
-			page_sz_count = ((fw_mem.size >> PAGE_SHIFT) +
-					((fw_mem.size & 0xFFF) ? 1 : 0));
-			pool_size_order = get_order(fw_mem.size);
-		} else {
-			if (!idx) {
-				/* In case of Qman, allocate 48 MB -
-				 * (8MB + 8MB + 32MB), ideally we need
-				 * (8MB + 32MB). Here extra 8MB is just to set
-				 * the correct alignment order.
-				 */
-				fw_mem.size = ((2 * val[idx]) + val[idx + 1]);
-				page_sz_count = ((fw_mem.size >> PAGE_SHIFT) +
-					((fw_mem.size & 0xFFF) ? 1 : 0));
-				pool_size_order = get_order(fw_mem.size);
-				/* Once large chunk(48MB) is available then
-				 * reset the actual size 8MB for h/w node on
-				 * index 0
-				 */
-				fw_mem.size = val[idx];
-			} else {
-				/* From the large chunk of 48MB, slice it
-				 * at base_address + 16MB, to get the aligned
-				 * 32MB chunk.
-				 */
-				fw_mem.base =
-					(qman_base_addr + (2 * val[idx - 1]));
-				fw_mem.size = val[idx];
-			}
-		}
-		if (!qman_base_addr) {
-			page = dma_alloc_from_contiguous(dev, page_sz_count,
-							 pool_size_order,
-							 false);
-			if (!page) {
-				pr_info("dma_alloc_from_contiguous failed.\n");
-				return -ENOMEM;
-			}
-			fw_mem.base = page_to_phys(page);
-			if (dev_id == DPAA_QMAN_DEV)
-				qman_base_addr = fw_mem.base;
-		}
-		/* Set the resource buffer */
-		rmem = &fw_mem;
-
-		dev_info(dev, "QBman : dev [%d] index [%d] mem-base [%llx] size [%llx]\n",
-			 dev_id, idx, rmem->base, rmem->size);
 	}
 
+	rmem = of_reserved_mem_lookup(mem_node);
+	if (!rmem) {
+		dev_err(dev, "of_reserved_mem_lookup() returned NULL\n");
+		return -ENODEV;
+	}
 	*addr = rmem->base;
 	*size = rmem->size;
 
@@ -163,50 +130,27 @@ int qbman_init_private_mem(struct device *dev, int idx, const char *compat,
 	 * This is needed because QBMan HW does not allow the base address/
 	 * size to be modified once set.
 	 */
-	if (is_of_node(dev->fwnode)) {
-		if (!of_property_present(mem_node, "reg")) {
-			struct property *prop;
+	if (!of_property_present(mem_node, "reg")) {
+		struct property *prop;
 
-			prop = devm_kzalloc(dev, sizeof(*prop), GFP_KERNEL);
-			if (!prop)
-				return -ENOMEM;
-			prop->value = devm_kzalloc(dev, sizeof(__be32) * 4,
-						   GFP_KERNEL);
-			if (!prop->value)
-				return -ENOMEM;
-			res_array = prop->value;
-			res_array[0] = cpu_to_be32(upper_32_bits(*addr));
-			res_array[1] = cpu_to_be32(lower_32_bits(*addr));
-			res_array[2] = cpu_to_be32(upper_32_bits(*size));
-			res_array[3] = cpu_to_be32(lower_32_bits(*size));
-			prop->length = sizeof(__be32) * 4;
-			prop->name = devm_kstrdup(dev, "reg", GFP_KERNEL);
-			if (!prop->name)
-				return -ENOMEM;
-			err = of_add_property(mem_node, prop);
-			if (err)
-				return err;
-		}
-	} else {
-		if (!device_property_present(dev, "reg")) {
-			/* Fill properties here */
-			pr_value = devm_kzalloc(dev, sizeof(u32) * 4,
-						GFP_KERNEL);
-			pr_value[0] = upper_32_bits(*addr);
-			pr_value[1] = lower_32_bits(*addr);
-			pr_value[2] = upper_32_bits(*size);
-			pr_value[3] = lower_32_bits(*size);
-
-			qbman_vals[0] = pr_value[0];
-			qbman_vals[1] = pr_value[1];
-			qbman_vals[2] = pr_value[2];
-			qbman_vals[3] = pr_value[3];
-
-			properties[0] =
-				PROPERTY_ENTRY_U32_ARRAY("reg", qbman_vals);
-
-			device_create_managed_software_node(dev, properties, NULL);
-		}
+		prop = devm_kzalloc(dev, sizeof(*prop), GFP_KERNEL);
+		if (!prop)
+			return -ENOMEM;
+		prop->value = res_array = devm_kzalloc(dev, sizeof(__be32) * 4,
+						       GFP_KERNEL);
+		if (!prop->value)
+			return -ENOMEM;
+		res_array[0] = cpu_to_be32(upper_32_bits(*addr));
+		res_array[1] = cpu_to_be32(lower_32_bits(*addr));
+		res_array[2] = cpu_to_be32(upper_32_bits(*size));
+		res_array[3] = cpu_to_be32(lower_32_bits(*size));
+		prop->length = sizeof(__be32) * 4;
+		prop->name = devm_kstrdup(dev, "reg", GFP_KERNEL);
+		if (!prop->name)
+			return -ENOMEM;
+		err = of_add_property(mem_node, prop);
+		if (err)
+			return err;
 	}
 
 	return 0;

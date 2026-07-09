@@ -88,27 +88,8 @@ static inline void DPA_BUG_ON(bool cond)
 	(FM_PORT_FRM_ERR_UNSUPPORTED_FORMAT | \
 	 FM_PORT_FRM_ERR_LENGTH | FM_PORT_FRM_ERR_DMA)
 
-#ifndef CONFIG_FSL_DPAA_ETH_JUMBO_FRAME
-/* The raw buffer size must be cacheline aligned.
- * Normally we use 2K buffers.
- */
+/* The raw buffer size must be cacheline aligned. */
 #define DPA_BP_RAW_SIZE		2048
-#else
-/* For jumbo frame optimizations, use buffers large enough to accommodate
- * 9.6K frames, FD maximum offset, skb sh_info overhead and some extra
- * space to account for further alignments.
- */
-#define DPA_MAX_FRM_SIZE	9600
-#ifndef FM_ERRATUM_A050385
-#define DPA_BP_RAW_SIZE \
-	((DPA_MAX_FRM_SIZE + DPA_MAX_FD_OFFSET + \
-	  sizeof(struct skb_shared_info) + 128) & ~(SMP_CACHE_BYTES - 1))
-#else /* FM_ERRATUM_A050385 */
-#define DPA_BP_RAW_SIZE ((unlikely(fm_has_errata_a050385())) ? 2048 : \
-	((DPA_MAX_FRM_SIZE + DPA_MAX_FD_OFFSET + \
-	  sizeof(struct skb_shared_info) + 128) & ~(SMP_CACHE_BYTES - 1)))
-#endif /* FM_ERRATUM_A050385 */
-#endif /* CONFIG_FSL_DPAA_ETH_JUMBO_FRAME */
 
 /* This is what FMan is ever allowed to use.
  * FMan-DMA requires 16-byte alignment for Rx buffers, but SKB_DATA_ALIGN is
@@ -133,11 +114,6 @@ static inline void DPA_BUG_ON(bool cond)
  * supported frame size), set the recycling upper limit to 16K.
  */
 #define DPA_RECYCLE_MAX_SIZE	16384
-
-#if defined(CONFIG_FSL_SDK_FMAN_TEST)
-/*TODO: temporary for fman pcd testing */
-#define FMAN_PCD_TESTS_MAX_NUM_RANGES	20
-#endif
 
 #define DPAA_ETH_FQ_DELTA	0x10000
 
@@ -221,13 +197,6 @@ static inline void DPA_BUG_ON(bool cond)
 #ifdef CONFIG_PM
 /* Magic Packet wakeup */
 #define DPAA_WOL_MAGIC		0x00000001
-#endif
-
-#if defined(CONFIG_FSL_SDK_FMAN_TEST)
-struct pcd_range {
-	uint32_t			 base;
-	uint32_t			 count;
-};
 #endif
 
 /* More detailed FQ types - used for fine-grained WQ assignments */
@@ -367,12 +336,6 @@ struct dpa_priv_s {
 	uint32_t		 msg_enable;	/* net_device message level */
 #ifdef CONFIG_FSL_DPAA_1588
 	struct dpa_ptp_tsu	 *tsu;
-#endif
-
-#if defined(CONFIG_FSL_SDK_FMAN_TEST)
-/* TODO: this is temporary until pcd support is implemented in dpaa */
-	int			priv_pcd_num_ranges;
-	struct pcd_range	priv_pcd_ranges[FMAN_PCD_TESTS_MAX_NUM_RANGES];
 #endif
 
 	struct {
@@ -656,7 +619,6 @@ static inline void _dpa_bp_free_pf(void *addr)
  * on egress.
  */
 
-#ifdef FM_ERRATUM_A050385
 #define CROSS_4K(start, size) \
 	(((uintptr_t)(start) + (size)) > \
 	 (((uintptr_t)(start) + 0x1000) & ~0xFFF))
@@ -664,6 +626,5 @@ static inline void _dpa_bp_free_pf(void *addr)
  * we reserve 256 bytes instead to guarantee 256 data alignment.
  */
 #define DPAA_A050385_HEADROOM	256
-#endif  /* FM_ERRATUM_A050385 */
 
 #endif	/* __DPA_H */

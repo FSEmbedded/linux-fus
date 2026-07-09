@@ -159,7 +159,7 @@ int __init imx6sl_cpuidle_init(void)
 		pm_info->mmdc_io_val[i][0] = mmdc_offset_array[i];
 
 	/* calculate the wfi code size */
-	wfi_code_size = (&mx6sl_lpm_wfi_end -&mx6sl_lpm_wfi_start) *4;
+	wfi_code_size = (&mx6sl_lpm_wfi_end - &mx6sl_lpm_wfi_start) * 4;
 
 	imx6sl_wfi_in_iram_fn = (void *)fncpy(wfi_iram_base + sizeof(*pm_info),
 		&imx6sl_low_power_idle, wfi_code_size);

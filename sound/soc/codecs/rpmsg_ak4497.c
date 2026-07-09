@@ -663,11 +663,11 @@ static int ak4497_set_dai_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 	format2 &= ~AK4497_DIF_DSD;
 
 	switch (fmt & SND_SOC_DAIFMT_MASTER_MASK) {
-	case SND_SOC_DAIFMT_CBS_CFS:
+	case SND_SOC_DAIFMT_CBC_CFC:
 		break;
-	case SND_SOC_DAIFMT_CBM_CFM:
-	case SND_SOC_DAIFMT_CBS_CFM:
-	case SND_SOC_DAIFMT_CBM_CFS:
+	case SND_SOC_DAIFMT_CBP_CFP:
+	case SND_SOC_DAIFMT_CBC_CFP:
+	case SND_SOC_DAIFMT_CBP_CFC:
 	default:
 		dev_err(component->dev, "Clock mode unsupported");
 		return -EINVAL;

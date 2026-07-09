@@ -71,7 +71,7 @@ static int vsi_enc_reqbufs(
 	void *priv,
 	struct v4l2_requestbuffers *p)
 {
-	struct vsi_v4l2_ctx *ctx = fh_to_ctx(filp->private_data);
+	struct vsi_v4l2_ctx *ctx = fh_to_ctx(file_to_v4l2_fh(filp));
 	int ret;
 	struct vb2_queue *q;
 
@@ -95,7 +95,7 @@ static int vsi_enc_reqbufs(
 static int vsi_enc_create_bufs(struct file *filp, void *priv,
 				struct v4l2_create_buffers *create)
 {
-	struct vsi_v4l2_ctx *ctx = fh_to_ctx(filp->private_data);
+	struct vsi_v4l2_ctx *ctx = fh_to_ctx(file_to_v4l2_fh(filp));
 	int ret;
 	struct vb2_queue *q;
 
@@ -121,7 +121,7 @@ static int vsi_enc_create_bufs(struct file *filp, void *priv,
 
 static int vsi_enc_s_parm(struct file *filp, void *priv, struct v4l2_streamparm *parm)
 {
-	struct vsi_v4l2_ctx *ctx = fh_to_ctx(filp->private_data);
+	struct vsi_v4l2_ctx *ctx = fh_to_ctx(file_to_v4l2_fh(filp));
 
 	v4l2_klog(LOGLVL_CONFIG, "%s", __func__);
 	if (!vsi_v4l2_daemonalive())
@@ -161,7 +161,7 @@ static int vsi_enc_s_parm(struct file *filp, void *priv, struct v4l2_streamparm 
 
 static int vsi_enc_g_parm(struct file *filp, void *priv, struct v4l2_streamparm *parm)
 {
-	struct vsi_v4l2_ctx *ctx = fh_to_ctx(filp->private_data);
+	struct vsi_v4l2_ctx *ctx = fh_to_ctx(file_to_v4l2_fh(filp));
 
 	v4l2_klog(LOGLVL_CONFIG, "%s", __func__);
 	if (!vsi_v4l2_daemonalive())
@@ -178,7 +178,7 @@ static int vsi_enc_g_parm(struct file *filp, void *priv, struct v4l2_streamparm 
 
 static int vsi_enc_g_fmt(struct file *file, void *priv, struct v4l2_format *f)
 {
-	struct vsi_v4l2_ctx *ctx = fh_to_ctx(file->private_data);
+	struct vsi_v4l2_ctx *ctx = fh_to_ctx(file_to_v4l2_fh(file));
 
 	v4l2_klog(LOGLVL_CONFIG, "%s:%d", __func__, f->type);
 	if (!vsi_v4l2_daemonalive())
@@ -190,7 +190,7 @@ static int vsi_enc_g_fmt(struct file *file, void *priv, struct v4l2_format *f)
 
 static int vsi_enc_s_fmt(struct file *file, void *priv, struct v4l2_format *f)
 {
-	struct vsi_v4l2_ctx *ctx = fh_to_ctx(file->private_data);
+	struct vsi_v4l2_ctx *ctx = fh_to_ctx(file_to_v4l2_fh(file));
 	int ret;
 
 	v4l2_klog(LOGLVL_CONFIG, "%s fmt:%x, res:%dx%d\n", __func__,
@@ -214,7 +214,7 @@ static int vsi_enc_querybuf(
 	struct v4l2_buffer *buf)
 {
 	int ret;
-	struct vsi_v4l2_ctx *ctx = fh_to_ctx(filp->private_data);
+	struct vsi_v4l2_ctx *ctx = fh_to_ctx(file_to_v4l2_fh(filp));
 	struct vb2_queue *q;
 
 	if (!vsi_v4l2_daemonalive())
@@ -265,7 +265,7 @@ static int vsi_enc_qbuf(struct file *filp, void *priv, struct v4l2_buffer *buf)
 {
 	int ret;
 	//struct vb2_queue *vq = vb->vb2_queue;
-	struct vsi_v4l2_ctx *ctx = fh_to_ctx(filp->private_data);
+	struct vsi_v4l2_ctx *ctx = fh_to_ctx(file_to_v4l2_fh(filp));
 	struct video_device *vdev = ctx->dev->venc;
 
 	if (!vsi_v4l2_daemonalive())
@@ -300,7 +300,7 @@ static int vsi_enc_qbuf(struct file *filp, void *priv, struct v4l2_buffer *buf)
 static int vsi_enc_streamon(struct file *filp, void *priv, enum v4l2_buf_type type)
 {
 	int ret = 0;
-	struct vsi_v4l2_ctx *ctx = fh_to_ctx(filp->private_data);
+	struct vsi_v4l2_ctx *ctx = fh_to_ctx(file_to_v4l2_fh(filp));
 
 	v4l2_klog(LOGLVL_BRIEF, "%s:%d", __func__, type);
 	if (!vsi_v4l2_daemonalive())
@@ -344,7 +344,7 @@ static int vsi_enc_streamoff(
 {
 	int i, ret;
 	u32 binput = binputqueue(type);
-	struct vsi_v4l2_ctx *ctx = fh_to_ctx(priv);
+	struct vsi_v4l2_ctx *ctx = fh_to_ctx(file_to_v4l2_fh(file));
 	struct vb2_queue *q;
 
 	v4l2_klog(LOGLVL_BRIEF, "%s:%d", __func__, type);
@@ -399,7 +399,7 @@ static int vsi_enc_streamoff(
 static int vsi_enc_dqbuf(struct file *file, void *priv, struct v4l2_buffer *p)
 {
 	int ret = 0;
-	struct vsi_v4l2_ctx *ctx = fh_to_ctx(file->private_data);
+	struct vsi_v4l2_ctx *ctx = fh_to_ctx(file_to_v4l2_fh(file));
 	struct vb2_queue *q;
 	struct vb2_buffer *vb;
 	struct vsi_vpu_buf *vsibuf;
@@ -456,7 +456,7 @@ static int vsi_enc_prepare_buf(
 	void *priv,
 	struct v4l2_buffer *p)
 {
-	struct vsi_v4l2_ctx *ctx = fh_to_ctx(file->private_data);
+	struct vsi_v4l2_ctx *ctx = fh_to_ctx(file_to_v4l2_fh(file));
 	struct vb2_queue *q;
 	struct video_device *vdev = ctx->dev->venc;
 
@@ -477,7 +477,7 @@ static int vsi_enc_expbuf(
 	void *priv,
 	struct v4l2_exportbuffer *p)
 {
-	struct vsi_v4l2_ctx *ctx = fh_to_ctx(file->private_data);
+	struct vsi_v4l2_ctx *ctx = fh_to_ctx(file_to_v4l2_fh(file));
 	struct vb2_queue *q;
 
 	v4l2_klog(LOGLVL_FLOW, "%s:%d", __func__, p->type);
@@ -495,7 +495,7 @@ static int vsi_enc_expbuf(
 
 static int vsi_enc_try_fmt(struct file *file, void *prv, struct v4l2_format *f)
 {
-	struct vsi_v4l2_ctx *ctx = fh_to_ctx(file->private_data);
+	struct vsi_v4l2_ctx *ctx = fh_to_ctx(file_to_v4l2_fh(file));
 
 	if (!vsi_v4l2_daemonalive())
 		return -ENODEV;
@@ -506,7 +506,7 @@ static int vsi_enc_try_fmt(struct file *file, void *prv, struct v4l2_format *f)
 
 static int vsi_enc_enum_fmt(struct file *file, void *prv, struct v4l2_fmtdesc *f)
 {
-	struct vsi_v4l2_ctx *ctx = fh_to_ctx(file->private_data);
+	struct vsi_v4l2_ctx *ctx = fh_to_ctx(file_to_v4l2_fh(file));
 	struct vsi_video_fmt *pfmt;
 	int braw = brawfmt(ctx->flag, f->type);
 
@@ -550,7 +550,7 @@ static int vsi_enc_valid_crop(struct vsi_v4l2_ctx *ctx)
 static int vsi_enc_set_selection(struct file *file, void *prv, struct v4l2_selection *s)
 {
 	int ret = 0;
-	struct vsi_v4l2_ctx *ctx = fh_to_ctx(file->private_data);
+	struct vsi_v4l2_ctx *ctx = fh_to_ctx(file_to_v4l2_fh(file));
 	struct vsi_v4l2_mediacfg *pcfg = &ctx->mediacfg;
 
 	if (!vsi_v4l2_daemonalive())
@@ -642,7 +642,7 @@ static int vsi_enc_set_selection(struct file *file, void *prv, struct v4l2_selec
 
 static int vsi_enc_get_selection(struct file *file, void *prv, struct v4l2_selection *s)
 {
-	struct vsi_v4l2_ctx *ctx = fh_to_ctx(file->private_data);
+	struct vsi_v4l2_ctx *ctx = fh_to_ctx(file_to_v4l2_fh(file));
 	struct vsi_v4l2_mediacfg *pcfg = &ctx->mediacfg;
 
 	if (!vsi_v4l2_daemonalive())
@@ -712,7 +712,7 @@ static int vsi_enc_try_encoder_cmd(struct file *file, void *fh, struct v4l2_enco
 
 static int vsi_enc_encoder_cmd(struct file *file, void *fh, struct v4l2_encoder_cmd *cmd)
 {
-	struct vsi_v4l2_ctx *ctx = fh_to_ctx(file->private_data);
+	struct vsi_v4l2_ctx *ctx = fh_to_ctx(file_to_v4l2_fh(file));
 	int ret = 0;
 
 	if (!vsi_v4l2_daemonalive())
@@ -763,7 +763,7 @@ static int vsi_enc_encoder_cmd(struct file *file, void *fh, struct v4l2_encoder_
 static int vsi_enc_encoder_enum_framesizes(struct file *file, void *priv,
 				  struct v4l2_frmsizeenum *fsize)
 {
-	struct vsi_v4l2_ctx *ctx = fh_to_ctx(file->private_data);
+	struct vsi_v4l2_ctx *ctx = fh_to_ctx(file_to_v4l2_fh(file));
 	struct v4l2_format fmt;
 
 	v4l2_klog(LOGLVL_CONFIG, "%s:%x", __func__, fsize->pixel_format);
@@ -1800,8 +1800,7 @@ static int v4l2_enc_open(struct file *filp)
 	}
 
 	v4l2_fh_init(&ctx->fh, video_devdata(filp));
-	filp->private_data = &ctx->fh;
-	v4l2_fh_add(&ctx->fh);
+	v4l2_fh_add(&ctx->fh, filp);
 	ctx->dev = dev;
 	mutex_init(&ctx->ctxlock);
 	ctx->flag = CTX_FLAG_ENC;
@@ -1852,7 +1851,7 @@ static int v4l2_enc_open(struct file *filp)
 		ctx->recorder_ctrlsw = imx_mur_create_node(ctx->recorder, "ctrlsw");
 	vsiv4l2_initcfg(ctx);
 	vsi_setup_enc_ctrls(&ctx->ctrlhdl);
-	vfh = (struct v4l2_fh *)filp->private_data;
+	vfh = (struct v4l2_fh *)file_to_v4l2_fh(filp);
 	vfh->ctrl_handler = &ctx->ctrlhdl;
 	atomic_set(&ctx->srcframen, 0);
 	atomic_set(&ctx->dstframen, 0);
@@ -1888,7 +1887,7 @@ err_alloc:
 	v4l2_ctrl_handler_free(&ctx->ctrlhdl);
 	imx_mur_destroy_node(ctx->recorder);
 err_enc_dec_exit:
-	v4l2_fh_del(&ctx->fh);
+	v4l2_fh_del(&ctx->fh, filp);
 	v4l2_fh_exit(&ctx->fh);
 	vsi_remove_ctx(ctx);
 	kfree(ctx);
@@ -1898,7 +1897,7 @@ err_enc_dec_exit:
 
 static int v4l2_enc_mmap(struct file *filp, struct vm_area_struct *vma)
 {
-	struct vsi_v4l2_ctx *ctx = fh_to_ctx(filp->private_data);
+	struct vsi_v4l2_ctx *ctx = fh_to_ctx(file_to_v4l2_fh(filp));
 	unsigned long offset = vma->vm_pgoff << PAGE_SHIFT;
 	int ret;
 
@@ -1915,8 +1914,8 @@ static int v4l2_enc_mmap(struct file *filp, struct vm_area_struct *vma)
 static __poll_t vsi_enc_poll(struct file *file, poll_table *wait)
 {
 	__poll_t ret = 0;
-	struct v4l2_fh *fh = file->private_data;
-	struct vsi_v4l2_ctx *ctx = fh_to_ctx(file->private_data);
+	struct v4l2_fh *fh = file_to_v4l2_fh(file);
+	struct vsi_v4l2_ctx *ctx = fh_to_ctx(file_to_v4l2_fh(file));
 	int dstn = atomic_read(&ctx->dstframen);
 	int srcn = atomic_read(&ctx->srcframen);
 

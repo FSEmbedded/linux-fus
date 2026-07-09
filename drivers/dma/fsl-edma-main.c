@@ -403,6 +403,15 @@ static int fsl_edma3_irq_init(struct platform_device *pdev, struct fsl_edma_engi
 			fsl_chan->errirq = fsl_chan->txirq;
 			fsl_chan->errirq_handler = fsl_edma3_err_handler_per_chan;
 		}
+
+		if (fsl_chan->edma->drvdata->flags & FSL_EDMA_DRV_HAS_PD) {
+			pm_runtime_get_sync(fsl_chan->pd_dev);
+			/* clear meaningless pending irq anyway */
+			if (edma_readl_chreg(fsl_chan, ch_int))
+				edma_writel_chreg(fsl_chan, 1, ch_int);
+		}
+		if (fsl_chan->edma->drvdata->flags & FSL_EDMA_DRV_HAS_PD)
+			pm_runtime_put_sync_suspend(fsl_chan->pd_dev);
 	}
 
 	/* All channel err use one irq number */
@@ -551,17 +560,6 @@ static void fsl_edma_irq_exit(
 				edma_writel_chreg(fsl_chan, 1, ch_int);
 			if (fsl_chan->edma->drvdata->flags & FSL_EDMA_DRV_HAS_PD)
 				pm_runtime_put_sync_suspend(fsl_chan->pd_dev);
-		}
-
-		if (fsl_edma->drvdata->flags & FSL_EDMA_DRV_ERRIRQ_SHARE) {
-			for (i = 0; i < fsl_edma->n_chans; i++) {
-				struct fsl_edma_chan *fsl_chan = &fsl_edma->chans[i];
-
-				if (fsl_edma->chan_masked & BIT(i))
-					continue;
-				devm_free_irq(&pdev->dev, fsl_edma->errirq, fsl_chan);
-				return;
-			}
 		}
 	}
 }
@@ -968,26 +966,25 @@ static int fsl_edma_suspend_late(struct device *dev)
 		fsl_chan = &fsl_edma->chans[i];
 		if (fsl_edma->chan_masked & BIT(i))
 			continue;
-		spin_lock_irqsave(&fsl_chan->vchan.lock, flags);
-		/* Make sure chan is idle or will force disable. */
-		if (unlikely(fsl_chan->status == DMA_IN_PROGRESS)) {
-			dev_warn(dev, "WARN: There is non-idle channel.\n");
-			fsl_edma_disable_request(fsl_chan);
-			fsl_edma_chan_mux(fsl_chan, 0, false);
-		}
+		if (((fsl_edma->drvdata->flags & FSL_EDMA_DRV_HAS_PD) &&
+		     pm_runtime_status_suspended(fsl_chan->pd_dev)) ||
+		    (!(fsl_edma->drvdata->flags & FSL_EDMA_DRV_HAS_PD) &&
+		     (fsl_edma->drvdata->flags & FSL_EDMA_DRV_SPLIT_REG) &&
+		     !fsl_chan->srcid))
+			continue;
 
 		spin_lock_irqsave(&fsl_chan->vchan.lock, flags);
 		if (fsl_edma->drvdata->flags & FSL_EDMA_DRV_SPLIT_REG) {
 			fsl_edma->edma_save_regs[i].csr = edma_readl_chreg(fsl_chan, ch_csr);
 			fsl_edma->edma_save_regs[i].sbr = edma_readl_chreg(fsl_chan, ch_sbr);
 			if (unlikely(fsl_chan->status == DMA_IN_PROGRESS)) {
-				dev_warn(dev, "WARN: There is non-idle channel.");
+				dev_warn(dev, "WARN: There is non-idle channel.\n");
 				fsl_edma_disable_request(fsl_chan);
 			}
 		} else {
 			/* Make sure chan is idle or will force disable. */
 			if (unlikely(fsl_chan->status == DMA_IN_PROGRESS)) {
-				dev_warn(dev, "WARN: There is non-idle channel.");
+				dev_warn(dev, "WARN: There is non-idle channel.\n");
 				fsl_edma_disable_request(fsl_chan);
 				if (fsl_chan->srcid != 0)
 					fsl_edma_chan_mux(fsl_chan, 0, false);

@@ -5,7 +5,6 @@
  */
 
 #include <dt-bindings/clock/imx8-lpcg.h>
-#include <dt-bindings/clock/imx8-clock.h>
 #include <dt-bindings/firmware/imx/rsrc.h>
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/input/input.h>
@@ -28,6 +27,7 @@
 		serial1 = &lpuart1;
 		serial2 = &lpuart2;
 		serial3 = &lpuart3;
+		serial4 = &lpuart4;
 		spi0 = &lpspi0;
 		spi1 = &lpspi1;
 		spi2 = &lpspi2;
@@ -35,6 +35,26 @@
 		vpu-core0 = &vpu_core0;
 		vpu-core1 = &vpu_core1;
 		vpu-core2 = &vpu_core2;
+		csi0 = &mipi_csi_0;
+		csi1 = &mipi_csi_1;
+		mu0 = &lsio_mu0;
+		mu1 = &lsio_mu1;
+		mu2 = &lsio_mu2;
+		mu3 = &lsio_mu3;
+		mu4 = &lsio_mu4;
+		can0 = &flexcan1;
+		can1 = &flexcan2;
+		can2 = &flexcan3;
+		dpu0 = &dpu1;
+		dpu1 = &dpu2;
+		ldb0 = &ldb1;
+		ldb1 = &ldb2;
+		i2c0 = &i2c_rpbus_0;
+		i2c1 = &i2c_rpbus_1;
+		dphy0 = &mipi0_dphy;
+		dphy1 = &mipi1_dphy;
+		mipi-dsi0 = &mipi0_dsi_host;
+		mipi-dsi1 = &mipi1_dsi_host;
 	};
 
 	cpus: cpus {
@@ -274,42 +294,45 @@
 			     <GIC_PPI 10 IRQ_TYPE_LEVEL_LOW>; /* Hypervisor */
 	};
 
-	clk_dummy: clock-dummy {
-		compatible = "fixed-clock";
-		#clock-cells = <0>;
-		clock-frequency = <0>;
-		clock-output-names = "clk_dummy";
-	};
-
-	xtal32k: clock-xtal32k {
-		compatible = "fixed-clock";
-		#clock-cells = <0>;
-		clock-frequency = <32768>;
-		clock-output-names = "xtal_32KHz";
-	};
-
-	xtal24m: clock-xtal24m {
-		compatible = "fixed-clock";
-		#clock-cells = <0>;
-		clock-frequency = <24000000>;
-		clock-output-names = "xtal_24MHz";
-	};
-
 	smmu: iommu@51400000 {
 		compatible = "arm,mmu-500";
 		interrupt-parent = <&gic>;
 		reg = <0 0x51400000 0 0x40000>;
 		#global-interrupts = <1>;
 		#iommu-cells = <2>;
-		interrupts = <0 32 4>,
-			     <0 32 4>, <0 32 4>, <0 32 4>, <0 32 4>,
-			     <0 32 4>, <0 32 4>, <0 32 4>, <0 32 4>,
-			     <0 32 4>, <0 32 4>, <0 32 4>, <0 32 4>,
-			     <0 32 4>, <0 32 4>, <0 32 4>, <0 32 4>,
-			     <0 32 4>, <0 32 4>, <0 32 4>, <0 32 4>,
-			     <0 32 4>, <0 32 4>, <0 32 4>, <0 32 4>,
-			     <0 32 4>, <0 32 4>, <0 32 4>, <0 32 4>,
-			     <0 32 4>, <0 32 4>, <0 32 4>, <0 32 4>;
+		interrupts = <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>,
+			     <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>;
 	};
 
 	system-controller {
@@ -329,6 +352,12 @@
 		clk: clock-controller {
 			compatible = "fsl,imx8qm-clk", "fsl,scu-clk";
 			#clock-cells = <2>;
+		};
+
+		scu_key: keys {
+			compatible = "fsl,imx8qm-sc-key", "fsl,imx-sc-key";
+			linux,keycodes = <KEY_POWER>;
+			wakeup-source;
 		};
 
 		iomuxc: pinctrl {
@@ -359,17 +388,6 @@
 			};
 		};
 
-		scu_key: keys {
-			compatible = "fsl,imx8qm-sc-key", "fsl,imx-sc-key";
-			linux,keycodes = <KEY_POWER>;
-			wakeup-source;
-		};
-
-		watchdog {
-			compatible = "fsl,imx8qm-sc-wdt", "fsl,imx-sc-wdt";
-			timeout-sec = <60>;
-		};
-
 		tsens: thermal-sensor {
 			compatible = "fsl,imx8qxp-sc-thermal", "fsl,imx-sc-thermal";
 			#thermal-sensor-cells = <1>;
@@ -378,6 +396,11 @@
 		watchdog {
 			compatible = "fsl,imx8qm-sc-wdt", "fsl,imx-sc-wdt";
 			timeout-sec = <60>;
+		};
+
+		secvio: secvio {
+			compatible = "fsl,imx-sc-secvio";
+			nvmem = <&ocotp>;
 		};
 	};
 
@@ -460,11 +483,12 @@
 					type = "critical";
 				};
 			};
+
 			cooling-maps {
-					map0 {
-							trip = <&gpu_alert0>;
-							cooling-device =<&imx8_gpu_ss 0 1>;
-					};
+				map0 {
+					trip = <&gpu_alert0>;
+					cooling-device =<&imx8_gpu_ss 0 1>;
+				};
 			};
 		};
 
@@ -486,11 +510,12 @@
 					type = "critical";
 				};
 			};
+
 			cooling-maps {
-					map0 {
-							trip = <&gpu_alert1>;
-							cooling-device =<&imx8_gpu_ss 0 1>;
-					};
+				map0 {
+					trip = <&gpu_alert1>;
+					cooling-device =<&imx8_gpu_ss 0 1>;
+				};
 			};
 		};
 
@@ -515,31 +540,95 @@
 		};
 	};
 
-	vpu_subsys_dsp: bus@55000000 {
-		compatible = "simple-bus";
-		#address-cells = <1>;
-		#size-cells = <1>;
-		ranges = <0x55000000 0x0 0x55000000 0x1000000>;
+	clk_dummy: clock-dummy {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <0>;
+		clock-output-names = "clk_dummy";
+	};
 
-		dsp: dsp@556e8000 {
-			compatible = "fsl,imx8qm-hifi4";
-			reg = <0x556e8000 0x88000>;
-			clocks = <&clk_dummy>,
-				 <&clk_dummy>,
-				 <&clk_dummy>;
-			clock-names = "core", "ipg", "ocram";
-			firmware-name = "imx/dsp/hifi4.bin";
-			power-domains = <&pd IMX_SC_R_MU_13B>,
-					<&pd IMX_SC_R_DSP>,
-					<&pd IMX_SC_R_DSP_RAM>,
-					<&pd IMX_SC_R_IRQSTR_DSP>,
-					<&pd IMX_SC_R_MU_2A>;
-			mbox-names = "tx", "rx", "rxdb";
-			mboxes = <&lsio_mu13 0 0>,
-				 <&lsio_mu13 1 0>,
-				 <&lsio_mu13 3 0>;
-			status = "disabled";
-		};
+	clk_esai1_rx_clk: clock-esai1-rx {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <0>;
+		clock-output-names = "esai1_rx_clk";
+	};
+
+	clk_esai1_rx_hf_clk: clock-esai1-rx-hf {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <0>;
+		clock-output-names = "esai1_rx_hf_clk";
+	};
+
+	clk_esai1_tx_clk: clock-esai1-tx {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <0>;
+		clock-output-names = "esai1_tx_clk";
+	};
+
+	clk_esai1_tx_hf_clk: clock-esai1-tx-hf {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <0>;
+		clock-output-names = "esai1_tx_hf_clk";
+	};
+
+	clk_hdmi_rx_mclk: clock-hdmi-rx-mclk {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <0>;
+		clock-output-names = "hdmi-rx-mclk";
+	};
+
+	clk_mlb_clk: clock-mlb-clk {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <0>;
+		clock-output-names = "mlb_clk";
+	};
+
+	clk_sai5_rx_bclk: clock-sai5-rx-bclk {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <0>;
+		clock-output-names = "sai5_rx_bclk";
+	};
+
+	clk_sai5_tx_bclk: clock-sai5-tx-bclk {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <0>;
+		clock-output-names = "sai5_tx_bclk";
+	};
+
+	clk_sai6_rx_bclk: clock-sai6-rx-bclk {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <0>;
+		clock-output-names = "sai6_rx_bclk";
+	};
+
+	clk_sai6_tx_bclk: clock-sai6-tx-bclk {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <0>;
+		clock-output-names = "sai6_tx_bclk";
+	};
+
+	clk_spdif1_rx: clock-spdif1-rx {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <0>;
+		clock-output-names = "spdif1_rx";
+	};
+
+	xtal24m: clock-xtal24m {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <24000000>;
+		clock-output-names = "xtal_24MHz";
 	};
 
 	vpu_subsys_dsp: bus@55000000 {
@@ -558,6 +647,7 @@
 			power-domains = <&pd IMX_SC_R_MU_13B>,
 					<&pd IMX_SC_R_DSP>,
 					<&pd IMX_SC_R_DSP_RAM>,
+					<&pd IMX_SC_R_IRQSTR_DSP>,
 					<&pd IMX_SC_R_MU_2A>;
 			mboxes = <&lsio_mu13 0 0>,
 				 <&lsio_mu13 1 0>,
@@ -572,26 +662,31 @@
 	#include "imx8-ss-security.dtsi"
 	#include "imx8-ss-cm41.dtsi"
 	#include "imx8-ss-audio.dtsi"
+	#include "imx8-ss-vpu.dtsi"
+	#include "imx8-ss-gpu0.dtsi"
 	#include "imx8-ss-img.dtsi"
+	#include "imx8-ss-dc0.dtsi"
+	#include "imx8-ss-dc1.dtsi"
 	#include "imx8-ss-dma.dtsi"
-	#include "imx8-ss-security.dtsi"
-	#include "imx8-ss-cm41.dtsi"
 	#include "imx8-ss-conn.dtsi"
 	#include "imx8-ss-ddr.dtsi"
 	#include "imx8-ss-lsio.dtsi"
 	#include "imx8-ss-hsio.dtsi"
+	#include "imx8-ss-gpu1.dtsi"
 };
 
 #include "imx8qm-ss-img.dtsi"
-#include "imx8qm-ss-audio.dtsi"
+#include "imx8qm-ss-hdmi-rx.dtsi"
+#include "imx8qm-ss-dc.dtsi"
 #include "imx8qm-ss-dma.dtsi"
 #include "imx8qm-ss-conn.dtsi"
-#include "imx8qm-ss-ddr.dtsi"
+#include "imx8qm-ss-hdmi.dtsi"
 #include "imx8qm-ss-lsio.dtsi"
+#include "imx8qm-ss-audio.dtsi"
 #include "imx8qm-ss-hsio.dtsi"
-#include "imx8qm-ss-dc.dtsi"
 #include "imx8qm-ss-lvds.dtsi"
 #include "imx8qm-ss-mipi.dtsi"
-#include "imx8qm-ss-hsio.dtsi"
+#include "imx8qm-ss-gpu.dtsi"
+#include "imx8qm-ss-ddr.dtsi"
 
 /delete-node/ &dsp;

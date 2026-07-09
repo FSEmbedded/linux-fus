@@ -156,9 +156,9 @@
 		};
 
 		i2c@7 {
+			reg = <0x7>;
 			#address-cells = <1>;
 			#size-cells = <0>;
-			reg = <0x7>;
 
 			i2c-mux@76 {
 				compatible = "nxp,pca9547";
@@ -167,15 +167,15 @@
 				#size-cells = <0>;
 
 				sfp1_i2c: i2c@6 {
+					reg = <0x6>;
 					#address-cells = <1>;
 					#size-cells = <0>;
-					reg = <0x6>;
 				};
 
 				sfp2_i2c: i2c@7 {
+					reg = <0x7>;
 					#address-cells = <1>;
 					#size-cells = <0>;
-					reg = <0x7>;
 				};
 			};
 		};
@@ -211,8 +211,8 @@
 		reg = <0x2 0x0 0x0000100>;
 		ranges = <0 2 0 0x100>;
 
-		stat_pres2: gpio-stat-pres2@c {
-			compatible = "fsl,ls1046a-qds-qixis-stat-pres2-cpld-gpio";
+		stat_pres2: gpio@c {
+			compatible = "fsl,ls1046aqds-fpga-gpio-stat-pres2";
 			reg = <0xc 1>;
 			gpio-controller;
 			#gpio-cells = <2>;

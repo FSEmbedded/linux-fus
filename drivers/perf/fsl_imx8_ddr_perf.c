@@ -834,11 +834,11 @@ static int ddr_perf_probe(struct platform_device *pdev)
 	pmu->devtype_data = of_device_get_match_data(&pdev->dev);
 	if (pmu->devtype_data->type & DDR_PERF_TYPE) {
 		pmu->pmu.attr_groups = ddr_attr_groups;
-		pmu->id = ida_simple_get(&ddr_ida, 0, 0, GFP_KERNEL);
+		pmu->id = ida_alloc(&ddr_ida, GFP_KERNEL);
 		name = devm_kasprintf(&pdev->dev, GFP_KERNEL, DDR_PERF_DEV_NAME "%d", pmu->id);
 	} else if (pmu->devtype_data->type & DB_PERF_TYPE) {
 		pmu->pmu.attr_groups = db_attr_groups;
-		pmu->id = ida_simple_get(&db_ida, 0, 0, GFP_KERNEL);
+		pmu->id = ida_alloc(&db_ida, GFP_KERNEL);
 		name = devm_kasprintf(&pdev->dev, GFP_KERNEL, DB_PERF_DEV_NAME "%d", pmu->id);
 
 		pmu->clk_ipg = devm_clk_get(&pdev->dev, "ipg");

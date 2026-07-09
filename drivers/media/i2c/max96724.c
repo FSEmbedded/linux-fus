@@ -512,7 +512,24 @@ static int max96724_parse_dt(struct max96724_priv *priv)
 {
 	struct device *dev = &priv->client->dev;
 	struct device_node *node = NULL;
+	u32 fsync_interval[2];
 	int ret;
+
+	/* Parse fsync default interval, if provided */
+	ret = of_property_read_u32_array(dev->of_node,
+					 "maxim,fsync-default-interval",
+					 fsync_interval, 2);
+	if (ret == 0) {
+		if (fsync_interval[0] == 0 || fsync_interval[1] == 0) {
+			dev_warn(dev, "Bad fsync interval values, ignoring.\n");
+		} else {
+			priv->interval.numerator = fsync_interval[0];
+			priv->interval.denominator = fsync_interval[1];
+
+			dev_info(dev, "Default fsync interval set to %u/%u\n",
+				 fsync_interval[0], fsync_interval[1]);
+		}
+	}
 
 	for_each_endpoint_of_node(dev->of_node, node) {
 		struct of_endpoint ep;

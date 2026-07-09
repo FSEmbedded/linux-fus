@@ -202,6 +202,84 @@
 		        #clock-cells = <0>;
 		        clock-frequency = <24000000>;
 		};
+
+	};
+
+	clk_esai1_rx_clk: clock-esai1-rx {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <0>;
+		clock-output-names = "esai1_rx_clk";
+	};
+
+	clk_esai1_rx_hf_clk: clock-esai1-rx-hf {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <0>;
+		clock-output-names = "esai1_rx_hf_clk";
+	};
+
+	clk_esai1_tx_clk: clock-esai1-tx {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <0>;
+		clock-output-names = "esai1_tx_clk";
+	};
+
+	clk_esai1_tx_hf_clk: clock-esai1-tx-hf {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <0>;
+		clock-output-names = "esai1_tx_hf_clk";
+	};
+
+	clk_hdmi_rx_mclk: clock-hdmi-rx-mclk {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <0>;
+		clock-output-names = "hdmi-rx-mclk";
+	};
+
+	clk_mlb_clk: clock-mlb-clk {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <0>;
+		clock-output-names = "mlb_clk";
+	};
+
+	clk_sai5_rx_bclk: clock-sai5-rx-bclk {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <0>;
+		clock-output-names = "sai5_rx_bclk";
+	};
+
+	clk_sai5_tx_bclk: clock-sai5-tx-bclk {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <0>;
+		clock-output-names = "sai5_tx_bclk";
+	};
+
+	clk_sai6_rx_bclk: clock-sai6-rx-bclk {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <0>;
+		clock-output-names = "sai6_rx_bclk";
+	};
+
+	clk_sai6_tx_bclk: clock-sai6-tx-bclk {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <0>;
+		clock-output-names = "sai6_tx_bclk";
+	};
+
+	clk_spdif1_rx: clock-spdif1-rx {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <0>;
+		clock-output-names = "spdif1_rx";
 	};
 
 	rtc0: rtc@23000000 {
@@ -316,6 +394,11 @@
 		xen,passthrough;
 	};
 
+	scu_reset: reset-controller {
+		compatible = "fsl,imx-scu-reset";
+		#reset-cells = <1>;
+	};
+
 	reg_audio: fixedregulator-audio {
 		compatible = "regulator-fixed";
 		regulator-name = "cs42888_supply";
@@ -397,7 +480,7 @@
 		ranges = <0x55000000 0x0 0x55000000 0x1000000>;
 		xen,passthrough;
 
-		dsp: dsp@556e8000 {
+		dsp_556e8: dsp@556e8000 {
 			compatible = "fsl,imx8qm-hifi4";
 			reg = <0x556e8000 0x88000>;
 			clocks = <&clk_dummy>,
@@ -510,7 +593,7 @@
 	status = "okay";
 
 	lvds-to-hdmi-bridge@4c {
-		compatible = "ite,it6263";
+		compatible = "ite,it6263-nxp";
 		reg = <0x4c>;
 
 		port {
@@ -611,10 +694,6 @@
 	status="okay";
 };
 
-&gpu_3d0 {
-	status = "okay";
-};
-
 &gpu_3d1 {
 	status = "disabled";
 };
@@ -624,7 +703,6 @@
 	reg = <0x80000000 0x80000000>, <0x0 0x10000000>;
 	reg-names = "phys_baseaddr", "contiguous_mem";
 	cores = <&gpu_3d0>;
-	status = "okay";
 };
 
 &iomuxc {
@@ -985,7 +1063,7 @@
 };
 
 /* Audio */
-&dsp {
+&dsp_556e8 {
 	compatible = "fsl,imx8qm-hifi4";
 	status = "okay";
 };
@@ -1006,8 +1084,8 @@
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_PLL>,
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_SLV_BUS>,
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_MST_BUS>,
-			<&esai0_lpcg 0>;
-	assigned-clock-parents = <&aud_pll_div0_lpcg 0>;
+			<&esai0_lpcg IMX_LPCG_CLK_4>;
+	assigned-clock-parents = <&aud_pll_div0_lpcg IMX_LPCG_CLK_0>;
 	assigned-clock-rates = <0>, <786432000>, <49152000>, <12288000>, <49152000>;
 	fsl,txm-rxs;
 	status = "okay";
@@ -1017,7 +1095,7 @@
 	assigned-clocks = <&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_PLL>,
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_SLV_BUS>,
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_MST_BUS>,
-			<&sai1_lpcg 0>; /* FIXME: should be sai1, original code is 0 */
+			<&sai1_lpcg IMX_LPCG_CLK_4>; /* FIXME: should be sai1, original code is 0 */
 	assigned-clock-rates = <786432000>, <49152000>, <12288000>, <49152000>;
 	pinctrl-names = "default";
 	/*pinctrl-0 = <&pinctrl_sai1>;*/
@@ -1029,8 +1107,8 @@
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_PLL>,
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_SLV_BUS>,
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_MST_BUS>,
-			<&sai6_lpcg 0>;
-	assigned-clock-parents = <&aud_pll_div0_lpcg 0>;
+			<&sai6_lpcg IMX_LPCG_CLK_4>;
+	assigned-clock-parents = <&aud_pll_div0_lpcg IMX_LPCG_CLK_0>;
 	assigned-clock-rates = <0>, <786432000>, <49152000>, <12288000>, <49152000>;
 	fsl,sai-asynchronous;
 	fsl,txm-rxs;
@@ -1046,8 +1124,8 @@
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_PLL>,
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_SLV_BUS>,
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_MST_BUS>,
-			<&sai7_lpcg 0>;
-	assigned-clock-parents = <&aud_pll_div0_lpcg 0>;
+			<&sai7_lpcg IMX_LPCG_CLK_4>;
+	assigned-clock-parents = <&aud_pll_div0_lpcg IMX_LPCG_CLK_0>;
 	assigned-clock-rates = <0>, <786432000>, <49152000>, <12288000>, <49152000>;
 	fsl,sai-asynchronous;
 	fsl,txm-rxs;
@@ -1063,7 +1141,7 @@
 	cs42888: cs42888@48 {
 		compatible = "cirrus,cs42888";
 		reg = <0x48>;
-		clocks = <&mclkout0_lpcg 0>;
+		clocks = <&mclkout0_lpcg IMX_LPCG_CLK_0>;
 		clock-names = "mclk";
 		VA-supply = <&reg_audio>;
 		VD-supply = <&reg_audio>;
@@ -1073,7 +1151,7 @@
 		assigned-clocks = <&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_PLL>,
 				<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_SLV_BUS>,
 				<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_MST_BUS>,
-				<&mclkout0_lpcg 0>;
+				<&mclkout0_lpcg IMX_LPCG_CLK_0>;
 		assigned-clock-rates = <786432000>, <49152000>, <12288000>, <12288000>;
 		fsl,txs-rxm;
 		status = "okay";
@@ -1085,8 +1163,8 @@
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_PLL>,
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_SLV_BUS>,
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_MST_BUS>,
-			<&sai6_lpcg 0>;
-	assigned-clock-parents = <&aud_pll_div0_lpcg 0>;
+			<&sai6_lpcg IMX_LPCG_CLK_4>;
+	assigned-clock-parents = <&aud_pll_div0_lpcg IMX_LPCG_CLK_0>;
 	assigned-clock-rates = <0>, <786432000>, <49152000>, <12288000>, <49152000>;
 	fsl,sai-asynchronous;
 	fsl,txm-rxs;
@@ -1098,8 +1176,9 @@
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_PLL>,
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_SLV_BUS>,
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_MST_BUS>,
-			<&sai7_lpcg 0>;
-	assigned-clock-parents = <&aud_pll_div0_lpcg 0>;
+			<&sai7_lpcg IMX_LPCG_CLK_4>;
+	assigned-clock-parents = <&aud_pll_div0_lpcg IMX_LPCG_CLK_0>;
+	assigned-clock-rates = <0>, <786432000>, <98304000>, <12288000>, <98304000>;
 	assigned-clock-rates = <0>, <786432000>, <49152000>, <12288000>, <49152000>;
 	fsl,sai-asynchronous;
 	fsl,txm-rxs;
@@ -1284,21 +1363,23 @@
 	virtual-channel;
 	status = "okay";
 
-	/* Camera 0  MIPI CSI-2 (CSIS0) */
-	port@0 {
-		reg = <0>;
+	ports {
+		/* Camera 0  MIPI CSI-2 (CSIS0) */
+		port@0 {
+			reg = <0>;
 
-		mipi_csi0_ep: endpoint {
-			remote-endpoint = <&max9286_0_ep>;
-			data-lanes = <1 2 3 4>;
+			mipi_csi0_ep: endpoint {
+				remote-endpoint = <&max9286_0_ep>;
+				data-lanes = <1 2 3 4>;
+			};
 		};
-	};
 
-	port@1 {
-		reg = <1>;
+		port@1 {
+			reg = <1>;
 
-		mipi_csi0_out: endpoint {
-			remote-endpoint = <&isi_in_2>;
+			mipi_csi0_out: endpoint {
+				remote-endpoint = <&isi_in_2>;
+			};
 		};
 	};
 };
@@ -1309,19 +1390,21 @@
 	virtual-channel;
 	status = "okay";
 
-	/* Camera 1  MIPI CSI-2 (CSIS1) */
-	port@0 {
-		mipi_csi1_ep: endpoint {
-			remote-endpoint = <&max9286_1_ep>;
-			data-lanes = <1 2 3 4>;
+	ports {
+		/* Camera 1  MIPI CSI-2 (CSIS1) */
+		port@0 {
+			mipi_csi1_ep: endpoint {
+				remote-endpoint = <&max9286_1_ep>;
+				data-lanes = <1 2 3 4>;
+			};
 		};
-	};
 
-	port@1 {
-		reg = <1>;
+		port@1 {
+			reg = <1>;
 
-		mipi_csi1_out: endpoint {
-			remote-endpoint = <&isi_in_3>;
+			mipi_csi1_out: endpoint {
+				remote-endpoint = <&isi_in_3>;
+			};
 		};
 	};
 };

@@ -7,6 +7,7 @@
  * Generic platform-device LCD power control interface.
 */
 
+#include <linux/fb.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/lcd.h>
@@ -49,7 +50,8 @@ static int platform_lcd_set_power(struct lcd_device *lcd, int power)
 	return 0;
 }
 
-static bool platform_lcd_controls_device(struct lcd_device *lcd, struct device *display_device)
+static bool platform_lcd_controls_device(struct lcd_device *lcd, struct device *display_device,
+					struct fb_info *fbi)
 {
 	struct platform_lcd *plcd = to_our_lcd(lcd);
 

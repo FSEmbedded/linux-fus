@@ -148,26 +148,26 @@ enum chroma_format {
 	YUV444,
 };
 
-enum csc_packed_rgba_order {
-	CSC_ORDER_RGB  = 0,
-	CSC_ORDER_RBG  = 1,
-	CSC_ORDER_GRB  = 2,
-	CSC_ORDER_GBR  = 3,
-	CSC_ORDER_BGR  = 4,
-	CSC_ORDER_BRG  = 5,
+enum csc_format_order {
+	CSC_FMT_ORDER_RGB	= 0,
+	CSC_FMT_ORDER_RBG	= 1,
+	CSC_FMT_ORDER_GRB	= 2,
+	CSC_FMT_ORDER_GBR	= 3,
+	CSC_FMT_ORDER_BGR	= 4,
+	CSC_FMT_ORDER_BRG	= 5,
 
-	CSC_ORDER_ARGB = 0,
-	CSC_ORDER_ARBG = 1,
-	CSC_ORDER_AGRB = 2,
-	CSC_ORDER_AGBR = 3,
-	CSC_ORDER_ABGR = 4,
-	CSC_ORDER_ABRG = 5,
-	CSC_ORDER_RGBA = 8,
-	CSC_ORDER_RBGA = 9,
-	CSC_ORDER_GRBA = 10,
-	CSC_ORDER_GBRA = 11,
-	CSC_ORDER_BGRA = 12,
-	CSC_ORDER_BRGA = 13,
+	CSC_FMT_ORDER_ARGB	= 0,
+	CSC_FMT_ORDER_ARBG	= 1,
+	CSC_FMT_ORDER_AGRB	= 2,
+	CSC_FMT_ORDER_AGBR	= 3,
+	CSC_FMT_ORDER_ABGR	= 4,
+	CSC_FMT_ORDER_ABRG	= 5,
+	CSC_FMT_ORDER_RGBA	= 8,
+	CSC_FMT_ORDER_RBGA	= 9,
+	CSC_FMT_ORDER_GRBA	= 10,
+	CSC_FMT_ORDER_GBRA	= 11,
+	CSC_FMT_ORDER_BGRA	= 12,
+	CSC_FMT_ORDER_BRGA	= 13,
 };
 
 enum frame_buffer_format {
@@ -233,14 +233,6 @@ enum frame_buffer_format {
 	FORMAT_YUV444_24BIT,
 
 	FORMAT_MAX,
-};
-
-enum packed_format_num {
-	NOT_PACKED = 0,
-	PACKED_YUYV,
-	PACKED_YVYU,
-	PACKED_UYVY,
-	PACKED_VYUY,
 };
 
 enum pic_type {
@@ -335,13 +327,6 @@ struct vpu_rect {
 	u32 bottom;
 };
 
-struct timestamp_info {
-	u32 hour;
-	u32 min;
-	u32 sec;
-	u32 ms;
-};
-
 struct sar_info {
 	u32 enable;
 	u32 idc;
@@ -358,8 +343,6 @@ struct aux_buffer {
 struct aux_buffer_info {
 	int num;
 	struct aux_buffer *buf_array;
-	int width;
-	int height;
 	enum aux_buffer_type type;
 };
 
@@ -459,7 +442,7 @@ struct dec_param {
 	int skipframe_mode;
 	bool decode_cra_as_bla;
 	bool disable_film_grain;
-	struct timestamp_info timestamp;
+	u64 timestamp;
 };
 
 struct h265_rp_sei {
@@ -495,7 +478,7 @@ struct dec_output_info {
 	struct report_cycle cycle;
 	dma_addr_t release_disp_frame_addr[WAVE6_MAX_FBS];
 	dma_addr_t disp_frame_addr[WAVE6_MAX_FBS];
-	struct timestamp_info timestamp;
+	u64 timestamp;
 	u32 notification_flags;
 	u32 release_disp_frame_num: 5;
 	u32 disp_frame_num: 5;
@@ -517,7 +500,6 @@ struct dec_info {
 	struct vpu_buf vb_fbc_y_tbl[WAVE6_MAX_FBS];
 	struct vpu_buf vb_fbc_c_tbl[WAVE6_MAX_FBS];
 	struct frame_buffer disp_buf[WAVE6_MAX_FBS];
-	int stride;
 	bool initial_info_obtained;
 	struct sec_axi_info sec_axi_info;
 	struct dec_output_info dec_out_info[WAVE6_MAX_FBS];
@@ -557,8 +539,6 @@ struct enc_aux_buffer_size_info {
 	int width;
 	int height;
 	enum aux_buffer_type type;
-	enum mirror_direction mirror_direction;
-	int rotation_angle;
 };
 
 struct enc_scaler_info {
@@ -667,7 +647,6 @@ struct enc_open_param {
 	enum endian_mode stream_endian;
 	enum endian_mode source_endian;
 	bool line_buf_int_en;
-	enum packed_format_num packed_format;
 	enum frame_buffer_format src_format;
 	enum frame_buffer_format output_format;
 	bool enable_non_ref_fbc_write;
@@ -692,15 +671,15 @@ struct enc_initial_info {
 
 struct enc_csc_param {
 	u32 format_order;
-	u32 coef_ry;
-	u32 coef_gy;
-	u32 coef_by;
-	u32 coef_rcb;
-	u32 coef_gcb;
-	u32 coef_bcb;
-	u32 coef_rcr;
-	u32 coef_gcr;
-	u32 coef_bcr;
+	s32 coef_ry;
+	s32 coef_gy;
+	s32 coef_by;
+	s32 coef_rcb;
+	s32 coef_gcb;
+	s32 coef_bcb;
+	s32 coef_rcr;
+	s32 coef_gcr;
+	s32 coef_bcr;
 	u32 offset_y;
 	u32 offset_cb;
 	u32 offset_cr;
@@ -730,7 +709,7 @@ struct enc_param {
 	bool src_end;
 	u32 bitrate;
 	struct enc_csc_param csc;
-	struct timestamp_info timestamp;
+	u64 timestamp;
 	union wave6_enc_custom_map_option custom_map_opt;
 	dma_addr_t custom_map_addr;
 };
@@ -784,7 +763,7 @@ struct enc_output_info {
 	struct enc_report_fme_sum fme_sum;
 	struct enc_report_mv_histo mv_histo;
 	struct report_cycle cycle;
-	struct timestamp_info timestamp;
+	u64 timestamp;
 	dma_addr_t src_y_addr;
 	dma_addr_t custom_map_addr;
 	dma_addr_t prefix_sei_nal_addr;
@@ -887,10 +866,17 @@ struct enc_controls {
 	u32 frame_skip_mode;
 };
 
+struct vpu_irq {
+	u32 status;
+	u32 inst_idc;
+};
+
 struct vpu_device {
 	struct device *dev;
 	struct v4l2_device v4l2_dev;
 	struct v4l2_m2m_dev *m2m_dev;
+	struct list_head instances;
+	spinlock_t inst_lock; /* lock instance list */
 	struct video_device *video_dev_dec;
 	struct video_device *video_dev_enc;
 	struct mutex hw_lock; /* lock hw configurations */
@@ -907,8 +893,7 @@ struct vpu_device {
 	struct clk_bulk_data *clks;
 	int num_clks;
 	struct clk *clk_vpu;
-	struct completion irq_done;
-	struct kfifo irq_status;
+	struct kfifo irq_fifo;
 	struct delayed_work task_timer;
 	struct wave6_vpu_entity entity;
 	bool active;
@@ -922,7 +907,6 @@ struct vpu_device {
 struct vpu_instance;
 
 struct vpu_instance_ops {
-	int (*prepare_process)(struct vpu_instance *inst);
 	int (*start_process)(struct vpu_instance *inst);
 	void (*finish_process)(struct vpu_instance *inst, bool error);
 };
@@ -952,11 +936,12 @@ struct vpu_roi_map_info {
 };
 
 struct vpu_instance {
+	struct list_head list;
 	struct v4l2_fh v4l2_fh;
 	struct v4l2_ctrl_handler v4l2_ctrl_hdl;
 	struct vpu_device *dev;
 	struct mutex queue_lock; /* the lock for the src,dst v4l2 queues */
-
+	struct completion irq_done;
 	struct v4l2_pix_format_mplane src_fmt;
 	struct v4l2_pix_format_mplane dst_fmt;
 	struct v4l2_rect crop;
@@ -977,19 +962,17 @@ struct vpu_instance {
 		struct enc_info enc_info;
 		struct dec_info dec_info;
 	} *codec_info;
+	struct mutex fbc_lock; /* the lock for internal buffers */
 	struct frame_buffer frame_buf[WAVE6_MAX_FBS];
-	struct vpu_buf frame_vbuf[WAVE6_MAX_FBS];
-	u32 fbc_buf_required;
-	u32 fbc_buf_acquired;
-	u32 fbc_buf_registered;
-	u32 fbc_buf_used;
+	struct vpu_buf frame_y_vbuf[WAVE6_MAX_FBS];
+	struct vpu_buf frame_c_vbuf[WAVE6_MAX_FBS];
+	u32 allocated_fb_num;
+	u32 registered_fb_num;
 	u32 queued_src_buf_num;
 	u32 queued_dst_buf_num;
 	u32 processed_buf_num;
 	u32 error_buf_num;
 	u32 sequence;
-	bool reuse_fb;
-	bool next_buf_last;
 	bool cbcr_interleave;
 	bool nv21;
 	bool eos;
@@ -1011,10 +994,6 @@ struct vpu_instance {
 	struct vpu_buf custom_qp_map;
 	struct vpu_roi_map_info roi_info;
 
-	struct workqueue_struct *workqueue;
-	struct work_struct fb_work;
-	atomic_t fbc_tag;
-
 	struct imx_mur_node *recorder;
 };
 
@@ -1031,16 +1010,16 @@ int wave6_vpu_dec_get_aux_buffer_size(struct vpu_instance *inst,
 				      uint32_t *size);
 int wave6_vpu_dec_register_aux_buffer(struct vpu_instance *inst, struct aux_buffer_info info);
 int wave6_vpu_dec_register_frame_buffer_ex(struct vpu_instance *inst,
-					   int offset, int num_of_dec_fbs,
-					   int stride, int height, int map_type);
-int wave6_vpu_dec_register_display_buffer_ex(struct vpu_instance *inst, struct frame_buffer fb);
+					   struct frame_buffer fb);
+int wave6_vpu_dec_register_display_buffer_ex(struct vpu_instance *inst,
+					     struct frame_buffer fb);
 int wave6_vpu_dec_start_one_frame(struct vpu_instance *inst, struct dec_param *param,
 				  u32 *res_fail);
 int wave6_vpu_dec_get_output_info(struct vpu_instance *inst, struct dec_output_info *info);
-int wave6_vpu_dec_set_rd_ptr(struct vpu_instance *inst, dma_addr_t addr, bool update_wr_ptr);
+void wave6_vpu_dec_set_rd_ptr(struct vpu_instance *inst, dma_addr_t addr, bool update_wr_ptr);
 int wave6_vpu_dec_give_command(struct vpu_instance *inst, enum codec_command cmd, void *parameter);
-int wave6_vpu_dec_get_bitstream_buffer(struct vpu_instance *inst, dma_addr_t *p_rd_ptr,
-				       dma_addr_t *p_wr_ptr);
+void wave6_vpu_dec_get_bitstream_buffer(struct vpu_instance *inst, dma_addr_t *p_rd_ptr,
+					dma_addr_t *p_wr_ptr);
 int wave6_vpu_dec_update_bitstream_buffer(struct vpu_instance *inst, int size);
 int wave6_vpu_dec_flush_instance(struct vpu_instance *inst);
 

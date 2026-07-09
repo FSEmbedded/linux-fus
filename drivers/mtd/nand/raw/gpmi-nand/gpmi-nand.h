@@ -125,6 +125,7 @@ struct gpmi_nand_data {
 	/* System Interface */
 	struct device		*dev;
 	struct platform_device	*pdev;
+	struct device_link	*link;
 
 	/* Resources */
 	struct resources	resources;

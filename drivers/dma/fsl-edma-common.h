@@ -234,7 +234,6 @@ struct fsl_edma3_reg_save {
 /* All channel ERR IRQ share one IRQ line */
 #define FSL_EDMA_DRV_ERRIRQ_SHARE       BIT(16)
 
-
 #define FSL_EDMA_DRV_EDMA3	(FSL_EDMA_DRV_SPLIT_REG |	\
 				 FSL_EDMA_DRV_BUS_8BYTE |	\
 				 FSL_EDMA_DRV_DEV_TO_DEV |	\

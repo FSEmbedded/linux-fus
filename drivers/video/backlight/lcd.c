@@ -21,43 +21,44 @@ static DEFINE_MUTEX(lcd_dev_list_mutex);
 static LIST_HEAD(lcd_dev_list);
 
 static void lcd_notify_blank(struct lcd_device *ld, struct device *display_dev,
-			     int power)
+			     struct fb_info *fbi, int power)
 {
 	guard(mutex)(&ld->ops_lock);
 
 	if (!ld->ops || !ld->ops->set_power)
 		return;
-	if (ld->ops->controls_device && !ld->ops->controls_device(ld, display_dev))
+	if (ld->ops->controls_device && !ld->ops->controls_device(ld, display_dev, fbi))
 		return;
 
 	ld->ops->set_power(ld, power);
 }
 
-void lcd_notify_blank_all(struct device *display_dev, int power)
+void lcd_notify_blank_all(struct device *display_dev, struct fb_info *fbi, int power)
 {
 	struct lcd_device *ld;
 
 	guard(mutex)(&lcd_dev_list_mutex);
 
 	list_for_each_entry(ld, &lcd_dev_list, entry)
-		lcd_notify_blank(ld, display_dev, power);
+		lcd_notify_blank(ld, display_dev, fbi, power);
 }
 EXPORT_SYMBOL(lcd_notify_blank_all);
 
 static void lcd_notify_mode_change(struct lcd_device *ld, struct device *display_dev,
+				   struct fb_info *fbi,
 				   unsigned int width, unsigned int height)
 {
 	guard(mutex)(&ld->ops_lock);
 
 	if (!ld->ops || !ld->ops->set_mode)
 		return;
-	if (ld->ops->controls_device && !ld->ops->controls_device(ld, display_dev))
+	if (ld->ops->controls_device && !ld->ops->controls_device(ld, display_dev, fbi))
 		return;
 
 	ld->ops->set_mode(ld, width, height);
 }
 
-void lcd_notify_mode_change_all(struct device *display_dev,
+void lcd_notify_mode_change_all(struct device *display_dev, struct fb_info *fbi,
 				unsigned int width, unsigned int height)
 {
 	struct lcd_device *ld;
@@ -65,7 +66,7 @@ void lcd_notify_mode_change_all(struct device *display_dev,
 	guard(mutex)(&lcd_dev_list_mutex);
 
 	list_for_each_entry(ld, &lcd_dev_list, entry)
-		lcd_notify_mode_change(ld, display_dev, width, height);
+		lcd_notify_mode_change(ld, display_dev, fbi, width, height);
 }
 EXPORT_SYMBOL(lcd_notify_mode_change_all);
 

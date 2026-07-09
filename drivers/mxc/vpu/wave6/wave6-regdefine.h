@@ -103,6 +103,7 @@ enum wave6_param_change_enable_bit {
 #define W6_CMD_SET_CTRL_WORK_BUF_SIZE                 (W6_REG_BASE + 0x5F4)
 #define W6_RET_SUCCESS                                (W6_REG_BASE + 0x208)
 #define W6_RET_FAIL_REASON                            (W6_REG_BASE + 0x20C)
+#define W6_RET_INT_INSTANCE_INFO                      (W6_REG_BASE + 0x21C)
 #define W6_RET_INSTANCE_ID                            (W6_REG_BASE + 0x220)
 #define W6_RET_CQ_IN_TICK                             (W6_REG_BASE + 0x23C)
 #define W6_RET_FW_RUN_TICK                            (W6_REG_BASE + 0x240)
@@ -296,7 +297,8 @@ enum wave6_param_change_enable_bit {
 #define W6_CMD_DEC_PIC_USE_SEC_AXI                    (W6_REG_BASE + 0x30C)
 #define W6_CMD_DEC_PIC_SEQ_CHANGE_ENABLE_FLAG         (W6_REG_BASE + 0x310)
 #define W6_CMD_DEC_PIC_TEMPORAL_ID_PLUS1              (W6_REG_BASE + 0x318)
-#define W6_CMD_DEC_PIC_TIMESTAMP                      (W6_REG_BASE + 0x32C)
+#define W6_CMD_DEC_PIC_TIMESTAMP_LOW                  (W6_REG_BASE + 0x354)
+#define W6_CMD_DEC_PIC_TIMESTAMP_HIGH                 (W6_REG_BASE + 0x358)
 
 /* DECODER - QUERY : GET_RESULT */
 #define W6_RET_DEC_BS_RD_PTR                          (W6_REG_BASE + 0x30C)
@@ -329,7 +331,8 @@ enum wave6_param_change_enable_bit {
 #define W6_RET_DEC_WARN_INFO                          (W6_REG_BASE + 0x3CC)
 #define W6_RET_DEC_ERR_INFO                           (W6_REG_BASE + 0x3D0)
 #define W6_RET_DEC_DECODING_SUCCESS                   (W6_REG_BASE + 0x3D4)
-#define W6_RET_DEC_TIMESTAMP                          (W6_REG_BASE + 0x3D8)
+#define W6_RET_DEC_TIMESTAMP_LOW                      (W6_REG_BASE + 0x3D8)
+#define W6_RET_DEC_TIMESTAMP_HIGH                     (W6_REG_BASE + 0x3DC)
 #define W6_RET_DEC_LAST_FRAME_FLAG                    (W6_REG_BASE + 0x3E0)
 #define W6_RET_DEC_NUM_REQUIRED_COL_BUF               (W6_REG_BASE + 0x3E4)
 #define W6_RET_DEC_DISP_LINEAR_ADDR_0                 (W6_REG_BASE + 0x3E8)
@@ -625,7 +628,8 @@ enum wave6_param_change_enable_bit {
 #define W6_CMD_ENC_PIC_CSC_COEFF_1                    (W6_REG_BASE + 0x378)
 #define W6_CMD_ENC_PIC_CSC_COEFF_2                    (W6_REG_BASE + 0x37C)
 #define W6_CMD_ENC_PIC_CSC_COEFF_3                    (W6_REG_BASE + 0x380)
-#define W6_CMD_ENC_PIC_TIMESTAMP                      (W6_REG_BASE + 0x3F8)
+#define W6_CMD_ENC_PIC_TIMESTAMP_LOW                  (W6_REG_BASE + 0x448)
+#define W6_CMD_ENC_PIC_TIMESTAMP_HIGH                 (W6_REG_BASE + 0x44C)
 
 /* ENCODER - QUERY : GET_RESULT */
 #define W6_RET_ENC_RD_PTR                             (W6_REG_BASE + 0x300)
@@ -670,7 +674,8 @@ enum wave6_param_change_enable_bit {
 #define W6_RET_ENC_CUSTOM_MAP_OPTION_ADDR             (W6_REG_BASE + 0x3EC)
 #define W6_RET_ENC_PREFIX_SEI_NAL_ADDR                (W6_REG_BASE + 0x3F0)
 #define W6_RET_ENC_SUFFIX_SEI_NAL_ADDR                (W6_REG_BASE + 0x3F4)
-#define W6_RET_ENC_TIMESTAMP                          (W6_REG_BASE + 0x400)
 #define W6_RET_ENC_NUM_REQUIRED_COL_BUF               (W6_REG_BASE + 0x404)
+#define W6_RET_ENC_TIMESTAMP_LOW                      (W6_REG_BASE + 0x44C)
+#define W6_RET_ENC_TIMESTAMP_HIGH                     (W6_REG_BASE + 0x450)
 
 #endif /* __WAVE6_REGDEFINE_H__ */

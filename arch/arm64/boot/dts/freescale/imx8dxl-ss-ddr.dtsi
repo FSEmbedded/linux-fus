@@ -23,7 +23,7 @@
 		reg = <0x5ca40000 0x10000>;
 		interrupt-parent = <&gic>;
 		interrupts = <GIC_SPI 338 IRQ_TYPE_LEVEL_HIGH>;
-		clocks = <&db_pmu0_lpcg 1>, <&db_pmu0_lpcg 0>;
+		clocks = <&db_pmu0_lpcg IMX_LPCG_CLK_4>, <&db_pmu0_lpcg IMX_LPCG_CLK_0>;
 		clock-names = "ipg", "cnt";
 		power-domains = <&pd IMX_SC_R_PERF>;
 	};
@@ -33,7 +33,7 @@
 		reg = <0x5cae0000 0x10000>;
 		#clock-cells = <1>;
 		clocks = <&db_ipg_clk>, <&db_ipg_clk>;
-		bit-offset = <0 16>;
+		clock-indices = <IMX_LPCG_CLK_0>, <IMX_LPCG_CLK_4>;
 		clock-output-names = "perf_lpcg_cnt_clk",
 				     "perf_lpcg_ipg_clk";
 		power-domains = <&pd IMX_SC_R_PERF>;

@@ -880,6 +880,8 @@ err_errirq:
 		free_irq(fsl_chan->txirq, fsl_chan);
 err_txirq:
 	dma_pool_destroy(fsl_chan->tcd_pool);
+	if (fsl_edma_drvflags(fsl_chan) & FSL_EDMA_DRV_HAS_PD)
+		pm_runtime_put_sync_suspend(fsl_chan->pd_dev);
 
 	return ret;
 }

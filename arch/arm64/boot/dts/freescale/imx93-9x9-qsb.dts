@@ -27,16 +27,35 @@
 		gpio0 = &gpio1;
 		gpio1 = &gpio2;
 		gpio2 = &gpio3;
+		gpio3 = &gpio4;
 		i2c0 = &lpi2c1;
 		i2c1 = &lpi2c2;
+		i2c2 = &lpi2c3;
+		i2c3 = &lpi2c4;
+		i2c4 = &lpi2c5;
+		i2c5 = &lpi2c6;
+		i2c6 = &lpi2c7;
+		i2c7 = &lpi2c8;
 		mmc0 = &usdhc1;
 		mmc1 = &usdhc2;
+		mmc2 = &usdhc3;
 		rtc0 = &bbnsm_rtc;
 		serial0 = &lpuart1;
 		serial1 = &lpuart2;
 		serial2 = &lpuart3;
 		serial3 = &lpuart4;
 		serial4 = &lpuart5;
+		serial5 = &lpuart6;
+		serial6 = &lpuart7;
+		serial7 = &lpuart8;
+		spi0 = &lpspi1;
+		spi1 = &lpspi2;
+		spi2 = &lpspi3;
+		spi3 = &lpspi4;
+		spi4 = &lpspi5;
+		spi5 = &lpspi6;
+		spi6 = &lpspi7;
+		spi7 = &lpspi8;
 	};
 
 	chosen {
@@ -175,6 +194,13 @@
 		enable-active-high;
 	};
 
+	reg_vdd_3v3: regulator-vdd {
+		compatible = "regulator-fixed";
+		regulator-name = "VDD_3V3";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+	};
+
 	sound-bt-sco {
 		compatible = "simple-audio-card";
 		simple-audio-card,name = "bt-sco-audio";
@@ -204,6 +230,9 @@
 
 			cpu {
 				sound-dai = <&micfil>;
+			};
+			codec {
+				sound-dai = <&dmic>;
 			};
 		};
 	};
@@ -242,7 +271,6 @@
 		 <&mu1 3 1>;
 	memory-region = <&vdevbuffer>, <&vdev0vring0>, <&vdev0vring1>,
 			<&vdev1vring0>, <&vdev1vring1>, <&rsc_table>;
-	fsl,startup-delay-ms = <500>;
 	status = "okay";
 };
 
@@ -382,6 +410,12 @@
 			gpio-hog;
 			gpios = <17 GPIO_ACTIVE_HIGH>;
 			output-low;
+		};
+
+		m2-pcm-level-shifter-hog {
+			gpio-hog;
+			gpios = <19 GPIO_ACTIVE_HIGH>;
+			output-high;
 		};
 	};
 
@@ -571,6 +605,14 @@
 	non-removable;
 	wakeup-source;
 	status = "okay";
+
+	wifi_wake_host {
+		compatible = "nxp,wifi-wake-host";
+		interrupt-parent = <&pcal6524>;
+		/* pcal6524 IO expander limitation: only support edge-triggered irq */
+		interrupts = <5 IRQ_TYPE_EDGE_FALLING>;
+		interrupt-names = "host-wake";
+	};
 };
 
 &wdog3 {
@@ -833,4 +875,8 @@
 			MX93_PAD_WDOG_ANY__WDOG1_WDOG_ANY	0x31e
 		>;
 	};
+};
+
+&epxp {
+	status = "okay";
 };

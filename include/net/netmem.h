@@ -228,17 +228,6 @@ static inline netmem_ref virt_to_netmem(const void *data)
 	return page_to_netmem(virt_to_page(data));
 }
 
-/**
- * virt_to_netmem - convert virtual memory pointer to a netmem reference
- * @data: host memory pointer to convert
- *
- * Return: netmem reference to the &page backing this virtual address.
- */
-static inline netmem_ref virt_to_netmem(const void *data)
-{
-	return page_to_netmem(virt_to_page(data));
-}
-
 static inline int netmem_ref_count(netmem_ref netmem)
 {
 	/* The non-pp refcount of net_iov is always 1. On net_iov, we only

@@ -321,9 +321,7 @@ int fm_get_rx_extra_headroom(void);
 
  @Description   Detect if the SoC is vulnerable to the A050385 errata
 *//***************************************************************************/
-#ifdef FM_ERRATUM_A050385
 bool fm_has_errata_a050385(void);
-#endif
 
 /**************************************************************************//**
 @Function     fm_port_enable_rx_l4csum

@@ -237,8 +237,8 @@ static int lynx_pcs_config(struct phylink_pcs *pcs, unsigned int neg_mode,
 				       ifmode);
 		if (err) {
 			dev_err(&lynx->mdio->dev,
-				"phy_set_mode_ext() failed: %pe\n",
-				ERR_PTR(err));
+				"phy_set_mode_ext(%s) failed: %pe\n",
+				phy_modes(ifmode), ERR_PTR(err));
 			return err;
 		}
 	}
@@ -487,6 +487,50 @@ static const struct phylink_pcs_ops lynx_pcs_phylink_ops = {
 	.pcs_disable = lynx_pcs_disable,
 };
 
+static int lynx_pcs_validate_addr(struct mdio_device *mdiodev,
+				  struct phy *serdes)
+{
+	union phy_status_opts opts1 = {
+		.pcvt_count = {
+			.type = PHY_PCVT_ETHERNET_PCS,
+		},
+	};
+	int i, err;
+
+	err = phy_get_status(serdes, PHY_STATUS_PCVT_COUNT, &opts1);
+	if (err)
+		return err;
+
+	for (i = 0; i < opts1.pcvt_count.num_pcvt; i++) {
+		union phy_status_opts opts2 = {
+			.pcvt = {
+				.type = PHY_PCVT_ETHERNET_PCS,
+				.index = i,
+			},
+		};
+
+		err = phy_get_status(serdes, PHY_STATUS_PCVT_ADDR, &opts2);
+		if (err)
+			return err;
+
+		/* For a multi-port protocol converter, the match is
+		 * approximate, since for full confidence, we'd have to
+		 * know which port within the PCS is the consumer (MAC)
+		 * mapped to.
+		 */
+		if (opts2.pcvt.addr.mdio == mdiodev->addr)
+			return 0;
+	}
+
+	dev_err(&mdiodev->dev,
+		"Own MDIO address not found among %zu protocol converters reported by SerDes lane %s\n",
+		opts1.pcvt_count.num_pcvt,
+		dev_name(&serdes->dev));
+
+	return -ENODEV;
+}
+
+
 static const phy_interface_t lynx_interfaces[] = {
 	PHY_INTERFACE_MODE_SGMII,
 	PHY_INTERFACE_MODE_QSGMII,
@@ -497,10 +541,51 @@ static const phy_interface_t lynx_interfaces[] = {
 	PHY_INTERFACE_MODE_10G_QXGMII,
 };
 
-static struct phylink_pcs *lynx_pcs_create(struct mdio_device *mdio)
+void lynx_pcs_set_supported_interfaces(struct phylink_pcs *pcs,
+				       phy_interface_t default_interface,
+				       unsigned long *supported_interfaces)
+{
+	struct lynx_pcs *lynx = phylink_pcs_to_lynx(pcs);
+	int err;
+
+	__set_bit(default_interface, supported_interfaces);
+
+	if (default_interface == PHY_INTERFACE_MODE_1000BASEX ||
+	    default_interface == PHY_INTERFACE_MODE_SGMII) {
+		__set_bit(PHY_INTERFACE_MODE_1000BASEX, supported_interfaces);
+		__set_bit(PHY_INTERFACE_MODE_SGMII, supported_interfaces);
+	}
+
+	if (!lynx->num_phys)
+		return;
+
+	/* In case we have access to the SerDes phy/lane, then ask the SerDes
+	 * driver what interfaces are supported based on the current PLL
+	 * configuration.
+	 */
+	for (int i = 0; i < ARRAY_SIZE(lynx_interfaces); i++) {
+		phy_interface_t iface = lynx_interfaces[i];
+
+		err = phy_validate(lynx->serdes[PRIMARY_LANE],
+				   PHY_MODE_ETHERNET, iface, NULL);
+		if (err)
+			continue;
+
+		__set_bit(iface, supported_interfaces);
+	}
+}
+EXPORT_SYMBOL(lynx_pcs_set_supported_interfaces);
+
+static struct phylink_pcs *lynx_pcs_create(struct mdio_device *mdio,
+					   struct phy **phys, size_t num_phys,
+					   enum mtip_model model)
 {
 	struct lynx_pcs *lynx;
-	int i;
+	size_t i;
+	int err;
+
+	if (num_phys > MAX_NUM_LANES)
+		return ERR_PTR(-ERANGE);
 
 	lynx = kzalloc(sizeof(*lynx), GFP_KERNEL);
 	if (!lynx)

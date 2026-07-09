@@ -3,9 +3,64 @@
  * NETC NTMP (NETC Table Management Protocol) 2.0 driver
  * Copyright 2024 NXP
  */
+
 #include <linux/fsl/netc_lib.h>
 
 #include "ntmp_private.h"
+
+int netc_show_tgst_entry(struct ntmp_user *user, struct seq_file *s,
+			 u32 entry_id)
+{
+	struct tgst_query_data *qdata __free(kfree);
+	int i, err;
+
+	qdata = kzalloc(sizeof(*qdata), GFP_KERNEL);
+	if (!qdata)
+		return -ENOMEM;
+
+	err = ntmp_tgst_query_entry(user, entry_id, qdata);
+	if (err)
+		return err;
+
+	seq_puts(s, "Dump Time Gate Scheduling Table Entry:\n");
+	seq_printf(s, "Entry ID:%d\n", entry_id);
+	seq_printf(s, "Admin Base Time:%llu\n", le64_to_cpu(qdata->admin_bt));
+	seq_printf(s, "Admin Cycle Time:%u\n", le32_to_cpu(qdata->admin_ct));
+	seq_printf(s, "Admin Cycle Extend Time:%u\n",
+		   le32_to_cpu(qdata->admin_ct_ext));
+	seq_printf(s, "Admin Control List Length:%u\n",
+		   le16_to_cpu(qdata->admin_cl_len));
+	for (i = 0; i < le16_to_cpu(qdata->admin_cl_len); i++) {
+		seq_printf(s, "Gate Entry %d info:\n", i);
+		seq_printf(s, "\tAdmin time interval:%u\n",
+			   le32_to_cpu(qdata->cfge_ge[i].interval));
+		seq_printf(s, "\tAdmin Traffic Class states:%02x\n",
+			   qdata->cfge_ge[i].tc_state);
+		seq_printf(s, "\tAdministrative gate operation type:%u\n",
+			   qdata->cfge_ge[i].hr_cb);
+	}
+
+	seq_printf(s, "Config Change Time:%llu\n", le64_to_cpu(qdata->oper_cfg_ct));
+	seq_printf(s, "Config Change Error:%llu\n", le64_to_cpu(qdata->oper_cfg_ce));
+	seq_printf(s, "Operation Base Time:%llu\n", le64_to_cpu(qdata->oper_bt));
+	seq_printf(s, "Operation Cycle Time:%u\n", le32_to_cpu(qdata->oper_ct));
+	seq_printf(s, "Operation Cycle Extend Time:%u\n",
+		   le32_to_cpu(qdata->oper_ct_ext));
+	seq_printf(s, "Operation Control List Length:%u\n",
+		   le16_to_cpu(qdata->oper_cl_len));
+	for (i = 0; i < le16_to_cpu(qdata->oper_cl_len); i++) {
+		seq_printf(s, "Gate Entry %d info:\n", i);
+		seq_printf(s, "\tOperation time interval:%u\n",
+			   le32_to_cpu(qdata->olse_ge[i].interval));
+		seq_printf(s, "\tOperation Traffic Class states:%02x\n",
+			   qdata->olse_ge[i].tc_state);
+		seq_printf(s, "\tOperation gate operation type:%u\n",
+			   qdata->olse_ge[i].hr_cb);
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(netc_show_tgst_entry);
 
 int netc_kstrtouint(const char __user *buffer, size_t count,
 		    loff_t *ppos, u32 *val)
@@ -65,7 +120,7 @@ void netc_show_psfp_flower(struct seq_file *s, struct netc_flower_rule *rule)
 }
 EXPORT_SYMBOL_GPL(netc_show_psfp_flower);
 
-int netc_show_isit_entry(struct ntmp_priv *priv, struct seq_file *s,
+int netc_show_isit_entry(struct ntmp_user *user, struct seq_file *s,
 			 u32 entry_id)
 {
 	struct ntmp_isit_entry *isit_entry __free(kfree);
@@ -77,7 +132,7 @@ int netc_show_isit_entry(struct ntmp_priv *priv, struct seq_file *s,
 	if (!isit_entry)
 		return -ENOMEM;
 
-	err = ntmp_isit_query_entry(&priv->cbdrs, entry_id, isit_entry);
+	err = ntmp_isit_query_entry(user, entry_id, isit_entry);
 	if (err) {
 		seq_printf(s, "Query ISIT entry ID (0x%x) failed\n", entry_id);
 		return err;
@@ -100,7 +155,7 @@ int netc_show_isit_entry(struct ntmp_priv *priv, struct seq_file *s,
 }
 EXPORT_SYMBOL_GPL(netc_show_isit_entry);
 
-int netc_show_ist_entry(struct ntmp_priv *priv, struct seq_file *s,
+int netc_show_ist_entry(struct ntmp_user *user, struct seq_file *s,
 			u32 entry_id)
 {
 	struct ist_cfge_data *cfge __free(kfree);
@@ -112,7 +167,7 @@ int netc_show_ist_entry(struct ntmp_priv *priv, struct seq_file *s,
 	if (!cfge)
 		return -ENOMEM;
 
-	err = ntmp_ist_query_entry(&priv->cbdrs, entry_id, cfge);
+	err = ntmp_ist_query_entry(user, entry_id, cfge);
 	if (err) {
 		seq_printf(s, "Query IST entry ID (0x%x) failed\n", entry_id);
 		return err;
@@ -134,7 +189,7 @@ int netc_show_ist_entry(struct ntmp_priv *priv, struct seq_file *s,
 		   is_en(cfg & IST_ORP), is_en(cfg & IST_OSGI),
 		   FIELD_GET(IST_HR, cfg));
 
-	switch (priv->cbdrs.tbl.ist_ver) {
+	switch (user->tbl.ist_ver) {
 	case NTMP_TBL_VER0:
 		seq_printf(s, "Forwarding Action: %lu, SDU type:%lu\n",
 			   FIELD_GET(IST_V0_FA, cfg),
@@ -173,7 +228,7 @@ int netc_show_ist_entry(struct ntmp_priv *priv, struct seq_file *s,
 }
 EXPORT_SYMBOL_GPL(netc_show_ist_entry);
 
-int netc_show_isft_entry(struct ntmp_priv *priv, struct seq_file *s,
+int netc_show_isft_entry(struct ntmp_user *user, struct seq_file *s,
 			 u32 entry_id)
 {
 	struct ntmp_isft_entry *isft_entry __free(kfree);
@@ -188,7 +243,7 @@ int netc_show_isft_entry(struct ntmp_priv *priv, struct seq_file *s,
 
 	keye = &isft_entry->keye;
 	cfge = &isft_entry->cfge;
-	err = ntmp_isft_query_entry(&priv->cbdrs, entry_id, isft_entry);
+	err = ntmp_isft_query_entry(user, entry_id, isft_entry);
 	if (err) {
 		seq_printf(s, "Query ISFT entry ID (0x%x) failed\n", entry_id);
 		return err;
@@ -216,7 +271,7 @@ int netc_show_isft_entry(struct ntmp_priv *priv, struct seq_file *s,
 }
 EXPORT_SYMBOL_GPL(netc_show_isft_entry);
 
-int netc_show_sgit_entry(struct ntmp_priv *priv, struct seq_file *s,
+int netc_show_sgit_entry(struct ntmp_user *user, struct seq_file *s,
 			 u32 entry_id)
 {
 	struct ntmp_sgit_entry *sgit_entry __free(kfree);
@@ -230,7 +285,7 @@ int netc_show_sgit_entry(struct ntmp_priv *priv, struct seq_file *s,
 	if (!sgit_entry)
 		return -ENOMEM;
 
-	err = ntmp_sgit_query_entry(&priv->cbdrs, entry_id, sgit_entry);
+	err = ntmp_sgit_query_entry(user, entry_id, sgit_entry);
 	if (err) {
 		seq_printf(s, "Query SGIT entry ID (0x%x) failed\n", entry_id);
 		return err;
@@ -270,7 +325,7 @@ int netc_show_sgit_entry(struct ntmp_priv *priv, struct seq_file *s,
 }
 EXPORT_SYMBOL_GPL(netc_show_sgit_entry);
 
-int netc_show_sgclt_entry(struct ntmp_priv *priv, struct seq_file *s,
+int netc_show_sgclt_entry(struct ntmp_user *user, struct seq_file *s,
 			  u32 entry_id)
 {
 	struct ntmp_sgclt_entry *sgclt_entry __free(kfree);
@@ -286,7 +341,7 @@ int netc_show_sgclt_entry(struct ntmp_priv *priv, struct seq_file *s,
 	if (!sgclt_entry)
 		return -ENOMEM;
 
-	err = ntmp_sgclt_query_entry(&priv->cbdrs, entry_id, sgclt_entry,
+	err = ntmp_sgclt_query_entry(user, entry_id, sgclt_entry,
 				     sgclt_cfge_size);
 	if (err) {
 		seq_printf(s, "Query SGCLT entry ID (0x%x) failed\n", entry_id);
@@ -323,7 +378,7 @@ int netc_show_sgclt_entry(struct ntmp_priv *priv, struct seq_file *s,
 }
 EXPORT_SYMBOL_GPL(netc_show_sgclt_entry);
 
-int netc_show_isct_entry(struct ntmp_priv *priv, struct seq_file *s,
+int netc_show_isct_entry(struct ntmp_user *user, struct seq_file *s,
 			 u32 entry_id)
 {
 	struct isct_stse_data *stse __free(kfree);
@@ -334,8 +389,7 @@ int netc_show_isct_entry(struct ntmp_priv *priv, struct seq_file *s,
 	if (!stse)
 		return -ENOMEM;
 
-	err = ntmp_isct_operate_entry(&priv->cbdrs, entry_id,
-				      NTMP_CMD_QUERY, stse);
+	err = ntmp_isct_set_entry(user, entry_id, NTMP_CMD_QUERY, stse);
 	if (err) {
 		seq_printf(s, "Query ISCT entry ID (0x%x) failed\n", entry_id);
 		return err;
@@ -343,7 +397,7 @@ int netc_show_isct_entry(struct ntmp_priv *priv, struct seq_file *s,
 
 	sg_drop_cnt = le32_to_cpu(stse->sg_drop_count);
 	/* Workaround for ERR052134 on i.MX95 platform */
-	if (priv->errata & NTMP_ERR052134) {
+	if (user->errata & NTMP_ERR052134) {
 		u32 tmp;
 
 		sg_drop_cnt >>= 9;
@@ -363,7 +417,7 @@ int netc_show_isct_entry(struct ntmp_priv *priv, struct seq_file *s,
 }
 EXPORT_SYMBOL_GPL(netc_show_isct_entry);
 
-int netc_show_rpt_entry(struct ntmp_priv *priv, struct seq_file *s,
+int netc_show_rpt_entry(struct ntmp_user *user, struct seq_file *s,
 			u32 entry_id)
 {
 	struct ntmp_rpt_entry *rpt_entry __free(kfree);
@@ -377,7 +431,7 @@ int netc_show_rpt_entry(struct ntmp_priv *priv, struct seq_file *s,
 	if (!rpt_entry)
 		return -ENOMEM;
 
-	err = ntmp_rpt_query_entry(&priv->cbdrs, entry_id, rpt_entry);
+	err = ntmp_rpt_query_entry(user, entry_id, rpt_entry);
 	if (err) {
 		seq_printf(s, "Query RPT entry ID (0x%x) failed\n", entry_id);
 		return err;
@@ -423,7 +477,7 @@ int netc_show_rpt_entry(struct ntmp_priv *priv, struct seq_file *s,
 }
 EXPORT_SYMBOL_GPL(netc_show_rpt_entry);
 
-int netc_show_ipft_entry(struct ntmp_priv *priv, struct seq_file *s,
+int netc_show_ipft_entry(struct ntmp_user *user, struct seq_file *s,
 			 u32 entry_id)
 {
 	struct ntmp_ipft_entry *ipft_entry __free(kfree);
@@ -437,13 +491,12 @@ int netc_show_ipft_entry(struct ntmp_priv *priv, struct seq_file *s,
 	if (!ipft_entry)
 		return -ENOMEM;
 
-	err = ntmp_ipft_query_entry(&priv->cbdrs, entry_id, false, ipft_entry);
+	err = ntmp_ipft_query_entry(user, entry_id, false, ipft_entry);
 	if (err)
 		return err;
 
 	keye = &ipft_entry->keye;
 	cfge = &ipft_entry->cfge;
-
 	cfg = le32_to_cpu(cfge->cfg);
 	dscp = le16_to_cpu(keye->dscp);
 
@@ -455,7 +508,7 @@ int netc_show_ipft_entry(struct ntmp_priv *priv, struct seq_file *s,
 	seq_printf(s, "DSCP:0x%lx, mask:0x%lx\n", FIELD_GET(IPFT_DSCP, dscp),
 		   FIELD_GET(IPFT_DSCP_MASK, dscp));
 
-	if (priv->dev_type == NETC_DEV_SWITCH) {
+	if (user->dev_type == NETC_DEV_SWITCH) {
 		u8 port_id, port_mask;
 
 		src_port = le16_to_cpu(keye->src_port);
@@ -520,7 +573,7 @@ int netc_show_ipft_entry(struct ntmp_priv *priv, struct seq_file *s,
 	seq_printf(s, "Target For Selected Filter Action: 0x%x\n",
 		   le32_to_cpu(cfge->flta_tgt));
 
-	if (priv->dev_type == NETC_DEV_SWITCH) {
+	if (user->dev_type == NETC_DEV_SWITCH) {
 		seq_printf(s, "Ingress Mirroring %s, Cut through disable: %s\n",
 			   is_en(cfg & IPFT_IMIRE), is_yes(cfg & IPFT_CTD));
 		seq_printf(s, "Host Reason: %lu, Timestamp Capture %s\n",
@@ -541,60 +594,6 @@ int netc_show_ipft_entry(struct ntmp_priv *priv, struct seq_file *s,
 	return err;
 }
 EXPORT_SYMBOL_GPL(netc_show_ipft_entry);
-
-int netc_show_tgst_entry(struct ntmp_priv *priv, struct seq_file *s,
-			 u32 entry_id)
-{
-	struct tgst_query_data *qdata __free(kfree);
-	int i, err;
-
-	qdata = kzalloc(sizeof(*qdata), GFP_KERNEL);
-	if (!qdata)
-		return -ENOMEM;
-
-	err = ntmp_tgst_query_entry(&priv->cbdrs, entry_id, qdata);
-	if (err)
-		return err;
-
-	seq_puts(s, "Dump Time Gate Scheduling Table Entry:\n");
-	seq_printf(s, "Entry ID:%d\n", entry_id);
-	seq_printf(s, "Admin Base Time:%llu\n", le64_to_cpu(qdata->admin_bt));
-	seq_printf(s, "Admin Cycle Time:%u\n", le32_to_cpu(qdata->admin_ct));
-	seq_printf(s, "Admin Cycle Extend Time:%u\n",
-		   le32_to_cpu(qdata->admin_ct_ext));
-	seq_printf(s, "Admin Control List Length:%u\n",
-		   le16_to_cpu(qdata->admin_cl_len));
-	for (i = 0; i < le16_to_cpu(qdata->admin_cl_len); i++) {
-		seq_printf(s, "Gate Entry %d info:\n", i);
-		seq_printf(s, "\tAdmin time interval:%u\n",
-			   le32_to_cpu(qdata->cfge_ge[i].interval));
-		seq_printf(s, "\tAdmin Traffic Class states:%02x\n",
-			   qdata->cfge_ge[i].tc_state);
-		seq_printf(s, "\tAdministrative gate operation type:%u\n",
-			   qdata->cfge_ge[i].hr_cb);
-	}
-
-	seq_printf(s, "Config Change Time:%llu\n", le64_to_cpu(qdata->oper_cfg_ct));
-	seq_printf(s, "Config Change Error:%llu\n", le64_to_cpu(qdata->oper_cfg_ce));
-	seq_printf(s, "Operation Base Time:%llu\n", le64_to_cpu(qdata->oper_bt));
-	seq_printf(s, "Operation Cycle Time:%u\n", le32_to_cpu(qdata->oper_ct));
-	seq_printf(s, "Operation Cycle Extend Time:%u\n",
-		   le32_to_cpu(qdata->oper_ct_ext));
-	seq_printf(s, "Operation Control List Length:%u\n",
-		   le16_to_cpu(qdata->oper_cl_len));
-	for (i = 0; i < le16_to_cpu(qdata->oper_cl_len); i++) {
-		seq_printf(s, "Gate Entry %d info:\n", i);
-		seq_printf(s, "\tOperation time interval:%u\n",
-			   le32_to_cpu(qdata->olse_ge[i].interval));
-		seq_printf(s, "\tOperation Traffic Class states:%02x\n",
-			   qdata->olse_ge[i].tc_state);
-		seq_printf(s, "\tOperation gate operation type:%u\n",
-			   qdata->olse_ge[i].hr_cb);
-	}
-
-	return 0;
-}
-EXPORT_SYMBOL_GPL(netc_show_tgst_entry);
 
 void netc_show_ipft_flower(struct seq_file *s, struct netc_flower_rule *rule)
 {

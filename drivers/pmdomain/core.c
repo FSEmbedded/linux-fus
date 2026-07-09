@@ -352,40 +352,6 @@ static inline void genpd_update_accounting(struct generic_pm_domain *genpd) {}
 static inline void genpd_reflect_residency(struct generic_pm_domain *genpd) {}
 #endif
 
-static void pm_genpd_disable_clks(struct generic_pm_domain *genpd)
-{
-	if (genpd->flags & GENPD_FLAG_PM_PD_CLK && genpd->num_clks > 0)
-		clk_bulk_disable_unprepare(genpd->num_clks, genpd->clks);
-}
-
-static int pm_genpd_enable_clks(struct generic_pm_domain *genpd)
-{
-	int ret;
-
-	if (genpd->flags & GENPD_FLAG_PM_PD_CLK && genpd->num_clks > 0) {
-		ret = clk_bulk_prepare_enable(genpd->num_clks, genpd->clks);
-		if (ret) {
-			dev_err(&genpd->dev, "failed to enable clocks\n");
-			return ret;
-		}
-	}
-
-	return 0;
-}
-
-int pm_genpd_of_add_clks(struct generic_pm_domain *genpd, struct device *dev)
-{
-	if (genpd->flags & GENPD_FLAG_PM_PD_CLK) {
-		genpd->num_clks = devm_clk_bulk_get_all(dev, &genpd->clks);
-		if (genpd->num_clks < 0)
-			return dev_err_probe(&genpd->dev, genpd->num_clks,
-					     "Failed to get domain's clocks\n");
-	}
-
-	return 0;
-}
-EXPORT_SYMBOL_GPL(pm_genpd_of_add_clks);
-
 static int _genpd_reeval_performance_state(struct generic_pm_domain *genpd,
 					   unsigned int state)
 {
@@ -1048,9 +1014,9 @@ static void genpd_power_off(struct generic_pm_domain *genpd, bool one_dev_on,
 	if (!genpd->gov)
 		genpd->state_idx = 0;
 
-	/* Don't power off, if a child domain is waiting to power on. */
-	if (atomic_read(&genpd->sd_count) > 0)
-		return;
+	/* Choose the deepest state if no devices using this domain */
+	if (!genpd->device_count)
+		genpd->state_idx = genpd->state_count - 1;
 
 	if (_genpd_power_off(genpd, true)) {
 		genpd->states[genpd->state_idx].rejected++;
@@ -1064,10 +1030,8 @@ static void genpd_power_off(struct generic_pm_domain *genpd, bool one_dev_on,
 	list_for_each_entry(link, &genpd->child_links, child_node) {
 		genpd_sd_counter_dec(link->parent);
 		genpd_lock_nested(link->parent, depth + 1);
-		ret = genpd_power_off(link->parent, false, depth + 1);
+		genpd_power_off(link->parent, false, depth + 1);
 		genpd_unlock(link->parent);
-		if (!ret)
-			pm_genpd_disable_clks(link->parent);
 	}
 }
 
@@ -1075,20 +1039,17 @@ static void genpd_power_off(struct generic_pm_domain *genpd, bool one_dev_on,
  * genpd_power_on - Restore power to a given PM domain and its parents.
  * @genpd: PM domain to power up.
  * @depth: nesting count for lockdep.
- * @pd_was_on: Return parameter that indicates whether PD was on before
  *
  * Restore power to @genpd and all of its parents so that it is possible to
  * resume a device belonging to it.
  */
-static int genpd_power_on(struct generic_pm_domain *genpd, unsigned int depth, bool *pd_was_on)
+static int genpd_power_on(struct generic_pm_domain *genpd, unsigned int depth)
 {
 	struct gpd_link *link;
 	int ret = 0;
 
-	if (genpd_status_on(genpd)) {
-		*pd_was_on = true;
+	if (genpd_status_on(genpd))
 		return 0;
-	}
 
 	/* Reflect over the entered idle-states residency for debugfs. */
 	genpd_reflect_residency(genpd);
@@ -1100,24 +1061,16 @@ static int genpd_power_on(struct generic_pm_domain *genpd, unsigned int depth, b
 	 */
 	list_for_each_entry(link, &genpd->child_links, child_node) {
 		struct generic_pm_domain *parent = link->parent;
-		bool pd_state = false;
 
 		genpd_sd_counter_inc(parent);
 
-		ret = pm_genpd_enable_clks(parent);
-		if (ret)
-			return ret;
-
 		genpd_lock_nested(parent, depth + 1);
-		ret = genpd_power_on(parent, depth + 1, &pd_state);
+		ret = genpd_power_on(parent, depth + 1);
 		genpd_unlock(parent);
 
 		if (ret) {
 			genpd_sd_counter_dec(parent);
-			pm_genpd_disable_clks(parent);
 			goto err;
-		} else if (pd_state) {
-			pm_genpd_disable_clks(parent);
 		}
 	}
 
@@ -1136,10 +1089,8 @@ static int genpd_power_on(struct generic_pm_domain *genpd, unsigned int depth, b
 					child_node) {
 		genpd_sd_counter_dec(link->parent);
 		genpd_lock_nested(link->parent, depth + 1);
-		ret = genpd_power_off(link->parent, false, depth + 1);
+		genpd_power_off(link->parent, false, depth + 1);
 		genpd_unlock(link->parent);
-		if (!ret)
-			pm_genpd_disable_clks(link->parent);
 	}
 
 	return ret;
@@ -1201,16 +1152,12 @@ static int genpd_dev_pm_qos_notifier(struct notifier_block *nb,
 static void genpd_power_off_work_fn(struct work_struct *work)
 {
 	struct generic_pm_domain *genpd;
-	int ret;
 
 	genpd = container_of(work, struct generic_pm_domain, power_off_work);
 
 	genpd_lock(genpd);
-	ret = genpd_power_off(genpd, false, 0);
+	genpd_power_off(genpd, false, 0);
 	genpd_unlock(genpd);
-
-	if (!ret)
-		pm_genpd_disable_clks(genpd);
 }
 
 /**
@@ -1328,12 +1275,9 @@ static int genpd_runtime_suspend(struct device *dev)
 		return 0;
 
 	genpd_lock(genpd);
-	ret = genpd_power_off(genpd, true, 0);
+	genpd_power_off(genpd, true, 0);
 	gpd_data->rpm_pstate = genpd_drop_performance_state(dev);
 	genpd_unlock(genpd);
-
-	if (!ret)
-		pm_genpd_disable_clks(genpd);
 
 	return 0;
 }
@@ -1352,7 +1296,6 @@ static int genpd_runtime_resume(struct device *dev)
 	struct generic_pm_domain_data *gpd_data = dev_gpd_data(dev);
 	struct gpd_timing_data *td = gpd_data->td;
 	bool timed = td && pm_runtime_enabled(dev);
-	bool pd_was_on = false;
 	ktime_t time_start = 0;
 	s64 elapsed_ns;
 	int ret;
@@ -1370,21 +1313,13 @@ static int genpd_runtime_resume(struct device *dev)
 	if (irq_safe_dev_in_sleep_domain(dev, genpd))
 		goto out;
 
-	ret = pm_genpd_enable_clks(genpd);
-	if (ret)
-		return ret;
-
 	genpd_lock(genpd);
 	genpd_restore_performance_state(dev, gpd_data->rpm_pstate);
-	ret = genpd_power_on(genpd, 0, &pd_was_on);
+	ret = genpd_power_on(genpd, 0);
 	genpd_unlock(genpd);
 
-	if (ret) {
-		pm_genpd_disable_clks(genpd);
+	if (ret)
 		return ret;
-	} else if (pd_was_on) {
-		pm_genpd_disable_clks(genpd);
-	}
 
  out:
 	/* Measure resume latency. */
@@ -1422,8 +1357,6 @@ err_poweroff:
 		gpd_data->rpm_pstate = genpd_drop_performance_state(dev);
 		genpd_unlock(genpd);
 	}
-
-	pm_genpd_disable_clks(genpd);
 
 	return ret;
 }
@@ -1477,7 +1410,7 @@ late_initcall_sync(genpd_power_off_unused);
  * these cases the lock must be held.
  */
 static void genpd_sync_power_off(struct generic_pm_domain *genpd, bool use_lock,
-				 unsigned int depth, bool *need_disable_clk)
+				 unsigned int depth)
 {
 	struct gpd_link *link;
 
@@ -1517,22 +1450,17 @@ static void genpd_sync_power_off(struct generic_pm_domain *genpd, bool use_lock,
 		return;
 
 	genpd->status = GENPD_STATE_OFF;
-	*need_disable_clk = true;
 
 	list_for_each_entry(link, &genpd->child_links, child_node) {
-		bool disable_clk = false;
 		genpd_sd_counter_dec(link->parent);
 
 		if (use_lock)
 			genpd_lock_nested(link->parent, depth + 1);
 
-		genpd_sync_power_off(link->parent, use_lock, depth + 1, &disable_clk);
+		genpd_sync_power_off(link->parent, use_lock, depth + 1);
 
 		if (use_lock)
 			genpd_unlock(link->parent);
-
-		if (disable_clk)
-			pm_genpd_disable_clks(link->parent);
 	}
 }
 
@@ -1547,32 +1475,23 @@ static void genpd_sync_power_off(struct generic_pm_domain *genpd, bool use_lock,
  * these cases the lock must be held.
  */
 static void genpd_sync_power_on(struct generic_pm_domain *genpd, bool use_lock,
-				unsigned int depth, bool *pd_was_on)
+				unsigned int depth)
 {
 	struct gpd_link *link;
 
-	if (genpd_status_on(genpd)) {
-		*pd_was_on = true;
+	if (genpd_status_on(genpd))
 		return;
-	}
 
 	list_for_each_entry(link, &genpd->child_links, child_node) {
-		bool pd_state = false;
-
 		genpd_sd_counter_inc(link->parent);
-
-		pm_genpd_enable_clks(link->parent);
 
 		if (use_lock)
 			genpd_lock_nested(link->parent, depth + 1);
 
-		genpd_sync_power_on(link->parent, use_lock, depth + 1, &pd_state);
+		genpd_sync_power_on(link->parent, use_lock, depth + 1);
 
 		if (use_lock)
 			genpd_unlock(link->parent);
-
-		if (pd_state)
-			pm_genpd_disable_clks(link->parent);
 	}
 
 	_genpd_power_on(genpd, false);
@@ -1634,7 +1553,6 @@ static int genpd_finish_suspend(struct device *dev,
 				int (*resume_noirq)(struct device *dev))
 {
 	struct generic_pm_domain *genpd;
-	bool need_disable_clk = false;
 	int ret = 0;
 
 	genpd = dev_to_genpd(dev);
@@ -1659,11 +1577,8 @@ static int genpd_finish_suspend(struct device *dev,
 
 	genpd_lock(genpd);
 	genpd->suspended_count++;
-	genpd_sync_power_off(genpd, true, 0, &need_disable_clk);
+	genpd_sync_power_off(genpd, true, 0);
 	genpd_unlock(genpd);
-
-	if (need_disable_clk)
-		pm_genpd_disable_clks(genpd);
 
 	return 0;
 }
@@ -1695,7 +1610,6 @@ static int genpd_finish_resume(struct device *dev,
 			       int (*resume_noirq)(struct device *dev))
 {
 	struct generic_pm_domain *genpd;
-	bool pd_was_on = false;
 	int ret;
 
 	dev_dbg(dev, "%s()\n", __func__);
@@ -1707,17 +1621,10 @@ static int genpd_finish_resume(struct device *dev,
 	if (device_awake_path(dev) && genpd_is_active_wakeup(genpd))
 		return resume_noirq(dev);
 
-	ret = pm_genpd_enable_clks(genpd);
-	if (ret)
-		return ret;
-
 	genpd_lock(genpd);
-	genpd_sync_power_on(genpd, true, 0, &pd_was_on);
+	genpd_sync_power_on(genpd, true, 0);
 	genpd->suspended_count--;
 	genpd_unlock(genpd);
-
-	if (pd_was_on)
-		pm_genpd_disable_clks(genpd);
 
 	if (genpd->dev_ops.stop && genpd->dev_ops.start &&
 	    !pm_runtime_status_suspended(dev)) {
@@ -1838,15 +1745,11 @@ static void genpd_complete(struct device *dev)
 static void genpd_switch_state(struct device *dev, bool suspend)
 {
 	struct generic_pm_domain *genpd;
-	bool need_disable_clk = false;
 	bool use_lock;
 
 	genpd = dev_to_genpd_safe(dev);
 	if (!genpd)
 		return;
-
-	if (!suspend)
-		pm_genpd_enable_clks(genpd);
 
 	use_lock = genpd_is_irq_safe(genpd);
 
@@ -1855,17 +1758,14 @@ static void genpd_switch_state(struct device *dev, bool suspend)
 
 	if (suspend) {
 		genpd->suspended_count++;
-		genpd_sync_power_off(genpd, use_lock, 0, &need_disable_clk);
+		genpd_sync_power_off(genpd, use_lock, 0);
 	} else {
-		genpd_sync_power_on(genpd, use_lock, 0, &need_disable_clk);
+		genpd_sync_power_on(genpd, use_lock, 0);
 		genpd->suspended_count--;
 	}
 
 	if (use_lock)
 		genpd_unlock(genpd);
-
-	if (need_disable_clk)
-		pm_genpd_disable_clks(genpd);
 }
 
 /**
@@ -3338,7 +3238,7 @@ static int __genpd_dev_pm_attach(struct device *dev, struct device *base_dev,
 
 	if (power_on) {
 		genpd_lock(pd);
-		ret = genpd_power_on(pd, 0, &pd_was_on);
+		ret = genpd_power_on(pd, 0);
 		genpd_unlock(pd);
 	}
 
@@ -3351,8 +3251,6 @@ static int __genpd_dev_pm_attach(struct device *dev, struct device *base_dev,
 
 		genpd_remove_device(pd, dev);
 		return -EPROBE_DEFER;
-	} else if (pd_was_on) {
-		pm_genpd_disable_clks(pd);
 	}
 
 	return 1;

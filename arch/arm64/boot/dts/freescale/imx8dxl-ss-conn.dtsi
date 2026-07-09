@@ -7,6 +7,7 @@
 /delete-node/ &fec2;
 /delete-node/ &usbotg3;
 /delete-node/ &usb3_phy;
+/delete-node/ &usb3_lpcg;
 
 / {
 	conn_enet0_root_clk: clock-conn-enet0-root {
@@ -14,6 +15,13 @@
 		#clock-cells = <0>;
 		clock-frequency = <250000000>;
 		clock-output-names = "conn_enet0_root_clk";
+	};
+
+	clk_dummy: clock-dummy {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <0>;
+		clock-output-names = "clk_dummy";
 	};
 };
 
@@ -56,25 +64,18 @@
 		rx-burst-size-dword = <0x10>;
 		power-domains = <&pd IMX_SC_R_USB_1>;
 		status = "disabled";
-
-		clk_dummy: clock-dummy {
-			compatible = "fixed-clock";
-			#clock-cells = <0>;
-			clock-frequency = <0>;
-			clock-output-names = "clk_dummy";
-		};
 	};
 
 	usbmisc2: usbmisc@5b0e0200 {
 		#index-cells = <1>;
-		compatible = "fsl,imx8dxl-usbmisc", "fsl,imx7ulp-usbmisc", "fsl,imx7d-usbmisc", "fsl,imx6q-usbmisc";
+		compatible = "fsl,imx7ulp-usbmisc", "fsl,imx7d-usbmisc", "fsl,imx6q-usbmisc";
 		reg = <0x5b0e0200 0x200>;
 	};
 
 	usbphy2: usbphy@5b110000 {
 		compatible = "fsl,imx8dxl-usbphy", "fsl,imx7ulp-usbphy";
 		reg = <0x5b110000 0x1000>;
-		clocks = <&usb2_2_lpcg 0>;
+		clocks = <&usb2_2_lpcg IMX_LPCG_CLK_7>;
 		power-domains = <&pd IMX_SC_R_USB_1_PHY>;
 		status = "disabled";
 	};
@@ -88,7 +89,9 @@
 			 <&conn_axi_clk>,
 			 <&clk IMX_SC_R_ENET_1 IMX_SC_PM_CLK_PER>,
 			 <&conn_ipg_clk>;
-		bit-offset = <0 8 16 20 24>;
+		clock-indices = <IMX_LPCG_CLK_0>, <IMX_LPCG_CLK_2>,
+				<IMX_LPCG_CLK_4>, <IMX_LPCG_CLK_5>,
+				<IMX_LPCG_CLK_6>;
 		clock-output-names = "eqos_ptp",
 				     "eqos_mem_clk",
 				     "eqos_aclk",
@@ -101,7 +104,7 @@
 		compatible = "fsl,imx8qxp-lpcg";
 		reg = <0x5b280000 0x10000>;
 		#clock-cells = <1>;
-		bit-offset = <28>;
+		clock-indices = <IMX_LPCG_CLK_7>;
 		clocks = <&conn_ipg_clk>;
 		clock-output-names = "usboh3_2_phy_ipg_clk";
 		power-domains = <&pd IMX_SC_R_USB_1_PHY>;
@@ -110,7 +113,6 @@
 };
 
 &dma_apbh {
-	compatible = "fsl,imx8dxl-dma-apbh", "fsl,imx28-dma-apbh";
 	interrupts = <GIC_SPI 176 IRQ_TYPE_LEVEL_HIGH>,
 		     <GIC_SPI 176 IRQ_TYPE_LEVEL_HIGH>,
 		     <GIC_SPI 176 IRQ_TYPE_LEVEL_HIGH>,
@@ -137,7 +139,6 @@
 };
 
 &gpmi {
-	compatible = "fsl,imx8dxl-gpmi-nand", "fsl,imx8qxp-gpmi-nand";
 	interrupts = <GIC_SPI 174 IRQ_TYPE_LEVEL_HIGH>;
 };
 

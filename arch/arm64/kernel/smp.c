@@ -1031,6 +1031,10 @@ static void smp_cross_call(const struct cpumask *target, unsigned int ipinr)
 {
 	trace_ipi_raise(target, ipi_types[ipinr]);
 	arm64_send_ipi(target, ipinr);
+
+#ifdef CONFIG_IMX_GPCV2
+	imx_gpcv2_raise_softirq(target, ipinr);
+#endif
 }
 
 static bool ipi_should_be_nmi(enum ipi_msg_type ipi)

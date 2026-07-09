@@ -10,6 +10,7 @@
 #define _LINUX_LCD_H
 
 #include <linux/device.h>
+#include <linux/fb.h>
 #include <linux/mutex.h>
 
 #define LCD_POWER_ON			(0)
@@ -65,7 +66,8 @@ struct lcd_ops {
 	 * If display_dev is NULL or display_dev matches the device controlled by
 	 * the LCD, return true. Otherwise return false.
 	 */
-	bool (*controls_device)(struct lcd_device *lcd, struct device *display_device);
+	bool (*controls_device)(struct lcd_device *lcd, struct device *display_device,
+				struct fb_info *fbi);
 };
 
 struct lcd_device {
@@ -128,14 +130,16 @@ extern void devm_lcd_device_unregister(struct device *dev,
 	struct lcd_device *ld);
 
 #if IS_REACHABLE(CONFIG_LCD_CLASS_DEVICE)
-void lcd_notify_blank_all(struct device *display_dev, int power);
-void lcd_notify_mode_change_all(struct device *display_dev,
+void lcd_notify_blank_all(struct device *display_dev, struct fb_info *fbi, int power);
+void lcd_notify_mode_change_all(struct device *display_dev, struct fb_info *fbi,
 				unsigned int width, unsigned int height);
 #else
-static inline void lcd_notify_blank_all(struct device *display_dev, int power)
+static inline void lcd_notify_blank_all(struct device *display_dev,
+					struct fb_info *fbi, int power)
 {}
 
 static inline void lcd_notify_mode_change_all(struct device *display_dev,
+					      struct fb_info *fbi,
 					      unsigned int width, unsigned int height)
 {}
 #endif

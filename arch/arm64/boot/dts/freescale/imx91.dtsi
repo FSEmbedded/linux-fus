@@ -6,6 +6,50 @@
 #include "imx91-pinfunc.h"
 #include "imx91_93_common.dtsi"
 
+/{
+	thermal_zones: thermal-zones {
+		cpu-thermal {
+			polling-delay-passive = <250>;
+			polling-delay = <2000>;
+			thermal-sensors = <&tempsense0>;
+			trips {
+				cpu_alert0: trip0 {
+					temperature = <80000>;
+					hysteresis = <2000>;
+					type = "passive";
+				};
+
+				cpu_crit0: trip1 {
+					temperature = <90000>;
+					hysteresis = <2000>;
+					type = "critical";
+				};
+			};
+
+			cooling-maps {
+				map0 {
+					trip = <&cpu_alert0>;
+					cooling-device =
+						<&A55_0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
+						<&lpm 0 1>;
+				};
+			};
+		};
+	};
+};
+
+&aips1 {
+	tempsense0: thermal-sensor@44482000 {
+		compatible = "fsl,imx91-tmu";
+		reg = <0x44482000 0x1000>;
+		#thermal-sensor-cells = <0>;
+		clocks = <&clk IMX93_CLK_TMC_GATE>;
+		nvmem-cells = <&tmu_trim1>, <&tmu_trim2>;
+		nvmem-cell-names = "tmu-trim1", "tmu-trim2";
+		status = "disabled";
+	};
+};
+
 &clk {
 	compatible = "fsl,imx91-ccm";
 };
@@ -56,8 +100,39 @@
 	compatible = "fsl,imx91-iomuxc";
 };
 
+&lcdif {
+	assigned-clocks = <&clk IMX93_CLK_VIDEO_PLL>,
+			  <&clk IMX93_CLK_MEDIA_DISP_PIX>,
+			  <&clk IMX93_CLK_MEDIA_AXI>,
+			  <&clk IMX93_CLK_MEDIA_APB>;
+	assigned-clock-parents = <&clk IMX93_CLK_24M>,
+				 <&clk IMX93_CLK_VIDEO_PLL>,
+				 <&clk IMX93_CLK_SYS_PLL_PFD0>,
+				 <&clk IMX93_CLK_SYS_PLL_PFD0_DIV2>;
+};
+
+&lpm {
+	no-od-mode;
+	clocks = <&clk IMX93_CLK_M33>, <&clk IMX93_CLK_WAKEUP_AXI>,
+		 <&clk IMX93_CLK_NIC_AXI>, <&clk IMX93_CLK_MEDIA_AXI>,
+		 <&clk IMX93_CLK_MEDIA_APB>, <&clk IMX93_CLK_A55_PERIPH>,
+		 <&clk IMX93_CLK_A55_CORE>, <&clk IMX93_CLK_DUMMY>,
+		 <&clk IMX93_CLK_SYS_PLL_PFD0>, <&clk IMX93_CLK_SYS_PLL_PFD0_DIV2>,
+		 <&clk IMX93_CLK_SYS_PLL_PFD1>, <&clk IMX93_CLK_SYS_PLL_PFD1_DIV2>,
+		 <&clk IMX93_CLK_SYS_PLL_PFD2>, <&clk IMX93_CLK_SYS_PLL_PFD2_DIV2>;
+};
+
+&isi {
+	compatible = "fsl,imx91-isi";
+	assigned-clocks = <&clk IMX93_CLK_MEDIA_AXI>,
+			  <&clk IMX93_CLK_MEDIA_APB>;
+	assigned-clock-parents = <&clk IMX93_CLK_SYS_PLL_PFD0>,
+				 <&clk IMX93_CLK_SYS_PLL_PFD0_DIV2>;
+	assigned-clock-rates = <333333334>, <125000000>;
+};
+
 &media_blk_ctrl {
-	compatible = "fsl,imx91-media-blk-ctrl", "syscon";
+	compatible = "fsl,imx91-media-blk-ctrl", "syscon", "simple-mfd";
 	clocks = <&clk IMX93_CLK_MEDIA_APB>,
 		 <&clk IMX93_CLK_MEDIA_AXI>,
 		 <&clk IMX93_CLK_NIC_MEDIA_GATE>,
@@ -68,4 +143,14 @@
 		 <&clk IMX93_CLK_MIPI_CSI_GATE>;
 	clock-names = "apb", "axi", "nic", "disp", "cam",
 		      "lcdif", "isi", "csi";
+};
+
+&ocotp {
+	tmu_trim1: tmu-trim@a0 {
+		reg = <0xa0 0x4>;
+	};
+
+	tmu_trim2: tmu-trim@a4 {
+		reg = <0xa4 0x4>;
+	};
 };

@@ -124,6 +124,11 @@ static inline bool ethtool_dev_mm_supported(struct net_device *dev)
 	return false;
 }
 
+static inline void mm_state_to_cfg(const struct ethtool_mm_state *state,
+				   struct ethtool_mm_cfg *cfg)
+{
+}
+
 static inline void ethnl_pse_send_ntf(struct net_device *netdev,
 				      unsigned long notif)
 {
