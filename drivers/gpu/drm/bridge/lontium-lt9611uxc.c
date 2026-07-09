@@ -284,11 +284,12 @@ static struct mipi_dsi_device *lt9611uxc_attach_dsi(struct lt9611uxc *lt9611uxc,
 }
 
 static int lt9611uxc_bridge_attach(struct drm_bridge *bridge,
+				   struct drm_encoder *encoder,
 				   enum drm_bridge_attach_flags flags)
 {
 	struct lt9611uxc *lt9611uxc = bridge_to_lt9611uxc(bridge);
 
-	return drm_bridge_attach(bridge->encoder, lt9611uxc->next_bridge,
+	return drm_bridge_attach(encoder, lt9611uxc->next_bridge,
 				 bridge, flags);
 }
 
@@ -373,7 +374,8 @@ static void lt9611uxc_bridge_mode_set(struct drm_bridge *bridge,
 	lt9611uxc_unlock(lt9611uxc);
 }
 
-static enum drm_connector_status lt9611uxc_bridge_detect(struct drm_bridge *bridge)
+static enum drm_connector_status
+lt9611uxc_bridge_detect(struct drm_bridge *bridge, struct drm_connector *connector)
 {
 	struct lt9611uxc *lt9611uxc = bridge_to_lt9611uxc(bridge);
 	unsigned int reg_val = 0;
@@ -543,7 +545,8 @@ static void lt9611uxc_audio_shutdown(struct device *dev, void *data)
 }
 
 static int lt9611uxc_hdmi_i2s_get_dai_id(struct snd_soc_component *component,
-					 struct device_node *endpoint)
+					 struct device_node *endpoint,
+					 void *data)
 {
 	struct of_endpoint of_ep;
 	int ret;
@@ -794,9 +797,9 @@ static int lt9611uxc_probe(struct i2c_client *client)
 		return -ENODEV;
 	}
 
-	lt9611uxc = devm_kzalloc(dev, sizeof(*lt9611uxc), GFP_KERNEL);
-	if (!lt9611uxc)
-		return -ENOMEM;
+	lt9611uxc = devm_drm_bridge_alloc(dev, struct lt9611uxc, bridge, &lt9611uxc_bridge_funcs);
+	if (IS_ERR(lt9611uxc))
+		return PTR_ERR(lt9611uxc);
 
 	lt9611uxc->dev = dev;
 	lt9611uxc->client = client;
@@ -875,12 +878,13 @@ retry:
 
 	i2c_set_clientdata(client, lt9611uxc);
 
-	lt9611uxc->bridge.funcs = &lt9611uxc_bridge_funcs;
 	lt9611uxc->bridge.of_node = client->dev.of_node;
 	lt9611uxc->bridge.ops = DRM_BRIDGE_OP_DETECT | DRM_BRIDGE_OP_EDID;
 	if (lt9611uxc->hpd_supported)
 		lt9611uxc->bridge.ops |= DRM_BRIDGE_OP_HPD;
 	lt9611uxc->bridge.type = DRM_MODE_CONNECTOR_HDMIA;
+	lt9611uxc->bridge.vendor = "Lontium";
+	lt9611uxc->bridge.product = "LT9611UXC";
 
 	drm_bridge_add(&lt9611uxc->bridge);
 
@@ -938,8 +942,8 @@ static void lt9611uxc_remove(struct i2c_client *client)
 	of_node_put(lt9611uxc->dsi0_node);
 }
 
-static struct i2c_device_id lt9611uxc_id[] = {
-	{ "lontium,lt9611uxc", 0 },
+static const struct i2c_device_id lt9611uxc_id[] = {
+	{ "lontium,lt9611uxc" },
 	{ /* sentinel */ }
 };
 

@@ -92,6 +92,10 @@
 	};
 };
 
+&dmic {
+	num-channels = <8>;
+};
+
 &micfil {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pdm2>;

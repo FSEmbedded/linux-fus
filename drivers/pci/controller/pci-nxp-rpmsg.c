@@ -350,7 +350,7 @@ static struct platform_driver nxp_rpmsg_pci_driver = {
 		.of_match_table = nxp_rpmsg_pci_of_match,
 	},
 	.probe = nxp_pci_host_probe,
-	.remove_new = nxp_pci_host_remove,
+	.remove = nxp_pci_host_remove,
 };
 
 static int __init nxp_rpmsg_driver_init(void)

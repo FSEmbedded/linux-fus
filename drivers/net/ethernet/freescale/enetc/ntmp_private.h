@@ -1,21 +1,80 @@
 /* SPDX-License-Identifier: (GPL-2.0+ OR BSD-3-Clause) */
 /*
  * NTMP table request and response data buffer formats
- * and some private macros and functions
- *
  * Copyright 2025 NXP
- *
  */
-#ifndef __NTMP_PRIAVTE_H
-#define __NTMP_PRIAVTE_H
+
+#ifndef __NTMP_PRIVATE_H
+#define __NTMP_PRIVATE_H
+
+#include <linux/bitfield.h>
 #include <linux/fsl/ntmp.h>
 
-#define TGST_MAX_ENTRY_NUM		64
-#define SGCLT_MAX_GE_NUM		256
-#define SGIT_MAX_CT_PLUS_CT_EXT		0x3fffffffU
+#define NTMP_EID_REQ_LEN	8
+#define NETC_CBDR_BD_NUM	256
+#define TGST_MAX_ENTRY_NUM	64
+#define NTMP_STATUS_RESP_LEN	4
+#define SGCLT_MAX_GE_NUM	256
+#define SGIT_MAX_CYCLE_TIME	0x3fffffffU
+#define SDU_TYPE_MPDU		1
+#define FMDT_DATA_LEN_ALIGN	4
 
-#pragma pack(1)
-struct common_req_data {
+union netc_cbd {
+	struct {
+		__le64 addr;
+		__le32 len;
+#define NTMP_RESP_LEN		GENMASK(19, 0)
+#define NTMP_REQ_LEN		GENMASK(31, 20)
+#define NTMP_LEN(req, resp)	(FIELD_PREP(NTMP_REQ_LEN, (req)) | \
+				((resp) & NTMP_RESP_LEN))
+		u8 cmd;
+		u8 access_method;
+#define NTMP_ACCESS_METHOD	GENMASK(7, 4)
+#define NTMP_AM_ENTRY_ID	0
+#define NTMP_AM_EXACT_KEY	1
+#define NTMP_AM_SEARCH		2
+#define NTMP_AM_TERNARY_KEY	3
+		u8 table_id;
+		u8 ver_cci_rr;
+#define NTMP_HDR_VERSION	GENMASK(5, 0)
+#define NTMP_HDR_VER2		2
+#define NTMP_CCI		BIT(6)
+#define NTMP_RR			BIT(7)
+		__le32 resv[3];
+		__le32 npf;
+#define NTMP_NPF		BIT(15)
+	} req_hdr;	/* NTMP Request Message Header Format */
+
+	struct {
+		__le32 resv0[3];
+		__le16 num_matched;
+		__le16 error_rr;
+#define NTMP_RESP_ERROR		GENMASK(11, 0)
+#define NTMP_RESP_RR		BIT(15)
+		__le32 resv1[4];
+	} resp_hdr; /* NTMP Response Message Header Format */
+
+	struct {
+		__le64 addr;
+		__le32 opt[4];
+		__le16 index;
+		__le16 length;
+		u8 cmd;
+		u8 cls;
+		u8 _res;
+		u8 status_flags;
+#define NTMP_V1_RESP_STATUS	GENMASK(5, 0)
+	} req_v1; /* NTMP Request Format for version 1.0 */
+};
+
+struct ntmp_dma_buf {
+	struct device *dev;
+	size_t size;
+	void *buf;
+	dma_addr_t dma;
+};
+
+struct ntmp_cmn_req_data {
 	__le16 update_act;
 	u8 dbg_opt;
 	u8 tblv_qact;
@@ -25,65 +84,40 @@ struct common_req_data {
 				 ((a) & NTMP_QUERY_ACT))
 };
 
-struct common_resp_query {
+struct ntmp_cmn_resp_query {
 	__le32 entry_id;
-};
-
-struct common_resp_nq {
-	__le32 status;
 };
 
 /* Generic structure for request data by entry ID  */
 struct ntmp_req_by_eid {
-	struct common_req_data crd;
+	struct ntmp_cmn_req_data crd;
 	__le32 entry_id;
 };
 
-/* MAC Address Filter Table Request and Response Data Buffer Format */
+/* MAC Address Filter Table Request Data Buffer Format of Add action */
 struct maft_req_add {
 	struct ntmp_req_by_eid rbe;
 	struct maft_keye_data keye;
 	struct maft_cfge_data cfge;
 };
 
-/*struct for response data buffer */
+/* MAC Address Filter Table Response Data Buffer Format of Query action */
 struct maft_resp_query {
 	__le32 entry_id;
 	struct maft_keye_data keye;
 	struct maft_cfge_data cfge;
 };
 
-/* VLAM Address Filter table Request and Response Data Buffer Format */
-struct vaft_req_add {
-	struct ntmp_req_by_eid rbe;
-	struct vaft_keye_data keye;
-	struct vaft_cfge_data cfge;
-};
-
-/* VLAN Address Filter Table Response to Query action */
-struct vaft_resp_query {
-	__le32 entry_id;
-	struct vaft_keye_data keye;
-	struct vaft_cfge_data cfge;
-};
-
-/* RSS Table Request and Response Data Buffer Format */
+/* RSS Table Request Data Buffer Format of Update action */
 struct rsst_req_update {
 	struct ntmp_req_by_eid rbe;
 	u8 groups[];
 };
 
-/* RFS Table Request and Response Data Buffer Format */
+/* RFS Table Request Data Buffer Format */
 struct rfst_req_add {
 	struct ntmp_req_by_eid rbe;
 	struct rfst_keye_data keye;
-	struct rfst_cfge_data cfge;
-};
-
-struct rfst_resp_query {
-	__le32 entry_id;
-	struct rfst_keye_data keye;
-	__le64 matched_frames; /* STSE_DATA */
 	struct rfst_cfge_data cfge;
 };
 
@@ -93,12 +127,13 @@ struct tgst_ge {
 	u8 tc_state;
 	u8 resv0;
 	u8 hr_cb;
-#define TGST_HR_CB		GENMASK(3, 0)
-#define  HR_CB_SET_GATES	0
-#define  HR_CB_SET_AND_HOLD	1
-#define  HR_CB_SET_AND_RELEASE	2
+#define HR_CB_SET_GATES		0
+#define HR_CB_SET_AND_HOLD	1
+#define HR_CB_SET_AND_RELEASE	2
 	u8 resv1;
 };
+
+#pragma pack(1)
 
 struct tgst_cfge_data {
 	__le64 admin_bt;
@@ -151,6 +186,85 @@ struct rpt_resp_query {
 	struct rpt_pse_data pse;
 };
 
+/* Ingress Stream Table Resquet and Response Data Buffer Format */
+struct ist_req_ua {
+	struct ntmp_req_by_eid rbe;
+	struct ist_cfge_data cfge;
+};
+
+struct ist_resp_query {
+	__le32 entry_id;
+	struct ist_cfge_data cfge;
+};
+
+/* Stream Gate Instance Table Resquet and Response Data Buffer Format */
+struct sgit_req_ua {
+	struct ntmp_req_by_eid rbe;
+	struct sgit_acfge_data acfge;
+	struct sgit_cfge_data cfge;
+	struct sgit_icfge_data icfge;
+};
+
+struct sgit_resp_query {
+	__le32 entry_id;
+	struct sgit_sgise_data sgise;
+	struct sgit_cfge_data cfge;
+	struct sgit_icfge_data icfge;
+	u8 resv;
+	struct sgit_acfge_data acfge;
+};
+
+struct ipft_resp_query {
+	__le32 status;
+	__le32 entry_id;
+	struct ipft_keye_data keye;
+	__le64 match_count; /* STSE_DATA */
+	struct ipft_cfge_data cfge;
+};
+
+/* RFS Table Response Data Buffer Format */
+struct rfst_resp_query {
+	__le32 entry_id;
+	struct rfst_keye_data keye;
+	__le64 matched_frames; /* STSE_DATA */
+	struct rfst_cfge_data cfge;
+};
+
+struct esrt_resp_query {
+	__le32 entry_id;
+	struct esrt_stse_data stse;
+	struct esrt_cfge_data cfge;
+	struct esrt_srse_data srse;
+};
+
+struct ect_resp_query {
+	__le32 entry_id;
+	struct ect_stse_data stse;
+};
+
+struct isgt_req_ua {
+	struct ntmp_req_by_eid rbe;
+	struct isgt_cfge_data cfge;
+};
+
+#pragma pack()
+
+struct tgst_query_data {
+	__le64 config_change_time;
+	__le64 admin_bt;
+	__le32 admin_ct;
+	__le32 admin_ct_ext;
+	__le16 admin_cl_len;
+	__le64 oper_cfg_ct;
+	__le64 oper_cfg_ce;
+	__le64 oper_bt;
+	__le32 oper_ct;
+	__le32 oper_ct_ext;
+	__le16 oper_cl_len;
+	struct tgst_ge olse_ge[TGST_MAX_ENTRY_NUM];
+	struct tgst_ge cfge_ge[TGST_MAX_ENTRY_NUM];
+};
+
 /* Ingress Stream Identification Table Resquet and Response Data Buffer Format */
 struct isit_ak_eid {
 	__le32 entry_id;
@@ -170,14 +284,14 @@ union isit_access_key {
 
 /* struct for update or add operation*/
 struct isit_req_ua {
-	struct common_req_data crd;
+	struct ntmp_cmn_req_data crd;
 	union isit_access_key ak;
 	__le32 is_eid;
 };
 
 /* struct for not update or add operation, such as delete, query */
 struct isit_req_qd {
-	struct common_req_data crd;
+	struct ntmp_cmn_req_data crd;
 	union isit_access_key ak;
 };
 
@@ -186,17 +300,6 @@ struct isit_resp_query {
 	__le32 entry_id;
 	struct isit_keye_data keye;
 	__le32 is_eid;
-};
-
-/* Ingress Stream Table version 0 Resquet and Response Data Buffer Format */
-struct ist_req_ua {
-	struct ntmp_req_by_eid rbe;
-	struct ist_cfge_data cfge;
-};
-
-struct ist_resp_query {
-	__le32 entry_id;
-	struct ist_cfge_data cfge;
 };
 
 /* Ingress Stream filter Table Resquet and Response Data Buffer Format */
@@ -217,13 +320,13 @@ union isft_access_key {
 };
 
 struct isft_req_ua {
-	struct common_req_data crd;
+	struct ntmp_cmn_req_data crd;
 	union isft_access_key ak;
 	struct isft_cfge_data cfge;
 };
 
 struct isft_req_qd {
-	struct common_req_data crd;
+	struct ntmp_cmn_req_data crd;
 	union isft_access_key ak;
 };
 
@@ -232,23 +335,6 @@ struct isft_resp_query {
 	__le32 entry_id;
 	struct isft_keye_data keye;
 	struct isft_cfge_data cfge;
-};
-
-/* Stream Gate Instance Table Resquet and Response Data Buffer Format */
-struct sgit_req_ua {
-	struct ntmp_req_by_eid rbe;
-	struct sgit_acfge_data acfge;
-	struct sgit_cfge_data cfge;
-	struct sgit_icfge_data icfge;
-};
-
-struct sgit_resp_query {
-	__le32 entry_id;
-	struct sgit_sgise_data sgise;
-	struct sgit_cfge_data cfge;
-	struct sgit_icfge_data icfge;
-	u8 resv;
-	struct sgit_acfge_data acfge;
 };
 
 /* Stream Gate Control List Table Request and Response Data Buffer Format */
@@ -270,10 +356,20 @@ struct isct_resp_query {
 	struct isct_stse_data stse;
 };
 
-/* Ingress Port Filter Table Request and Response Data Buffer Format */
-struct ipft_req_add {
-	struct common_req_data crd;
+struct ipft_ak_eid {
+	__le32 entry_id;
+	__le32 resv[52];
+};
+
+union ipft_access_key {
+	struct ipft_ak_eid eid;
 	struct ipft_keye_data keye;
+};
+
+/* Ingress Port Filter Table Request and Response Data Buffer Format */
+struct ipft_req_ua {
+	struct ntmp_cmn_req_data crd;
+	union ipft_access_key ak;
 	struct ipft_cfge_data cfge;
 };
 
@@ -281,14 +377,6 @@ struct ipft_req_add {
 struct ipft_req_qd {
 	struct ntmp_req_by_eid rbe;
 	__le32 resv[52];
-};
-
-struct ipft_resp_query {
-	__le32 status;
-	__le32 entry_id;
-	struct ipft_keye_data keye;
-	__le64 match_count; /* STSE_DATA */
-	struct ipft_cfge_data cfge;
 };
 
 /* Access Key: Entry ID Match */
@@ -328,13 +416,13 @@ union fdbt_access_key {
 };
 
 struct fdbt_req_ua {
-	struct common_req_data crd;
+	struct ntmp_cmn_req_data crd;
 	union fdbt_access_key ak;
 	struct fdbt_cfge_data cfge;
 };
 
 struct fdbt_req_qd {
-	struct common_req_data crd;
+	struct ntmp_cmn_req_data crd;
 	union fdbt_access_key ak;
 };
 
@@ -359,13 +447,13 @@ union vft_access_key {
 };
 
 struct vft_req_ua {
-	struct common_req_data crd;
+	struct ntmp_cmn_req_data crd;
 	union vft_access_key ak;
 	struct vft_cfge_data cfge;
 };
 
 struct vft_req_qd {
-	struct common_req_data crd;
+	struct ntmp_cmn_req_data crd;
 	union vft_access_key ak;
 };
 
@@ -387,21 +475,16 @@ struct ett_resp_query {
 	struct ett_cfge_data cfge;
 };
 
+struct isgt_resp_query {
+	__le32 entry_id;
+	struct isgt_cfge_data cfge;
+	u8 resv;
+	struct isgt_sgse_data sgse;
+};
+
 struct esrt_req_update {
 	struct ntmp_req_by_eid rbe;
 	struct esrt_cfge_data cfge;
-};
-
-struct esrt_resp_query {
-	__le32 entry_id;
-	struct esrt_stse_data stse;
-	struct esrt_cfge_data cfge;
-	struct esrt_srse_data srse;
-};
-
-struct ect_resp_query {
-	__le32 entry_id;
-	struct ect_stse_data stse;
 };
 
 struct fmt_req_ua {
@@ -451,56 +534,33 @@ struct fmdt_resp_query {
 	u8 data[];
 };
 
-#pragma pack()
-
-struct tgst_query_data {
-	__le64 config_change_time;
-	__le64 admin_bt;
-	__le32 admin_ct;
-	__le32 admin_ct_ext;
-	__le16 admin_cl_len;
-	__le64 oper_cfg_ct;
-	__le64 oper_cfg_ce;
-	__le64 oper_bt;
-	__le32 oper_ct;
-	__le32 oper_ct_ext;
-	__le16 oper_cl_len;
-	struct tgst_ge olse_ge[TGST_MAX_ENTRY_NUM];
-	struct tgst_ge cfge_ge[TGST_MAX_ENTRY_NUM];
-};
-
-u32 ntmp_lookup_free_words(unsigned long *bitmap, u32 bitmap_size,
-			   u32 num_words);
-void ntmp_clear_words_bitmap(unsigned long *bitmap, u32 entry_id,
-			     u32 num_words);
-int ntmp_tgst_query_entry(struct netc_cbdrs *cbdrs, u32 entry_id,
-			  struct tgst_query_data *data);
-int ntmp_tgst_update_admin_gate_list(struct netc_cbdrs *cbdrs, u32 entry_id,
+u32 ntmp_lookup_free_words(unsigned long *bitmap, u32 size, u32 num_words);
+void ntmp_clear_words_bitmap(unsigned long *bitmap, u32 entry_id, u32 num_words);
+int ntmp_tgst_query_entry(struct ntmp_user *user, u32 entry_id,
+			  struct tgst_query_data *tgst);
+int ntmp_tgst_update_admin_gate_list(struct ntmp_user *user, u32 entry_id,
 				     struct tgst_cfge_data *cfge);
-int ntmp_tgst_delete_admin_gate_list(struct netc_cbdrs *cbdrs, u32 entry_id);
-int ntmp_rpt_query_entry(struct netc_cbdrs *cbdrs, u32 entry_id,
+int ntmp_tgst_delete_admin_gate_list(struct ntmp_user *user, u32 entry_id);
+int ntmp_rpt_query_entry(struct ntmp_user *user, u32 entry_id,
 			 struct ntmp_rpt_entry *entry);
-int ntmp_isit_add_or_update_entry(struct netc_cbdrs *cbdrs, bool add,
-				  struct ntmp_isit_entry *entry);
-int ntmp_isit_query_entry(struct netc_cbdrs *cbdrs, u32 entry_id,
+int ntmp_isit_add_entry(struct ntmp_user *user, struct ntmp_isit_entry *entry);
+int ntmp_isit_query_entry(struct ntmp_user *user, u32 entry_id,
 			  struct ntmp_isit_entry *entry);
-int ntmp_isit_delete_entry(struct netc_cbdrs *cbdrs, u32 entry_id);
-int ntmp_ist_query_entry(struct netc_cbdrs *cbdrs, u32 entry_id,
+int ntmp_isit_delete_entry(struct ntmp_user *user, u32 entry_id);
+int ntmp_ist_query_entry(struct ntmp_user *user, u32 entry_id,
 			 struct ist_cfge_data *cfge);
-int ntmp_isft_add_or_update_entry(struct netc_cbdrs *cbdrs, bool add,
-				  struct ntmp_isft_entry *entry);
-int ntmp_isft_query_entry(struct netc_cbdrs *cbdrs, u32 entry_id,
+int ntmp_isft_add_entry(struct ntmp_user *user, struct ntmp_isft_entry *entry);
+int ntmp_isft_query_entry(struct ntmp_user *user, u32 entry_id,
 			  struct ntmp_isft_entry *entry);
-int ntmp_isft_delete_entry(struct netc_cbdrs *cbdrs, u32 entry_id);
-int ntmp_sgit_add_or_update_entry(struct netc_cbdrs *cbdrs,
+int ntmp_isft_delete_entry(struct ntmp_user *user, u32 entry_id);
+int ntmp_sgit_add_or_update_entry(struct ntmp_user *user, bool add,
 				  struct ntmp_sgit_entry *entry);
-int ntmp_sgit_query_entry(struct netc_cbdrs *cbdrs, u32 entry_id,
+int ntmp_sgit_query_entry(struct ntmp_user *user, u32 entry_id,
 			  struct ntmp_sgit_entry *entry);
-int ntmp_sgit_delete_entry(struct netc_cbdrs *cbdrs, u32 entry_id);
-int ntmp_sgclt_add_entry(struct netc_cbdrs *cbdrs,
-			 struct ntmp_sgclt_entry *entry);
-int ntmp_sgclt_delete_entry(struct netc_cbdrs *cbdrs, u32 entry_id);
-int ntmp_sgclt_query_entry(struct netc_cbdrs *cbdrs, u32 entry_id,
+int ntmp_sgit_delete_entry(struct ntmp_user *user, u32 entry_id);
+int ntmp_sgclt_add_entry(struct ntmp_user *user, struct ntmp_sgclt_entry *entry);
+int ntmp_sgclt_delete_entry(struct ntmp_user *user, u32 entry_id);
+int ntmp_sgclt_query_entry(struct ntmp_user *user, u32 entry_id,
 			   struct ntmp_sgclt_entry *entry, u32 cfge_size);
 
 #endif

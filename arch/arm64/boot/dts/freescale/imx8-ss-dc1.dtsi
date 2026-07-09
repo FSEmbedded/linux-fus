@@ -37,7 +37,7 @@ dc1_subsys: bus@57000000 {
 		#clock-cells = <1>;
 		clocks = <&clk IMX_SC_R_DC_1 IMX_SC_PM_CLK_MISC0>,
 			 <&clk IMX_SC_R_DC_1 IMX_SC_PM_CLK_MISC1>;
-		bit-offset = <0 4>;
+		clock-indices = <IMX_LPCG_CLK_0>, <IMX_LPCG_CLK_1>;
 		clock-output-names = "dc1_disp0_lpcg_clk", "dc1_disp1_lpcg_clk";
 		power-domains = <&pd IMX_SC_R_DC_1>;
 	};
@@ -48,7 +48,7 @@ dc1_subsys: bus@57000000 {
 		#clock-cells = <1>;
 		clocks = <&dc1_cfg_clk>,
 			 <&dc1_axi_ext_clk>;
-		bit-offset = <16 20>;
+		clock-indices = <IMX_LPCG_CLK_4>, <IMX_LPCG_CLK_5>;
 		clock-output-names = "dc1_dpr0_lpcg_apb_clk",
 				     "dc1_dpr0_lpcg_b_clk";
 		power-domains = <&pd IMX_SC_R_DC_1>;
@@ -59,7 +59,7 @@ dc1_subsys: bus@57000000 {
 		reg = <0x5701001c 0x4>;
 		#clock-cells = <1>;
 		clocks = <&dc1_axi_ext_clk>;
-		bit-offset = <0>;
+		clock-indices = <IMX_LPCG_CLK_0>;
 		clock-output-names = "dc1_rtram0_lpcg_clk";
 		power-domains = <&pd IMX_SC_R_DC_1>;
 	};
@@ -71,7 +71,7 @@ dc1_subsys: bus@57000000 {
 		#clock-cells = <1>;
 		clocks = <&dc1_axi_ext_clk>,
 			 <&dc1_cfg_clk>;
-		bit-offset = <0 16>;
+		clock-indices = <IMX_LPCG_CLK_0>, <IMX_LPCG_CLK_4>;
 		clock-output-names = "dc1_prg0_lpcg_rtram_clk",
 				     "dc1_prg0_lpcg_apb_clk";
 		power-domains = <&pd IMX_SC_R_DC_1>;
@@ -83,7 +83,7 @@ dc1_subsys: bus@57000000 {
 		#clock-cells = <1>;
 		clocks = <&dc1_axi_ext_clk>,
 			 <&dc1_cfg_clk>;
-		bit-offset = <0 16>;
+		clock-indices = <IMX_LPCG_CLK_0>, <IMX_LPCG_CLK_4>;
 		clock-output-names = "dc1_prg1_lpcg_rtram_clk",
 				     "dc1_prg1_lpcg_apb_clk";
 		power-domains = <&pd IMX_SC_R_DC_1>;
@@ -95,7 +95,7 @@ dc1_subsys: bus@57000000 {
 		#clock-cells = <1>;
 		clocks = <&dc1_axi_ext_clk>,
 			 <&dc1_cfg_clk>;
-		bit-offset = <0 16>;
+		clock-indices = <IMX_LPCG_CLK_0>, <IMX_LPCG_CLK_4>;
 		clock-output-names = "dc1_prg2_lpcg_rtram_clk",
 				     "dc1_prg2_lpcg_apb_clk";
 		power-domains = <&pd IMX_SC_R_DC_1>;
@@ -107,7 +107,7 @@ dc1_subsys: bus@57000000 {
 		#clock-cells = <1>;
 		clocks = <&dc1_cfg_clk>,
 			 <&dc1_axi_ext_clk>;
-		bit-offset = <16 20>;
+		clock-indices = <IMX_LPCG_CLK_4>, <IMX_LPCG_CLK_5>;
 		clock-output-names = "dc1_dpr1_lpcg_apb_clk",
 				     "dc1_dpr1_lpcg_b_clk";
 		power-domains = <&pd IMX_SC_R_DC_1>;
@@ -118,7 +118,7 @@ dc1_subsys: bus@57000000 {
 		reg = <0x57010030 0x4>;
 		#clock-cells = <1>;
 		clocks = <&dc1_axi_ext_clk>;
-		bit-offset = <0>;
+		clock-indices = <IMX_LPCG_CLK_0>;
 		clock-output-names = "dc1_rtram1_lpcg_clk";
 		power-domains = <&pd IMX_SC_R_DC_1>;
 	};
@@ -129,7 +129,7 @@ dc1_subsys: bus@57000000 {
 		#clock-cells = <1>;
 		clocks = <&dc1_axi_ext_clk>,
 			 <&dc1_cfg_clk>;
-		bit-offset = <0 16>;
+		clock-indices = <IMX_LPCG_CLK_0>, <IMX_LPCG_CLK_4>;
 		clock-output-names = "dc1_prg3_lpcg_rtram_clk",
 				     "dc1_prg3_lpcg_apb_clk";
 		power-domains = <&pd IMX_SC_R_DC_1>;
@@ -141,7 +141,7 @@ dc1_subsys: bus@57000000 {
 		#clock-cells = <1>;
 		clocks = <&dc1_axi_ext_clk>,
 			 <&dc1_cfg_clk>;
-		bit-offset = <0 16>;
+		clock-indices = <IMX_LPCG_CLK_0>, <IMX_LPCG_CLK_4>;
 		clock-output-names = "dc1_prg4_lpcg_rtram_clk",
 				     "dc1_prg4_lpcg_apb_clk";
 		power-domains = <&pd IMX_SC_R_DC_1>;
@@ -153,7 +153,7 @@ dc1_subsys: bus@57000000 {
 		#clock-cells = <1>;
 		clocks = <&dc1_axi_ext_clk>,
 			 <&dc1_cfg_clk>;
-		bit-offset = <0 16>;
+		clock-indices = <IMX_LPCG_CLK_0>, <IMX_LPCG_CLK_4>;
 		clock-output-names = "dc1_prg5_lpcg_rtram_clk",
 				     "dc1_prg5_lpcg_apb_clk";
 		power-domains = <&pd IMX_SC_R_DC_1>;
@@ -165,7 +165,7 @@ dc1_subsys: bus@57000000 {
 		#clock-cells = <1>;
 		clocks = <&dc1_axi_ext_clk>,
 			 <&dc1_cfg_clk>;
-		bit-offset = <0 16>;
+		clock-indices = <IMX_LPCG_CLK_0>, <IMX_LPCG_CLK_4>;
 		clock-output-names = "dc1_prg6_lpcg_rtram_clk",
 				     "dc1_prg6_lpcg_apb_clk";
 		power-domains = <&pd IMX_SC_R_DC_1>;
@@ -177,7 +177,7 @@ dc1_subsys: bus@57000000 {
 		#clock-cells = <1>;
 		clocks = <&dc1_axi_ext_clk>,
 			 <&dc1_cfg_clk>;
-		bit-offset = <0 16>;
+		clock-indices = <IMX_LPCG_CLK_0>, <IMX_LPCG_CLK_4>;
 		clock-output-names = "dc1_prg7_lpcg_rtram_clk",
 				     "dc1_prg7_lpcg_apb_clk";
 		power-domains = <&pd IMX_SC_R_DC_1>;
@@ -189,7 +189,7 @@ dc1_subsys: bus@57000000 {
 		#clock-cells = <1>;
 		clocks = <&dc1_axi_ext_clk>,
 			 <&dc1_cfg_clk>;
-		bit-offset = <0 16>;
+		clock-indices = <IMX_LPCG_CLK_0>, <IMX_LPCG_CLK_4>;
 		clock-output-names = "dc1_prg8_lpcg_rtram_clk",
 				     "dc1_prg8_lpcg_apb_clk";
 		power-domains = <&pd IMX_SC_R_DC_1>;
@@ -227,8 +227,8 @@ dc1_subsys: bus@57000000 {
 	dc1_prg1: prg@57040000 {
 		compatible = "fsl,imx8qxp-prg", "fsl,imx8qm-prg";
 		reg = <0x57040000 0x10000>;
-		clocks = <&dc1_prg0_lpcg 0>,
-			 <&dc1_prg0_lpcg 1>;
+		clocks = <&dc1_prg0_lpcg IMX_LPCG_CLK_0>,
+			 <&dc1_prg0_lpcg IMX_LPCG_CLK_4>;
 		clock-names = "rtram", "apb";
 		power-domains = <&pd IMX_SC_R_DC_1>;
 		status = "disabled";
@@ -237,8 +237,8 @@ dc1_subsys: bus@57000000 {
 	dc1_prg2: prg@57050000 {
 		compatible = "fsl,imx8qxp-prg", "fsl,imx8qm-prg";
 		reg = <0x57050000 0x10000>;
-		clocks = <&dc1_prg1_lpcg 0>,
-			 <&dc1_prg1_lpcg 1>;
+		clocks = <&dc1_prg1_lpcg IMX_LPCG_CLK_0>,
+			 <&dc1_prg1_lpcg IMX_LPCG_CLK_4>;
 		clock-names = "rtram", "apb";
 		power-domains = <&pd IMX_SC_R_DC_1>;
 		status = "disabled";
@@ -247,8 +247,8 @@ dc1_subsys: bus@57000000 {
 	dc1_prg3: prg@57060000 {
 		compatible = "fsl,imx8qxp-prg", "fsl,imx8qm-prg";
 		reg = <0x57060000 0x10000>;
-		clocks = <&dc1_prg2_lpcg 0>,
-			 <&dc1_prg2_lpcg 1>;
+		clocks = <&dc1_prg2_lpcg IMX_LPCG_CLK_0>,
+			 <&dc1_prg2_lpcg IMX_LPCG_CLK_4>;
 		clock-names = "rtram", "apb";
 		power-domains = <&pd IMX_SC_R_DC_1>;
 		status = "disabled";
@@ -257,8 +257,8 @@ dc1_subsys: bus@57000000 {
 	dc1_prg4: prg@57070000 {
 		compatible = "fsl,imx8qxp-prg", "fsl,imx8qm-prg";
 		reg = <0x57070000 0x10000>;
-		clocks = <&dc1_prg3_lpcg 0>,
-			 <&dc1_prg3_lpcg 1>;
+		clocks = <&dc1_prg3_lpcg IMX_LPCG_CLK_0>,
+			 <&dc1_prg3_lpcg IMX_LPCG_CLK_4>;
 		clock-names = "rtram", "apb";
 		power-domains = <&pd IMX_SC_R_DC_1>;
 		status = "disabled";
@@ -267,8 +267,8 @@ dc1_subsys: bus@57000000 {
 	dc1_prg5: prg@57080000 {
 		compatible = "fsl,imx8qxp-prg", "fsl,imx8qm-prg";
 		reg = <0x57080000 0x10000>;
-		clocks = <&dc1_prg4_lpcg 0>,
-			 <&dc1_prg4_lpcg 1>;
+		clocks = <&dc1_prg4_lpcg IMX_LPCG_CLK_0>,
+			 <&dc1_prg4_lpcg IMX_LPCG_CLK_4>;
 		clock-names = "rtram", "apb";
 		power-domains = <&pd IMX_SC_R_DC_1>;
 		status = "disabled";
@@ -277,8 +277,8 @@ dc1_subsys: bus@57000000 {
 	dc1_prg6: prg@57090000 {
 		compatible = "fsl,imx8qxp-prg", "fsl,imx8qm-prg";
 		reg = <0x57090000 0x10000>;
-		clocks = <&dc1_prg5_lpcg 0>,
-			 <&dc1_prg5_lpcg 1>;
+		clocks = <&dc1_prg5_lpcg IMX_LPCG_CLK_0>,
+			 <&dc1_prg5_lpcg IMX_LPCG_CLK_4>;
 		clock-names = "rtram", "apb";
 		power-domains = <&pd IMX_SC_R_DC_1>;
 		status = "disabled";
@@ -287,8 +287,8 @@ dc1_subsys: bus@57000000 {
 	dc1_prg7: prg@570a0000 {
 		compatible = "fsl,imx8qxp-prg", "fsl,imx8qm-prg";
 		reg = <0x570a0000 0x10000>;
-		clocks = <&dc1_prg6_lpcg 0>,
-			 <&dc1_prg6_lpcg 1>;
+		clocks = <&dc1_prg6_lpcg IMX_LPCG_CLK_0>,
+			 <&dc1_prg6_lpcg IMX_LPCG_CLK_4>;
 		clock-names = "rtram", "apb";
 		power-domains = <&pd IMX_SC_R_DC_1>;
 		status = "disabled";
@@ -297,8 +297,8 @@ dc1_subsys: bus@57000000 {
 	dc1_prg8: prg@570b0000 {
 		compatible = "fsl,imx8qxp-prg", "fsl,imx8qm-prg";
 		reg = <0x570b0000 0x10000>;
-		clocks = <&dc1_prg7_lpcg 0>,
-			 <&dc1_prg7_lpcg 1>;
+		clocks = <&dc1_prg7_lpcg IMX_LPCG_CLK_0>,
+			 <&dc1_prg7_lpcg IMX_LPCG_CLK_4>;
 		clock-names = "rtram", "apb";
 		power-domains = <&pd IMX_SC_R_DC_1>;
 		status = "disabled";
@@ -307,8 +307,8 @@ dc1_subsys: bus@57000000 {
 	dc1_prg9: prg@570c0000 {
 		compatible = "fsl,imx8qxp-prg", "fsl,imx8qm-prg";
 		reg = <0x570c0000 0x10000>;
-		clocks = <&dc1_prg8_lpcg 0>,
-			 <&dc1_prg8_lpcg 1>;
+		clocks = <&dc1_prg8_lpcg IMX_LPCG_CLK_0>,
+			 <&dc1_prg8_lpcg IMX_LPCG_CLK_4>;
 		clock-names = "rtram", "apb";
 		power-domains = <&pd IMX_SC_R_DC_1>;
 		status = "disabled";
@@ -320,9 +320,9 @@ dc1_subsys: bus@57000000 {
 		reg = <0x570d0000 0x10000>;
 		fsl,sc-resource = <IMX_SC_R_DC_1_BLIT0>;
 		fsl,prgs = <&dc1_prg1>;
-		clocks = <&dc1_dpr0_lpcg 0>,
-			 <&dc1_dpr0_lpcg 1>,
-			 <&dc1_rtram0_lpcg 0>;
+		clocks = <&dc1_dpr0_lpcg IMX_LPCG_CLK_4>,
+			 <&dc1_dpr0_lpcg IMX_LPCG_CLK_5>,
+			 <&dc1_rtram0_lpcg IMX_LPCG_CLK_0>;
 		clock-names = "apb", "b", "rtram";
 		power-domains = <&pd IMX_SC_R_DC_1>;
 		status = "disabled";
@@ -334,9 +334,9 @@ dc1_subsys: bus@57000000 {
 		reg = <0x570e0000 0x10000>;
 		fsl,sc-resource = <IMX_SC_R_DC_1_BLIT1>;
 		fsl,prgs = <&dc1_prg2>, <&dc1_prg1>;
-		clocks = <&dc1_dpr0_lpcg 0>,
-			 <&dc1_dpr0_lpcg 1>,
-			 <&dc1_rtram0_lpcg 0>;
+		clocks = <&dc1_dpr0_lpcg IMX_LPCG_CLK_4>,
+			 <&dc1_dpr0_lpcg IMX_LPCG_CLK_5>,
+			 <&dc1_rtram0_lpcg IMX_LPCG_CLK_0>;
 		clock-names = "apb", "b", "rtram";
 		power-domains = <&pd IMX_SC_R_DC_1>;
 		status = "disabled";
@@ -348,9 +348,9 @@ dc1_subsys: bus@57000000 {
 		reg = <0x570f0000 0x10000>;
 		fsl,sc-resource = <IMX_SC_R_DC_1_FRAC0>;
 		fsl,prgs = <&dc1_prg3>;
-		clocks = <&dc1_dpr0_lpcg 0>,
-			 <&dc1_dpr0_lpcg 1>,
-			 <&dc1_rtram0_lpcg 0>;
+		clocks = <&dc1_dpr0_lpcg IMX_LPCG_CLK_4>,
+			 <&dc1_dpr0_lpcg IMX_LPCG_CLK_5>,
+			 <&dc1_rtram0_lpcg IMX_LPCG_CLK_0>;
 		clock-names = "apb", "b", "rtram";
 		power-domains = <&pd IMX_SC_R_DC_1>;
 		status = "disabled";
@@ -362,9 +362,9 @@ dc1_subsys: bus@57000000 {
 		reg = <0x57100000 0x10000>;
 		fsl,sc-resource = <IMX_SC_R_DC_1_VIDEO0>;
 		fsl,prgs = <&dc1_prg4>, <&dc1_prg5>;
-		clocks = <&dc1_dpr1_lpcg 0>,
-			 <&dc1_dpr1_lpcg 1>,
-			 <&dc1_rtram1_lpcg 0>;
+		clocks = <&dc1_dpr1_lpcg IMX_LPCG_CLK_4>,
+			 <&dc1_dpr1_lpcg IMX_LPCG_CLK_5>,
+			 <&dc1_rtram1_lpcg IMX_LPCG_CLK_0>;
 		clock-names = "apb", "b", "rtram";
 		power-domains = <&pd IMX_SC_R_DC_1>;
 		status = "disabled";
@@ -376,9 +376,9 @@ dc1_subsys: bus@57000000 {
 		reg = <0x57110000 0x10000>;
 		fsl,sc-resource = <IMX_SC_R_DC_1_VIDEO1>;
 		fsl,prgs = <&dc1_prg6>, <&dc1_prg7>;
-		clocks = <&dc1_dpr1_lpcg 0>,
-			 <&dc1_dpr1_lpcg 1>,
-			 <&dc1_rtram1_lpcg 0>;
+		clocks = <&dc1_dpr1_lpcg IMX_LPCG_CLK_4>,
+			 <&dc1_dpr1_lpcg IMX_LPCG_CLK_5>,
+			 <&dc1_rtram1_lpcg IMX_LPCG_CLK_0>;
 		clock-names = "apb", "b", "rtram";
 		power-domains = <&pd IMX_SC_R_DC_1>;
 		status = "disabled";
@@ -390,9 +390,9 @@ dc1_subsys: bus@57000000 {
 		reg = <0x57120000 0x10000>;
 		fsl,sc-resource = <IMX_SC_R_DC_1_WARP>;
 		fsl,prgs = <&dc1_prg8>, <&dc1_prg9>;
-		clocks = <&dc1_dpr1_lpcg 0>,
-			 <&dc1_dpr1_lpcg 1>,
-			 <&dc1_rtram1_lpcg 0>;
+		clocks = <&dc1_dpr1_lpcg IMX_LPCG_CLK_4>,
+			 <&dc1_dpr1_lpcg IMX_LPCG_CLK_5>,
+			 <&dc1_rtram1_lpcg IMX_LPCG_CLK_0>;
 		clock-names = "apb", "b", "rtram";
 		power-domains = <&pd IMX_SC_R_DC_1>;
 		status = "disabled";
@@ -470,7 +470,7 @@ dc1_subsys: bus@57000000 {
 			 <&clk IMX_SC_R_DC_1_VIDEO0 IMX_SC_PM_CLK_BYPASS>,
 			 <&clk IMX_SC_R_DC_1 IMX_SC_PM_CLK_MISC0>,
 			 <&clk IMX_SC_R_DC_1 IMX_SC_PM_CLK_MISC1>,
-			 <&dc1_disp_lpcg 0>, <&dc1_disp_lpcg 1>;
+			 <&dc1_disp_lpcg IMX_LPCG_CLK_0>, <&dc1_disp_lpcg IMX_LPCG_CLK_1>;
 		clock-names = "pll0", "pll1", "bypass0", "disp0", "disp1", "disp0_lpcg", "disp1_lpcg";
 		power-domains = <&pd IMX_SC_R_DC_1>,
 				<&pd IMX_SC_R_DC_1_PLL_0>,

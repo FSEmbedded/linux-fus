@@ -45,6 +45,8 @@ bool ethtool_dev_mm_supported(struct net_device *dev);
 void mm_state_to_cfg(const struct ethtool_mm_state *state,
 		     struct ethtool_mm_cfg *cfg);
 
+void ethnl_pse_send_ntf(struct net_device *netdev, unsigned long notif);
+
 #else
 static inline int ethnl_cable_test_alloc(struct phy_device *phydev, u8 cmd)
 {
@@ -124,6 +126,11 @@ static inline bool ethtool_dev_mm_supported(struct net_device *dev)
 
 static inline void mm_state_to_cfg(const struct ethtool_mm_state *state,
 				   struct ethtool_mm_cfg *cfg)
+{
+}
+
+static inline void ethnl_pse_send_ntf(struct net_device *netdev,
+				      unsigned long notif)
 {
 }
 

@@ -936,6 +936,7 @@ static void admac_remove(struct platform_device *pdev)
 }
 
 static const struct of_device_id admac_of_match[] = {
+	{ .compatible = "apple,t8103-admac", },
 	{ .compatible = "apple,admac", },
 	{ }
 };
@@ -947,7 +948,7 @@ static struct platform_driver apple_admac_driver = {
 		.of_match_table = admac_of_match,
 	},
 	.probe = admac_probe,
-	.remove_new = admac_remove,
+	.remove = admac_remove,
 };
 module_platform_driver(apple_admac_driver);
 

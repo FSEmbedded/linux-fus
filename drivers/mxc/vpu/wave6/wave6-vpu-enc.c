@@ -40,9 +40,8 @@ static const struct vpu_format wave6_vpu_enc_fmt_list[2][28] = {
 			.max_height = W6_MAX_ENC_PIC_HEIGHT,
 			.min_height = W6_MIN_ENC_PIC_HEIGHT,
 			.num_planes = 1,
-			.is_yuv = 1,
-			.src_format = FORMAT_420,
-			.source_endian = VPU_SOURCE_ENDIAN,
+			.fb_fmt = FORMAT_420,
+			.endian = VPU_SOURCE_ENDIAN,
 		},
 		{
 			.v4l2_pix_fmt = V4L2_PIX_FMT_NV12,
@@ -51,10 +50,9 @@ static const struct vpu_format wave6_vpu_enc_fmt_list[2][28] = {
 			.max_height = W6_MAX_ENC_PIC_HEIGHT,
 			.min_height = W6_MIN_ENC_PIC_HEIGHT,
 			.num_planes = 1,
-			.is_yuv = 1,
-			.src_format = FORMAT_420,
-			.source_endian = VPU_SOURCE_ENDIAN,
-			.cbcr_interleave = 1,
+			.fb_fmt = FORMAT_420,
+			.endian = VPU_SOURCE_ENDIAN,
+			.flags = VPU_FMT_FLAG_CBCR_INTERLEAVED,
 		},
 		{
 			.v4l2_pix_fmt = V4L2_PIX_FMT_NV21,
@@ -63,11 +61,10 @@ static const struct vpu_format wave6_vpu_enc_fmt_list[2][28] = {
 			.max_height = W6_MAX_ENC_PIC_HEIGHT,
 			.min_height = W6_MIN_ENC_PIC_HEIGHT,
 			.num_planes = 1,
-			.is_yuv = 1,
-			.src_format = FORMAT_420,
-			.source_endian = VPU_SOURCE_ENDIAN,
-			.cbcr_interleave = 1,
-			.nv21 = 1,
+			.fb_fmt = FORMAT_420,
+			.endian = VPU_SOURCE_ENDIAN,
+			.flags = VPU_FMT_FLAG_CBCR_INTERLEAVED |
+				 VPU_FMT_FLAG_CRCB_ORDER,
 		},
 		{
 			.v4l2_pix_fmt = V4L2_PIX_FMT_YUV422P,
@@ -76,9 +73,8 @@ static const struct vpu_format wave6_vpu_enc_fmt_list[2][28] = {
 			.max_height = W6_MAX_ENC_PIC_HEIGHT,
 			.min_height = W6_MIN_ENC_PIC_HEIGHT,
 			.num_planes = 1,
-			.is_yuv = 1,
-			.src_format = FORMAT_422,
-			.source_endian = VPU_SOURCE_ENDIAN,
+			.fb_fmt = FORMAT_422,
+			.endian = VPU_SOURCE_ENDIAN,
 		},
 		{
 			.v4l2_pix_fmt = V4L2_PIX_FMT_NV16,
@@ -87,10 +83,9 @@ static const struct vpu_format wave6_vpu_enc_fmt_list[2][28] = {
 			.max_height = W6_MAX_ENC_PIC_HEIGHT,
 			.min_height = W6_MIN_ENC_PIC_HEIGHT,
 			.num_planes = 1,
-			.is_yuv = 1,
-			.src_format = FORMAT_422,
-			.source_endian = VPU_SOURCE_ENDIAN,
-			.cbcr_interleave = 1,
+			.fb_fmt = FORMAT_422,
+			.endian = VPU_SOURCE_ENDIAN,
+			.flags = VPU_FMT_FLAG_CBCR_INTERLEAVED,
 		},
 		{
 			.v4l2_pix_fmt = V4L2_PIX_FMT_NV61,
@@ -99,11 +94,10 @@ static const struct vpu_format wave6_vpu_enc_fmt_list[2][28] = {
 			.max_height = W6_MAX_ENC_PIC_HEIGHT,
 			.min_height = W6_MIN_ENC_PIC_HEIGHT,
 			.num_planes = 1,
-			.is_yuv = 1,
-			.src_format = FORMAT_422,
-			.source_endian = VPU_SOURCE_ENDIAN,
-			.cbcr_interleave = 1,
-			.nv21 = 1,
+			.fb_fmt = FORMAT_422,
+			.endian = VPU_SOURCE_ENDIAN,
+			.flags = VPU_FMT_FLAG_CBCR_INTERLEAVED |
+				 VPU_FMT_FLAG_CRCB_ORDER,
 		},
 		{
 			.v4l2_pix_fmt = V4L2_PIX_FMT_YUYV,
@@ -112,10 +106,8 @@ static const struct vpu_format wave6_vpu_enc_fmt_list[2][28] = {
 			.max_height = W6_MAX_ENC_PIC_HEIGHT,
 			.min_height = W6_MIN_ENC_PIC_HEIGHT,
 			.num_planes = 1,
-			.is_yuv = 1,
-			.src_format = FORMAT_YUYV,
-			.source_endian = VPU_SOURCE_ENDIAN,
-			.packed_format = PACKED_YUYV,
+			.fb_fmt = FORMAT_YUYV,
+			.endian = VPU_SOURCE_ENDIAN,
 		},
 		{
 			.v4l2_pix_fmt = V4L2_PIX_FMT_YUV24,
@@ -124,10 +116,10 @@ static const struct vpu_format wave6_vpu_enc_fmt_list[2][28] = {
 			.max_height = W6_MAX_ENC_PIC_HEIGHT,
 			.min_height = W6_MIN_ENC_PIC_HEIGHT,
 			.num_planes = 1,
-			.is_yuv = 1,
-			.src_format = FORMAT_YUV444_24BIT_PACKED,
-			.source_endian = VPU_SOURCE_ENDIAN,
-			.cbcr_interleave = 1,
+			.fb_fmt = FORMAT_YUV444_24BIT_PACKED,
+			.endian = VPU_SOURCE_ENDIAN,
+			.flags = VPU_FMT_FLAG_CBCR_INTERLEAVED |
+				 VPU_FMT_FLAG_CSC_ENABLE,
 		},
 		{
 			.v4l2_pix_fmt = V4L2_PIX_FMT_NV24,
@@ -136,10 +128,10 @@ static const struct vpu_format wave6_vpu_enc_fmt_list[2][28] = {
 			.max_height = W6_MAX_ENC_PIC_HEIGHT,
 			.min_height = W6_MIN_ENC_PIC_HEIGHT,
 			.num_planes = 1,
-			.is_yuv = 1,
-			.src_format = FORMAT_YUV444_24BIT,
-			.source_endian = VPU_SOURCE_ENDIAN,
-			.cbcr_interleave = 1,
+			.fb_fmt = FORMAT_YUV444_24BIT,
+			.endian = VPU_SOURCE_ENDIAN,
+			.flags = VPU_FMT_FLAG_CBCR_INTERLEAVED |
+				 VPU_FMT_FLAG_CSC_ENABLE,
 		},
 		{
 			.v4l2_pix_fmt = V4L2_PIX_FMT_NV42,
@@ -148,11 +140,11 @@ static const struct vpu_format wave6_vpu_enc_fmt_list[2][28] = {
 			.max_height = W6_MAX_ENC_PIC_HEIGHT,
 			.min_height = W6_MIN_ENC_PIC_HEIGHT,
 			.num_planes = 1,
-			.is_yuv = 1,
-			.src_format = FORMAT_YUV444_24BIT,
-			.source_endian = VPU_SOURCE_ENDIAN,
-			.cbcr_interleave = 1,
-			.nv21 = 1,
+			.fb_fmt = FORMAT_YUV444_24BIT,
+			.endian = VPU_SOURCE_ENDIAN,
+			.flags = VPU_FMT_FLAG_CBCR_INTERLEAVED |
+				 VPU_FMT_FLAG_CRCB_ORDER |
+				 VPU_FMT_FLAG_CSC_ENABLE,
 		},
 		{
 			.v4l2_pix_fmt = V4L2_PIX_FMT_YUV420M,
@@ -161,9 +153,8 @@ static const struct vpu_format wave6_vpu_enc_fmt_list[2][28] = {
 			.max_height = W6_MAX_ENC_PIC_HEIGHT,
 			.min_height = W6_MIN_ENC_PIC_HEIGHT,
 			.num_planes = 3,
-			.is_yuv = 1,
-			.src_format = FORMAT_420,
-			.source_endian = VPU_SOURCE_ENDIAN,
+			.fb_fmt = FORMAT_420,
+			.endian = VPU_SOURCE_ENDIAN,
 		},
 		{
 			.v4l2_pix_fmt = V4L2_PIX_FMT_NV12M,
@@ -172,10 +163,9 @@ static const struct vpu_format wave6_vpu_enc_fmt_list[2][28] = {
 			.max_height = W6_MAX_ENC_PIC_HEIGHT,
 			.min_height = W6_MIN_ENC_PIC_HEIGHT,
 			.num_planes = 2,
-			.is_yuv = 1,
-			.src_format = FORMAT_420,
-			.source_endian = VPU_SOURCE_ENDIAN,
-			.cbcr_interleave = 1,
+			.fb_fmt = FORMAT_420,
+			.endian = VPU_SOURCE_ENDIAN,
+			.flags = VPU_FMT_FLAG_CBCR_INTERLEAVED,
 		},
 		{
 			.v4l2_pix_fmt = V4L2_PIX_FMT_NV21M,
@@ -184,11 +174,10 @@ static const struct vpu_format wave6_vpu_enc_fmt_list[2][28] = {
 			.max_height = W6_MAX_ENC_PIC_HEIGHT,
 			.min_height = W6_MIN_ENC_PIC_HEIGHT,
 			.num_planes = 2,
-			.is_yuv = 1,
-			.src_format = FORMAT_420,
-			.source_endian = VPU_SOURCE_ENDIAN,
-			.cbcr_interleave = 1,
-			.nv21 = 1,
+			.fb_fmt = FORMAT_420,
+			.endian = VPU_SOURCE_ENDIAN,
+			.flags = VPU_FMT_FLAG_CBCR_INTERLEAVED |
+				 VPU_FMT_FLAG_CRCB_ORDER,
 		},
 		{
 			.v4l2_pix_fmt = V4L2_PIX_FMT_YUV422M,
@@ -197,9 +186,8 @@ static const struct vpu_format wave6_vpu_enc_fmt_list[2][28] = {
 			.max_height = W6_MAX_ENC_PIC_HEIGHT,
 			.min_height = W6_MIN_ENC_PIC_HEIGHT,
 			.num_planes = 3,
-			.is_yuv = 1,
-			.src_format = FORMAT_422,
-			.source_endian = VPU_SOURCE_ENDIAN,
+			.fb_fmt = FORMAT_422,
+			.endian = VPU_SOURCE_ENDIAN,
 		},
 		{
 			.v4l2_pix_fmt = V4L2_PIX_FMT_NV16M,
@@ -208,10 +196,9 @@ static const struct vpu_format wave6_vpu_enc_fmt_list[2][28] = {
 			.max_height = W6_MAX_ENC_PIC_HEIGHT,
 			.min_height = W6_MIN_ENC_PIC_HEIGHT,
 			.num_planes = 2,
-			.is_yuv = 1,
-			.src_format = FORMAT_422,
-			.source_endian = VPU_SOURCE_ENDIAN,
-			.cbcr_interleave = 1,
+			.fb_fmt = FORMAT_422,
+			.endian = VPU_SOURCE_ENDIAN,
+			.flags = VPU_FMT_FLAG_CBCR_INTERLEAVED,
 		},
 		{
 			.v4l2_pix_fmt = V4L2_PIX_FMT_NV61M,
@@ -220,11 +207,10 @@ static const struct vpu_format wave6_vpu_enc_fmt_list[2][28] = {
 			.max_height = W6_MAX_ENC_PIC_HEIGHT,
 			.min_height = W6_MIN_ENC_PIC_HEIGHT,
 			.num_planes = 2,
-			.is_yuv = 1,
-			.src_format = FORMAT_422,
-			.source_endian = VPU_SOURCE_ENDIAN,
-			.cbcr_interleave = 1,
-			.nv21 = 1,
+			.fb_fmt = FORMAT_422,
+			.endian = VPU_SOURCE_ENDIAN,
+			.flags = VPU_FMT_FLAG_CBCR_INTERLEAVED |
+				 VPU_FMT_FLAG_CRCB_ORDER,
 		},
 		{
 			.v4l2_pix_fmt = V4L2_PIX_FMT_P010,
@@ -233,11 +219,10 @@ static const struct vpu_format wave6_vpu_enc_fmt_list[2][28] = {
 			.max_height = W6_MAX_ENC_PIC_HEIGHT,
 			.min_height = W6_MIN_ENC_PIC_HEIGHT,
 			.num_planes = 1,
-			.is_yuv = 1,
-			.src_format = FORMAT_420_P10_16BIT_MSB,
-			.source_endian = VDI_128BIT_LE_BYTE_SWAP,
-			.cbcr_interleave = 1,
-			.is_10bit = 1,
+			.fb_fmt = FORMAT_420_P10_16BIT_MSB,
+			.endian = VDI_128BIT_LE_BYTE_SWAP,
+			.flags = VPU_FMT_FLAG_CBCR_INTERLEAVED |
+				 VPU_FMT_FLAG_10BIT,
 		},
 		{
 			.v4l2_pix_fmt = V4L2_PIX_FMT_RGB24,
@@ -246,11 +231,12 @@ static const struct vpu_format wave6_vpu_enc_fmt_list[2][28] = {
 			.max_height = W6_MAX_ENC_PIC_HEIGHT,
 			.min_height = W6_MIN_ENC_PIC_HEIGHT,
 			.num_planes = 1,
-			.is_rgb = 1,
-			.src_format = FORMAT_RGB_24BIT_PACKED,
-			.source_endian = VPU_SOURCE_ENDIAN,
-			.csc_order = CSC_ORDER_RGB,
-			.cbcr_interleave = 1,
+			.fb_fmt = FORMAT_RGB_24BIT_PACKED,
+			.endian = VPU_SOURCE_ENDIAN,
+			.csc_fmt_order = CSC_FMT_ORDER_RGB,
+			.flags = VPU_FMT_FLAG_CBCR_INTERLEAVED |
+				 VPU_FMT_FLAG_CSC_ENABLE |
+				 VPU_FMT_FLAG_RGB,
 		},
 		{
 			.v4l2_pix_fmt = V4L2_PIX_FMT_BGR24,
@@ -259,11 +245,12 @@ static const struct vpu_format wave6_vpu_enc_fmt_list[2][28] = {
 			.max_height = W6_MAX_ENC_PIC_HEIGHT,
 			.min_height = W6_MIN_ENC_PIC_HEIGHT,
 			.num_planes = 1,
-			.is_rgb = 1,
-			.src_format = FORMAT_RGB_24BIT_PACKED,
-			.source_endian = VPU_SOURCE_ENDIAN,
-			.csc_order = CSC_ORDER_BGR,
-			.cbcr_interleave = 1,
+			.fb_fmt = FORMAT_RGB_24BIT_PACKED,
+			.endian = VPU_SOURCE_ENDIAN,
+			.csc_fmt_order = CSC_FMT_ORDER_BGR,
+			.flags = VPU_FMT_FLAG_CBCR_INTERLEAVED |
+				 VPU_FMT_FLAG_CSC_ENABLE |
+				 VPU_FMT_FLAG_RGB,
 		},
 		{
 			.v4l2_pix_fmt = V4L2_PIX_FMT_ARGB32,
@@ -272,11 +259,12 @@ static const struct vpu_format wave6_vpu_enc_fmt_list[2][28] = {
 			.max_height = W6_MAX_ENC_PIC_HEIGHT,
 			.min_height = W6_MIN_ENC_PIC_HEIGHT,
 			.num_planes = 1,
-			.is_rgb = 1,
-			.src_format = FORMAT_RGB_32BIT_PACKED,
-			.source_endian = VPU_SOURCE_ENDIAN,
-			.csc_order = CSC_ORDER_ARGB,
-			.cbcr_interleave = 1,
+			.fb_fmt = FORMAT_RGB_32BIT_PACKED,
+			.endian = VPU_SOURCE_ENDIAN,
+			.csc_fmt_order = CSC_FMT_ORDER_ARGB,
+			.flags = VPU_FMT_FLAG_CBCR_INTERLEAVED |
+				 VPU_FMT_FLAG_CSC_ENABLE |
+				 VPU_FMT_FLAG_RGB,
 		},
 		{
 			.v4l2_pix_fmt = V4L2_PIX_FMT_XRGB32,
@@ -285,11 +273,12 @@ static const struct vpu_format wave6_vpu_enc_fmt_list[2][28] = {
 			.max_height = W6_MAX_ENC_PIC_HEIGHT,
 			.min_height = W6_MIN_ENC_PIC_HEIGHT,
 			.num_planes = 1,
-			.is_rgb = 1,
-			.src_format = FORMAT_RGB_32BIT_PACKED,
-			.source_endian = VPU_SOURCE_ENDIAN,
-			.csc_order = CSC_ORDER_ARGB,
-			.cbcr_interleave = 1,
+			.fb_fmt = FORMAT_RGB_32BIT_PACKED,
+			.endian = VPU_SOURCE_ENDIAN,
+			.csc_fmt_order = CSC_FMT_ORDER_ARGB,
+			.flags = VPU_FMT_FLAG_CBCR_INTERLEAVED |
+				 VPU_FMT_FLAG_CSC_ENABLE |
+				 VPU_FMT_FLAG_RGB,
 		},
 		{
 			.v4l2_pix_fmt = V4L2_PIX_FMT_RGBA32,
@@ -298,11 +287,12 @@ static const struct vpu_format wave6_vpu_enc_fmt_list[2][28] = {
 			.max_height = W6_MAX_ENC_PIC_HEIGHT,
 			.min_height = W6_MIN_ENC_PIC_HEIGHT,
 			.num_planes = 1,
-			.is_rgb = 1,
-			.src_format = FORMAT_RGB_32BIT_PACKED,
-			.source_endian = VPU_SOURCE_ENDIAN,
-			.csc_order = CSC_ORDER_RGBA,
-			.cbcr_interleave = 1,
+			.fb_fmt = FORMAT_RGB_32BIT_PACKED,
+			.endian = VPU_SOURCE_ENDIAN,
+			.csc_fmt_order = CSC_FMT_ORDER_RGBA,
+			.flags = VPU_FMT_FLAG_CBCR_INTERLEAVED |
+				 VPU_FMT_FLAG_CSC_ENABLE |
+				 VPU_FMT_FLAG_RGB,
 		},
 		{
 			.v4l2_pix_fmt = V4L2_PIX_FMT_RGBX32,
@@ -311,24 +301,12 @@ static const struct vpu_format wave6_vpu_enc_fmt_list[2][28] = {
 			.max_height = W6_MAX_ENC_PIC_HEIGHT,
 			.min_height = W6_MIN_ENC_PIC_HEIGHT,
 			.num_planes = 1,
-			.is_rgb = 1,
-			.src_format = FORMAT_RGB_32BIT_PACKED,
-			.source_endian = VPU_SOURCE_ENDIAN,
-			.csc_order = CSC_ORDER_RGBA,
-			.cbcr_interleave = 1,
-		},
-		{
-			.v4l2_pix_fmt = V4L2_PIX_FMT_XBGR32,
-			.max_width = W6_MAX_ENC_PIC_WIDTH,
-			.min_width = W6_MIN_ENC_PIC_WIDTH,
-			.max_height = W6_MAX_ENC_PIC_HEIGHT,
-			.min_height = W6_MIN_ENC_PIC_HEIGHT,
-			.num_planes = 1,
-			.is_rgb = 1,
-			.src_format = FORMAT_RGB_32BIT_PACKED,
-			.source_endian = VPU_SOURCE_ENDIAN,
-			.csc_order = CSC_ORDER_BGRA,
-			.cbcr_interleave = 1,
+			.fb_fmt = FORMAT_RGB_32BIT_PACKED,
+			.endian = VPU_SOURCE_ENDIAN,
+			.csc_fmt_order = CSC_FMT_ORDER_RGBA,
+			.flags = VPU_FMT_FLAG_CBCR_INTERLEAVED |
+				 VPU_FMT_FLAG_CSC_ENABLE |
+				 VPU_FMT_FLAG_RGB,
 		},
 		{
 			.v4l2_pix_fmt = V4L2_PIX_FMT_ABGR32,
@@ -337,24 +315,26 @@ static const struct vpu_format wave6_vpu_enc_fmt_list[2][28] = {
 			.max_height = W6_MAX_ENC_PIC_HEIGHT,
 			.min_height = W6_MIN_ENC_PIC_HEIGHT,
 			.num_planes = 1,
-			.is_rgb = 1,
-			.src_format = FORMAT_RGB_32BIT_PACKED,
-			.source_endian = VPU_SOURCE_ENDIAN,
-			.csc_order = CSC_ORDER_BGRA,
-			.cbcr_interleave = 1,
+			.fb_fmt = FORMAT_RGB_32BIT_PACKED,
+			.endian = VPU_SOURCE_ENDIAN,
+			.csc_fmt_order = CSC_FMT_ORDER_BGRA,
+			.flags = VPU_FMT_FLAG_CBCR_INTERLEAVED |
+				 VPU_FMT_FLAG_CSC_ENABLE |
+				 VPU_FMT_FLAG_RGB,
 		},
 		{
-			.v4l2_pix_fmt = V4L2_PIX_FMT_BGRX32,
+			.v4l2_pix_fmt = V4L2_PIX_FMT_XBGR32,
 			.max_width = W6_MAX_ENC_PIC_WIDTH,
 			.min_width = W6_MIN_ENC_PIC_WIDTH,
 			.max_height = W6_MAX_ENC_PIC_HEIGHT,
 			.min_height = W6_MIN_ENC_PIC_HEIGHT,
 			.num_planes = 1,
-			.is_rgb = 1,
-			.src_format = FORMAT_RGB_32BIT_PACKED,
-			.source_endian = VPU_SOURCE_ENDIAN,
-			.csc_order = CSC_ORDER_ABGR,
-			.cbcr_interleave = 1,
+			.fb_fmt = FORMAT_RGB_32BIT_PACKED,
+			.endian = VPU_SOURCE_ENDIAN,
+			.csc_fmt_order = CSC_FMT_ORDER_BGRA,
+			.flags = VPU_FMT_FLAG_CBCR_INTERLEAVED |
+				 VPU_FMT_FLAG_CSC_ENABLE |
+				 VPU_FMT_FLAG_RGB,
 		},
 		{
 			.v4l2_pix_fmt = V4L2_PIX_FMT_BGRA32,
@@ -363,11 +343,26 @@ static const struct vpu_format wave6_vpu_enc_fmt_list[2][28] = {
 			.max_height = W6_MAX_ENC_PIC_HEIGHT,
 			.min_height = W6_MIN_ENC_PIC_HEIGHT,
 			.num_planes = 1,
-			.is_rgb = 1,
-			.src_format = FORMAT_RGB_32BIT_PACKED,
-			.source_endian = VPU_SOURCE_ENDIAN,
-			.csc_order = CSC_ORDER_ABGR,
-			.cbcr_interleave = 1,
+			.fb_fmt = FORMAT_RGB_32BIT_PACKED,
+			.endian = VPU_SOURCE_ENDIAN,
+			.csc_fmt_order = CSC_FMT_ORDER_ABGR,
+			.flags = VPU_FMT_FLAG_CBCR_INTERLEAVED |
+				 VPU_FMT_FLAG_CSC_ENABLE |
+				 VPU_FMT_FLAG_RGB,
+		},
+		{
+			.v4l2_pix_fmt = V4L2_PIX_FMT_BGRX32,
+			.max_width = W6_MAX_ENC_PIC_WIDTH,
+			.min_width = W6_MIN_ENC_PIC_WIDTH,
+			.max_height = W6_MAX_ENC_PIC_HEIGHT,
+			.min_height = W6_MIN_ENC_PIC_HEIGHT,
+			.num_planes = 1,
+			.fb_fmt = FORMAT_RGB_32BIT_PACKED,
+			.endian = VPU_SOURCE_ENDIAN,
+			.csc_fmt_order = CSC_FMT_ORDER_ABGR,
+			.flags = VPU_FMT_FLAG_CBCR_INTERLEAVED |
+				 VPU_FMT_FLAG_CSC_ENABLE |
+				 VPU_FMT_FLAG_RGB,
 		},
 		{
 			.v4l2_pix_fmt = V4L2_PIX_FMT_ARGB2101010,
@@ -376,11 +371,13 @@ static const struct vpu_format wave6_vpu_enc_fmt_list[2][28] = {
 			.max_height = W6_MAX_ENC_PIC_HEIGHT,
 			.min_height = W6_MIN_ENC_PIC_HEIGHT,
 			.num_planes = 1,
-			.is_rgb = 1,
-			.is_10bit = 1,
-			.src_format = FORMAT_RGB_P10_32BIT_PACKED,
-			.source_endian = VDI_128BIT_LE_WORD_BYTE_SWAP,
-			.cbcr_interleave = 1,
+			.fb_fmt = FORMAT_RGB_P10_32BIT_PACKED,
+			.endian = VDI_128BIT_LE_WORD_BYTE_SWAP,
+			.csc_fmt_order = CSC_FMT_ORDER_ARGB,
+			.flags = VPU_FMT_FLAG_CBCR_INTERLEAVED |
+				 VPU_FMT_FLAG_10BIT |
+				 VPU_FMT_FLAG_CSC_ENABLE |
+				 VPU_FMT_FLAG_RGB,
 		},
 	}
 };
@@ -429,7 +426,8 @@ static void wave6_vpu_enc_release_fb(struct vpu_instance *inst)
 	int i;
 
 	for (i = 0; i < WAVE6_MAX_FBS; i++) {
-		wave6_free_dma(&inst->frame_vbuf[i]);
+		wave6_free_dma(&inst->frame_y_vbuf[i]);
+		wave6_free_dma(&inst->frame_c_vbuf[i]);
 		memset(&inst->frame_buf[i], 0, sizeof(struct frame_buffer));
 		wave6_free_dma(&inst->aux_vbuf[AUX_BUF_FBC_Y_TBL][i]);
 		wave6_free_dma(&inst->aux_vbuf[AUX_BUF_FBC_C_TBL][i]);
@@ -452,9 +450,11 @@ static void wave6_vpu_enc_destroy_instance(struct vpu_instance *inst)
 			ret, fail_res);
 	}
 
+	spin_lock(&inst->dev->inst_lock);
+	list_del_init(&inst->list);
+	spin_unlock(&inst->dev->inst_lock);
 	wave6_vpu_enc_release_fb(inst);
 	wave6_free_dma(&inst->ar_vbuf);
-
 	wave6_vpu_set_instance_state(inst, VPU_INST_STATE_NONE);
 
 	if (!pm_runtime_suspended(inst->dev->dev))
@@ -504,14 +504,17 @@ static struct vb2_v4l2_buffer *wave6_get_valid_dst_buf(struct vpu_instance *inst
 static void wave6_set_csc(struct vpu_instance *inst, struct enc_param *pic_param)
 {
 	const struct vpu_format *vpu_fmt;
-	bool is_10bit = false;
+	bool is_10bit;
 
 	vpu_fmt = wave6_find_vpu_fmt(inst->src_fmt.pixelformat, VPU_FMT_TYPE_RAW);
-	if (!vpu_fmt || !vpu_fmt->is_rgb)
+	if (!vpu_fmt)
 		return;
 
-	is_10bit = vpu_fmt->is_10bit;
-	pic_param->csc.format_order = vpu_fmt->csc_order;
+	if (!(vpu_fmt->flags & VPU_FMT_FLAG_RGB))
+		return;
+
+	is_10bit = !!(vpu_fmt->flags & VPU_FMT_FLAG_10BIT);
+	pic_param->csc.format_order = vpu_fmt->csc_fmt_order;
 
 	if (inst->ycbcr_enc == V4L2_YCBCR_ENC_DEFAULT ||
 	    inst->ycbcr_enc == V4L2_YCBCR_ENC_601) {
@@ -668,8 +671,8 @@ static void wave6_set_csc(struct vpu_instance *inst, struct enc_param *pic_param
 			pic_param->csc.coef_gcr = 0xffffff44;
 			pic_param->csc.coef_bcr = 0xffffffdc;
 			pic_param->csc.offset_y = (is_10bit) ? 0x40 : 0x10;
-			pic_param->csc.offset_cb = 0x0;
-			pic_param->csc.offset_cr = 0x0;
+			pic_param->csc.offset_cb = (is_10bit) ? 0x200 : 0x80;
+			pic_param->csc.offset_cr = (is_10bit) ? 0x200 : 0x80;
 		}
 	} else if (inst->ycbcr_enc == V4L2_YCBCR_ENC_XV709) {
 		if (inst->quantization == V4L2_QUANTIZATION_LIM_RANGE) {
@@ -688,8 +691,8 @@ static void wave6_set_csc(struct vpu_instance *inst, struct enc_param *pic_param
 			pic_param->csc.coef_gcr = 0xffffff35;
 			pic_param->csc.coef_bcr = 0xffffffeb;
 			pic_param->csc.offset_y = (is_10bit) ? 0x40 : 0x10;
-			pic_param->csc.offset_cb = 0x0;
-			pic_param->csc.offset_cr = 0x0;
+			pic_param->csc.offset_cb = (is_10bit) ? 0x200 : 0x80;
+			pic_param->csc.offset_cr = (is_10bit) ? 0x200 : 0x80;
 		}
 	}
 }
@@ -718,19 +721,15 @@ static int wave6_allocate_aux_buffer(struct vpu_instance *inst,
 				     enum aux_buffer_type type,
 				     int num)
 {
-	struct aux_buffer buf[WAVE6_MAX_FBS];
+	struct aux_buffer buf[WAVE6_MAX_FBS] = { 0 };
 	struct aux_buffer_info buf_info = { 0 };
 	struct enc_aux_buffer_size_info size_info = { 0 };
 	unsigned int size;
 	int i, ret;
 
-	memset(buf, 0, sizeof(buf));
-
 	size_info.width = inst->codec_rect.width;
 	size_info.height = inst->codec_rect.height;
 	size_info.type = type;
-	size_info.mirror_direction = inst->enc_ctrls.mirror_direction;
-	size_info.rotation_angle = inst->enc_ctrls.rot_angle;
 
 	ret = wave6_vpu_enc_get_aux_buffer_size(inst, size_info, &size);
 	if (ret) {
@@ -858,7 +857,7 @@ static int wave6_vpu_enc_start_encode(struct vpu_instance *inst)
 	pic_param.pic_stream_buffer_size = vb2_plane_size(&dst_buf->vb2_buf, 0);
 	if (!src_buf) {
 		dev_dbg(inst->dev->dev, "no valid src buf\n");
-		if (inst->state == VPU_INST_STATE_STOP)
+		if (inst->v4l2_fh.m2m_ctx->is_draining)
 			pic_param.src_end = true;
 		else
 			goto exit;
@@ -915,9 +914,6 @@ static int wave6_vpu_enc_start_encode(struct vpu_instance *inst)
 		dst_vbuf->consumed = true;
 		dst_vbuf->used = true;
 	}
-
-	if (!inst->performance.ts_first)
-		inst->performance.ts_first = ktime_get_raw();
 
 	trace_enc_pic(inst, &pic_param);
 
@@ -1023,11 +1019,8 @@ static void wave6_handle_last_frame(struct vpu_instance *inst,
 
 	vb2_set_plane_payload(&dst_buf->vb2_buf, 0, 0);
 	dst_buf->field = V4L2_FIELD_NONE;
-	dst_buf->flags |= V4L2_BUF_FLAG_LAST;
 	v4l2_m2m_dst_buf_remove_by_buf(inst->v4l2_fh.m2m_ctx, dst_buf);
-	v4l2_m2m_buf_done(dst_buf, VB2_BUF_STATE_DONE);
-
-	wave6_vpu_set_instance_state(inst, VPU_INST_STATE_PIC_RUN);
+	v4l2_m2m_last_buffer_done(inst->v4l2_fh.m2m_ctx, dst_buf);
 
 	dprintk(inst->dev->dev, "[%d] eos\n", inst->id);
 	inst->eos = true;
@@ -1103,7 +1096,7 @@ static int wave6_vpu_enc_enum_framesizes(struct file *f, void *fh, struct v4l2_f
 
 static int wave6_vpu_enc_enum_fmt_cap(struct file *file, void *fh, struct v4l2_fmtdesc *f)
 {
-	struct vpu_instance *inst = wave6_to_vpu_inst(fh);
+	struct vpu_instance *inst = wave6_to_vpu_inst(file_to_v4l2_fh(file));
 	const struct vpu_format *vpu_fmt;
 
 	dev_dbg(inst->dev->dev, "index : %d\n", f->index);
@@ -1120,7 +1113,7 @@ static int wave6_vpu_enc_enum_fmt_cap(struct file *file, void *fh, struct v4l2_f
 
 static int wave6_vpu_enc_try_fmt_cap(struct file *file, void *fh, struct v4l2_format *f)
 {
-	struct vpu_instance *inst = wave6_to_vpu_inst(fh);
+	struct vpu_instance *inst = wave6_to_vpu_inst(file_to_v4l2_fh(file));
 	struct v4l2_pix_format_mplane *pix_mp = &f->fmt.pix_mp;
 	const struct vpu_format *vpu_fmt;
 	int width, height;
@@ -1238,7 +1231,7 @@ static void wave6_vpu_enc_set_roi_map(struct vpu_instance *inst, s32 *user_map, 
 
 static int wave6_vpu_enc_s_fmt_cap(struct file *file, void *fh, struct v4l2_format *f)
 {
-	struct vpu_instance *inst = wave6_to_vpu_inst(fh);
+	struct vpu_instance *inst = wave6_to_vpu_inst(file_to_v4l2_fh(file));
 	struct v4l2_pix_format_mplane *pix_mp = &f->fmt.pix_mp;
 	int i, ret;
 
@@ -1275,7 +1268,7 @@ static int wave6_vpu_enc_s_fmt_cap(struct file *file, void *fh, struct v4l2_form
 
 static int wave6_vpu_enc_g_fmt_cap(struct file *file, void *fh, struct v4l2_format *f)
 {
-	struct vpu_instance *inst = wave6_to_vpu_inst(fh);
+	struct vpu_instance *inst = wave6_to_vpu_inst(file_to_v4l2_fh(file));
 	struct v4l2_pix_format_mplane *pix_mp = &f->fmt.pix_mp;
 	int i;
 
@@ -1300,7 +1293,7 @@ static int wave6_vpu_enc_g_fmt_cap(struct file *file, void *fh, struct v4l2_form
 
 static int wave6_vpu_enc_enum_fmt_out(struct file *file, void *fh, struct v4l2_fmtdesc *f)
 {
-	struct vpu_instance *inst = wave6_to_vpu_inst(fh);
+	struct vpu_instance *inst = wave6_to_vpu_inst(file_to_v4l2_fh(file));
 	const struct vpu_format *vpu_fmt;
 
 	dev_dbg(inst->dev->dev, "%s: index %d\n", __func__, f->index);
@@ -1317,7 +1310,7 @@ static int wave6_vpu_enc_enum_fmt_out(struct file *file, void *fh, struct v4l2_f
 
 static int wave6_vpu_enc_try_fmt_out(struct file *file, void *fh, struct v4l2_format *f)
 {
-	struct vpu_instance *inst = wave6_to_vpu_inst(fh);
+	struct vpu_instance *inst = wave6_to_vpu_inst(file_to_v4l2_fh(file));
 	struct v4l2_pix_format_mplane *pix_mp = &f->fmt.pix_mp;
 	const struct vpu_format *vpu_fmt;
 	int width, height;
@@ -1360,7 +1353,7 @@ static int wave6_vpu_enc_try_fmt_out(struct file *file, void *fh, struct v4l2_fo
 
 static int wave6_vpu_enc_s_fmt_out(struct file *file, void *fh, struct v4l2_format *f)
 {
-	struct vpu_instance *inst = wave6_to_vpu_inst(fh);
+	struct vpu_instance *inst = wave6_to_vpu_inst(file_to_v4l2_fh(file));
 	struct v4l2_pix_format_mplane *pix_mp = &f->fmt.pix_mp;
 	const struct vpu_format *vpu_fmt;
 	int i, ret;
@@ -1388,9 +1381,8 @@ static int wave6_vpu_enc_s_fmt_out(struct file *file, void *fh, struct v4l2_form
 		inst->src_fmt.plane_fmt[i].sizeimage = pix_mp->plane_fmt[i].sizeimage;
 	}
 
-	inst->cbcr_interleave = vpu_fmt->cbcr_interleave;
-	inst->nv21 = vpu_fmt->nv21;
-
+	inst->cbcr_interleave = !!(vpu_fmt->flags & VPU_FMT_FLAG_CBCR_INTERLEAVED);
+	inst->nv21 = !!(vpu_fmt->flags & VPU_FMT_FLAG_CRCB_ORDER);
 	inst->colorspace = pix_mp->colorspace;
 	inst->ycbcr_enc = pix_mp->ycbcr_enc;
 	inst->quantization = pix_mp->quantization;
@@ -1405,7 +1397,7 @@ static int wave6_vpu_enc_s_fmt_out(struct file *file, void *fh, struct v4l2_form
 
 static int wave6_vpu_enc_g_fmt_out(struct file *file, void *fh, struct v4l2_format *f)
 {
-	struct vpu_instance *inst = wave6_to_vpu_inst(fh);
+	struct vpu_instance *inst = wave6_to_vpu_inst(file_to_v4l2_fh(file));
 	struct v4l2_pix_format_mplane *pix_mp = &f->fmt.pix_mp;
 	int i;
 
@@ -1432,7 +1424,7 @@ static int wave6_vpu_enc_g_fmt_out(struct file *file, void *fh, struct v4l2_form
 
 static int wave6_vpu_enc_g_selection(struct file *file, void *fh, struct v4l2_selection *s)
 {
-	struct vpu_instance *inst = wave6_to_vpu_inst(fh);
+	struct vpu_instance *inst = wave6_to_vpu_inst(file_to_v4l2_fh(file));
 
 	dev_dbg(inst->dev->dev, "%s: type %d target %d\n",
 		__func__, s->type, s->target);
@@ -1460,7 +1452,7 @@ static int wave6_vpu_enc_g_selection(struct file *file, void *fh, struct v4l2_se
 
 static int wave6_vpu_enc_s_selection(struct file *file, void *fh, struct v4l2_selection *s)
 {
-	struct vpu_instance *inst = wave6_to_vpu_inst(fh);
+	struct vpu_instance *inst = wave6_to_vpu_inst(file_to_v4l2_fh(file));
 	u32 max_crop_w, max_crop_h;
 
 	if (!V4L2_TYPE_IS_OUTPUT(s->type))
@@ -1510,7 +1502,8 @@ static int wave6_vpu_enc_s_selection(struct file *file, void *fh, struct v4l2_se
 
 static int wave6_vpu_enc_encoder_cmd(struct file *file, void *fh, struct v4l2_encoder_cmd *ec)
 {
-	struct vpu_instance *inst = wave6_to_vpu_inst(fh);
+	struct vpu_instance *inst = wave6_to_vpu_inst(file_to_v4l2_fh(file));
+	struct v4l2_m2m_ctx *m2m_ctx = inst->v4l2_fh.m2m_ctx;
 	int ret;
 
 	dev_dbg(inst->dev->dev, "%s: cmd %d\n", __func__, ec->cmd);
@@ -1524,9 +1517,16 @@ static int wave6_vpu_enc_encoder_cmd(struct file *file, void *fh, struct v4l2_en
 
 	switch (ec->cmd) {
 	case V4L2_ENC_CMD_STOP:
-		wave6_vpu_set_instance_state(inst, VPU_INST_STATE_STOP);
-		v4l2_m2m_set_src_buffered(inst->v4l2_fh.m2m_ctx, true);
-		v4l2_m2m_try_schedule(inst->v4l2_fh.m2m_ctx);
+		if (m2m_ctx->is_draining)
+			return -EBUSY;
+
+		if (v4l2_m2m_has_stopped(m2m_ctx))
+			return 0;
+
+		m2m_ctx->is_draining = true;
+		m2m_ctx->last_src_buf = v4l2_m2m_last_src_buf(m2m_ctx);
+		v4l2_m2m_set_src_buffered(m2m_ctx, true);
+		v4l2_m2m_try_schedule(m2m_ctx);
 		break;
 	case V4L2_ENC_CMD_START:
 		break;
@@ -1539,7 +1539,7 @@ static int wave6_vpu_enc_encoder_cmd(struct file *file, void *fh, struct v4l2_en
 
 static int wave6_vpu_enc_g_parm(struct file *file, void *fh, struct v4l2_streamparm *a)
 {
-	struct vpu_instance *inst = wave6_to_vpu_inst(fh);
+	struct vpu_instance *inst = wave6_to_vpu_inst(file_to_v4l2_fh(file));
 
 	dev_dbg(inst->dev->dev, "%s: type %d\n", __func__, a->type);
 
@@ -1560,7 +1560,7 @@ static int wave6_vpu_enc_g_parm(struct file *file, void *fh, struct v4l2_streamp
 
 static int wave6_vpu_enc_s_parm(struct file *file, void *fh, struct v4l2_streamparm *a)
 {
-	struct vpu_instance *inst = wave6_to_vpu_inst(fh);
+	struct vpu_instance *inst = wave6_to_vpu_inst(file_to_v4l2_fh(file));
 
 	dev_dbg(inst->dev->dev, "%s: type %d\n", __func__, a->type);
 
@@ -2141,10 +2141,8 @@ static void wave6_set_enc_open_param(struct enc_open_param *open_param,
 	if (!vpu_fmt)
 		return;
 
-	open_param->src_format = vpu_fmt->src_format;
-	open_param->source_endian = vpu_fmt->source_endian;
-	open_param->packed_format = vpu_fmt->packed_format;
-
+	open_param->src_format = vpu_fmt->fb_fmt;
+	open_param->source_endian = vpu_fmt->endian;
 	open_param->line_buf_int_en = true;
 	open_param->stream_endian = VPU_STREAM_ENDIAN;
 	open_param->inst_buffer.temp_base = inst->dev->temp_vbuf.daddr;
@@ -2255,6 +2253,10 @@ static int wave6_vpu_enc_create_instance(struct vpu_instance *inst)
 	}
 
 	dprintk(inst->dev->dev, "[%d] encoder\n", inst->id);
+
+	spin_lock(&inst->dev->inst_lock);
+	list_add_tail(&inst->list, &inst->dev->instances);
+	spin_unlock(&inst->dev->inst_lock);
 	wave6_vpu_create_dbgfs_file(inst);
 	wave6_vpu_set_instance_state(inst, VPU_INST_STATE_OPEN);
 
@@ -2267,11 +2269,22 @@ error_pm:
 	return ret;
 }
 
-static int wave6_vpu_enc_initialize_instance(struct vpu_instance *inst)
+static void wave6_vpu_enc_setup_rot_mir(struct vpu_instance *inst)
 {
-	int ret;
-	struct enc_initial_info initial_info = { 0 };
-	struct v4l2_ctrl *ctrl;
+	const struct vpu_format *vpu_fmt;
+
+	if (!inst->enc_ctrls.mirror_direction && !inst->enc_ctrls.rot_angle)
+		return;
+
+	vpu_fmt = wave6_find_vpu_fmt(inst->src_fmt.pixelformat, VPU_FMT_TYPE_RAW);
+	if (!vpu_fmt)
+		return;
+
+	if (vpu_fmt->flags & VPU_FMT_FLAG_CSC_ENABLE) {
+		dev_warn(inst->dev->dev, "rot/mir is not supported (fmt %d)\n",
+			 inst->src_fmt.pixelformat);
+		return;
+	}
 
 	if (inst->enc_ctrls.mirror_direction) {
 		wave6_vpu_enc_give_command(inst, ENABLE_MIRRORING, NULL);
@@ -2283,7 +2296,15 @@ static int wave6_vpu_enc_initialize_instance(struct vpu_instance *inst)
 		wave6_vpu_enc_give_command(inst, SET_ROTATION_ANGLE,
 					   &inst->enc_ctrls.rot_angle);
 	}
+}
 
+static int wave6_vpu_enc_initialize_instance(struct vpu_instance *inst)
+{
+	int ret;
+	struct enc_initial_info initial_info = { 0 };
+	struct v4l2_ctrl *ctrl;
+
+	wave6_vpu_enc_setup_rot_mir(inst);
 	ret = wave6_vpu_enc_issue_seq_init(inst);
 	if (ret) {
 		dev_err(inst->dev->dev, "seq init fail %d\n", ret);
@@ -2338,20 +2359,31 @@ static int wave6_vpu_enc_prepare_fb(struct vpu_instance *inst)
 
 	for (i = 0; i < fb_num; i++) {
 		struct frame_buffer *frame = &inst->frame_buf[i];
-		struct vpu_buf *vframe = &inst->frame_vbuf[i];
+		struct vpu_buf *vframe_y = &inst->frame_y_vbuf[i];
+		struct vpu_buf *vframe_c = &inst->frame_c_vbuf[i];
 
-		vframe->size = luma_size + chroma_size;
-		vframe->recorder = inst->recorder;
-		vframe->label = "fb";
-		ret = wave6_alloc_dma(inst->dev->dev, vframe);
+		vframe_y->size = luma_size;
+		vframe_y->recorder = inst->recorder;
+		vframe_y->label = "fbc-y";
+		ret = wave6_alloc_dma(inst->dev->dev, vframe_y);
 		if (ret) {
-			dev_err(inst->dev->dev, "alloc FBC buffer fail : %zu\n",
-				vframe->size);
+			dev_err(inst->dev->dev, "alloc FBC_Y buf fail: %zu\n",
+				vframe_y->size);
 			goto error;
 		}
 
-		frame->buf_y = vframe->daddr;
-		frame->buf_cb = vframe->daddr + luma_size;
+		vframe_c->size = chroma_size;
+		vframe_c->recorder = inst->recorder;
+		vframe_c->label = "fbc-c";
+		ret = wave6_alloc_dma(inst->dev->dev, vframe_c);
+		if (ret) {
+			dev_err(inst->dev->dev, "alloc FBC_C buf fail: %zu\n",
+				vframe_c->size);
+			goto error;
+		}
+
+		frame->buf_y = vframe_y->daddr;
+		frame->buf_cb = vframe_c->daddr;
 		frame->buf_cr = (dma_addr_t)-1;
 		frame->stride = fb_stride;
 		frame->height = fb_height;
@@ -2389,20 +2421,6 @@ static int wave6_vpu_enc_prepare_fb(struct vpu_instance *inst)
 error:
 	wave6_vpu_enc_release_fb(inst);
 	return ret;
-}
-
-static void wave6_vpu_enc_fb_work(struct work_struct *work)
-{
-	struct vpu_instance *inst = container_of(work, struct vpu_instance, fb_work);
-	int ret;
-
-	ret = wave6_vpu_enc_prepare_fb(inst);
-	if (ret) {
-		vb2_queue_error(v4l2_m2m_get_src_vq(inst->v4l2_fh.m2m_ctx));
-		vb2_queue_error(v4l2_m2m_get_dst_vq(inst->v4l2_fh.m2m_ctx));
-		return;
-	}
-	v4l2_m2m_try_schedule(inst->v4l2_fh.m2m_ctx);
 }
 
 static int wave6_vpu_enc_queue_setup(struct vb2_queue *q, unsigned int *num_buffers,
@@ -2541,6 +2559,8 @@ static int wave6_vpu_enc_start_streaming(struct vb2_queue *q, unsigned int count
 
 	trace_start_streaming(inst, q->type);
 
+	v4l2_m2m_update_start_streaming_state(inst->v4l2_fh.m2m_ctx, q);
+
 	if (V4L2_TYPE_IS_OUTPUT(q->type)) {
 		fmt = &inst->src_fmt;
 		vq_peer = v4l2_m2m_get_dst_vq(inst->v4l2_fh.m2m_ctx);
@@ -2567,8 +2587,19 @@ static int wave6_vpu_enc_start_streaming(struct vb2_queue *q, unsigned int count
 	}
 
 	if (inst->state == VPU_INST_STATE_OPEN) {
-		v4l2_m2m_set_src_buffered(inst->v4l2_fh.m2m_ctx, true);
-		v4l2_m2m_set_dst_buffered(inst->v4l2_fh.m2m_ctx, true);
+		ret = wave6_vpu_enc_initialize_instance(inst);
+		if (ret) {
+			wave6_vpu_enc_destroy_instance(inst);
+			goto exit;
+		}
+	}
+
+	if (inst->state == VPU_INST_STATE_INIT_SEQ) {
+		ret = wave6_vpu_enc_prepare_fb(inst);
+		if (ret) {
+			wave6_vpu_enc_destroy_instance(inst);
+			goto exit;
+		}
 	}
 
 exit:
@@ -2592,9 +2623,7 @@ static void wave6_vpu_enc_stop_streaming(struct vb2_queue *q)
 	if (inst->state == VPU_INST_STATE_NONE)
 		goto exit;
 
-	cancel_work_sync(&inst->fb_work);
-	if (wave6_vpu_both_queues_are_streaming(inst))
-		wave6_vpu_set_instance_state(inst, VPU_INST_STATE_STOP);
+	v4l2_m2m_update_stop_streaming_state(inst->v4l2_fh.m2m_ctx, q);
 
 	if (V4L2_TYPE_IS_OUTPUT(q->type)) {
 		wave6_vpu_reset_performance(inst);
@@ -2618,28 +2647,6 @@ static void wave6_vpu_enc_stop_streaming(struct vb2_queue *q)
 
 exit:
 	wave6_vpu_return_buffers(inst, q->type, VB2_BUF_STATE_ERROR);
-}
-
-static int wave6_vpu_enc_prepare_encode(struct vpu_instance *inst)
-{
-	int ret;
-
-	if (inst->state == VPU_INST_STATE_OPEN) {
-		ret = wave6_vpu_enc_initialize_instance(inst);
-		if (ret) {
-			vb2_queue_error(v4l2_m2m_get_src_vq(inst->v4l2_fh.m2m_ctx));
-			vb2_queue_error(v4l2_m2m_get_dst_vq(inst->v4l2_fh.m2m_ctx));
-			return ret;
-		}
-	}
-
-	if (inst->state == VPU_INST_STATE_INIT_SEQ) {
-		v4l2_m2m_set_src_buffered(inst->v4l2_fh.m2m_ctx, false);
-		v4l2_m2m_set_dst_buffered(inst->v4l2_fh.m2m_ctx, false);
-		queue_work(inst->workqueue, &inst->fb_work);
-	}
-
-	return 0;
 }
 
 static const struct vb2_ops wave6_vpu_enc_vb2_ops = {
@@ -2684,6 +2691,7 @@ static int wave6_vpu_enc_queue_init(void *priv, struct vb2_queue *src_vq, struct
 	src_vq->type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
 	src_vq->io_modes = VB2_MMAP | VB2_DMABUF;
 	src_vq->mem_ops = &vb2_dma_contig_memops;
+	src_vq->dma_attrs = DMA_ATTR_ALLOC_SINGLE_PAGES;
 	src_vq->ops = &wave6_vpu_enc_vb2_ops;
 	src_vq->timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_COPY;
 	src_vq->buf_struct_size = sizeof(struct vpu_buffer);
@@ -2698,6 +2706,7 @@ static int wave6_vpu_enc_queue_init(void *priv, struct vb2_queue *src_vq, struct
 	dst_vq->type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
 	dst_vq->io_modes = VB2_MMAP | VB2_DMABUF;
 	dst_vq->mem_ops = &vb2_dma_contig_memops;
+	dst_vq->dma_attrs = DMA_ATTR_ALLOC_SINGLE_PAGES;
 	dst_vq->ops = &wave6_vpu_enc_vb2_ops;
 	dst_vq->timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_COPY;
 	dst_vq->buf_struct_size = sizeof(struct vpu_buffer);
@@ -2713,7 +2722,6 @@ static int wave6_vpu_enc_queue_init(void *priv, struct vb2_queue *src_vq, struct
 }
 
 static const struct vpu_instance_ops wave6_vpu_enc_inst_ops = {
-	.prepare_process = wave6_vpu_enc_prepare_encode,
 	.start_process = wave6_vpu_enc_start_encode,
 	.finish_process = wave6_vpu_enc_finish_encode,
 };
@@ -2735,11 +2743,11 @@ static int wave6_vpu_open_enc(struct file *filp)
 	inst->type = VPU_INST_TYPE_ENC;
 	inst->ops = &wave6_vpu_enc_inst_ops;
 	mutex_init(&inst->queue_lock);
+	init_completion(&inst->irq_done);
 	inst->recorder = imx_mur_create_node(dev->recorder, "encoder instance");
 
 	v4l2_fh_init(&inst->v4l2_fh, vdev);
-	filp->private_data = &inst->v4l2_fh;
-	v4l2_fh_add(&inst->v4l2_fh);
+	v4l2_fh_add(&inst->v4l2_fh, filp);
 
 	inst->v4l2_fh.m2m_ctx =
 		v4l2_m2m_ctx_init(dev->m2m_dev, inst, wave6_vpu_enc_queue_init);
@@ -2894,7 +2902,7 @@ static int wave6_vpu_open_enc(struct file *filp)
 			       V4L2_MPEG_VIDEO_MULTI_SLICE_MODE_SINGLE);
 	v4l2_ctrl_new_std(v4l2_ctrl_hdl, &wave6_vpu_enc_ctrl_ops,
 			  V4L2_CID_MPEG_VIDEO_MULTI_SLICE_MAX_MB,
-			  0, 0x3FFFF, 1, 1);
+			  4, 0x3FFFF, 1, 4);
 	v4l2_ctrl_new_std(v4l2_ctrl_hdl, &wave6_vpu_enc_ctrl_ops,
 			  V4L2_CID_MPEG_VIDEO_FORCE_KEY_FRAME,
 			  0, 1, 1, 0);
@@ -2959,24 +2967,15 @@ static int wave6_vpu_open_enc(struct file *filp)
 
 	wave6_vpu_enc_set_roi_info(inst);
 
-	inst->workqueue = alloc_ordered_workqueue("wave6-encoder", WQ_MEM_RECLAIM);
-	if (!inst->workqueue) {
-		dev_err(inst->dev->dev, "Failed to alloc workqueue\n");
-		ret = -EINVAL;
-		goto err_map_free;
-	}
-	INIT_WORK(&inst->fb_work, wave6_vpu_enc_fb_work);
 
 	return 0;
 
-err_map_free:
-	kfree(inst->custom_qp_map.vaddr);
 err_free_ctrl:
 	v4l2_ctrl_handler_free(&inst->v4l2_ctrl_hdl);
 err_m2m_release:
 	v4l2_m2m_ctx_release(inst->v4l2_fh.m2m_ctx);
 free_inst:
-	v4l2_fh_del(&inst->v4l2_fh);
+	v4l2_fh_del(&inst->v4l2_fh, filp);
 	v4l2_fh_exit(&inst->v4l2_fh);
 	imx_mur_destroy_node(inst->recorder);
 	mutex_destroy(&inst->queue_lock);
@@ -2986,7 +2985,7 @@ free_inst:
 
 static int wave6_vpu_enc_release(struct file *filp)
 {
-	struct vpu_instance *inst = wave6_to_vpu_inst(filp->private_data);
+	struct vpu_instance *inst = wave6_to_vpu_inst(file_to_v4l2_fh(filp));
 
 	dprintk(inst->dev->dev, "[%d] release\n", inst->id);
 	v4l2_m2m_ctx_release(inst->v4l2_fh.m2m_ctx);
@@ -2996,11 +2995,10 @@ static int wave6_vpu_enc_release(struct file *filp)
 		wave6_vpu_enc_destroy_instance(inst);
 	mutex_unlock(&inst->queue_lock);
 
-	destroy_workqueue(inst->workqueue);
 	kfree(inst->custom_qp_map.vaddr);
 	imx_mur_release_v4l2_ctrl(inst->recorder);
 	v4l2_ctrl_handler_free(&inst->v4l2_ctrl_hdl);
-	v4l2_fh_del(&inst->v4l2_fh);
+	v4l2_fh_del(&inst->v4l2_fh, filp);
 	v4l2_fh_exit(&inst->v4l2_fh);
 	imx_mur_destroy_node(inst->recorder);
 	mutex_destroy(&inst->queue_lock);

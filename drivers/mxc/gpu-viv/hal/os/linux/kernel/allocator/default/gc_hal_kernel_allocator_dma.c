@@ -250,7 +250,11 @@ _DmaGetSGT(IN gckALLOCATOR Allocator,
 #    endif
 
         for (i = 0; i < numPages; ++i)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6, 17, 0)
             pages[i] = nth_page(page, i + skipPages);
+#else
+            pages[i] = page + i + skipPages;
+#endif
     }
 
     if (sg_alloc_table_from_pages(sgt, pages, numPages, offset, Bytes, GFP_KERNEL) < 0)

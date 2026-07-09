@@ -553,6 +553,7 @@ int mtip_backplane_validate(struct phy *serdes, unsigned long *supported)
 {
 	__ETHTOOL_DECLARE_LINK_MODE_MASK(mtip_supported) = {};
 	const enum ethtool_link_mode_bit_indices *link_modes;
+	enum ethtool_link_mode_bit_indices link_mode;
 	int i, err;
 
 	linkmode_set_bit(ETHTOOL_LINK_MODE_Autoneg_BIT, mtip_supported);
@@ -566,14 +567,20 @@ int mtip_backplane_validate(struct phy *serdes, unsigned long *supported)
 	 * based on the current PLL configuration.
 	 */
 	for (i = 0; i < ARRAY_SIZE(mtip_backplane_link_modes); i++) {
-		err = phy_validate(serdes, PHY_MODE_ETHERNET_LINKMODE,
-				   link_modes[i], NULL);
+		__ETHTOOL_DECLARE_LINK_MODE_MASK(mask) = {};
+		phy_interface_t iface;
+
+		link_mode = link_modes[i];
+		linkmode_set_bit(link_mode, mask);
+		iface = phylink_c73_linkmode_to_interface(mask);
+
+		err = phy_validate(serdes, PHY_MODE_ETHERNET, iface, NULL);
 		if (err)
 			continue;
 
-		linkmode_set_bit(link_modes[i], mtip_supported);
+		linkmode_set_bit(link_mode, mtip_supported);
 		dev_dbg(&serdes->dev, "Discovered backplane link mode %s\n",
-			ethtool_link_mode_str(link_modes[i]));
+			ethtool_link_mode_str(link_mode));
 	}
 
 	linkmode_and(supported, supported, mtip_supported);
@@ -1720,6 +1727,7 @@ static struct mdio_device *
 mtip_get_mdiodev_for_link_mode(struct mii_bus *bus, struct phy *serdes,
 			       enum ethtool_link_mode_bit_indices link_mode)
 {
+	__ETHTOOL_DECLARE_LINK_MODE_MASK(mask) = {};
 	union phy_status_opts opts1 = {
 		.pcvt_count = {
 			.type = PHY_PCVT_ETHERNET_ANLT,
@@ -1732,9 +1740,13 @@ mtip_get_mdiodev_for_link_mode(struct mii_bus *bus, struct phy *serdes,
 		},
 	};
 	struct mdio_device *mdiodev;
+	phy_interface_t iface;
 	int err;
 
-	err = phy_set_mode_ext(serdes, PHY_MODE_ETHERNET_LINKMODE, link_mode);
+	linkmode_set_bit(link_mode, mask);
+	iface = phylink_c73_linkmode_to_interface(mask);
+
+	err = phy_set_mode_ext(serdes, PHY_MODE_ETHERNET, iface);
 	if (err)
 		return ERR_PTR(err);
 
@@ -1894,8 +1906,9 @@ static int mtip_c73_page_received(struct mtip_backplane *priv,
 
 	err = mtip_wait_for_cdr_lock(priv);
 	if (err) {
-		dev_warn(dev, "Failed to reacquire CDR lock after protocol change: %pe\n",
-			 ERR_PTR(err));
+		dev_warn_ratelimited(dev,
+				     "Failed to reacquire CDR lock after protocol change: %pe\n",
+				     ERR_PTR(err));
 		*an_restart_reason = AN_RESTART_REASON_CDR;
 		return 0;
 	}
@@ -2207,25 +2220,28 @@ static struct mdio_device *
 mtip_get_mdiodev(struct mii_bus *bus, struct phy *serdes,
 		 enum ethtool_link_mode_bit_indices *cfg_link_mode)
 {
-	const enum ethtool_link_mode_bit_indices *link_modes;
 	int i, err;
-
-	link_modes = mtip_backplane_link_modes;
 
 	/* Preconfigure the SerDes lane for the highest supported link mode,
 	 * make sure the backplane AN/LT + PCS are enabled, and get the MDIO
 	 * address of our device so that we can access its registers.
 	 */
 	for (i = 0; i < ARRAY_SIZE(mtip_backplane_link_modes); i++) {
-		err = phy_validate(serdes, PHY_MODE_ETHERNET_LINKMODE,
-				   link_modes[i], NULL);
+		enum ethtool_link_mode_bit_indices link_mode;
+		__ETHTOOL_DECLARE_LINK_MODE_MASK(mask) = {};
+		phy_interface_t iface;
+
+		link_mode = mtip_backplane_link_modes[i];
+		linkmode_set_bit(link_mode, mask);
+		iface = phylink_c73_linkmode_to_interface(mask);
+
+		err = phy_validate(serdes, PHY_MODE_ETHERNET, iface, NULL);
 		if (err)
 			continue;
 
-		*cfg_link_mode = link_modes[i];
+		*cfg_link_mode = link_mode;
 
-		return mtip_get_mdiodev_for_link_mode(bus, serdes,
-						      link_modes[i]);
+		return mtip_get_mdiodev_for_link_mode(bus, serdes, link_mode);
 	}
 
 	dev_err(&serdes->dev, "No backplane link modes supported!\n");

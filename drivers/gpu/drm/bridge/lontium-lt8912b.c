@@ -408,7 +408,7 @@ lt8912_connector_detect(struct drm_connector *connector, bool force)
 	struct lt8912 *lt = connector_to_lt8912(connector);
 
 	if (lt->hdmi_port->ops & DRM_BRIDGE_OP_DETECT)
-		return drm_bridge_detect(lt->hdmi_port);
+		return drm_bridge_detect(lt->hdmi_port, connector);
 
 	return lt8912_check_cable_status(lt);
 }
@@ -544,12 +544,13 @@ exit:
 }
 
 static int lt8912_bridge_attach(struct drm_bridge *bridge,
+				struct drm_encoder *encoder,
 				enum drm_bridge_attach_flags flags)
 {
 	struct lt8912 *lt = bridge_to_lt8912(bridge);
 	int ret;
 
-	ret = drm_bridge_attach(bridge->encoder, lt->hdmi_port, bridge,
+	ret = drm_bridge_attach(encoder, lt->hdmi_port, bridge,
 				DRM_BRIDGE_ATTACH_NO_CONNECTOR);
 	if (ret < 0) {
 		dev_err(lt->dev, "Failed to attach next bridge (%d)\n", ret);
@@ -607,12 +608,12 @@ lt8912_bridge_mode_valid(struct drm_bridge *bridge,
 }
 
 static enum drm_connector_status
-lt8912_bridge_detect(struct drm_bridge *bridge)
+lt8912_bridge_detect(struct drm_bridge *bridge, struct drm_connector *connector)
 {
 	struct lt8912 *lt = bridge_to_lt8912(bridge);
 
 	if (lt->hdmi_port->ops & DRM_BRIDGE_OP_DETECT)
-		return drm_bridge_detect(lt->hdmi_port);
+		return drm_bridge_detect(lt->hdmi_port, connector);
 
 	return lt8912_check_cable_status(lt);
 }
@@ -761,9 +762,10 @@ static int lt8912_probe(struct i2c_client *client)
 	int ret = 0;
 	struct device *dev = &client->dev;
 
-	lt = devm_kzalloc(dev, sizeof(struct lt8912), GFP_KERNEL);
-	if (!lt)
-		return -ENOMEM;
+	lt = devm_drm_bridge_alloc(dev, struct lt8912, bridge,
+				   &lt8912_bridge_funcs);
+	if (IS_ERR(lt))
+		return PTR_ERR(lt);
 
 	lt->dev = dev;
 	lt->i2c_client[0] = client;
@@ -778,7 +780,6 @@ static int lt8912_probe(struct i2c_client *client)
 
 	i2c_set_clientdata(client, lt);
 
-	lt->bridge.funcs = &lt8912_bridge_funcs;
 	lt->bridge.of_node = dev->of_node;
 	lt->bridge.ops = (DRM_BRIDGE_OP_EDID |
 			  DRM_BRIDGE_OP_DETECT);
@@ -816,8 +817,8 @@ static const struct of_device_id lt8912_dt_match[] = {
 MODULE_DEVICE_TABLE(of, lt8912_dt_match);
 
 static const struct i2c_device_id lt8912_id[] = {
-	{"lt8912", 0},
-	{},
+	{ "lt8912" },
+	{}
 };
 MODULE_DEVICE_TABLE(i2c, lt8912_id);
 

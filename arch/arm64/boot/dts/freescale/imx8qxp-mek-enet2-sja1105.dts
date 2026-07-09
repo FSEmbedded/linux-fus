@@ -61,7 +61,6 @@
 	assigned-clocks = <&clk IMX_SC_R_SPI_3 IMX_SC_PM_CLK_PER>;
 	assigned-clock-rates = <100000000>;
 	cs-gpios = <&lsio_gpio0 16 GPIO_ACTIVE_LOW>;
-	fsl,spi-num-chipselects = <1>;
 	spi-cpha;
 	status = "okay";
 

@@ -765,7 +765,6 @@ static int max8903_probe(struct platform_device *pdev)
 	data->ta_in = ta_in;
 	data->usb_in = usb_in;
 
-	psy_cfg.of_node = dev->of_node;
 	psy_cfg.drv_data = data;
 
 	data->psy = power_supply_register(dev, &max8903_ac_desc, &psy_cfg);
@@ -938,7 +937,7 @@ static int max8903_suspend(struct platform_device *pdev,
 				irq = gpio_to_irq(pdata->uok);
 				enable_irq_wake(irq);
 			}
-			cancel_delayed_work(&data->work);
+			cancel_delayed_work_sync(&data->work);
 		}
 	}
 	return 0;

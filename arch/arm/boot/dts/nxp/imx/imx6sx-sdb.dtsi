@@ -26,7 +26,6 @@
 		pwms = <&pwm3 0 5000000 0>;
 		brightness-levels = <0 4 8 16 32 64 128 255>;
 		default-brightness-level = <6>;
-		fb-names = "mxs-lcdif0";
 	};
 
 	backlight_display1: backlight-display1 {
@@ -34,7 +33,6 @@
 		pwms = <&pwm4 0 5000000>;
 		brightness-levels = <0 4 8 16 32 64 128 255>;
 		default-brightness-level = <6>;
-		fb-names = "mxs-lcdif1";
 	};
 
 	gpio-keys {
@@ -42,14 +40,14 @@
 		pinctrl-names = "default";
 		pinctrl-0 = <&pinctrl_gpio_keys>;
 
-		volume-up {
+		key-volume-up {
 			label = "Volume Up";
 			gpios = <&gpio1 18 GPIO_ACTIVE_LOW>;
 			linux,code = <KEY_VOLUMEUP>;
 			wakeup-source;
 		};
 
-		volume-down {
+		key-volume-down {
 			label = "Volume Down";
 			gpios = <&gpio1 19 GPIO_ACTIVE_LOW>;
 			linux,code = <KEY_VOLUMEDOWN>;
@@ -190,7 +188,7 @@
 			"IN3R", "AMIC";
 		mux-int-port = <2>;
 		mux-ext-port = <6>;
-		hp-det-gpio = <&gpio1 17 GPIO_ACTIVE_LOW>;
+		hp-det-gpios = <&gpio1 17 GPIO_ACTIVE_LOW>;
 	};
 
 	spdif_out: spdif-out {
@@ -444,6 +442,7 @@
 	pinctrl-0 = <&pinctrl_lcd>;
 	lcd-supply = <&reg_lcd_3v3>;
 	display = <&display0>;
+	backlight = <&backlight_display0>;
 	status = "disabled";
 
 	display0: display@0 {
@@ -474,6 +473,7 @@
 &lcdif2 {
 	display = <&display1>;
 	disp-dev = "ldb";
+	backlight = <&backlight_display1>;
 	status = "okay";
 	display1: display@1 {
 		bits-per-pixel = <16>;

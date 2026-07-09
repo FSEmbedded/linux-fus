@@ -45,6 +45,28 @@ enum sgmii_speed {
 #define phylink_pcs_to_lynx(pl_pcs) container_of((pl_pcs), struct lynx_pcs, pcs)
 #define lynx_to_phylink_pcs(lynx) (&(lynx)->pcs)
 
+static unsigned int lynx_pcs_inband_caps(struct phylink_pcs *pcs,
+					 phy_interface_t interface)
+{
+	switch (interface) {
+	case PHY_INTERFACE_MODE_1000BASEX:
+	case PHY_INTERFACE_MODE_SGMII:
+	case PHY_INTERFACE_MODE_QSGMII:
+		return LINK_INBAND_DISABLE | LINK_INBAND_ENABLE;
+
+	case PHY_INTERFACE_MODE_10GBASER:
+	case PHY_INTERFACE_MODE_2500BASEX:
+		return LINK_INBAND_DISABLE;
+
+	case PHY_INTERFACE_MODE_USXGMII:
+	case PHY_INTERFACE_MODE_10G_QXGMII:
+		return LINK_INBAND_ENABLE;
+
+	default:
+		return 0;
+	}
+}
+
 static void lynx_pcs_get_state_usxgmii(struct mdio_device *pcs,
 				       struct phylink_link_state *state)
 {
@@ -89,7 +111,7 @@ static void lynx_pcs_get_state_2500basex(struct mdio_device *pcs,
 	state->duplex = DUPLEX_FULL;
 }
 
-static void lynx_pcs_get_state(struct phylink_pcs *pcs,
+static void lynx_pcs_get_state(struct phylink_pcs *pcs, unsigned int neg_mode,
 			       struct phylink_link_state *state)
 {
 	struct lynx_pcs *lynx = phylink_pcs_to_lynx(pcs);
@@ -101,7 +123,7 @@ static void lynx_pcs_get_state(struct phylink_pcs *pcs,
 	case PHY_INTERFACE_MODE_1000BASEX:
 	case PHY_INTERFACE_MODE_SGMII:
 	case PHY_INTERFACE_MODE_QSGMII:
-		phylink_mii_c22_pcs_get_state(lynx->mdio, state);
+		phylink_mii_c22_pcs_get_state(lynx->mdio, neg_mode, state);
 		break;
 	case PHY_INTERFACE_MODE_2500BASEX:
 		lynx_pcs_get_state_2500basex(lynx->mdio, state);
@@ -215,8 +237,8 @@ static int lynx_pcs_config(struct phylink_pcs *pcs, unsigned int neg_mode,
 				       ifmode);
 		if (err) {
 			dev_err(&lynx->mdio->dev,
-				"phy_set_mode_ext() failed: %pe\n",
-				ERR_PTR(err));
+				"phy_set_mode_ext(%s) failed: %pe\n",
+				phy_modes(ifmode), ERR_PTR(err));
 			return err;
 		}
 	}
@@ -349,6 +371,7 @@ static void lynx_pcs_link_up(struct phylink_pcs *pcs, unsigned int neg_mode,
 		lynx_pcs_link_up_2500basex(lynx->mdio, neg_mode, speed, duplex);
 		break;
 	case PHY_INTERFACE_MODE_USXGMII:
+	case PHY_INTERFACE_MODE_10G_QXGMII:
 		/* At the moment, only in-band AN is supported for USXGMII
 		 * so nothing to do in link_up
 		 */
@@ -454,6 +477,7 @@ static void lynx_pcs_disable(struct phylink_pcs *pcs)
 }
 
 static const struct phylink_pcs_ops lynx_pcs_phylink_ops = {
+	.pcs_inband_caps = lynx_pcs_inband_caps,
 	.pcs_get_state = lynx_pcs_get_state,
 	.pcs_config = lynx_pcs_config,
 	.pcs_an_restart = lynx_pcs_an_restart,
@@ -462,43 +486,6 @@ static const struct phylink_pcs_ops lynx_pcs_phylink_ops = {
 	.pcs_enable = lynx_pcs_enable,
 	.pcs_disable = lynx_pcs_disable,
 };
-
-void lynx_pcs_set_supported_interfaces(struct phylink_pcs *pcs,
-				       phy_interface_t default_interface,
-				       unsigned long *supported_interfaces)
-{
-	struct lynx_pcs *lynx = phylink_pcs_to_lynx(pcs);
-	phy_interface_t iface;
-	int err;
-
-	__set_bit(default_interface, supported_interfaces);
-
-	if (default_interface == PHY_INTERFACE_MODE_1000BASEX ||
-	    default_interface == PHY_INTERFACE_MODE_SGMII) {
-		__set_bit(PHY_INTERFACE_MODE_1000BASEX, supported_interfaces);
-		__set_bit(PHY_INTERFACE_MODE_SGMII, supported_interfaces);
-	}
-
-	if (!lynx->num_phys)
-		return;
-
-	/* In case we have access to the SerDes phy/lane, then ask the SerDes
-	 * driver what interfaces are supported based on the current PLL
-	 * configuration.
-	 */
-	for (iface = 0; iface < PHY_INTERFACE_MODE_MAX; iface++) {
-		if (iface == PHY_INTERFACE_MODE_NA)
-			continue;
-
-		err = phy_validate(lynx->serdes[PRIMARY_LANE],
-				   PHY_MODE_ETHERNET, iface, NULL);
-		if (err)
-			continue;
-
-		__set_bit(iface, supported_interfaces);
-	}
-}
-EXPORT_SYMBOL(lynx_pcs_set_supported_interfaces);
 
 static int lynx_pcs_validate_addr(struct mdio_device *mdiodev,
 				  struct phy *serdes)
@@ -543,6 +530,52 @@ static int lynx_pcs_validate_addr(struct mdio_device *mdiodev,
 	return -ENODEV;
 }
 
+
+static const phy_interface_t lynx_interfaces[] = {
+	PHY_INTERFACE_MODE_SGMII,
+	PHY_INTERFACE_MODE_QSGMII,
+	PHY_INTERFACE_MODE_1000BASEX,
+	PHY_INTERFACE_MODE_2500BASEX,
+	PHY_INTERFACE_MODE_10GBASER,
+	PHY_INTERFACE_MODE_USXGMII,
+	PHY_INTERFACE_MODE_10G_QXGMII,
+};
+
+void lynx_pcs_set_supported_interfaces(struct phylink_pcs *pcs,
+				       phy_interface_t default_interface,
+				       unsigned long *supported_interfaces)
+{
+	struct lynx_pcs *lynx = phylink_pcs_to_lynx(pcs);
+	int err;
+
+	__set_bit(default_interface, supported_interfaces);
+
+	if (default_interface == PHY_INTERFACE_MODE_1000BASEX ||
+	    default_interface == PHY_INTERFACE_MODE_SGMII) {
+		__set_bit(PHY_INTERFACE_MODE_1000BASEX, supported_interfaces);
+		__set_bit(PHY_INTERFACE_MODE_SGMII, supported_interfaces);
+	}
+
+	if (!lynx->num_phys)
+		return;
+
+	/* In case we have access to the SerDes phy/lane, then ask the SerDes
+	 * driver what interfaces are supported based on the current PLL
+	 * configuration.
+	 */
+	for (int i = 0; i < ARRAY_SIZE(lynx_interfaces); i++) {
+		phy_interface_t iface = lynx_interfaces[i];
+
+		err = phy_validate(lynx->serdes[PRIMARY_LANE],
+				   PHY_MODE_ETHERNET, iface, NULL);
+		if (err)
+			continue;
+
+		__set_bit(iface, supported_interfaces);
+	}
+}
+EXPORT_SYMBOL(lynx_pcs_set_supported_interfaces);
+
 static struct phylink_pcs *lynx_pcs_create(struct mdio_device *mdio,
 					   struct phy **phys, size_t num_phys,
 					   enum mtip_model model)
@@ -581,10 +614,12 @@ static struct phylink_pcs *lynx_pcs_create(struct mdio_device *mdio,
 	mdio_device_get(mdio);
 	lynx->mdio = mdio;
 	lynx->pcs.ops = &lynx_pcs_phylink_ops;
-	lynx->pcs.neg_mode = true;
 	lynx->pcs.poll = true;
 	lynx->num_phys = num_phys;
 	lynx->model = model;
+
+	for (i = 0; i < ARRAY_SIZE(lynx_interfaces); i++)
+		__set_bit(lynx_interfaces[i], lynx->pcs.supported_interfaces);
 
 	return lynx_to_phylink_pcs(lynx);
 

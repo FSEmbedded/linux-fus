@@ -6,6 +6,34 @@
 #ifndef __DTS_IMX94_PINFUNC_H
 #define __DTS_IMX94_PINFUNC_H
 
+/* Drive Strength */
+#define IMX94_DSE_X1		0x2
+#define IMX94_DSE_X2		0x6
+#define IMX94_DSE_X3		0xe
+#define IMX94_DSE_X4		0x1e
+#define IMX94_DSE_X5		0x3e
+#define IMX94_DSE_X6		0x7e
+
+/* Slew Rate */
+#define IMX94_FSEL_FAST		0x180
+#define IMX94_FSEL_SLOW		0x100
+
+/* Pull Up */
+#define IMX94_PU_ENABLE		0x200
+#define IMX94_PU_DISABLE	0x0
+
+/* Pull Down */
+#define IMX94_PD_ENABLE		0x400
+#define IMX94_PD_DISABLE	0x0
+
+/* Open Drain */
+#define IMX94_OD_ENABLE		0x800
+#define IMX94_OD_DISABLE	0x0
+
+/* Schmitt trigger */
+#define IMX94_HYS_SCHMITT	0x1000
+#define IMX94_HYS_NO_SCHMITT	0x0
+
 /*
  * The pin function ID is a tuple of <mux_reg conf_reg input_reg mux_mode input_val>
  */
@@ -1249,7 +1277,6 @@
 #define IMX94_PAD_SD2_VSELECT__NETC_1588MUX_INOUT10         0x025c 0x0560 0x0674 0x03 0x02
 #define IMX94_PAD_SD2_VSELECT__FLEXIO2_4_1_FLEXIO11         0x025c 0x0560 0x0694 0x04 0x01
 #define IMX94_PAD_SD2_VSELECT__GPIO4_IO19                   0x025c 0x0560 0x0000 0x05 0x00
-#define IMX94_PAD_SD2_VSELECT__EXT_CLK1                     0x025c 0x0560 0x0624 0x06 0x01
 #define IMX94_PAD_SD2_VSELECT__XBAR1_XBAR_INOUT12           0x025c 0x0560 0x088c 0x07 0x02
 
 #define IMX94_PAD_XSPI1_DATA0__XSPI1_A_DATA0                0x0260 0x0564 0x0000 0x00 0x00
@@ -1516,7 +1543,6 @@
 #define IMX94_PAD_PDM_BIT_STREAM1__TPM2_EXTCLK              0x02e8 0x05ec 0x0000 0x03 0x00
 #define IMX94_PAD_PDM_BIT_STREAM1__LPTMR1_ALT2              0x02e8 0x05ec 0x0000 0x04 0x00
 #define IMX94_PAD_PDM_BIT_STREAM1__GPIO1_IO10               0x02e8 0x05ec 0x0000 0x05 0x00
-#define IMX94_PAD_PDM_BIT_STREAM1__EXT_CLK1                 0x02e8 0x05ec 0x0624 0x06 0x00
 
 #define IMX94_PAD_SAI1_TXFS__SAI1_TX_SYNC                   0x02ec 0x05f0 0x0000 0x00 0x00
 #define IMX94_PAD_SAI1_TXFS__SAI1_TX_DATA1                  0x02ec 0x05f0 0x0000 0x01 0x00

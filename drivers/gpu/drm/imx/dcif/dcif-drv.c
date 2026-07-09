@@ -12,6 +12,7 @@
 #include <linux/regmap.h>
 
 #include <drm/drm_atomic_helper.h>
+#include <drm/clients/drm_client_setup.h>
 #include <drm/drm_drv.h>
 #include <drm/drm_fb_helper.h>
 #include <drm/drm_fbdev_dma.h>
@@ -41,10 +42,10 @@ DEFINE_DRM_GEM_DMA_FOPS(dcif_driver_fops);
 static struct drm_driver dcif_driver = {
 	.driver_features	= DRIVER_MODESET | DRIVER_GEM | DRIVER_ATOMIC,
 	DRM_GEM_DMA_DRIVER_OPS,
+	DRM_FBDEV_DMA_DRIVER_OPS,
 	.fops			= &dcif_driver_fops,
 	.name			= "imx-dcif",
 	.desc			= "i.MX DCIF DRM graphics",
-	.date			= "20240305",
 	.major			= 1,
 	.minor			= 0,
 	.patchlevel		= 0,
@@ -191,7 +192,7 @@ static int dcif_probe(struct platform_device *pdev)
 		legacyfb_depth = 32;
 	}
 
-	drm_fbdev_dma_setup(drm, legacyfb_depth);
+	drm_client_setup(drm, NULL);
 
 	return 0;
 

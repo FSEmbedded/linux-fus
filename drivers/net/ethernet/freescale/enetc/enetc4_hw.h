@@ -4,313 +4,274 @@
  * of ENETC4 PF and VFs. Note that the same registers as ENETC
  * version 1.0 are defined in the enetc_hw.h file.
  *
- * Copyright 2023 NXP
+ * Copyright 2024 NXP
  */
-#include <linux/bitops.h>
+#ifndef __ENETC4_HW_H_
+#define __ENETC4_HW_H_
 
+#define NXP_ENETC_VENDOR_ID		0x1131
+#define NXP_ENETC_PF_DEV_ID		0xe101
+#define NXP_ENETC_VF_DEV_ID		0xef00
+#define NXP_ENETC_PROXY_PF_DEVID	0x080b
 #define NXP_ENETC_PPM_DEV_ID		0xe110
 
 /**********************Station interface registers************************/
-#define ENETC4_SIBCAR		0x40
-#define ENETC4_SIMCAR		0x44
-#define ENETC4_SICCAR		0x48
-
-/* Station interface transmit discard frame counter */
-#define ENETC4_SITDFCR		0x340
-
 /* Station interface LSO segmentation flag mask register 0/1 */
-#define ENETC4_SILSOSFMR0	0x1300
-#define  SILSOSFMR0_TCP_MID_SEG	GENMASK(27, 16)
-#define  SILSOSFMR0_TCP_1ST_SEG	GENMASK(11, 0)
-#define  SILSOSFMR0_VAL_SET(first, mid)	((((mid) << 16) & SILSOSFMR0_TCP_MID_SEG) | \
-					 ((first) & SILSOSFMR0_TCP_1ST_SEG))
+#define ENETC4_SILSOSFMR0		0x1300
+#define  SILSOSFMR0_TCP_MID_SEG		GENMASK(27, 16)
+#define  SILSOSFMR0_TCP_1ST_SEG		GENMASK(11, 0)
+#define  SILSOSFMR0_VAL_SET(first, mid)	(FIELD_PREP(SILSOSFMR0_TCP_MID_SEG, mid) | \
+					 FIELD_PREP(SILSOSFMR0_TCP_1ST_SEG, first))
 
 #define ENETC4_SILSOSFMR1		0x1304
 #define  SILSOSFMR1_TCP_LAST_SEG	GENMASK(11, 0)
-#define   TCP_FLAGS_FIN			BIT(0)
-#define   TCP_FLAGS_SYN			BIT(1)
-#define   TCP_FLAGS_RST			BIT(2)
-#define   TCP_FLAGS_PSH			BIT(3)
-#define   TCP_FLAGS_ACK			BIT(4)
-#define   TCP_FLAGS_URG			BIT(5)
-#define   TCP_FLAGS_ECE			BIT(6)
-#define   TCP_FLAGS_CWR			BIT(7)
-#define   TCP_FLAGS_NS			BIT(8)
+#define   ENETC4_TCP_FLAGS_FIN		BIT(0)
+#define   ENETC4_TCP_FLAGS_SYN		BIT(1)
+#define   ENETC4_TCP_FLAGS_RST		BIT(2)
+#define   ENETC4_TCP_FLAGS_PSH		BIT(3)
+#define   ENETC4_TCP_FLAGS_ACK		BIT(4)
+#define   ENETC4_TCP_FLAGS_URG		BIT(5)
+#define   ENETC4_TCP_FLAGS_ECE		BIT(6)
+#define   ENETC4_TCP_FLAGS_CWR		BIT(7)
+#define   ENETC4_TCP_FLAGS_NS		BIT(8)
 /* According to tso_build_hdr(), clear all special flags for not last packet. */
-#define TCP_NL_SEG_FLAGS_DMASK	(TCP_FLAGS_FIN | TCP_FLAGS_RST | TCP_FLAGS_PSH)
+#define ENETC4_TCP_NL_SEG_FLAGS_DMASK	(ENETC4_TCP_FLAGS_FIN | \
+					 ENETC4_TCP_FLAGS_RST | ENETC4_TCP_FLAGS_PSH)
 
 /***************************ENETC port registers**************************/
-#define ENETC4_ECAPR0		0x0
-#define  ECAPR0_RFS		BIT(2)
-#define  ECAPR0_TSD		BIT(5)
-#define  ECAPR0_RSS		BIT(8)
-#define  ECAPR0_RSC		BIT(9)
-#define  ECAPR0_LSO		BIT(10)
-#define  ECAPR0_WO		BIT(13)
+#define ENETC4_ECAPR0			0x0
+#define  ECAPR0_RFS			BIT(2)
+#define  ECAPR0_TSD			BIT(5)
+#define  ECAPR0_RSS			BIT(8)
+#define  ECAPR0_RSC			BIT(9)
+#define  ECAPR0_LSO			BIT(10)
+#define  ECAPR0_WO			BIT(13)
 
-#define ENETC4_ECAPR1		0x4
-#define  ECAPR1_NUM_TCS		GENMASK(6, 4)
-#define  ECAPR1_NUM_MCH		GENMASK(9, 8)
-#define  ECAPR1_NUM_UCH		GENMASK(11, 10)
-#define  ECAPR1_NUM_MSIX	GENMASK(22, 12)
-#define  ECAPR1_NUM_VSI		GENMASK(27, 24)
-#define  ECAPR1_NUM_IPV		BIT(31)
+#define ENETC4_ECAPR1			0x4
+#define  ECAPR1_NUM_TCS			GENMASK(6, 4)
+#define  ECAPR1_NUM_MCH			GENMASK(9, 8)
+#define  ECAPR1_NUM_UCH			GENMASK(11, 10)
+#define  ECAPR1_NUM_MSIX		GENMASK(22, 12)
+#define  ECAPR1_NUM_VSI			GENMASK(27, 24)
+#define  ECAPR1_NUM_IPV			BIT(31)
 
-#define ENETC4_ECAPR2		0x8
-#define  ECAPR2_NUM_TX_BDR	GENMASK(9, 0)
-#define  ECAPR2_NUM_RX_BDR	GENMASK(25, 16)
+#define ENETC4_ECAPR2			0x8
+#define  ECAPR2_NUM_TX_BDR		GENMASK(9, 0)
+#define  ECAPR2_NUM_RX_BDR		GENMASK(25, 16)
 
-#define ENETC4_PMR		0x10
-#define  PMR_SI_EN(a)		BIT((16 + (a)))
+#define ENETC4_PMR			0x10
+#define  PMR_SI_EN(a)			BIT((16 + (a)))
 
 /* Port Pause ON/OFF threshold register */
-#define ENETC4_PPAUONTR		0x108
-#define ENETC4_PPAUOFFTR	0x10c
+#define ENETC4_PPAUONTR			0x108
+#define ENETC4_PPAUOFFTR		0x10c
 
 /* Port ingress congestion DRa (a=0,1,2,3) discard count register */
-#define ENETC4_PICDRDCR(a)	((a) * 0x10 + 0x140)
+#define ENETC4_PICDRDCR(a)		((a) * 0x10 + 0x140)
 
 /* Port Station interface promiscuous MAC mode register */
-#define ENETC4_PSIPMMR		0x200
-#define  PSIPMMR_SI0_MAC_UP	BIT(0)
-#define  PSIPMMR_SI_MAC_UP	GENMASK(2, 0)
-#define  PSIPMMR_SI0_MAC_MP	BIT(16)
-#define  PSIPMMR_SI_MAC_MP	GENMASK(18, 16)
+#define ENETC4_PSIPMMR			0x200
+#define  PSIPMMR_SI_MAC_UP(a)		BIT(a) /* a = SI index */
+#define  PSIPMMR_SI_MAC_MP(a)		BIT((a) + 16)
 
 /* Port Station interface promiscuous VLAN mode register */
-#define ENETC4_PSIPVMR		0x204
+#define ENETC4_PSIPVMR			0x204
 
 /* Port broadcast frames dropped due to MAC filtering register */
-#define ENETC4_PBFDSIR		0x208
+#define ENETC4_PBFDSIR			0x208
 
 /* Port frame drop MAC source address pruning register */
-#define ENETC4_PFDMSAPR		0x20c
+#define ENETC4_PFDMSAPR			0x20c
 
 /* Port RSS key register n. n = 0,1,2,...,9 */
-#define ENETC4_PRSSKR(n)	((n) * 0x4 + 0x250)
+#define ENETC4_PRSSKR(n)		((n) * 0x4 + 0x250)
 
 /* Port station interface MAC address filtering capability register */
 #define ENETC4_PSIMAFCAPR		0x280
 #define  PSIMAFCAPR_NUM_MAC_AFTE	GENMASK(11, 0)
 
 /* Port unicast frames dropped due to MAC filtering register */
-#define ENETC4_PUFDMFR		0x284
+#define ENETC4_PUFDMFR			0x284
 
 /* Port multicast frames dropped due to MAC filtering register */
-#define ENETC4_PMFDMFR		0x288
+#define ENETC4_PMFDMFR			0x288
 
 /* Port station interface VLAN filtering capability register */
 #define ENETC4_PSIVLANFCAPR		0x2c0
 #define  PSIVLANFCAPR_NUM_VLAN_FTE	GENMASK(11, 0)
 
 /* Port station interface VLAN filtering mode register */
-#define ENETC4_PSIVLANFMR	0x2c4
-#define  PSIVLANFMR_VS		BIT(0)
+#define ENETC4_PSIVLANFMR		0x2c4
+#define  PSIVLANFMR_VS			BIT(0)
 
 /* Port unicast frames dropped VLAN filtering register */
-#define ENETC4_PUFDVFR		0x2d0
+#define ENETC4_PUFDVFR			0x2d0
 
 /* Port multicast frames dropped VLAN filtering register */
-#define ENETC4_PMFDVFR		0x2d4
+#define ENETC4_PMFDVFR			0x2d4
 
 /* Port broadcast frames dropped VLAN filtering register */
-#define ENETC4_PBFDVFR		0x2d8
+#define ENETC4_PBFDVFR			0x2d8
 
 /* Port RFS mode register */
-#define ENETC4_PRFSMR		0x310
-#define  PRFSMR_RFSE		BIT(31)
+#define ENETC4_PRFSMR			0x310
+#define  PRFSMR_RFSE			BIT(31)
 
 /* Port low power mode register */
-#define ENETC4_PLPMR		0x340
-#define  PLPMR_WME		BIT(0)
-
-/* Port wake-on status register */
-#define ENETC4_PWOSR		0x344
-#define  PWOSR_WOLA		BIT(0)
-#define  PWOSR_ICMB		BIT(1)
+#define ENETC4_PLPMR			0x340
+#define  PLPMR_WME			BIT(0)
 
 /* Port traffic class a time specific departure register */
-#define ENETC4_PTCTSDR(a)	((a) * 0x4 + 0x390)
-#define  PTCTSDR_TSDE		BIT(31)
+#define ENETC4_PTCTSDR(a)		((a) * 0x4 + 0x390)
+#define  PTCTSDR_TSDE			BIT(31)
 
 /* Ingress port capability register */
-#define ENETC4_IPCAPR		0x1000
-#define  IPCAPR_ISID		BIT(2)
+#define ENETC4_IPCAPR			0x1000
+#define  IPCAPR_ISID			BIT(2)
 
 /* Ingress port filter table capability register */
 #define ENETC4_IPFTCAPR		0x1644
 #define  IPFTCAPR_NUM_WORDS	GENMASK(15, 0)
 
-/* Ingress port filter table memory operational register */
-#define ENETC4_IPFTMOR		0x1648
-#define  IPFTMOR_NUM_WORDS	GENMASK(15, 0)
-
 /* Rate policer index table capability register */
-#define ENETC4_RPITCAPR		0x1814
-#define  RPITCAPR_NUM_ENTRIES	GENMASK(13, 0)
+#define ENETC4_RPITCAPR			0x1814
+#define  RPITCAPR_NUM_ENTRIES		GENMASK(13, 0)
 
 /* Ingress stream counter index table capability register */
-#define ENETC4_ISCICAPR		0x1824
-#define  ISCICAPR_NUM_ENTRIES	GENMASK(15, 0)
+#define ENETC4_ISCICAPR			0x1824
+#define  ISCICAPR_NUM_ENTRIES		GENMASK(15, 0)
 
 /* Ingress stream index table capability register  */
-#define ENETC4_ISITCAPR		0x1834
-#define  ISITCAPR_NUM_ENTRIES	GENMASK(15, 0)
-
-/* Stream gate capability register */
-#define ENETC4_SGCAPR		0x1860
+#define ENETC4_ISITCAPR			0x1834
+#define  ISITCAPR_NUM_ENTRIES		GENMASK(15, 0)
 
 /* Stream gate instance index table capability register */
-#define	ENETC4_SGIITCAPR	0x1864
-#define  SGITCAPR_NUM_ENTRIES	GENMASK(15, 0)
+#define	ENETC4_SGIITCAPR		0x1864
+#define  SGITCAPR_NUM_ENTRIES		GENMASK(15, 0)
 
 /* Stream gate control list index table capability register */
-#define ENETC4_SGCLITCAPR	0x1874
-#define  SGCLITCAPR_NUM_WORDS	GENMASK(15, 0)
+#define ENETC4_SGCLITCAPR		0x1874
+#define  SGCLITCAPR_NUM_WORDS		GENMASK(15, 0)
 
 /* Time gate scheduling table capability register */
-#define ENETC4_TGSTCAPR		0x18d4
-#define  TGSTCAPR_NUM_WORDS	GENMASK(15, 0)
+#define ENETC4_TGSTCAPR			0x18d4
+#define  TGSTCAPR_NUM_WORDS		GENMASK(15, 0)
 
 /* Time gate scheduling table memory operation register */
-#define ENETC4_TGSTMOR		0x18dc
-#define  TGSTMOR_NUM_WORDS	GENMASK(15, 0)
-
-/* Hash table memory capability register */
-#define ENETC4_HTMCAPR		0X1900
-#define  HTMCAPR_NUM_WORDS	GENMASK(15, 0)
+#define ENETC4_TGSTMOR			0x18dc
+#define  TGSTMOR_NUM_WORDS		GENMASK(15, 0)
 
 /* Ingress stream identification key construction a configuration register 0 */
-#define ENETC4_ISIDKC0CR0	0x1924
-#define ENETC4_ISIDKC1CR0	0x1944
-#define  ISIDKCCR0_VALID	BIT(0)
-#define  ISIDKCCR0_DMACP	BIT(3)
-#define  ISIDKCCR0_SMACP	BIT(4)
-#define  ISIDKCCR0_OVIDP	BIT(5)
-#define  ISIDKCCR0_OPCPP	BIT(6)
+#define ENETC4_ISIDKC0CR0		0x1924
+#define ENETC4_ISIDKC1CR0		0x1944
+#define  ISIDKCCR0_VALID		BIT(0)
+#define  ISIDKCCR0_DMACP		BIT(3)
+#define  ISIDKCCR0_SMACP		BIT(4)
+#define  ISIDKCCR0_OVIDP		BIT(5)
+#define  ISIDKCCR0_OPCPP		BIT(6)
 
 /* Port Station interface a primary MAC address registers */
-#define ENETC4_PSIPMAR0(a)	((a) * 0x80 + 0x2000)
-#define ENETC4_PSIPMAR1(a)	((a) * 0x80 + 0x2004)
+#define ENETC4_PSIPMAR0(a)		((a) * 0x80 + 0x2000)
+#define ENETC4_PSIPMAR1(a)		((a) * 0x80 + 0x2004)
 
 /* Port station interface a VLAN register */
-#define ENETC4_PSIVLANR(a)	((a) * 0x80 + 0x2008)
-#define  PSIVLANR_VID		GENMASK(11, 0)
-#define  PSIVLANR_DEI		BIT(12)
-#define  PSIVLANR_PCP_OFF	13
-#define  PSIVLANR_PCP		GENMASK(15, PSIVLANR_PCP_OFF)
-#define  PSIVLANR_TPID		GENMASK(17, 16)
-#define  PSIVLANR_TXTAGR	GENMASK(23, 20)
-#define  PSIVLANR_VTEA		BIT(30)
-#define  PSIVLANR_E		BIT(31)
+#define ENETC4_PSIVLANR(a)		((a) * 0x80 + 0x2008)
+#define  PSIVLANR_VID			GENMASK(11, 0)
+#define  PSIVLANR_PCP			GENMASK(15, 13)
+#define  PSIVLANR_E			BIT(31)
 
 /* Port station interface a configuration register 0/2 */
-#define ENETC4_PSICFGR0(a)	((a) * 0x80 + 0x2010)
-#define  PSICFGR0_VASE		BIT(13)
-#define  PSICFGR0_ASE		BIT(15)
-#define  PSICFGR0_ANTI_SPOOFING	(PSICFGR0_VASE | PSICFGR0_ASE)
+#define ENETC4_PSICFGR0(a)		((a) * 0x80 + 0x2010)
+#define  PSICFGR0_VASE			BIT(13)
+#define  PSICFGR0_ASE			BIT(15)
+#define  PSICFGR0_ANTI_SPOOFING		(PSICFGR0_VASE | PSICFGR0_ASE)
 
-#define ENETC4_PSICFGR2(a)	((a) * 0x80 + 0x2018)
+#define ENETC4_PSICFGR2(a)		((a) * 0x80 + 0x2018)
+#define  PSICFGR2_NUM_MSIX		GENMASK(5, 0)
 
 /* Port station interface a unicast MAC hash filter register 0/1 */
-#define ENETC4_PSIUMHFR0(a)	((a) * 0x80 + 0x2050)
-#define ENETC4_PSIUMHFR1(a)	((a) * 0x80 + 0x2054)
+#define ENETC4_PSIUMHFR0(a)		((a) * 0x80 + 0x2050)
+#define ENETC4_PSIUMHFR1(a)		((a) * 0x80 + 0x2054)
 
 /* Port station interface a multicast MAC hash filter register 0/1 */
-#define ENETC4_PSIMMHFR0(a)	((a) * 0x80 + 0x2058)
-#define ENETC4_PSIMMHFR1(a)	((a) * 0x80 + 0x205c)
+#define ENETC4_PSIMMHFR0(a)		((a) * 0x80 + 0x2058)
+#define ENETC4_PSIMMHFR1(a)		((a) * 0x80 + 0x205c)
 
 /* Port station interface a VLAN hash filter register 0/1 */
-#define ENETC4_PSIVHFR0(a)	((a) * 0x80 + 0x2060)
-#define ENETC4_PSIVHFR1(a)	((a) * 0x80 + 0x2064)
+#define ENETC4_PSIVHFR0(a)		((a) * 0x80 + 0x2060)
+#define ENETC4_PSIVHFR1(a)		((a) * 0x80 + 0x2064)
+
+#define ENETC4_PMCAPR			0x4004
+#define  PMCAPR_HD			BIT(8)
+#define  PMCAPR_FP			GENMASK(10, 9)
+#define   PMCAPR_FP_SUPP		2
 
 /* Define Ethernet MAC port resiters. Notice that the offset
  * adds 0x4000 which compared to RM.
  */
-#define ENETC4_PCAPR		0x4000
-#define  PCAPR_TGS		BIT(28)
-#define  PCAPR_CBS		BIT(29)
-#define  PCAPR_NUM_TC		GENMASK(15, 12)
-#define  PCAPR_LINK_TYPE	BIT(4)
-
-#define ENETC4_PMCAPR		0x4004
-#define  PMCAPR_HD		BIT(8)
-#define  PMCAPR_FP		GENMASK(10, 9)
-#define   PMCAPR_FP_SUPP	2
-#define   PMCAPR_GET_FP(val)	(((val) & PMCAPR_FP) >> 9)
-
-#define ENETC4_PIOCAPR		0x4008
+#define ENETC4_PCAPR			0x4000
+#define  PCAPR_TGS			BIT(28)
+#define  PCAPR_CBS			BIT(29)
+#define  PCAPR_NUM_TC			GENMASK(15, 12)
+#define  PCAPR_LINK_TYPE		BIT(4)
 
 /* Port configuration register */
-#define ENETC4_PCR		0x4010
-#define  PCR_HDR_FMT		BIT(0)
-#define  PCR_L2DOSE		BIT(4)
-#define  PCR_TIMER_CS		BIT(8)
-#define  PCR_PSPEED		GENMASK(29, 16)
-#define  PCR_PSPEED_VAL(speed)	(((speed) / 10 - 1) << 16)
+#define ENETC4_PCR			0x4010
+#define  PCR_HDR_FMT			BIT(0)
+#define  PCR_L2DOSE			BIT(4)
+#define  PCR_TIMER_CS			BIT(8)
+#define  PCR_PSPEED			GENMASK(29, 16)
+#define  PCR_PSPEED_VAL(speed)		(((speed) / 10 - 1) << 16)
 
 /* Port MAC address register 0/1 */
-#define ENETC4_PMAR0		0x4020
-#define ENETC4_PMAR1		0x4024
+#define ENETC4_PMAR0			0x4020
+#define ENETC4_PMAR1			0x4024
 
 /* Port ingress port filter configuration register */
-#define ENETC4_PIPFCR		0x4084
-#define  PIPFCR_EN		BIT(0)
+#define ENETC4_PIPFCR			0x4084
+#define  PIPFCR_EN			BIT(0)
 
 /* Port operational register */
-#define ENETC4_POR		0x4100
-#define  POR_TXDIS		BIT(0)
-#define  POR_RXDIS		BIT(1)
+#define ENETC4_POR			0x4100
+#define  POR_TXDIS			BIT(0)
+#define  POR_RXDIS			BIT(1)
 
 /* Port status register */
-#define ENETC4_PSR		0x4104
+#define ENETC4_PSR			0x4104
+#define  PSR_RX_BUSY			BIT(1)
 
 /* Port time gate scheduling control register */
-#define ENETC4_PTGSCR		0x4110
-#define  PTGSCR_TGE		BIT(31)
-
-/* Port time gate scheduling admin gate list status register */
-#define ENETC4_PTGAGLSR		0x4114
-#define  PTGAGLSR_TG		BIT(0)
-#define  PTGAGLSR_CFG_PEND	BIT(1)
-
-/* Port time gate scheduling admin gate list length register */
-#define ENETC4_PTGAGLLR		0x4118
-#define  PTGAGLLR_LIST_LEN	GENMASK(15, 0)
-
-/* Port time gating operational gate list length register */
-#define ENETC4_PTGOGLLR		0x411c
-#define  PTGOGLLR_LIST_LEN	GENMASK(15, 0)
+#define ENETC4_PTGSCR			0x4110
+#define  PTGSCR_TGE			BIT(31)
 
 /* Port frame preemption configuration register */
-#define ENETC4_PFPCR		0x4134
-#define  PFPCR_TC_PMAC_EN(a)	BIT(a)
+#define ENETC4_PFPCR			0x4134
 
 /* Port Rx discard count register */
-#define ENETC4_PRXDCR		0x41c0
+#define ENETC4_PRXDCR			0x41c0
 
 /* Port traffic class a transmit maximum SDU register */
-#define ENETC4_PTCTMSDUR(a)	((a) * 0x20 + 0x4208)
-#define  PTCTMSDUR_MAXSDU	GENMASK(15, 0)
-#define  PTCTMSDUR_SDU_TYPE	GENMASK(17, 16)
-#define   SDU_TYPE_PPDU		0
-#define   SDU_TYPE_MPDU		1
-#define   SDU_TYPE_MSDU		2
+#define ENETC4_PTCTMSDUR(a)		((a) * 0x20 + 0x4208)
+#define  PTCTMSDUR_MAXSDU		GENMASK(15, 0)
+#define  PTCTMSDUR_SDU_TYPE		GENMASK(17, 16)
+#define   SDU_TYPE_PPDU			0
+#define   SDU_TYPE_MPDU			1
+#define   SDU_TYPE_MSDU			2
 
 /* Port transmit traffic class a credit based shaper register 0 */
-#define ENETC4_PTCCBSR0(a)	((a) * 0x20 + 0x4210)
-#define  PTCCBSR0_BW		GENMASK(6, 0)
-#define  PTCCBSR0_FRACT		GENMASK(19, 16)
-#define  PTCCBSR0_GET_FRACT(x)  (((x) & PTCCBSR0_FRACT) >> 16)
-#define  PTCCBSR0_CBSE		BIT(31)
+#define ENETC4_PTCCBSR0(a)		((a) * 0x20 + 0x4210)
+#define  PTCCBSR0_BW			GENMASK(6, 0)
+#define  PTCCBSR0_FRACT			GENMASK(19, 16)
+#define   PTCCBSR0_FRACT_GET(v)		FIELD_GET(PTCCBSR0_FRACT, v)
+#define  PTCCBSR0_CBSE			BIT(31)
 
 /* Port traffic class a credit based shaper register 1 */
-#define ENETC4_PTCCBSR1(a)	((a) * 0x20 + 0x4214)
+#define ENETC4_PTCCBSR1(a)		((a) * 0x20 + 0x4214)
 
 /* Port ingress stream identification configuration register */
-#define ENETC4_PISIDCR		0x4460
-#define  PISIDCR_KC0EN		BIT(1)
-#define  PISIDCR_KC1EN		BIT(2)
+#define ENETC4_PISIDCR			0x4460
+#define  PISIDCR_KC0EN			BIT(1)
+#define  PISIDCR_KC1EN			BIT(2)
 
 #define ENETC4_PMAC_OFFSET		0x400
 #define ENETC4_PM_CMD_CFG(mac)		(0x5008 + (mac) * 0x400)
@@ -327,7 +288,6 @@
 #define  PM_CMD_CFG_CNT_FRM_EN		BIT(13)
 #define  PM_CMD_CFG_TXP			BIT(15)
 #define  PM_CMD_CFG_SEND_IDLE		BIT(16)
-#define  PM_CMD_CFG_HD_FCEN		BIT(18)
 #define  PM_CMD_CFG_SFD			BIT(21)
 #define  PM_CMD_CFG_TX_FLUSH		BIT(22)
 #define  PM_CMD_CFG_TX_LOWP_EN		BIT(23)
@@ -339,20 +299,25 @@
 /* Port MAC 0/1 Maximum Frame Length Register */
 #define ENETC4_PM_MAXFRM(mac)		(0x5014 + (mac) * 0x400)
 
+/* Port MAC 0/1 Interrupt Event Register */
+#define ENETC4_PM_IEVENT(mac)		(0x5040 + (mac) * 0x400)
+#define  PM_IEVENT_TX_EMPTY		BIT(5)
+#define  PM_IEVENT_RX_EMPTY		BIT(6)
+
 /* Port MAC 0/1 Pause Quanta Register */
 #define ENETC4_PM_PAUSE_QUANTA(mac)	(0x5054 + (mac) * 0x400)
 
 /* Port MAC 0/1 Pause Quanta Threshold Register */
 #define ENETC4_PM_PAUSE_THRESH(mac)	(0x5064 + (mac) * 0x400)
 
-#define ENETC4_PM_LPWAKE_TIMER(mac)	(0x50B8 + (mac) * 0x400)
-#define ENETC4_PM_SLEEP_TIMER(mac)	(0x50BC + (mac) * 0x400)
+#define ENETC4_PM_LPWAKE_TIMER(mac)	(0x50b8 + (mac) * 0x400)
+#define ENETC4_PM_SLEEP_TIMER(mac)	(0x50bc + (mac) * 0x400)
 #define  PM_EEE_TIMER			GENMASK(23, 0)
 
-#define ENETC4_PM_SINGLE_STEP(mac)	(0x50C0 + (mac) * 0x400)
+#define ENETC4_PM_SINGLE_STEP(mac)	(0x50c0 + (mac) * 0x400)
 #define  PM_SINGLE_STEP_CH		BIT(6)
-#define  PM_SINGLE_STEP_OFFSET_MASK	GENMASK(15, 7)
-#define   PM_SINGLE_STEP_OFFSET(v)	(((v) << 7) & PM_SINGLE_STEP_OFFSET_MASK)
+#define  PM_SINGLE_STEP_OFFSET		GENMASK(15, 7)
+#define  PM_SINGLE_STEP_OFFSET_SET(o)	FIELD_PREP(PM_SINGLE_STEP_OFFSET, o)
 #define  PM_SINGLE_STEP_EN		BIT(31)
 
 /* Port MAC 0/1 Receive Ethernet Octets Counter */
@@ -526,6 +491,8 @@
 
 /* Port MAC Merge Control and Status Register */
 #define ENETC4_MMCSR			0x5800
+#define  MMCSR_LPE			BIT(1)
+#define  MMCSR_LAFS			GENMASK(4, 3)
 #define  MMCSR_RAFS			GENMASK(9, 8)
 #define  MMCSR_ME			GENMASK(16, 15)
 #define   MMCSR_ME_DISABLE		0
@@ -537,9 +504,8 @@
 #define   MMCSR_VSTS_IN_PROGRESS	2
 #define   MMCSR_VSTS_SUCCESSFUL		3
 #define   MMCSR_VSTS_FAILED		4
-#define   MMCSR_GET_VSTS(x)		(((x) & MMCSR_VSTS) >> 18)
+#define   MMCSR_VSTS_GET(v)		FIELD_GET(MMCSR_VSTS, v)
 #define  MMCSR_VT			GENMASK(29, 23)
-#define   MMCSR_GET_VT(x)		(((x) & MMCSR_VT) >> 23)
 #define  MMCSR_LINK_FAIL		BIT(31)
 
 /* Port MAC Merge Control and Status Register */
@@ -590,3 +556,5 @@
 
 /* Port pseudo MAC transmit broadcast frame counter register (64-bit) */
 #define ENETC4_PPMTBFCR			0x50d8
+
+#endif

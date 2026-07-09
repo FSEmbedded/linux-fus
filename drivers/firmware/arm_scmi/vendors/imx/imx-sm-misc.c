@@ -25,12 +25,12 @@
 enum scmi_imx_misc_protocol_cmd {
 	SCMI_IMX_MISC_CTRL_SET	= 0x3,
 	SCMI_IMX_MISC_CTRL_GET	= 0x4,
-	SCMI_IMX_MISC_DISCOVER_BUILDINFO = 0x6,
-	SCMI_IMX_MISC_SI_INFO = 0xB,
-	SCMI_IMX_MISC_CFG_INFO = 0xC,
-	SCMI_IMX_MISC_SYSLOG = 0xD,
-	SCMI_IMX_MISC_BOARD_INFO = 0xE,
+	SCMI_IMX_MISC_DISCOVER_BUILD_INFO = 0x6,
 	SCMI_IMX_MISC_CTRL_NOTIFY = 0x8,
+	SCMI_IMX_MISC_RESET_REASON_GET = 0xA,
+	SCMI_IMX_MISC_CFG_INFO_GET = 0xC,
+	SCMI_IMX_MISC_SYSLOG_GET = 0xD,
+	SCMI_IMX_MISC_BOARD_INFO = 0xE,
 };
 
 struct scmi_imx_misc_info {
@@ -73,25 +73,53 @@ struct scmi_imx_misc_ctrl_get_out {
 struct scmi_imx_misc_buildinfo_out {
 	__le32 buildnum;
 	__le32 buildcommit;
+#define MISC_MAX_BUILDDATE	16
 	u8 builddate[MISC_MAX_BUILDDATE];
+#define MISC_MAX_BUILDTIME	16
 	u8 buildtime[MISC_MAX_BUILDTIME];
 };
 
 struct scmi_imx_misc_board_info_out {
 	__le32 attributes;
+#define MISC_MAX_BRDNAME	16
 	u8 brdname[MISC_MAX_BRDNAME];
 };
 
 struct scmi_imx_misc_cfg_info_out {
 	__le32 msel;
+#define MISC_MAX_CFGNAME	16
 	u8 cfgname[MISC_MAX_CFGNAME];
 };
 
-struct scmi_imx_misc_si_info_out {
-	__le32 deviceid;
-	__le32 sirev;
-	__le32 partnum;
-	u8 siname[MISC_MAX_SINAME];
+struct scmi_imx_misc_reset_reason_in {
+#define MISC_REASON_FLAG_SYSTEM	BIT(0)
+	__le32 flags;
+};
+
+struct scmi_imx_misc_reset_reason_out {
+	/* Boot reason flags */
+#define MISC_BOOT_FLAG_VLD		BIT(31)
+#define MISC_BOOT_FLAG_ORG_VLD		BIT(28)
+#define MISC_BOOT_FLAG_ORIGIN		GENMASK(27, 24)
+#define MISC_BOOT_FLAG_O_SHIFT		24
+#define MISC_BOOT_FLAG_ERR_VLD		BIT(23)
+#define MISC_BOOT_FLAG_ERR_ID		GENMASK(22, 8)
+#define MISC_BOOT_FLAG_E_SHIFT		8
+#define MISC_BOOT_FLAG_REASON		GENMASK(7, 0)
+	__le32 b_flags;
+	/* Shutdown reason flags */
+#define MISC_SHUTDOWN_FLAG_VLD		BIT(31)
+#define MISC_SHUTDOWN_FLAG_EXT_LEN	GENMASK(30, 29)
+#define MISC_SHUTDOWN_FLAG_ORG_VLD	BIT(28)
+#define MISC_SHUTDOWN_FLAG_ORIGIN	GENMASK(27, 24)
+#define MISC_SHUTDOWN_FLAG_O_SHIFT	24
+#define MISC_SHUTDOWN_FLAG_ERR_VLD	BIT(23)
+#define MISC_SHUTDOWN_FLAG_ERR_ID	GENMASK(22, 8)
+#define MISC_SHUTDOWN_FLAG_E_SHIFT	8
+#define MISC_SHUTDOWN_FLAG_REASON	GENMASK(7, 0)
+	__le32 s_flags;
+	/* Array of extended info words */
+	__le32 extinfo[MISC_EXT_INFO_LEN_MAX];
 };
 
 struct scmi_imx_misc_syslog_in {
@@ -314,14 +342,14 @@ static int scmi_imx_misc_ctrl_set(const struct scmi_protocol_handle *ph,
 	return ret;
 }
 
-static int scmi_imx_discover_build_info(const struct scmi_protocol_handle *ph,
-					struct scmi_imx_misc_system_info *info)
+static int scmi_imx_misc_build_info_discover(const struct scmi_protocol_handle *ph)
 {
+	char date[MISC_MAX_BUILDDATE], time[MISC_MAX_BUILDTIME];
 	struct scmi_imx_misc_buildinfo_out *out;
 	struct scmi_xfer *t;
 	int ret;
 
-	ret = ph->xops->xfer_get_init(ph, SCMI_IMX_MISC_DISCOVER_BUILDINFO, 0,
+	ret = ph->xops->xfer_get_init(ph, SCMI_IMX_MISC_DISCOVER_BUILD_INFO, 0,
 				      sizeof(*out), &t);
 	if (ret)
 		return ret;
@@ -329,10 +357,11 @@ static int scmi_imx_discover_build_info(const struct scmi_protocol_handle *ph,
 	ret = ph->xops->do_xfer(ph, t);
 	if (!ret) {
 		out = t->rx.buf;
-		info->buildnum = le32_to_cpu(out->buildnum);
-		info->buildcommit = le32_to_cpu(out->buildcommit);
-		strscpy(info->date, out->builddate, MISC_MAX_BUILDDATE);
-		strscpy(info->time, out->buildtime, MISC_MAX_BUILDTIME);
+		strscpy(date, out->builddate, MISC_MAX_BUILDDATE);
+		strscpy(time, out->buildtime, MISC_MAX_BUILDTIME);
+		dev_info(ph->dev, "SM Version\t= Build %u, Commit %08x %s %s\n",
+			 le32_to_cpu(out->buildnum), le32_to_cpu(out->buildcommit),
+			 date, time);
 	}
 
 	ph->xops->xfer_put(ph, t);
@@ -340,10 +369,10 @@ static int scmi_imx_discover_build_info(const struct scmi_protocol_handle *ph,
 	return ret;
 }
 
-static int scmi_imx_misc_board_info(const struct scmi_protocol_handle *ph,
-				    struct scmi_imx_misc_system_info *info)
+static int scmi_imx_misc_board_info(const struct scmi_protocol_handle *ph)
 {
 	struct scmi_imx_misc_board_info_out *out;
+	char name[MISC_MAX_BRDNAME];
 	struct scmi_xfer *t;
 	int ret;
 
@@ -354,8 +383,9 @@ static int scmi_imx_misc_board_info(const struct scmi_protocol_handle *ph,
 	ret = ph->xops->do_xfer(ph, t);
 	if (!ret) {
 		out = t->rx.buf;
-		info->brd_attributes = le32_to_cpu(out->attributes);
-		strscpy(info->brdname, out->brdname, MISC_MAX_BRDNAME);
+		strscpy(name, out->brdname, MISC_MAX_BRDNAME);
+		dev_info(ph->dev, "Board\t\t= %s, attr=0x%08x\n",
+			 name, le32_to_cpu(out->attributes));
 	}
 
 	ph->xops->xfer_put(ph, t);
@@ -363,47 +393,23 @@ static int scmi_imx_misc_board_info(const struct scmi_protocol_handle *ph,
 	return ret;
 }
 
-static int scmi_imx_misc_cfg_info(const struct scmi_protocol_handle *ph,
-				  struct scmi_imx_misc_system_info *info)
+static int scmi_imx_misc_cfg_info_get(const struct scmi_protocol_handle *ph)
 {
 	struct scmi_imx_misc_cfg_info_out *out;
+	char name[MISC_MAX_CFGNAME];
 	struct scmi_xfer *t;
 	int ret;
 
-	ret = ph->xops->xfer_get_init(ph, SCMI_IMX_MISC_CFG_INFO, 0, sizeof(*out), &t);
+	ret = ph->xops->xfer_get_init(ph, SCMI_IMX_MISC_CFG_INFO_GET, 0, sizeof(*out), &t);
 	if (ret)
 		return ret;
 
 	ret = ph->xops->do_xfer(ph, t);
 	if (!ret) {
 		out = t->rx.buf;
-		info->msel = le32_to_cpu(out->msel);
-		strscpy(info->cfgname, out->cfgname, MISC_MAX_CFGNAME);
-	}
-
-	ph->xops->xfer_put(ph, t);
-
-	return ret;
-}
-
-static int scmi_imx_misc_silicon_info(const struct scmi_protocol_handle *ph,
-				      struct scmi_imx_misc_system_info *info)
-{
-	struct scmi_imx_misc_si_info_out *out;
-	struct scmi_xfer *t;
-	int ret;
-
-	ret = ph->xops->xfer_get_init(ph, SCMI_IMX_MISC_SI_INFO, 0, sizeof(*out), &t);
-	if (ret)
-		return ret;
-
-	ret = ph->xops->do_xfer(ph, t);
-	if (!ret) {
-		out = t->rx.buf;
-		info->deviceid = le32_to_cpu(out->deviceid);
-		info->sirev = le32_to_cpu(out->sirev);
-		info->partnum = le32_to_cpu(out->partnum);
-		strscpy(info->siname, out->siname, MISC_MAX_SINAME);
+		strscpy(name, out->cfgname, MISC_MAX_CFGNAME);
+		dev_info(ph->dev, "SM Config\t= %s, mSel = %u\n",
+			 name, le32_to_cpu(out->msel));
 	}
 
 	ph->xops->xfer_put(ph, t);
@@ -413,6 +419,7 @@ static int scmi_imx_misc_silicon_info(const struct scmi_protocol_handle *ph,
 
 struct scmi_imx_misc_syslog_ipriv {
 	u32 *array;
+	u16 *size;
 };
 
 static void iter_misc_syslog_prepare_message(void *message, u32 desc_index,
@@ -428,9 +435,11 @@ static int iter_misc_syslog_update_state(struct scmi_iterator_state *st,
 					 const void *response, void *priv)
 {
 	const struct scmi_imx_misc_syslog_out *r = response;
+	struct scmi_imx_misc_syslog_ipriv *p = priv;
 
 	st->num_returned = RETURNED(r->numlogflags);
 	st->num_remaining = REMAINING(r->numlogflags);
+	*p->size = st->num_returned + st->num_remaining;
 
 	return 0;
 }
@@ -449,8 +458,8 @@ iter_misc_syslog_process_response(const struct scmi_protocol_handle *ph,
 	return 0;
 }
 
-static int scmi_imx_misc_syslog(const struct scmi_protocol_handle *ph, u16 size,
-				void *array)
+static int scmi_imx_misc_syslog_get(const struct scmi_protocol_handle *ph, u16 *size,
+				    void *array)
 {
 	struct scmi_iterator_ops ops = {
 		.prepare_message = iter_misc_syslog_prepare_message,
@@ -459,30 +468,82 @@ static int scmi_imx_misc_syslog(const struct scmi_protocol_handle *ph, u16 size,
 	};
 	struct scmi_imx_misc_syslog_ipriv ipriv = {
 		.array = array,
+		.size = size,
 	};
 	void *iter;
 
-	if (!array || !size)
+	if (!array || !size || !*size)
 		return -EINVAL;
 
-	iter = ph->hops->iter_response_init(ph, &ops, size, SCMI_IMX_MISC_SYSLOG,
+	iter = ph->hops->iter_response_init(ph, &ops, *size, SCMI_IMX_MISC_SYSLOG_GET,
 					    sizeof(struct scmi_imx_misc_syslog_in),
 					    &ipriv);
 	if (IS_ERR(iter))
 		return PTR_ERR(iter);
 
+	/* If firmware return NOT SUPPORTED, propagate value to caller */
 	return ph->hops->iter_response_run(iter);
 }
 
+static int scmi_imx_misc_reset_reason(const struct scmi_protocol_handle *ph, bool system,
+				      struct scmi_imx_misc_reset_reason *boot_r,
+				      struct scmi_imx_misc_reset_reason *shut_r,
+				      u32 *extinfo)
+{
+	struct scmi_imx_misc_reset_reason_in *in;
+	struct scmi_imx_misc_reset_reason_out *out;
+	struct scmi_xfer *t;
+	int ret;
+
+	ret = ph->xops->xfer_get_init(ph, SCMI_IMX_MISC_RESET_REASON_GET, sizeof(*in),
+				      sizeof(*out), &t);
+	if (ret)
+		return ret;
+
+	in = t->tx.buf;
+	if (system)
+		in->flags = le32_encode_bits(1, MISC_REASON_FLAG_SYSTEM);
+	else
+		in->flags = cpu_to_le32(0);
+
+	ret = ph->xops->do_xfer(ph, t);
+	if (!ret) {
+		out = t->rx.buf;
+		if (boot_r) {
+			boot_r->valid = le32_get_bits(out->b_flags, MISC_BOOT_FLAG_VLD);
+			boot_r->orig_valid = le32_get_bits(out->b_flags, MISC_BOOT_FLAG_ORG_VLD);
+			boot_r->err_valid = le32_get_bits(out->b_flags, MISC_BOOT_FLAG_ERR_VLD);
+			boot_r->reason = le32_get_bits(out->b_flags, MISC_BOOT_FLAG_REASON);
+			boot_r->origin = le32_get_bits(out->b_flags, MISC_BOOT_FLAG_ORIGIN);
+			boot_r->errid = le32_get_bits(out->b_flags, MISC_BOOT_FLAG_ERR_ID);
+		}
+
+		if (shut_r) {
+			shut_r->valid = le32_get_bits(out->s_flags, MISC_SHUTDOWN_FLAG_VLD);
+			shut_r->orig_valid = le32_get_bits(out->s_flags,
+							   MISC_SHUTDOWN_FLAG_ORG_VLD);
+			shut_r->err_valid = le32_get_bits(out->s_flags,
+							  MISC_SHUTDOWN_FLAG_ERR_VLD);
+			shut_r->reason = le32_get_bits(out->s_flags, MISC_SHUTDOWN_FLAG_REASON);
+			shut_r->origin = le32_get_bits(out->s_flags, MISC_SHUTDOWN_FLAG_ORIGIN);
+			shut_r->errid = le32_get_bits(out->s_flags, MISC_SHUTDOWN_FLAG_ERR_ID);
+		}
+
+		if (extinfo)
+			memcpy_from_le32(extinfo, out->extinfo, MISC_EXT_INFO_LEN_MAX);
+	}
+
+	ph->xops->xfer_put(ph, t);
+
+	return ret;
+}
+
 static const struct scmi_imx_misc_proto_ops scmi_imx_misc_proto_ops = {
-	.misc_board_info = scmi_imx_misc_board_info,
-	.misc_cfg_info = scmi_imx_misc_cfg_info,
 	.misc_ctrl_set = scmi_imx_misc_ctrl_set,
 	.misc_ctrl_get = scmi_imx_misc_ctrl_get,
 	.misc_ctrl_req_notify = scmi_imx_misc_ctrl_notify,
-	.misc_discover_build_info = scmi_imx_discover_build_info,
-	.misc_silicon_info = scmi_imx_misc_silicon_info,
-	.misc_syslog = scmi_imx_misc_syslog,
+	.misc_syslog = scmi_imx_misc_syslog_get,
+	.misc_reset_reason = scmi_imx_misc_reset_reason,
 };
 
 static int scmi_imx_misc_protocol_init(const struct scmi_protocol_handle *ph)
@@ -506,6 +567,18 @@ static int scmi_imx_misc_protocol_init(const struct scmi_protocol_handle *ph)
 	if (ret)
 		return ret;
 
+	ret = scmi_imx_misc_build_info_discover(ph);
+	if (ret && ret != -EOPNOTSUPP)
+		return ret;
+
+	ret = scmi_imx_misc_board_info(ph);
+	if (ret && ret != -EOPNOTSUPP)
+		return ret;
+
+	ret = scmi_imx_misc_cfg_info_get(ph);
+	if (ret && ret != -EOPNOTSUPP)
+		return ret;
+
 	return ph->set_priv(ph, minfo, version);
 }
 
@@ -516,10 +589,11 @@ static const struct scmi_protocol scmi_imx_misc = {
 	.ops = &scmi_imx_misc_proto_ops,
 	.events = &scmi_imx_misc_protocol_events,
 	.supported_version = SCMI_PROTOCOL_SUPPORTED_VERSION,
-	.vendor_id = "NXP",
-	.sub_vendor_id = "IMX",
+	.vendor_id = SCMI_IMX_VENDOR,
+	.sub_vendor_id = SCMI_IMX_SUBVENDOR,
 };
 module_scmi_protocol(scmi_imx_misc);
 
+MODULE_ALIAS("scmi-protocol-" __stringify(SCMI_PROTOCOL_IMX_MISC) "-" SCMI_IMX_VENDOR);
 MODULE_DESCRIPTION("i.MX SCMI MISC driver");
 MODULE_LICENSE("GPL");

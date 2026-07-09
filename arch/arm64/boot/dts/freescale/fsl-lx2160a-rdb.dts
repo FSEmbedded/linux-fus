@@ -6,7 +6,7 @@
 
 /dts-v1/;
 
-#include "fsl-lx2160a.dtsi"
+#include "fsl-lx2160a-rev2.dtsi"
 
 / {
 	model = "NXP Layerscape LX2160ARDB";
@@ -74,14 +74,14 @@
 &dpmac5 {
 	sfp = <&sfp2>;
 	managed = "in-band-status";
-	phys = <&serdes_1 5>, <&inphi_retimer 0>;
+	phys = <&serdes_1_lane_f>, <&inphi_retimer 0>;
 	phy-names = "serdes", "retimer";
 };
 
 &dpmac6 {
 	sfp = <&sfp3>;
 	managed = "in-band-status";
-	phys = <&serdes_1 4>, <&inphi_retimer 1>;
+	phys = <&serdes_1_lane_e>, <&inphi_retimer 1>;
 	phy-names = "serdes", "retimer";
 };
 
@@ -200,13 +200,13 @@
 	status = "okay";
 
 	cpld@66 {
-		compatible = "fsl,lx2160a-rdb-qixis-cpld";
+		compatible = "fsl,lx2160ardb-fpga";
 		reg = <0x66>;
 		#address-cells = <1>;
 		#size-cells = <0>;
 
 		sfp2_csr: gpio@19 {
-			compatible = "fsl,lx2160a-rdb-qixis-cpld-gpio";
+			compatible = "fsl,lx2160ardb-fpga-gpio-sfp";
 			reg = <0x19>;
 			gpio-controller;
 			#gpio-cells = <2>;
@@ -218,7 +218,7 @@
 		};
 
 		sfp3_csr: gpio@1a {
-			compatible = "fsl,lx2160a-rdb-qixis-cpld-gpio";
+			compatible = "fsl,lx2160ardb-fpga-gpio-sfp";
 			reg = <0x1a>;
 			gpio-controller;
 			#gpio-cells = <2>;
@@ -267,9 +267,9 @@
 		};
 
 		i2c@7 {
+			reg = <0x7>;
 			#address-cells = <1>;
 			#size-cells = <0>;
-			reg = <0x7>;
 
 			i2c-mux@75 {
 				compatible = "nxp,pca9547";
@@ -278,15 +278,15 @@
 				#size-cells = <0>;
 
 				sfp2_i2c: i2c@4 {
+					reg = <0x4>;
 					#address-cells = <1>;
 					#size-cells = <0>;
-					reg = <0x4>;
 				};
 
 				sfp3_i2c: i2c@5 {
+					reg = <0x5>;
 					#address-cells = <1>;
 					#size-cells = <0>;
-					reg = <0x5>;
 				};
 			};
 		};

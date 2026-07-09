@@ -12,16 +12,12 @@
 
 #ifndef BUILD_VDSO
 
-#ifdef CONFIG_AS_HAS_LDAPR
 #define __LOAD_RCPC(sfx, regs...)					\
 	ALTERNATIVE(							\
 		"ldar"	#sfx "\t" #regs,				\
 		".arch_extension rcpc\n"				\
 		"ldapr"	#sfx "\t" #regs,				\
 	ARM64_HAS_LDAPR)
-#else
-#define __LOAD_RCPC(sfx, regs...)	"ldar" #sfx "\t" #regs
-#endif /* CONFIG_AS_HAS_LDAPR */
 
 /*
  * When building with LTO, there is an increased risk of the compiler
@@ -62,7 +58,7 @@
 	default:							\
 		atomic = 0;						\
 	}								\
-	atomic ? (typeof(*__x))__u.__val : (*(volatile typeof(__x))__x);\
+	atomic ? (typeof(*__x))__u.__val : (*(volatile typeof(*__x) *)__x);\
 })
 
 #endif	/* !BUILD_VDSO */

@@ -6,8 +6,8 @@
 #include "imx91-9x9-qsb.dts"
 
 &flexspi1 {
-	assigned-clocks = <&clk IMX91_CLK_FLEXSPI1>;
-	assigned-clock-parents = <&clk IMX91_CLK_SYS_PLL_PFD1>;
+	assigned-clocks = <&clk IMX93_CLK_FLEXSPI1>;
+	assigned-clock-parents = <&clk IMX93_CLK_SYS_PLL_PFD1>;
 	assigned-clock-rates = <266000000>;
 };
 
@@ -19,19 +19,19 @@
 };
 
 &usdhc1 {
-	assigned-clocks = <&clk IMX91_CLK_USDHC1>;
-	assigned-clock-parents = <&clk IMX91_CLK_SYS_PLL_PFD1>;
+	assigned-clocks = <&clk IMX93_CLK_USDHC1>;
+	assigned-clock-parents = <&clk IMX93_CLK_SYS_PLL_PFD1>;
 	assigned-clock-rates = <266000000>;
 };
 
 &usdhc2 {
-	assigned-clocks = <&clk IMX91_CLK_USDHC2>;
-	assigned-clock-parents = <&clk IMX91_CLK_SYS_PLL_PFD1>;
+	assigned-clocks = <&clk IMX93_CLK_USDHC2>;
+	assigned-clock-parents = <&clk IMX93_CLK_SYS_PLL_PFD1>;
 	assigned-clock-rates = <266000000>;
 };
 
 &usdhc3 {
-	assigned-clocks = <&clk IMX91_CLK_USDHC3>;
-	assigned-clock-parents = <&clk IMX91_CLK_SYS_PLL_PFD1>;
+	assigned-clocks = <&clk IMX93_CLK_USDHC3>;
+	assigned-clock-parents = <&clk IMX93_CLK_SYS_PLL_PFD1>;
 	assigned-clock-rates = <266000000>;
 };

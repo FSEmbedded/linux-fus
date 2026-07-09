@@ -145,7 +145,7 @@ static bool check_m4_sleep(void)
 	return  true;
 }
 
-static bool busfreq_notified_low = false;
+static bool busfreq_notified_low;
 
 static int busfreq_notify(enum busfreq_event event)
 {

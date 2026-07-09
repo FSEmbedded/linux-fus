@@ -42,7 +42,7 @@ struct max96752_lvds {
 };
 
 static void max96752_lvds_bridge_atomic_pre_enable(struct drm_bridge *bridge,
-						   struct drm_bridge_state *old_bridge_state)
+						   struct drm_atomic_state *state)
 {
 	struct max96752_lvds *max96752_lvds = container_of(bridge, struct max96752_lvds, bridge);
 	struct max96752 *mfd = max96752_lvds->max96752_mfd;
@@ -56,6 +56,7 @@ static void max96752_lvds_bridge_atomic_pre_enable(struct drm_bridge *bridge,
 }
 
 static int max96752_lvds_bridge_attach(struct drm_bridge *bridge,
+				       struct drm_encoder *encoder,
 				       enum drm_bridge_attach_flags flags)
 {
 	struct max96752_lvds *max96752_lvds = container_of(bridge, struct max96752_lvds, bridge);
@@ -78,7 +79,7 @@ static int max96752_lvds_bridge_attach(struct drm_bridge *bridge,
 		regmap_update_bits(mfd->regmap, MAX96752_VRX_OLDI2, SSEN, SSEN);
 	}
 
-	return drm_bridge_attach(bridge->encoder, max96752_lvds->panel_bridge, bridge, flags);
+	return drm_bridge_attach(encoder, max96752_lvds->panel_bridge, bridge, flags);
 }
 
 static int max96752_lvds_atomic_check(struct drm_bridge *bridge,
@@ -153,7 +154,6 @@ static int max96752_lvds_dt_parse(struct max96752_lvds *max96752_lvds)
 	}
 
 	max96752_lvds->bridge.driver_private = max96752_lvds;
-	max96752_lvds->bridge.funcs = &max96752_lvds_bridge_funcs;
 	max96752_lvds->bridge.of_node = dev->of_node;
 
 	drm_bridge_add(&max96752_lvds->bridge);
@@ -183,9 +183,10 @@ static int max96752_lvds_drm_probe(struct platform_device *pdev)
 	if (!mfd->link_setup_finished)
 		return -EPROBE_DEFER;
 
-	max96752_lvds = devm_kzalloc(dev, sizeof(*max96752_lvds), GFP_KERNEL);
-	if (!max96752_lvds)
-		return -ENOMEM;
+	max96752_lvds = devm_drm_bridge_alloc(dev, struct max96752_lvds, bridge,
+					      &max96752_lvds_bridge_funcs);
+	if (IS_ERR(max96752_lvds))
+		return PTR_ERR(max96752_lvds);
 
 	max96752_lvds->dev = dev;
 	max96752_lvds->max96752_mfd = mfd;

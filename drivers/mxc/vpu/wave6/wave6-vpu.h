@@ -42,6 +42,12 @@ enum vpu_fmt_type {
 	VPU_FMT_TYPE_RAW	= 1
 };
 
+#define VPU_FMT_FLAG_CBCR_INTERLEAVED	BIT(0)
+#define VPU_FMT_FLAG_CRCB_ORDER		BIT(1)
+#define VPU_FMT_FLAG_10BIT		BIT(2)
+#define VPU_FMT_FLAG_CSC_ENABLE		BIT(3)
+#define VPU_FMT_FLAG_RGB		BIT(4)
+
 struct vpu_format {
 	unsigned int v4l2_pix_fmt;
 	unsigned int max_width;
@@ -49,17 +55,10 @@ struct vpu_format {
 	unsigned int max_height;
 	unsigned int min_height;
 	unsigned int num_planes;
-
-	enum frame_buffer_format src_format;
-	enum endian_mode source_endian;
-	enum packed_format_num packed_format;
-	unsigned int csc_order;
-
-	u32 is_yuv : 1;
-	u32 is_rgb : 1;
-	u32 is_10bit : 1;
-	u32 cbcr_interleave : 1;
-	u32 nv21 : 1;
+	enum frame_buffer_format fb_fmt;
+	enum endian_mode endian;
+	enum csc_format_order csc_fmt_order;
+	unsigned int flags;
 };
 
 static inline struct vpu_instance *wave6_to_vpu_inst(struct v4l2_fh *vfh)

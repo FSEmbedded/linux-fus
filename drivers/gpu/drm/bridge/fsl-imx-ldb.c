@@ -146,21 +146,16 @@ static void ldb_bridge_disable(struct drm_bridge *bridge)
 }
 
 static int ldb_bridge_attach(struct drm_bridge *bridge,
+			     struct drm_encoder *encoder,
 			     enum drm_bridge_attach_flags flags)
 {
 	struct ldb_channel *ldb_ch = bridge_to_ldb_ch(bridge);
-	struct ldb *ldb = ldb_ch->ldb;
-
-	if (!bridge->encoder) {
-		dev_err(ldb->dev, "failed to find encoder object\n");
-		return -ENODEV;
-	}
 
 	if (!ldb_ch->next_bridge)
 		return 0;
 
-	return drm_bridge_attach(bridge->encoder,
-				ldb_ch->next_bridge, &ldb_ch->bridge, flags);
+	return drm_bridge_attach(encoder, ldb_ch->next_bridge, &ldb_ch->bridge,
+				 flags);
 }
 
 static int ldb_bridge_atomic_check(struct drm_bridge *bridge,
@@ -309,7 +304,6 @@ int ldb_bind(struct ldb *ldb, struct drm_encoder **encoder)
 		}
 
 		ldb_ch->bridge.driver_private = ldb_ch;
-		ldb_ch->bridge.funcs = &ldb_bridge_funcs;
 		ldb_ch->bridge.of_node = child;
 
 		ret = drm_bridge_attach(encoder[i], &ldb_ch->bridge, NULL, 0);
@@ -330,6 +324,13 @@ free_child:
 	return ret;
 }
 EXPORT_SYMBOL_GPL(ldb_bind);
+
+void *devm_ldb_channel_alloc(struct device *dev)
+{
+	return devm_drm_bridge_alloc(dev, struct ldb_channel, bridge,
+				     &ldb_bridge_funcs);
+}
+EXPORT_SYMBOL_GPL(devm_ldb_channel_alloc);
 
 MODULE_DESCRIPTION("Freescale i.MX LVDS display bridge driver");
 MODULE_AUTHOR("Freescale Semiconductor, Inc.");

@@ -11,13 +11,13 @@
 #include <linux/module.h>
 #include <linux/i2c.h>
 #include <linux/interrupt.h>
-#include <linux/irq.h>
 #include <linux/property.h>
 #include <linux/regmap.h>
 #include <linux/usb/pd.h>
 #include <linux/usb/tcpci.h>
 #include <linux/usb/tcpm.h>
 #include <linux/usb/typec.h>
+#include <linux/regulator/consumer.h>
 
 #define	PD_RETRY_COUNT_DEFAULT			3
 #define	PD_RETRY_COUNT_3_0_OR_HIGHER		2
@@ -281,7 +281,7 @@ static int tcpci_set_polarity(struct tcpc_dev *tcpc,
 			if (cc2 == TYPEC_CC_RD)
 				/* Role control would have the Rp setting when DRP was enabled */
 				reg |= FIELD_PREP(TCPC_ROLE_CTRL_CC2, TCPC_ROLE_CTRL_CC_RP);
-			else
+			else if (cc2 >= TYPEC_CC_RP_DEF)
 				reg |= FIELD_PREP(TCPC_ROLE_CTRL_CC2, TCPC_ROLE_CTRL_CC_RD);
 		} else {
 			reg &= ~TCPC_ROLE_CTRL_CC1;
@@ -289,7 +289,7 @@ static int tcpci_set_polarity(struct tcpc_dev *tcpc,
 			if (cc1 == TYPEC_CC_RD)
 				/* Role control would have the Rp setting when DRP was enabled */
 				reg |= FIELD_PREP(TCPC_ROLE_CTRL_CC1, TCPC_ROLE_CTRL_CC_RP);
-			else
+			else if (cc1 >= TYPEC_CC_RP_DEF)
 				reg |= FIELD_PREP(TCPC_ROLE_CTRL_CC1, TCPC_ROLE_CTRL_CC_RD);
 		}
 	}
@@ -949,6 +949,10 @@ static int tcpci_probe(struct i2c_client *client)
 	int err;
 	u16 val = 0;
 
+	err = devm_regulator_get_enable_optional(&client->dev, "vdd");
+	if (err && err != -ENODEV)
+		return dev_err_probe(&client->dev, err, "Failed to get regulator\n");
+
 	chip = devm_kzalloc(&client->dev, sizeof(*chip), GFP_KERNEL);
 	if (!chip)
 		return -ENOMEM;
@@ -1010,7 +1014,7 @@ static void tcpci_remove(struct i2c_client *client)
 	tcpci_unregister_port(chip->tcpci);
 }
 
-static int __maybe_unused tcpci_suspend(struct device *dev)
+static int tcpci_suspend(struct device *dev)
 {
 	struct i2c_client *i2c = to_i2c_client(dev);
 	struct tcpci_chip *chip = i2c_get_clientdata(i2c);
@@ -1024,8 +1028,7 @@ static int __maybe_unused tcpci_suspend(struct device *dev)
 	return ret;
 }
 
-
-static int __maybe_unused tcpci_resume(struct device *dev)
+static int tcpci_resume(struct device *dev)
 {
 	struct i2c_client *i2c = to_i2c_client(dev);
 	struct tcpci_chip *chip = i2c_get_clientdata(i2c);
@@ -1039,9 +1042,7 @@ static int __maybe_unused tcpci_resume(struct device *dev)
 	return ret;
 }
 
-static const struct dev_pm_ops tcpci_pm_ops = {
-	SET_SYSTEM_SLEEP_PM_OPS(tcpci_suspend, tcpci_resume)
-};
+DEFINE_SIMPLE_DEV_PM_OPS(tcpci_pm_ops, tcpci_suspend, tcpci_resume);
 
 static const struct i2c_device_id tcpci_id[] = {
 	{ "tcpci" },
@@ -1061,7 +1062,7 @@ MODULE_DEVICE_TABLE(of, tcpci_of_match);
 static struct i2c_driver tcpci_i2c_driver = {
 	.driver = {
 		.name = "tcpci",
-		.pm = &tcpci_pm_ops,
+		.pm = pm_sleep_ptr(&tcpci_pm_ops),
 		.of_match_table = of_match_ptr(tcpci_of_match),
 	},
 	.probe = tcpci_probe,

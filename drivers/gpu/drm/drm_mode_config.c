@@ -20,6 +20,7 @@
  * OF THIS SOFTWARE.
  */
 
+#include <linux/export.h>
 #include <linux/uaccess.h>
 
 #include <drm/drm_drv.h>
@@ -150,6 +151,15 @@ int drm_mode_getresources(struct drm_device *dev, void *data,
 	drm_connector_list_iter_begin(dev, &conn_iter);
 	count = 0;
 	connector_id = u64_to_user_ptr(card_res->connector_id_ptr);
+	/*
+	 * FIXME: the connectors on the list may not be fully initialized yet,
+	 * if the ioctl is called before the connectors are registered. (See
+	 * drm_dev_register()->drm_modeset_register_all() for static and
+	 * drm_connector_dynamic_register() for dynamic connectors.)
+	 * The driver should only get registered after static connectors are
+	 * fully initialized and dynamic connectors should be added to the
+	 * connector list only after fully initializing them.
+	 */
 	drm_for_each_connector_iter(connector, &conn_iter) {
 		/* only expose writeback connectors if userspace understands them */
 		if (!file_priv->writeback_connectors &&
@@ -374,6 +384,13 @@ static int drm_mode_create_standard_properties(struct drm_device *dev)
 
 	prop = drm_property_create(dev,
 				   DRM_MODE_PROP_IMMUTABLE | DRM_MODE_PROP_BLOB,
+				   "IN_FORMATS_ASYNC", 0);
+	if (!prop)
+		return -ENOMEM;
+	dev->mode_config.async_modifiers_property = prop;
+
+	prop = drm_property_create(dev,
+				   DRM_MODE_PROP_IMMUTABLE | DRM_MODE_PROP_BLOB,
 				   "SIZE_HINTS", 0);
 	if (!prop)
 		return -ENOMEM;
@@ -553,10 +570,13 @@ void drm_mode_config_cleanup(struct drm_device *dev)
 	 */
 	WARN_ON(!list_empty(&dev->mode_config.fb_list));
 	list_for_each_entry_safe(fb, fbt, &dev->mode_config.fb_list, head) {
-		struct drm_printer p = drm_dbg_printer(dev, DRM_UT_KMS, "[leaked fb]");
+		if (list_empty(&fb->filp_head) || drm_framebuffer_read_refcount(fb) > 1) {
+			struct drm_printer p = drm_dbg_printer(dev, DRM_UT_KMS, "[leaked fb]");
 
-		drm_printf(&p, "framebuffer[%u]:\n", fb->base.id);
-		drm_framebuffer_print_info(&p, 1, fb);
+			drm_printf(&p, "framebuffer[%u]:\n", fb->base.id);
+			drm_framebuffer_print_info(&p, 1, fb);
+		}
+		list_del_init(&fb->filp_head);
 		drm_framebuffer_free(&fb->base.refcount);
 	}
 

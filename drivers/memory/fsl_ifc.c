@@ -579,7 +579,7 @@ static struct platform_driver fsl_ifc_ctrl_driver = {
 		.pm = &ifc_pm_ops,
 	},
 	.probe       = fsl_ifc_ctrl_probe,
-	.remove_new  = fsl_ifc_ctrl_remove,
+	.remove  = fsl_ifc_ctrl_remove,
 };
 
 static int __init fsl_ifc_init(void)

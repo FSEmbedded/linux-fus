@@ -11,6 +11,7 @@
 #include <linux/clk.h>
 #include <linux/component.h>
 #include <linux/debugfs.h>
+#include <linux/export.h>
 #include <linux/iopoll.h>
 #include <linux/math64.h>
 #include <linux/media-bus-format.h>
@@ -992,7 +993,7 @@ static void dw_mipi_dsi_clear_err(struct dw_mipi_dsi *dsi)
 }
 
 static void dw_mipi_dsi_bridge_post_atomic_disable(struct drm_bridge *bridge,
-						   struct drm_bridge_state *old_bridge_state)
+						   struct drm_atomic_state *state)
 {
 	struct dw_mipi_dsi *dsi = bridge_to_dsi(bridge);
 	const struct dw_mipi_dsi_phy_ops *phy_ops = dsi->plat_data->phy_ops;
@@ -1100,7 +1101,7 @@ static void dw_mipi_dsi_bridge_mode_set(struct drm_bridge *bridge,
 }
 
 static void dw_mipi_dsi_bridge_atomic_enable(struct drm_bridge *bridge,
-					     struct drm_bridge_state *old_bridge_state)
+					     struct drm_atomic_state *state)
 {
 	struct dw_mipi_dsi *dsi = bridge_to_dsi(bridge);
 
@@ -1129,12 +1130,13 @@ dw_mipi_dsi_bridge_mode_valid(struct drm_bridge *bridge,
 }
 
 static int dw_mipi_dsi_bridge_attach(struct drm_bridge *bridge,
+				     struct drm_encoder *encoder,
 				     enum drm_bridge_attach_flags flags)
 {
 	struct dw_mipi_dsi *dsi = bridge_to_dsi(bridge);
 
 	/* Set the encoder type as caller does not know it */
-	bridge->encoder->encoder_type = DRM_MODE_ENCODER_DSI;
+	encoder->encoder_type = DRM_MODE_ENCODER_DSI;
 
 	if (!dsi->device_found) {
 		int ret;
@@ -1147,7 +1149,7 @@ static int dw_mipi_dsi_bridge_attach(struct drm_bridge *bridge,
 	}
 
 	/* Attach the panel-bridge to the dsi bridge */
-	return drm_bridge_attach(bridge->encoder, dsi->panel_bridge, bridge,
+	return drm_bridge_attach(encoder, dsi->panel_bridge, bridge,
 				 flags);
 }
 
@@ -1259,9 +1261,10 @@ __dw_mipi_dsi_probe(struct platform_device *pdev,
 	struct dw_mipi_dsi *dsi;
 	int ret;
 
-	dsi = devm_kzalloc(dev, sizeof(*dsi), GFP_KERNEL);
-	if (!dsi)
-		return ERR_PTR(-ENOMEM);
+	dsi = devm_drm_bridge_alloc(dev, struct dw_mipi_dsi, bridge,
+				    &dw_mipi_dsi_bridge_funcs);
+	if (IS_ERR(dsi))
+		return ERR_CAST(dsi);
 
 	dsi->dev = dev;
 	dsi->plat_data = plat_data;
@@ -1330,7 +1333,6 @@ __dw_mipi_dsi_probe(struct platform_device *pdev,
 	}
 
 	dsi->bridge.driver_private = dsi;
-	dsi->bridge.funcs = &dw_mipi_dsi_bridge_funcs;
 	dsi->bridge.of_node = pdev->dev.of_node;
 	drm_bridge_add(&dsi->bridge);
 

@@ -134,15 +134,13 @@
 	};
 };
 
+&dmic {
+	num-channels = <8>;
+};
+
 &pcal6524 {
 	/* When low, select can; When high, select gpio. */
 	can-gpio-sel-hog {
-		/delete-property/ output-low;
-		output-high;
-	};
-
-	/* When low, select pwm; When high, select gpio. */
-	pwm-gpio-sel-hog {
 		/delete-property/ output-low;
 		output-high;
 	};
@@ -263,8 +261,8 @@
 
 	pinctrl_spdif: spdifgrp {
 		fsl,pins = <
-			IMX95_PAD_GPIO_IO22__SPDIF_IN			0x3fe
-			IMX95_PAD_GPIO_IO23__SPDIF_OUT			0x3fe
+			IMX95_PAD_GPIO_IO22__SPDIF_IN			0x39e
+			IMX95_PAD_GPIO_IO23__SPDIF_OUT			0x39e
 		>;
 	};
 

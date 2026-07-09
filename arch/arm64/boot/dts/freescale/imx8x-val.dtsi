@@ -130,8 +130,8 @@
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_PLL>,
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_SLV_BUS>,
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_MST_BUS>,
-			<&esai0_lpcg 0>;
-	assigned-clock-parents = <&aud_pll_div0_lpcg 0>;
+			<&esai0_lpcg IMX_LPCG_CLK_0>;
+	assigned-clock-parents = <&aud_pll_div0_lpcg IMX_LPCG_CLK_0>;
 	assigned-clock-rates = <0>, <786432000>, <49152000>, <24576000>, <49152000>;
 	status = "okay";
 };
@@ -141,8 +141,8 @@
 			<&clk IMX_SC_R_AUDIO_PLL_1 IMX_SC_PM_CLK_PLL>,
 			<&clk IMX_SC_R_AUDIO_PLL_1 IMX_SC_PM_CLK_SLV_BUS>,
 			<&clk IMX_SC_R_AUDIO_PLL_1 IMX_SC_PM_CLK_MST_BUS>,
-			<&sai4_lpcg 0>;
-	assigned-clock-parents = <&aud_pll_div1_lpcg 0>;
+			<&sai4_lpcg IMX_LPCG_CLK_0>;
+	assigned-clock-parents = <&aud_pll_div1_lpcg IMX_LPCG_CLK_0>;
 	assigned-clock-rates = <0>, <786432000>, <98304000>, <24576000>, <98304000>;
 	fsl,sai-asynchronous;
 	fsl,txm-rxs;
@@ -154,8 +154,8 @@
 			<&clk IMX_SC_R_AUDIO_PLL_1 IMX_SC_PM_CLK_PLL>,
 			<&clk IMX_SC_R_AUDIO_PLL_1 IMX_SC_PM_CLK_SLV_BUS>,
 			<&clk IMX_SC_R_AUDIO_PLL_1 IMX_SC_PM_CLK_MST_BUS>,
-			<&sai5_lpcg 0>;
-	assigned-clock-parents = <&aud_pll_div1_lpcg 0>;
+			<&sai5_lpcg IMX_LPCG_CLK_0>;
+	assigned-clock-parents = <&aud_pll_div1_lpcg IMX_LPCG_CLK_0>;
 	assigned-clock-rates = <0>, <786432000>, <98304000>, <24576000>, <98304000>;
 	fsl,sai-asynchronous;
 	fsl,txm-rxs;
@@ -575,7 +575,7 @@
 	codec: cs42888@48 {
 		compatible = "cirrus,cs42888";
 		reg = <0x48>;
-		clocks = <&mclkout0_lpcg 0>;
+		clocks = <&mclkout0_lpcg IMX_LPCG_CLK_0>;
 		clock-names = "mclk";
 		VA-supply = <&reg_audio>;
 		VD-supply = <&reg_audio>;
@@ -691,14 +691,6 @@
 	status = "okay";
 };
 
-&gpu_3d0 {
-	status = "okay";
-};
-
-&imx8_gpu_ss {
-	status = "okay";
-};
-
 &usbotg1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_usbotg1>;
@@ -758,7 +750,7 @@
 	status = "okay";
 
 	lvds-to-hdmi-bridge@4c {
-		compatible = "ite,it6263";
+		compatible = "ite,it6263-nxp";
 		reg = <0x4c>;
 
 		port {
@@ -802,7 +794,7 @@
 	status = "okay";
 
 	lvds-to-hdmi-bridge@4c {
-		compatible = "ite,it6263";
+		compatible = "ite,it6263-nxp";
 		reg = <0x4c>;
 
 		port {

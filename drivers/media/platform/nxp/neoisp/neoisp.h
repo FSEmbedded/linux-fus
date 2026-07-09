@@ -2,85 +2,54 @@
 /*
  * NEOISP main header file
  *
- * Copyright 2023-2025 NXP
+ * Copyright 2023-2026 NXP
  */
 
-#ifndef NEOISP_H
-#define NEOISP_H
+#ifndef __NXP_NEOISP_H
+#define __NXP_NEOISP_H
 
 #include <linux/bits.h>
+#include <linux/debugfs.h>
+#include <linux/media/nxp/nxp_neoisp.h>
 #include <media/v4l2-ctrls.h>
 #include <media/v4l2-device.h>
 #include <media/videobuf2-core.h>
 #include <media/videobuf2-v4l2.h>
-#include <uapi/linux/nxp_neoisp.h>
-#include "neoisp_regs.h"
+
+#include "neoisp_hw.h"
+
+#define NEOISP_NAME			"neoisp"
+
+#define NEOISP_NODE_GROUPS_COUNT	8
+#define NEOISP_MIN_W			64U
+#define NEOISP_MIN_H			64U
+#define NEOISP_MAX_W			4096U
+#define NEOISP_MAX_H			4096U
+#define NEOISP_MAX_BPP			4U
+#define NEOISP_ALIGN_W			3
+#define NEOISP_ALIGN_H			3
+#define NEOISP_DEF_W			640U
+#define NEOISP_DEF_H			480U
+
+#define NEOISP_SUSPEND_TIMEOUT_MS	500
 
 /*
- * defines
+ * 16 controls have been reserved for this driver for future extension, but
+ * let's limit the related driver allocation to the effective number of controls
+ * in use.
  */
-#define DEBUG
-#define NEOISP_NAME            "neoisp"
+enum neoisp_ctrls_e {
+	NEOISP_CTRLS_QUERYCAP,
+	NEOISP_CTRLS_SUPPORTED_PARAMS_BLOCKS,
+	NEOISP_CTRLS_COUNT,
+};
 
-#define NEOISP_NODE_GROUPS_COUNT (8)
-#define NEOISP_MIN_W             (64u)
-#define NEOISP_MIN_H             (64u)
-#define NEOISP_MAX_W             (4096u)
-#define NEOISP_MAX_H             (4096u)
-#define NEOISP_MAX_BPP           (4)
-#define NEOISP_ALIGN_W           (3)
-#define NEOISP_ALIGN_H           (3)
-#define NEOISP_FMT_CAP           (0)
-#define NEOISP_FMT_OUT           (1)
-#define NEOISP_DEF_W             (640)
-#define NEOISP_DEF_H             (480)
-
-#define NEOISP_MAX_CTRLS         (1)
-#define NEOISP_CTRL_PARAMS       (0)
-
-#define NEOISP_FMT_VCAP_COUNT    (19)
-#define NEOISP_FMT_VCAP_IR_COUNT (2)
-#define NEOISP_FMT_VOUT_COUNT    (29)
-#define NEOISP_FMT_MCAP_COUNT    (1)
-#define NEOISP_FMT_MOUT_COUNT    (1)
-
-#define NODE_DESC_IS_OUTPUT(desc) ( \
-		((desc)->buf_type == V4L2_BUF_TYPE_META_OUTPUT) || \
-		((desc)->buf_type == V4L2_BUF_TYPE_VIDEO_OUTPUT) || \
-		((desc)->buf_type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE))
-
-#define NODE_IS_META(node) ( \
-		((node)->buf_type == V4L2_BUF_TYPE_META_OUTPUT) || \
-		((node)->buf_type == V4L2_BUF_TYPE_META_CAPTURE))
-#define NODE_IS_OUTPUT(node) ( \
-		((node)->buf_type == V4L2_BUF_TYPE_META_OUTPUT) || \
-		((node)->buf_type == V4L2_BUF_TYPE_VIDEO_OUTPUT) || \
-		((node)->buf_type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE))
-#define NODE_IS_CAPTURE(node) ( \
-		((node)->buf_type == V4L2_BUF_TYPE_META_CAPTURE) || \
-		((node)->buf_type == V4L2_BUF_TYPE_VIDEO_CAPTURE) || \
-		((node)->buf_type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE))
-#define NODE_IS_MPLANE(node) ( \
-		((node)->buf_type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) || \
-		((node)->buf_type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE))
-
-#define TYPE_IS_META(typ) ( \
-		((typ) == V4L2_BUF_TYPE_META_OUTPUT) || \
-		((typ) == V4L2_BUF_TYPE_META_CAPTURE))
-
-#define FMT_IS_MONOCHROME(x) ( \
-		((x) == V4L2_PIX_FMT_GREY) || \
-		((x) == V4L2_PIX_FMT_Y10)  || \
-		((x) == V4L2_PIX_FMT_Y12)  || \
-		((x) == V4L2_PIX_FMT_Y14)  || \
-		((x) == V4L2_PIX_FMT_Y16)  || \
-		((x) == V4L2_PIX_FMT_Y16_BE))
-
-#define NEOISP_SUSPEND_TIMEOUT_MS (500)
-
-/* For logging only */
-#define NODE_NAME(node) \
-	(node_desc[(node)->id].ent_name + sizeof(NEOISP_NAME))
+static inline bool format_is_monochrome(u32 format)
+{
+	return format == V4L2_PIX_FMT_GREY || format == V4L2_PIX_FMT_Y10 ||
+		format == V4L2_PIX_FMT_Y12 || format == V4L2_PIX_FMT_Y14 ||
+		format == V4L2_PIX_FMT_Y16 || format == V4L2_PIX_FMT_Y16_BE;
+}
 
 #define NEOISP_COLORSPACE_MASK(colorspace) BIT(colorspace)
 
@@ -105,9 +74,6 @@
 					 NEOISP_COLORSPACE_MASK_SMPTE170M | \
 					 NEOISP_COLORSPACE_MASK_REC709)
 
-/*
- * enums
- */
 enum neoisp_fmt_type_e {
 	NEOISP_FMT_VIDEO_CAPTURE = BIT(0),
 	NEOISP_FMT_VIDEO_OUTPUT = BIT(1),
@@ -125,47 +91,71 @@ enum neoisp_node_e {
 	NEOISP_NODES_COUNT
 };
 
-/*
- * structs
- */
+struct neoisp_fmt_s {
+	u32 fourcc;
+	u32 align;
+	u32 bit_depth;
+	u32 num_planes;
+	u8 pl_divisors[VB2_MAX_PLANES];
+	u8 bpp_enc;
+	u8 is_rgb;
+	u32 colorspace_mask;
+	enum v4l2_colorspace colorspace_default;
+	enum neoisp_fmt_type_e type;
+};
 
 struct neoisp_dev_s;
+
+struct neoisp_context_s {
+	struct neoisp_hw_s hw;
+	struct neoisp_vignetting_table_mem_params_s vig;
+	struct neoisp_drc_global_tonemap_mem_params_s gtm;
+	struct neoisp_drc_local_tonemap_mem_params_s ltm;
+};
+
+/*
+ * struct neoisp_context_ops_s - Context related operations across HW revisions
+ *
+ * @get_irq_status: Read irq status register
+ * @set_irq_enable: Set irq enable register
+ * @clear_irq: Clear irq status register
+ * @adjust_gain: Callback to adjust gain for data alignment
+ */
+struct neoisp_context_ops_s {
+	u32 (*get_irq_status)(struct neoisp_dev_s *neoispd);
+	void (*set_irq_enable)(struct neoisp_dev_s *neoispd, u32 val);
+	void (*clear_irq)(struct neoisp_dev_s *neoispd, u32 val);
+	void (*adjust_gain)(struct neoisp_context_s *ctx, u32 ibpp);
+};
+
+struct isp_block_map_s {
+	u32 vignetting_table;
+	u32 drc_global_tonemap;
+	u32 drc_global_hist_roi0;
+	u32 drc_global_hist_roi1;
+	u32 drc_local_tonemap;
+	u32 drc_local_sum;
+};
 
 /*
  * struct neoisp_info_s - ISP Hardware various information
  *
- * @neoisp_hw_ver: ISP version
- * @regs: The active registers of ISP version
- * @mems: The active memory blocks of ISP version
- * @gain_adjust: Callback to adjust gain for data alignment
+ * @capabilities: ISP hardware and driver capabilities
+ * @blocks_list: The list of ISP units supported by an ISP version
  *
- * This structure contains information about the ISP specific to a particular
- * ISP model, version, or integration in a particular SoC.
+ * This structure contains information about the ISP specific model,
+ * like parameters block list or SoC integration specifities.
  */
 struct neoisp_info_s {
-	enum neoisp_version_e neoisp_hw_ver;
-	const int *regs;
-	const struct isp_block_map_s *mems;
-	void (*gain_adjust)(struct neoisp_reg_params_s *regp, __u32 ibpp);
+	u32 capabilities;
+	const unsigned int *blocks_list;
 };
+
 struct neoisp_node_desc_s {
 	const char *ent_name;
 	enum v4l2_buf_type buf_type;
-	__u32 caps;
-	__u32 link_flags;
-};
-
-struct neoisp_fmt_s {
-	__u32 fourcc;
-	__u32 align;
-	__u32 bit_depth;
-	__u32 num_planes;
-	__u8 pl_divisors[VB2_MAX_PLANES];
-	__u8 bpp_enc;
-	__u8 is_rgb;
-	__u32 colorspace_mask;
-	enum v4l2_colorspace colorspace_default;
-	enum neoisp_fmt_type_e type;
+	u32 caps;
+	u32 link_flags;
 };
 
 /*
@@ -173,17 +163,18 @@ struct neoisp_fmt_s {
  * input or output queue to the neoisp device.
  */
 struct neoisp_node_s {
-	__u32 id;
-	__s32 vfl_dir;
+	u32 id;
+	s32 vfl_dir;
 	enum v4l2_buf_type buf_type;
 	struct video_device vfd;
 	struct media_pad pad;
 	struct media_intf_devnode *intf_devnode;
 	struct media_link *intf_link;
 	struct neoisp_node_group_s *node_group;
+	/* Video device lock */
 	struct mutex node_lock;
+	/* vb2_queue lock */
 	struct mutex queue_lock;
-	spinlock_t ready_lock;
 	struct list_head ready_queue;
 	struct vb2_queue queue;
 	struct v4l2_format format;
@@ -192,27 +183,33 @@ struct neoisp_node_s {
 };
 
 struct neoisp_node_group_s {
-	__u32 id;
-	__u32 frame_sequence;
+	u32 id;
+	u32 frame_sequence;
 	struct v4l2_device v4l2_dev;
 	struct v4l2_subdev sd;
-	struct neoisp_dev_s *neoisp_dev;
+	struct v4l2_ctrl_handler hdl;
+	struct v4l2_ctrl *ctrls[NEOISP_CTRLS_COUNT];
 	struct media_device mdev;
+	struct neoisp_dev_s *neoisp_dev;
 	struct neoisp_node_s node[NEOISP_NODES_COUNT];
-	__u32 streaming_map; /* bitmap of which nodes are streaming */
-	struct media_pad pad[NEOISP_NODES_COUNT]; /* output pads first */
+	u32 streaming_map; /* Bitmap of which nodes are streaming */
+	struct media_pad pad[NEOISP_NODES_COUNT]; /* Output pads first */
 	dma_addr_t params_dma_addr;
-	__u32 *any_buf;
-	dma_addr_t any_dma;
-	__u32 any_size;
-	struct neoisp_meta_params_s *params;
+	u32 *dummy_buf;
+	dma_addr_t dummy_dma;
+	u32 dummy_size;
+	struct neoisp_context_s *context;
 };
 
 struct neoisp_buffer_s {
 	struct vb2_v4l2_buffer vb;
 	struct list_head ready_list;
-	__u32 params_index;
 };
+
+static inline struct neoisp_buffer_s *to_neoisp_buffer(struct vb2_v4l2_buffer *vbuf)
+{
+	return container_of(vbuf, struct neoisp_buffer_s, vb);
+}
 
 /* Catch currently running or queued jobs on the neoisp hw */
 struct neoisp_job_s {
@@ -220,77 +217,59 @@ struct neoisp_job_s {
 	struct neoisp_buffer_s *buf[NEOISP_NODES_COUNT];
 };
 
+/* Records a job configuration */
+struct neoisp_job_desc_s {
+	struct list_head queue;
+	struct neoisp_node_group_s *node_group;
+	struct neoisp_buffer_s *buffers[NEOISP_NODES_COUNT];
+};
+
 struct neoisp_dev_s {
-	const struct neoisp_info_s *info;
-	struct platform_device *pdev;
+	struct device *dev;
+	struct neoisp_info_s *info;
 	void __iomem *mmio;
 	void __iomem *mmio_tcm;
-	struct regmap *regmap;
-	struct neoisp_regs_s regs;
 	struct clk_bulk_data *clks;
-	__s32 num_clks;
+	s32 num_clks;
 	struct neoisp_node_group_s node_group[NEOISP_NODE_GROUPS_COUNT];
-	struct neoisp_job_s queued_job, running_job;
-	bool hw_busy; /* non-zero if a job is queued or is being started */
-	spinlock_t hw_lock; /* protects "hw_busy" flag and streaming_map */
+	struct neoisp_job_s queued_job;
+	bool hw_busy; /* Non-zero if a job is queued or is being started */
+	u8 media_registered;
+	struct list_head job_queue;
+	/* Protects "hw_busy" flag, streaming_map and job_queue */
+	spinlock_t hw_lock;
 	struct dentry *debugfs_entry;
+	struct debugfs_regset32 *regset;
 };
 
-/*
- * Module parameters
- */
-
-struct neoisp_mparam_conf_s {
-	__u32 img_conf_cam0_ibpp0;
-	__u32 img_conf_cam0_ibpp1;
-	__u32 img0_in_ls_cam0_ls;
-	__u32 img1_in_ls_cam0_ls;
-	__u32 skip_ctrl0_preskip;
-	__u32 skip_ctrl0_postskip;
-};
-
-struct neoisp_mparam_packetizer_s {
-	__u32 ch0_ctrl_cam0_obpp;
-	__u32 ch0_ctrl_cam0_rsa;
-	__u32 ch0_ctrl_cam0_lsa;
-	__u32 ch12_ctrl_cam0_obpp;
-	__u32 ch12_ctrl_cam0_rsa;
-	__u32 ch12_ctrl_cam0_lsa;
-	__u32 ch12_ctrl_cam0_subsample;
-	__u32 ctrl_cam0_type;
-	__u32 ctrl_cam0_order0;
-	__u32 ctrl_cam0_order1;
-	__u32 ctrl_cam0_order2;
-	__u32 ctrl_cam0_a0s;
-};
-
-struct neoisp_mod_params_s {
-	struct {
-		__u32 disable_params;
-		__u32 disable_stats;
-		__u32 enable_debugfs;
-	} test;
-	struct neoisp_mparam_conf_s conf;
-	struct neoisp_mparam_packetizer_s pack;
-};
-
-/*
- * globals
- */
-extern const int neoisp_fields_a_v1[NEOISP_FIELD_COUNT]; /* array of all V1 fields offsets */
-extern const int neoisp_fields_a_v2[NEOISP_FIELD_COUNT]; /* array of all V2 fields offsets */
-extern struct regmap_config neoisp_regmap_config;
-extern const struct v4l2_frmsize_stepwise neoisp_frmsize_stepwise;
-extern const struct neoisp_fmt_s formats_vcap[NEOISP_FMT_VCAP_COUNT];
-extern const struct neoisp_fmt_s formats_vcap_ir[NEOISP_FMT_VCAP_IR_COUNT];
-extern const struct neoisp_fmt_s formats_vout[NEOISP_FMT_VOUT_COUNT];
-extern const struct neoisp_fmt_s formats_mcap[NEOISP_FMT_MCAP_COUNT];
-extern const struct neoisp_fmt_s formats_mout[NEOISP_FMT_MOUT_COUNT];
-extern const struct neoisp_node_desc_s node_desc[NEOISP_NODES_COUNT];
-extern struct neoisp_mod_params_s mod_params;
-extern struct neoisp_meta_params_s neoisp_default_params;
-
+#if IS_ENABLED(CONFIG_DEBUG_FS)
 void neoisp_debugfs_init(struct neoisp_dev_s *neoispd);
 void neoisp_debugfs_exit(struct neoisp_dev_s *neoispd);
+#else
+static inline void neoisp_debugfs_init(struct neoisp_dev_s *neoispd)
+{
+}
 
-#endif /* NEOISP_H */
+static inline void neoisp_debugfs_exit(struct neoisp_dev_s *neoispd)
+{
+}
+#endif
+
+static inline int neoisp_node_link_is_enabled(struct neoisp_node_s *node)
+{
+	return (node->intf_link->flags & MEDIA_LNK_FL_ENABLED);
+}
+
+static inline u32 neoisp_rd(struct neoisp_dev_s *neoispd, u32 offset)
+{
+	return readl(neoispd->mmio + offset);
+}
+
+static inline void neoisp_wr(struct neoisp_dev_s *neoispd, u32 offset, u32 val)
+{
+	writel(val, neoispd->mmio + offset);
+}
+
+const struct neoisp_fmt_s *neoisp_find_video_capture_format(u32 pixel_format);
+
+#endif /* __NXP_NEOISP_H */

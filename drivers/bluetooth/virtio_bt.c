@@ -12,6 +12,7 @@
 #include <net/bluetooth/hci_core.h>
 
 #define VERSION "0.1"
+#define VIRTBT_RX_BUF_SIZE 1000
 
 enum {
 	VIRTBT_VQ_TX,
@@ -33,11 +34,11 @@ static int virtbt_add_inbuf(struct virtio_bluetooth *vbt)
 	struct sk_buff *skb;
 	int err;
 
-	skb = alloc_skb(1000, GFP_KERNEL);
+	skb = alloc_skb(VIRTBT_RX_BUF_SIZE, GFP_KERNEL);
 	if (!skb)
 		return -ENOMEM;
 
-	sg_init_one(sg, skb->data, 1000);
+	sg_init_one(sg, skb->data, VIRTBT_RX_BUF_SIZE);
 
 	err = virtqueue_add_inbuf(vq, sg, 1, skb, GFP_KERNEL);
 	if (err < 0) {
@@ -227,8 +228,15 @@ static void virtbt_rx_work(struct work_struct *work)
 	if (!skb)
 		return;
 
-	skb_put(skb, len);
-	virtbt_rx_handle(vbt, skb);
+	if (!len || len > VIRTBT_RX_BUF_SIZE) {
+		bt_dev_err_ratelimited(vbt->hdev,
+				       "rx reply len %u outside [1, %u]\n",
+				       len, VIRTBT_RX_BUF_SIZE);
+		kfree_skb(skb);
+	} else {
+		skb_put(skb, len);
+		virtbt_rx_handle(vbt, skb);
+	}
 
 	if (virtbt_add_inbuf(vbt) < 0)
 		return;
@@ -327,17 +335,17 @@ static int virtbt_probe(struct virtio_device *vdev)
 			hdev->setup = virtbt_setup_intel;
 			hdev->shutdown = virtbt_shutdown_generic;
 			hdev->set_bdaddr = virtbt_set_bdaddr_intel;
-			set_bit(HCI_QUIRK_STRICT_DUPLICATE_FILTER, &hdev->quirks);
-			set_bit(HCI_QUIRK_SIMULTANEOUS_DISCOVERY, &hdev->quirks);
-			set_bit(HCI_QUIRK_WIDEBAND_SPEECH_SUPPORTED, &hdev->quirks);
+			hci_set_quirk(hdev, HCI_QUIRK_STRICT_DUPLICATE_FILTER);
+			hci_set_quirk(hdev, HCI_QUIRK_SIMULTANEOUS_DISCOVERY);
+			hci_set_quirk(hdev, HCI_QUIRK_WIDEBAND_SPEECH_SUPPORTED);
 			break;
 
 		case VIRTIO_BT_CONFIG_VENDOR_REALTEK:
 			hdev->manufacturer = 93;
 			hdev->setup = virtbt_setup_realtek;
 			hdev->shutdown = virtbt_shutdown_generic;
-			set_bit(HCI_QUIRK_SIMULTANEOUS_DISCOVERY, &hdev->quirks);
-			set_bit(HCI_QUIRK_WIDEBAND_SPEECH_SUPPORTED, &hdev->quirks);
+			hci_set_quirk(hdev, HCI_QUIRK_SIMULTANEOUS_DISCOVERY);
+			hci_set_quirk(hdev, HCI_QUIRK_WIDEBAND_SPEECH_SUPPORTED);
 			break;
 		}
 	}

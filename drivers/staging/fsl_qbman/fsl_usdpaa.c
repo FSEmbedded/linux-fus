@@ -1820,9 +1820,7 @@ static int setup_eventfd(struct task_struct *userspace_task,
 	struct list_head *position = NULL;
 	struct eventfd_list *ev_mem;
 
-	rcu_read_lock();
-	efd_file = lookup_fdget_rcu(args->efd);
-	rcu_read_unlock();
+	efd_file = fget_raw(args->efd);
 
 	/* check if device is already registered */
 	list_for_each(position, &eventfd_head) {

@@ -26,11 +26,6 @@ MODULE_LICENSE("Dual BSD/GPL");
 MODULE_AUTHOR("Freescale Semiconductor, Inc");
 MODULE_DESCRIPTION("DPIO Driver");
 
-#define PROT_NORMAL_NS		(PTE_TYPE_PAGE | PTE_AF | PTE_PXN | PTE_UXN | PTE_DIRTY | PTE_WRITE | PTE_ATTRINDX(MT_NORMAL))
-
-#define ioremap_cache_ns(addr, size)	ioremap_prot((addr), (size), PROT_NORMAL_NS)
-
-
 struct dpio_priv {
 	struct dpaa2_io *io;
 };
@@ -206,7 +201,7 @@ static int dpaa2_dpio_probe(struct fsl_mc_device *dpio_dev)
 		 * achieve the best performance.
 		 */
 		desc.regs_cena = ioremap_cache_ns(dpio_dev->regions[0].start,
-						resource_size(&dpio_dev->regions[0]));
+						  resource_size(&dpio_dev->regions[0]));
 	} else {
 		desc.regs_cena = devm_memremap(dev, dpio_dev->regions[2].start,
 					resource_size(&dpio_dev->regions[2]),

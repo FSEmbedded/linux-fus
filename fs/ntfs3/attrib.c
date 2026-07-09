@@ -448,8 +448,10 @@ again:
 
 	is_ext = is_attr_ext(attr_b);
 	align = sbi->cluster_size;
-	if (is_ext)
+	if (is_ext) {
 		align <<= attr_b->nres.c_unit;
+		keep_prealloc = false;
+	}
 
 	old_valid = le64_to_cpu(attr_b->nres.valid_size);
 	old_size = le64_to_cpu(attr_b->nres.data_size);
@@ -787,7 +789,8 @@ pack_runs:
 		if (err)
 			goto out;
 
-		attr = mi_find_attr(mi, NULL, type, name, name_len, &le->id);
+		attr = mi_find_attr(ni, mi, NULL, type, name, name_len,
+				    &le->id);
 		if (!attr) {
 			err = -EINVAL;
 			goto bad_inode;
@@ -1181,7 +1184,7 @@ repack:
 			goto out;
 		}
 
-		attr = mi_find_attr(mi, NULL, ATTR_DATA, NULL, 0, &le->id);
+		attr = mi_find_attr(ni, mi, NULL, ATTR_DATA, NULL, 0, &le->id);
 		if (!attr) {
 			err = -EINVAL;
 			goto out;
@@ -1353,19 +1356,28 @@ int attr_load_runs_range(struct ntfs_inode *ni, enum ATTR_TYPE type,
 	CLST vcn;
 	CLST vcn_last = (to - 1) >> cluster_bits;
 	CLST lcn, clen;
-	int err;
+	int err = 0;
+	int retry = 0;
 
 	for (vcn = from >> cluster_bits; vcn <= vcn_last; vcn += clen) {
 		if (!run_lookup_entry(run, vcn, &lcn, &clen, NULL)) {
+			if (retry != 0) { /* Next run_lookup_entry(vcn) also failed. */
+				err = -EINVAL;
+				break;
+			}
 			err = attr_load_runs_vcn(ni, type, name, name_len, run,
 						 vcn);
 			if (err)
-				return err;
+				break;
+
 			clen = 0; /* Next run_lookup_entry(vcn) must be success. */
+			retry++;
 		}
+		else
+			retry = 0;
 	}
 
-	return 0;
+	return err;
 }
 
 #ifdef CONFIG_NTFS3_LZX_XPRESS
@@ -1796,7 +1808,7 @@ repack:
 				goto out;
 			}
 
-			attr = mi_find_attr(mi, NULL, ATTR_DATA, NULL, 0,
+			attr = mi_find_attr(ni, mi, NULL, ATTR_DATA, NULL, 0,
 					    &le->id);
 			if (!attr) {
 				err = -EINVAL;
@@ -2041,8 +2053,8 @@ int attr_collapse_range(struct ntfs_inode *ni, u64 vbo, u64 bytes)
 				}
 
 				/* Look for required attribute. */
-				attr = mi_find_attr(mi, NULL, ATTR_DATA, NULL,
-						    0, &le->id);
+				attr = mi_find_attr(ni, mi, NULL, ATTR_DATA,
+						    NULL, 0, &le->id);
 				if (!attr) {
 					err = -EINVAL;
 					goto out;
@@ -2603,76 +2615,4 @@ int attr_force_nonresident(struct ntfs_inode *ni)
 	up_write(&ni->file.run_lock);
 
 	return err;
-}
-
-/*
- * Change the compression of data attribute
- */
-int attr_set_compress(struct ntfs_inode *ni, bool compr)
-{
-	struct ATTRIB *attr;
-	struct mft_inode *mi;
-
-	attr = ni_find_attr(ni, NULL, NULL, ATTR_DATA, NULL, 0, NULL, &mi);
-	if (!attr)
-		return -ENOENT;
-
-	if (is_attr_compressed(attr) == !!compr) {
-		/* Already required compressed state. */
-		return 0;
-	}
-
-	if (attr->non_res) {
-		u16 run_off;
-		u32 run_size;
-		char *run;
-
-		if (attr->nres.data_size) {
-			/*
-			 * There are rare cases when it possible to change
-			 * compress state without big changes.
-			 * TODO: Process these cases.
-			 */
-			return -EOPNOTSUPP;
-		}
-
-		run_off = le16_to_cpu(attr->nres.run_off);
-		run_size = le32_to_cpu(attr->size) - run_off;
-		run = Add2Ptr(attr, run_off);
-
-		if (!compr) {
-			/* remove field 'attr->nres.total_size'. */
-			memmove(run - 8, run, run_size);
-			run_off -= 8;
-		}
-
-		if (!mi_resize_attr(mi, attr, compr ? +8 : -8)) {
-			/*
-			 * Ignore rare case when there are no 8 bytes in record with attr.
-			 * TODO: split attribute.
-			 */
-			return -EOPNOTSUPP;
-		}
-
-		if (compr) {
-			/* Make a gap for 'attr->nres.total_size'. */
-			memmove(run + 8, run, run_size);
-			run_off += 8;
-			attr->nres.total_size = attr->nres.alloc_size;
-		}
-		attr->nres.run_off = cpu_to_le16(run_off);
-	}
-
-	/* Update attribute flags. */
-	if (compr) {
-		attr->flags &= ~ATTR_FLAG_SPARSED;
-		attr->flags |= ATTR_FLAG_COMPRESSED;
-		attr->nres.c_unit = NTFS_LZNT_CUNIT;
-	} else {
-		attr->flags &= ~ATTR_FLAG_COMPRESSED;
-		attr->nres.c_unit = 0;
-	}
-	mi->dirty = true;
-
-	return 0;
 }

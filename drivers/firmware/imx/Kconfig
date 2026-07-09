@@ -25,7 +25,7 @@ config IMX_SCU
 
 config IMX_SCMI_CPU_DRV
 	tristate "IMX SCMI CPU Protocol driver"
-	depends on IMX_SCMI_CPU_EXT || COMPILE_TEST
+	depends on ARCH_MXC || COMPILE_TEST
 	default y if ARCH_MXC
 	help
 	  The System Controller Management Interface firmware (SCMI FW) is
@@ -36,7 +36,7 @@ config IMX_SCMI_CPU_DRV
 
 config IMX_SCMI_LMM_DRV
 	tristate "IMX SCMI LMM Protocol driver"
-	depends on IMX_SCMI_LMM_EXT || COMPILE_TEST
+	depends on ARCH_MXC || COMPILE_TEST
 	default y if ARCH_MXC
 	help
 	  The System Controller Management Interface firmware (SCMI FW) is
@@ -47,7 +47,7 @@ config IMX_SCMI_LMM_DRV
 
 config IMX_SCMI_MISC_DRV
 	tristate "IMX SCMI MISC Protocol driver"
-	depends on IMX_SCMI_MISC_EXT || COMPILE_TEST
+	depends on ARCH_MXC || COMPILE_TEST
 	default y if ARCH_MXC
 	help
 	  The System Controller Management Interface firmware (SCMI FW) is
@@ -82,3 +82,10 @@ config IMX_ELE_TRNG
 	  generating true random number, the config CONFIG_ELE_TRNG needs to be enabled.
 	  This config helps provides kernel-side support for the Random Number generation,
           through NXP hardware IP for secure-enclave(s), called EdgeLock Enclave.
+
+config IMX_DISPMU
+	tristate "IMX DISPMIX MU Protocol driver"
+	depends on IMX_MBOX
+	help
+	  This driver manages the IPC interface between host CPU and the
+	  firmware running on DISPMIX CM0+ core.

@@ -573,7 +573,7 @@ void imx_gpcv2_post_resume(void)
 	imx_gpcv2_set_m_core_pgc(false, GPC_PGC_C0);
 	imx_gpcv2_set_m_core_pgc(false, GPC_PGC_SCU);
 	imx_gpcv2_set_m_core_pgc(false, GPC_PGC_FM);
-	for (i = 0; i < MAX_SLOT_NUMBER; i++){
+	for (i = 0; i < MAX_SLOT_NUMBER; i++) {
 		if (i == 1 || i == 5) /* skip slts m4 uses */
 			continue;
 		writel_relaxed(0x0, gpc_base + GPC_SLOT0_CFG + i * 0x4);
@@ -676,8 +676,8 @@ static int __init imx_gpcv2_init(struct device_node *node,
 	if (WARN_ON(!gpc_base))
 		return -ENOMEM;
 
-	domain = irq_domain_add_hierarchy(parent_domain, 0, GPC_MAX_IRQS,
-					  node, &imx_gpcv2_domain_ops,
+	domain = irq_domain_create_hierarchy(parent_domain, 0, GPC_MAX_IRQS,
+					  of_fwnode_handle(node), &imx_gpcv2_domain_ops,
 					  NULL);
 	if (!domain) {
 		iounmap(gpc_base);

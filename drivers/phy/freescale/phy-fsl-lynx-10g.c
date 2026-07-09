@@ -9,12 +9,8 @@
 #include <linux/platform_device.h>
 #include <linux/workqueue.h>
 #include <linux/fsl/guts.h>
-#include <linux/phy/phy-fsl-lynx.h>
 
-#include "phy-fsl-lynx-xgkr-algorithm.h"
-
-#define MAX_NUM_LANES			8
-#define NUM_PLL				2
+#include "phy-fsl-lynx-core.h"
 
 /* SoC IP wrapper for protocol converters */
 #define PCCR8				0x220
@@ -26,12 +22,7 @@
 #define PCCR9_QXGMIIa_CFG		BIT(0)
 
 #define PCCRB				0x22c
-/* XFIa_CFG is the generic value to enable the protocol converter (0b001),
- * not to be confused with XFIA_CFG_LS1046A (0b010), which is specific to
- * XFI protocol converter A, routed to SerDes1 lane C.
- */
 #define PCCRB_XFIa_CFG			BIT(0)
-#define PCCRB_XFIA_CFG_LS1046A		BIT(1)
 #define PCCRB_SXGMIIa_CFG		BIT(0)
 
 #define SGMII_CFG(id)			(28 - (id) * 4)
@@ -77,27 +68,24 @@
 /* Per PLL registers */
 #define PLLnCR0(pll)			((pll) * 0x20 + 0x4)
 
-#define PLLnCR0_POFF(cr0)		(((cr0) & BIT(31)) >> 31)
+#define PLLnCR0_POFF			BIT(31)
 
-#define PLLnCR0_REFCLK_SEL(cr0)		(((cr0) & GENMASK(30, 28)) >> 28)
+#define PLLnCR0_REFCLK_SEL		GENMASK(30, 28)
 #define PLLnCR0_REFCLK_SEL_100MHZ	0x0
 #define PLLnCR0_REFCLK_SEL_125MHZ	0x1
 #define PLLnCR0_REFCLK_SEL_156MHZ	0x2
 #define PLLnCR0_REFCLK_SEL_150MHZ	0x3
 #define PLLnCR0_REFCLK_SEL_161MHZ	0x4
-
-#define PLLnCR0_PLL_LCK(cr0)		(((cr0) & BIT(23)) >> 23)
-
-#define PLLnCR0_FRATE_SEL(cr0)		((cr0) & GENMASK(19, 16))
+#define PLLnCR0_PLL_LCK			BIT(23)
+#define PLLnCR0_FRATE_SEL		GENMASK(19, 16)
 #define PLLnCR0_FRATE_5G		0x0
-#define PLLnCR0_FRATE_5_15625G		0x60000
-#define PLLnCR0_FRATE_4G		0x70000
-#define PLLnCR0_FRATE_3_125G		0x90000
-#define PLLnCR0_FRATE_3G		0xa0000
+#define PLLnCR0_FRATE_5_15625G		0x6
+#define PLLnCR0_FRATE_4G		0x7
+#define PLLnCR0_FRATE_3_125G		0x9
+#define PLLnCR0_FRATE_3G		0xa
 
-#define PLLnCR0_DLYDIV_SEL(x)		((x) & GENMASK(1, 0))
-#define  DLYDIV_SEL_MSK			PLLnCR0_DLYDIV_SEL(3)
-#define  DLYDIV_SEL_312_5_MHZ		PLLnCR0_DLYDIV_SEL(1)
+#define PLLnCR0_DLYDIV_SEL		GENMASK(1, 0)
+#define PLLnCR0_DLYDIV_SEL_312_5_MHZ	1
 
 /* Per SerDes lane registers */
 
@@ -275,12 +263,6 @@ struct lynx_10g_proto_conf {
 	int adpt_eq;
 	int amp_red;
 	int ttlcr0;
-};
-
-struct lynx_pccr {
-	int offset;
-	int width;
-	int shift;
 };
 
 static const struct lynx_10g_proto_conf lynx_10g_proto_conf[LANE_MODE_MAX] = {
@@ -486,59 +468,6 @@ static const struct lynx_10g_proto_conf lynx_10g_proto_conf[LANE_MODE_MAX] = {
 	},
 };
 
-struct lynx_10g_priv;
-
-struct lynx_10g_pll {
-	struct lynx_10g_priv *priv;
-	u32 cr0;
-	int id;
-	int ex_dly_clk_use_count;
-	DECLARE_BITMAP(supported, LANE_MODE_MAX);
-	/*
-	 * There are fewer PLLs than lanes. This serializes calls to
-	 * lynx_10g_pll_get_ex_dly_clk() and lynx_10g_pll_put_ex_dly_clk().
-	 */
-	spinlock_t lock;
-};
-
-struct lynx_10g_lane {
-	struct lynx_10g_priv *priv;
-	struct phy *phy;
-	bool powered_up;
-	bool init;
-	unsigned id;
-	enum lynx_lane_mode mode;
-	struct lynx_xgkr_algorithm *algorithm;
-	u32 default_pccr[LANE_MODE_MAX];
-};
-
-struct lynx_info {
-	int (*get_pccr)(enum lynx_lane_mode lane_mode, int lane,
-		        struct lynx_pccr *pccr);
-	int (*get_pcvt_offset)(int lane, enum lynx_lane_mode mode);
-	bool (*lane_supports_mode)(int lane, enum lynx_lane_mode mode);
-	int (*pccr_override)(int lane, enum lynx_lane_mode mode, u32 *val);
-	int num_lanes;
-	bool has_hardcoded_usxgmii;
-	int index;
-};
-
-struct lynx_10g_priv {
-	void __iomem *base;
-	struct device *dev;
-	const struct lynx_info *info;
-	/* Serialize concurrent access to registers shared between lanes,
-	 * like PCCn
-	 */
-	spinlock_t pccr_lock;
-
-	bool big_endian;
-	struct lynx_10g_pll pll[NUM_PLL];
-	struct lynx_10g_lane lane[MAX_NUM_LANES];
-
-	struct delayed_work cdr_check;
-};
-
 static const int lynx_10g_bin_type_to_bin_sel[] = {
 	[BIN_1] = EQ_BIN_DATA_SEL_BIN_1,
 	[BIN_2] = EQ_BIN_DATA_SEL_BIN_2,
@@ -550,53 +479,6 @@ static const int lynx_10g_bin_type_to_bin_sel[] = {
 	[BIN_M1] = EQ_BIN_DATA_SEL_BIN_M1,
 	[BIN_LONG] = EQ_BIN_DATA_SEL_BIN_LONG,
 };
-
-static u32 lynx_10g_read32(struct lynx_10g_priv *priv, unsigned long off)
-{
-	void __iomem *reg = priv->base + off;
-
-	if (priv->big_endian)
-		return ioread32be(reg);
-
-	return ioread32(reg);
-}
-
-static void lynx_10g_write32(struct lynx_10g_priv *priv, unsigned long off,
-			     u32 val)
-{
-	void __iomem *reg = priv->base + off;
-
-	if (priv->big_endian)
-		return iowrite32be(val, reg);
-
-	return iowrite32(val, reg);
-}
-
-static void lynx_10g_rmw(struct lynx_10g_priv *priv, unsigned long off,
-			 u32 val, u32 mask)
-{
-	u32 orig, tmp;
-
-	orig = lynx_10g_read32(priv, off);
-	tmp = orig & ~mask;
-	tmp |= val;
-	lynx_10g_write32(priv, off, tmp);
-}
-
-#define lynx_10g_lane_rmw(lane, reg, val, mask)	\
-	lynx_10g_rmw((lane)->priv, reg(lane->id), val, mask)
-
-#define lynx_10g_lane_read(lane, reg) \
-	lynx_10g_read32((lane)->priv, reg((lane)->id))
-
-#define lynx_10g_lane_write(lane, reg, val) \
-	lynx_10g_write32((lane)->priv, reg((lane)->id), val)
-
-#define lynx_10g_pll_read(pll, reg)			\
-	lynx_10g_read32((pll)->priv, reg((pll)->id))
-
-#define lynx_10g_pll_write(pll, reg, val)		\
-	lynx_10g_write32((pll)->priv, reg((pll)->id), val)
 
 static int ls1028a_get_pccr(enum lynx_lane_mode lane_mode, int lane,
 			    struct lynx_pccr *pccr)
@@ -684,22 +566,6 @@ static const struct lynx_info lynx_info_ls1028a = {
 	.has_hardcoded_usxgmii = true,
 	.index = 1,
 };
-
-/* LS1046A PCCRB[XFIA_CFG] is special in that lane C needs a special value to
- * work in 10G mode, not the standard PCCRB_XFIa_CFG
- */
-static int ls1046a_serdes1_pccr_override(int lane, enum lynx_lane_mode mode,
-					 u32 *val)
-{
-	if ((mode == LANE_MODE_10GBASER || mode == LANE_MODE_10GBASEKR) &&
-	    lane == 2) {
-		*val = PCCRB_XFIA_CFG_LS1046A;
-		return 0;
-	}
-
-	/* No other override */
-	return -EOPNOTSUPP;
-}
 
 static int ls1046a_serdes1_get_pccr(enum lynx_lane_mode lane_mode, int lane,
 				    struct lynx_pccr *pccr)
@@ -789,7 +655,6 @@ static bool ls1046a_serdes1_lane_supports_mode(int lane,
 }
 
 static const struct lynx_info lynx_info_ls1046a_serdes1 = {
-	.pccr_override = ls1046a_serdes1_pccr_override,
 	.get_pccr = ls1046a_serdes1_get_pccr,
 	.get_pcvt_offset = ls1046a_serdes1_get_pcvt_offset,
 	.lane_supports_mode = ls1046a_serdes1_lane_supports_mode,
@@ -1138,242 +1003,39 @@ static const struct lynx_info lynx_info_ls2088a_serdes2 = {
 	.index = 2,
 };
 
-static int lynx_pccr_read(struct lynx_10g_lane *lane, enum lynx_lane_mode mode,
-			  u32 *val)
+static bool lynx_10g_cdr_lock_check(struct lynx_lane *lane)
 {
-	struct lynx_10g_priv *priv = lane->priv;
-	struct lynx_pccr pccr;
-	u32 tmp;
-	int err;
-
-	err = priv->info->get_pccr(mode, lane->id, &pccr);
-	if (err)
-		return err;
-
-	tmp = lynx_10g_read32(priv, pccr.offset);
-	*val = (tmp >> pccr.shift) & GENMASK(pccr.width - 1, 0);
-
-	return 0;
-}
-
-static int lynx_pccr_write(struct lynx_10g_lane *lane,
-			   enum lynx_lane_mode mode, u32 val)
-{
-	struct lynx_10g_priv *priv = lane->priv;
-	struct lynx_pccr pccr;
-	u32 old, tmp, mask;
-	int err;
-
-	err = priv->info->get_pccr(mode, lane->id, &pccr);
-	if (err)
-		return err;
-
-	old = lynx_10g_read32(priv, pccr.offset);
-	mask = GENMASK(pccr.width - 1, 0) << pccr.shift;
-	tmp = (old & ~mask) | (val << pccr.shift);
-	lynx_10g_write32(priv, pccr.offset, tmp);
-
-	dev_dbg(&lane->phy->dev, "PCCR@0x%x: 0x%x -> 0x%x\n",
-		pccr.offset, old, tmp);
-
-	return 0;
-}
-
-static int lynx_10g_lane_pccr_val(struct lynx_10g_lane *lane,
-				  enum lynx_lane_mode mode,
-				  u32 *val)
-{
-	struct lynx_10g_priv *priv = lane->priv;
-	int err;
-
-	if (lane->default_pccr[mode]) {
-		*val = lane->default_pccr[mode];
-		return 0;
-	}
-
-	if (priv->info->pccr_override) {
-		err = priv->info->pccr_override(lane->id, mode, val);
-		/* -EOPNOTSUPP means the function is implemented, but there is
-		 * no override for this lane or this lane mode. Let the code
-		 * fall back to the normal calculation, but treat other error
-		 * codes as critical.
-		 */
-		if (err == 0 || err != -EOPNOTSUPP)
-			return err;
-	}
-
-	/* Normal PCCR value calculation */
-	*val = 0;
-
-	switch (mode) {
-	case LANE_MODE_1000BASEKX:
-		*val |= PCCR8_SGMIIa_KX;
-		fallthrough;
-	case LANE_MODE_1000BASEX_SGMII:
-	case LANE_MODE_2500BASEX:
-		*val |= PCCR8_SGMIIa_CFG;
-		break;
-	case LANE_MODE_QSGMII:
-		*val |= PCCR9_QSGMIIa_CFG;
-		break;
-	case LANE_MODE_10G_QXGMII:
-		*val |= PCCR9_QXGMIIa_CFG;
-		break;
-	case LANE_MODE_10GBASER:
-	case LANE_MODE_10GBASEKR:
-		*val |= PCCRB_XFIa_CFG;
-		break;
-	case LANE_MODE_USXGMII:
-		*val |= PCCRB_SXGMIIa_CFG;
-		break;
-	default:
-		/* Should be unreachable due to lynx_lane_supports_mode() */
-		return -EOPNOTSUPP;
-	}
-
-	return 0;
-}
-
-static int lynx_pcvt_read(struct lynx_10g_lane *lane, enum lynx_lane_mode mode,
-			  int cr, u32 *val)
-{
-	struct lynx_10g_priv *priv = lane->priv;
-	int offset;
-
-	offset = priv->info->get_pcvt_offset(lane->id, mode);
-	if (offset < 0)
-		return offset;
-
-	*val = lynx_10g_read32(priv, offset + cr);
-
-	return 0;
-}
-
-static int lynx_pcvt_write(struct lynx_10g_lane *lane, enum lynx_lane_mode mode,
-			   int cr, u32 val)
-{
-	struct lynx_10g_priv *priv = lane->priv;
-	int offset;
-
-	offset = priv->info->get_pcvt_offset(lane->id, mode);
-	if (offset < 0)
-		return offset;
-
-	lynx_10g_write32(priv, offset + cr, val);
-
-	return 0;
-}
-
-static int lynx_pcvt_rmw(struct lynx_10g_lane *lane, enum lynx_lane_mode mode,
-			 int cr, u32 val, u32 mask)
-{
-	int err;
-	u32 tmp;
-
-	err = lynx_pcvt_read(lane, mode, cr, &tmp);
-	if (err)
-		return err;
-
-	tmp &= ~mask;
-	tmp |= val;
-
-	return lynx_pcvt_write(lane, mode, cr, tmp);
-}
-
-static enum lynx_lane_mode phy_interface_to_lane_mode(phy_interface_t intf)
-{
-	switch (intf) {
-	case PHY_INTERFACE_MODE_SGMII:
-	case PHY_INTERFACE_MODE_1000BASEX:
-		return LANE_MODE_1000BASEX_SGMII;
-	case PHY_INTERFACE_MODE_2500BASEX:
-		return LANE_MODE_2500BASEX;
-	case PHY_INTERFACE_MODE_10GBASER:
-		return LANE_MODE_10GBASER;
-	case PHY_INTERFACE_MODE_USXGMII:
-		return LANE_MODE_USXGMII;
-	case PHY_INTERFACE_MODE_10G_QXGMII:
-		return LANE_MODE_10G_QXGMII;
-	case PHY_INTERFACE_MODE_QSGMII:
-		return LANE_MODE_QSGMII;
-	default:
-		return LANE_MODE_UNKNOWN;
-	}
-}
-
-static enum lynx_lane_mode
-link_mode_to_lane_mode(enum ethtool_link_mode_bit_indices link_mode)
-{
-	switch (link_mode) {
-	case ETHTOOL_LINK_MODE_1000baseKX_Full_BIT:
-		return LANE_MODE_1000BASEKX;
-	case ETHTOOL_LINK_MODE_10000baseKR_Full_BIT:
-		return LANE_MODE_10GBASEKR;
-	default:
-		return LANE_MODE_UNKNOWN;
-	}
-}
-
-static bool lynx_lane_supports_mode(struct lynx_10g_lane *lane,
-				    enum lynx_lane_mode mode)
-{
-	struct lynx_10g_priv *priv = lane->priv;
-	int i;
-
-	if (!priv->info->lane_supports_mode(lane->id, mode))
-		return false;
-
-	for (i = 0; i < NUM_PLL; i++)
-		if (test_bit(mode, priv->pll[i].supported))
-			return true;
-
-	return false;
-}
-
-static struct lynx_10g_pll *lynx_10g_pll_get(struct lynx_10g_priv *priv,
-					     enum lynx_lane_mode mode)
-{
-	struct lynx_10g_pll *pll;
-	int i;
-
-	for (i = 0; i < NUM_PLL; i++) {
-		pll = &priv->pll[i];
-		if (test_bit(mode, pll->supported))
-			return pll;
-	}
-
-	return NULL;
-}
-
-static bool lynx_10g_cdr_lock_check(struct lynx_10g_lane *lane)
-{
-	u32 tcsr3 = lynx_10g_lane_read(lane, LNaTCSR3);
+	u32 tcsr3 = lynx_lane_read(lane, LNaTCSR3);
 
 	if (tcsr3 & LNaTCSR3_CDR_LCK)
 		return true;
 
-	dev_dbg(&lane->phy->dev, "CDR unlocked, resetting lane receiver...\n");
+	dev_dbg(&lane->phy->dev,
+		"Lane %c CDR unlocked, resetting receiver...\n",
+		'A' + lane->id);
 
-	lynx_10g_lane_rmw(lane, LNaGCR0, LNaGCR0_RRST_ON, LNaGCR0_RRST);
+	lynx_lane_rmw(lane, LNaGCR0, LNaGCR0_RRST_ON, LNaGCR0_RRST);
 	usleep_range(1, 2);
-	lynx_10g_lane_rmw(lane, LNaGCR0, LNaGCR0_RRST_OFF, LNaGCR0_RRST);
+	lynx_lane_rmw(lane, LNaGCR0, LNaGCR0_RRST_OFF, LNaGCR0_RRST);
 
 	usleep_range(1, 2);
-	tcsr3 = lynx_10g_lane_read(lane, LNaTCSR3);
+	tcsr3 = lynx_lane_read(lane, LNaTCSR3);
 
 	return !!(tcsr3 & LNaTCSR3_CDR_LCK);
 }
 
-#define work_to_lynx(w) container_of((w), struct lynx_10g_priv, cdr_check.work)
+#define work_to_lynx(w) container_of((w), struct lynx_priv, cdr_check.work)
 
 static void lynx_10g_cdr_lock_check_work(struct work_struct *work)
 {
-	struct lynx_10g_priv *priv = work_to_lynx(work);
-	struct lynx_10g_lane *lane;
+	struct lynx_priv *priv = work_to_lynx(work);
+	struct lynx_lane *lane;
 	int i;
 
 	for (i = 0; i < priv->info->num_lanes; i++) {
 		lane = &priv->lane[i];
+		if (!lane->phy)
+			continue;
 
 		mutex_lock(&lane->phy->mutex);
 
@@ -1394,15 +1056,15 @@ static void lynx_10g_cdr_lock_check_work(struct work_struct *work)
 /* Halting puts the lane in a mode in which it can be reconfigured */
 static void lynx_10g_lane_halt(struct phy *phy)
 {
-	struct lynx_10g_lane *lane = phy_get_drvdata(phy);
+	struct lynx_lane *lane = phy_get_drvdata(phy);
 
 	if (!lane->powered_up)
 		return;
 
 	/* Issue a reset request */
-	lynx_10g_lane_rmw(lane, LNaGCR0,
-			  LNaGCR0_RRST_ON | LNaGCR0_TRST_ON,
-			  LNaGCR0_RRST | LNaGCR0_TRST);
+	lynx_lane_rmw(lane, LNaGCR0,
+		      LNaGCR0_RRST_ON | LNaGCR0_TRST_ON,
+		      LNaGCR0_RRST | LNaGCR0_TRST);
 
 	/* The RM says to wait for at least 50ns */
 	usleep_range(1, 2);
@@ -1410,15 +1072,15 @@ static void lynx_10g_lane_halt(struct phy *phy)
 
 static void lynx_10g_lane_reset(struct phy *phy)
 {
-	struct lynx_10g_lane *lane = phy_get_drvdata(phy);
+	struct lynx_lane *lane = phy_get_drvdata(phy);
 
 	if (!lane->powered_up)
 		return;
 
 	/* Finalize the reset request */
-	lynx_10g_lane_rmw(lane, LNaGCR0,
-			  LNaGCR0_RRST_OFF | LNaGCR0_TRST_OFF,
-			  LNaGCR0_RRST | LNaGCR0_TRST);
+	lynx_lane_rmw(lane, LNaGCR0,
+		      LNaGCR0_RRST_OFF | LNaGCR0_TRST_OFF,
+		      LNaGCR0_RRST | LNaGCR0_TRST);
 
 	/* The RM says to wait for at least 50ns */
 	usleep_range(1, 2);
@@ -1426,17 +1088,17 @@ static void lynx_10g_lane_reset(struct phy *phy)
 
 static int lynx_10g_power_off(struct phy *phy)
 {
-	struct lynx_10g_lane *lane = phy_get_drvdata(phy);
+	struct lynx_lane *lane = phy_get_drvdata(phy);
 
 	if (!lane->powered_up)
 		return 0;
 
 	/* Issue a reset request with the power down bits set */
-	lynx_10g_lane_rmw(lane, LNaGCR0,
-			  LNaGCR0_RRST_ON | LNaGCR0_TRST_ON |
-			  LNaGCR0_RX_PD | LNaGCR0_TX_PD,
-			  LNaGCR0_RRST | LNaGCR0_TRST |
-			  LNaGCR0_RX_PD | LNaGCR0_TX_PD);
+	lynx_lane_rmw(lane, LNaGCR0,
+		      LNaGCR0_RRST_ON | LNaGCR0_TRST_ON |
+		      LNaGCR0_RX_PD | LNaGCR0_TX_PD,
+		      LNaGCR0_RRST | LNaGCR0_TRST |
+		      LNaGCR0_RX_PD | LNaGCR0_TX_PD);
 
 	/* The RM says to wait for at least 50ns */
 	usleep_range(1, 2);
@@ -1448,7 +1110,7 @@ static int lynx_10g_power_off(struct phy *phy)
 
 static int lynx_10g_power_on(struct phy *phy)
 {
-	struct lynx_10g_lane *lane = phy_get_drvdata(phy);
+	struct lynx_lane *lane = phy_get_drvdata(phy);
 
 	if (lane->powered_up)
 		return 0;
@@ -1458,36 +1120,36 @@ static int lynx_10g_power_on(struct phy *phy)
 	 */
 	usleep_range(1, 2);
 
-	lynx_10g_lane_rmw(lane, LNaGCR0, LNaGCR0_RRST_OFF | LNaGCR0_TRST_OFF,
-			  LNaGCR0_RRST | LNaGCR0_TRST |
-			  LNaGCR0_RX_PD | LNaGCR0_TX_PD);
+	lynx_lane_rmw(lane, LNaGCR0, LNaGCR0_RRST_OFF | LNaGCR0_TRST_OFF,
+		      LNaGCR0_RRST | LNaGCR0_TRST |
+		      LNaGCR0_RX_PD | LNaGCR0_TX_PD);
 
 	lane->powered_up = true;
 
 	return 0;
 }
 
-static void lynx_10g_lane_set_nrate(struct lynx_10g_lane *lane,
-				    struct lynx_10g_pll *pll,
+static void lynx_10g_lane_set_nrate(struct lynx_lane *lane,
+				    struct lynx_pll *pll,
 				    enum lynx_lane_mode mode)
 {
-	switch (PLLnCR0_FRATE_SEL(pll->cr0)) {
+	switch (pll->frate_sel) {
 	case PLLnCR0_FRATE_5G:
 		switch (mode) {
 		case LANE_MODE_1000BASEX_SGMII:
 		case LANE_MODE_1000BASEKX:
-			lynx_10g_lane_rmw(lane, LNaGCR0,
-					  LNaGCR0_TRAT_SEL(RAT_SEL_QUARTER) |
-					  LNaGCR0_RRAT_SEL(RAT_SEL_QUARTER),
-					  LNaGCR0_RRAT_SEL_MSK |
-					  LNaGCR0_TRAT_SEL_MSK);
+			lynx_lane_rmw(lane, LNaGCR0,
+				      LNaGCR0_TRAT_SEL(RAT_SEL_QUARTER) |
+				      LNaGCR0_RRAT_SEL(RAT_SEL_QUARTER),
+				      LNaGCR0_RRAT_SEL_MSK |
+				      LNaGCR0_TRAT_SEL_MSK);
 			break;
 		case LANE_MODE_QSGMII:
-			lynx_10g_lane_rmw(lane, LNaGCR0,
-					  LNaGCR0_TRAT_SEL(RAT_SEL_FULL) |
-					  LNaGCR0_RRAT_SEL(RAT_SEL_FULL),
-					  LNaGCR0_RRAT_SEL_MSK |
-					  LNaGCR0_TRAT_SEL_MSK);
+			lynx_lane_rmw(lane, LNaGCR0,
+				      LNaGCR0_TRAT_SEL(RAT_SEL_FULL) |
+				      LNaGCR0_RRAT_SEL(RAT_SEL_FULL),
+				      LNaGCR0_RRAT_SEL_MSK |
+				      LNaGCR0_TRAT_SEL_MSK);
 			break;
 		default:
 			break;
@@ -1496,11 +1158,11 @@ static void lynx_10g_lane_set_nrate(struct lynx_10g_lane *lane,
 	case PLLnCR0_FRATE_3_125G:
 		switch (mode) {
 		case LANE_MODE_2500BASEX:
-			lynx_10g_lane_rmw(lane, LNaGCR0,
-					  LNaGCR0_TRAT_SEL(RAT_SEL_FULL) |
-					  LNaGCR0_RRAT_SEL(RAT_SEL_FULL),
-					  LNaGCR0_RRAT_SEL_MSK |
-					  LNaGCR0_TRAT_SEL_MSK);
+			lynx_lane_rmw(lane, LNaGCR0,
+				      LNaGCR0_TRAT_SEL(RAT_SEL_FULL) |
+				      LNaGCR0_RRAT_SEL(RAT_SEL_FULL),
+				      LNaGCR0_RRAT_SEL_MSK |
+				      LNaGCR0_TRAT_SEL_MSK);
 			break;
 		default:
 			break;
@@ -1512,11 +1174,11 @@ static void lynx_10g_lane_set_nrate(struct lynx_10g_lane *lane,
 		case LANE_MODE_10GBASEKR:
 		case LANE_MODE_USXGMII:
 		case LANE_MODE_10G_QXGMII:
-			lynx_10g_lane_rmw(lane, LNaGCR0,
-					  LNaGCR0_TRAT_SEL(RAT_SEL_DOUBLE) |
-					  LNaGCR0_RRAT_SEL(RAT_SEL_DOUBLE),
-					  LNaGCR0_RRAT_SEL_MSK |
-					  LNaGCR0_TRAT_SEL_MSK);
+			lynx_lane_rmw(lane, LNaGCR0,
+				      LNaGCR0_TRAT_SEL(RAT_SEL_DOUBLE) |
+				      LNaGCR0_RRAT_SEL(RAT_SEL_DOUBLE),
+				      LNaGCR0_RRAT_SEL_MSK |
+				      LNaGCR0_TRAT_SEL_MSK);
 			break;
 		default:
 			break;
@@ -1527,17 +1189,17 @@ static void lynx_10g_lane_set_nrate(struct lynx_10g_lane *lane,
 	}
 }
 
-static void lynx_10g_lane_set_pll(struct lynx_10g_lane *lane,
-				  struct lynx_10g_pll *pll)
+static void lynx_10g_lane_set_pll(struct lynx_lane *lane,
+				  struct lynx_pll *pll)
 {
 	if (pll->id == 0) {
-		lynx_10g_lane_rmw(lane, LNaGCR0,
-				  LNaGCR0_RPLL_PLLF | LNaGCR0_TPLL_PLLF,
-				  LNaGCR0_RPLL_MSK | LNaGCR0_TPLL_MSK);
+		lynx_lane_rmw(lane, LNaGCR0,
+			      LNaGCR0_RPLL_PLLF | LNaGCR0_TPLL_PLLF,
+			      LNaGCR0_RPLL_MSK | LNaGCR0_TPLL_MSK);
 	} else {
-		lynx_10g_lane_rmw(lane, LNaGCR0,
-				  LNaGCR0_RPLL_PLLS | LNaGCR0_TPLL_PLLS,
-				  LNaGCR0_RPLL_MSK | LNaGCR0_TPLL_MSK);
+		lynx_lane_rmw(lane, LNaGCR0,
+			      LNaGCR0_RPLL_PLLS | LNaGCR0_TPLL_PLLS,
+			      LNaGCR0_RPLL_MSK | LNaGCR0_TPLL_MSK);
 	}
 }
 
@@ -1545,20 +1207,21 @@ static void lynx_10g_lane_set_pll(struct lynx_10g_lane *lane,
  * affect the state of the lanes mapped to it. It is one of the few safe things
  * that can be done with it at runtime.
  */
-static void lynx_10g_pll_ex_dly_clk_enable(struct lynx_10g_pll *pll,
+static void lynx_10g_pll_ex_dly_clk_enable(struct lynx_pll *pll,
 					   bool enable)
 {
+	u32 val = 0;
+
 	dev_err(pll->priv->dev, "Turning %s EX_DLY_CLK on PLL%c\n",
 		enable ? "on" : "off", pll->id == 0 ? 'F' : 'S');
 
-	pll->cr0 &= ~DLYDIV_SEL_MSK;
 	if (enable)
-		pll->cr0 |= DLYDIV_SEL_312_5_MHZ;
+		val = PLLnCR0_DLYDIV_SEL_312_5_MHZ;
 
-	lynx_10g_pll_write(pll, PLLnCR0, pll->cr0);
+	lynx_pll_rmw(pll, PLLnCR0, val, PLLnCR0_DLYDIV_SEL);
 }
 
-static void lynx_10g_pll_get_ex_dly_clk(struct lynx_10g_pll *pll)
+static void lynx_10g_pll_get_ex_dly_clk(struct lynx_pll *pll)
 {
 	spin_lock(&pll->lock);
 
@@ -1572,7 +1235,7 @@ static void lynx_10g_pll_get_ex_dly_clk(struct lynx_10g_pll *pll)
 	spin_unlock(&pll->lock);
 }
 
-static void lynx_10g_pll_put_ex_dly_clk(struct lynx_10g_pll *pll)
+static void lynx_10g_pll_put_ex_dly_clk(struct lynx_pll *pll)
 {
 	spin_lock(&pll->lock);
 
@@ -1586,73 +1249,76 @@ static void lynx_10g_pll_put_ex_dly_clk(struct lynx_10g_pll *pll)
 	spin_unlock(&pll->lock);
 }
 
-static void lynx_10g_lane_remap_pll(struct lynx_10g_lane *lane,
+static void lynx_10g_lane_remap_pll(struct lynx_lane *lane,
 				    enum lynx_lane_mode lane_mode)
 {
-	struct lynx_10g_priv *priv = lane->priv;
-	struct lynx_10g_pll *pll;
+	struct lynx_priv *priv = lane->priv;
+	struct lynx_pll *pll;
 
 	/* Switch to the PLL that works with this interface type */
-	pll = lynx_10g_pll_get(priv, lane_mode);
+	pll = lynx_pll_get(priv, lane_mode);
+	if (unlikely(pll == NULL))
+		return;
+
 	lynx_10g_lane_set_pll(lane, pll);
 
 	/* Choose the portion of clock net to be used on this lane */
 	lynx_10g_lane_set_nrate(lane, pll, lane_mode);
 }
 
-static void lynx_10g_lane_change_proto_conf(struct lynx_10g_lane *lane,
+static void lynx_10g_lane_change_proto_conf(struct lynx_lane *lane,
 					    enum lynx_lane_mode mode)
 {
 	const struct lynx_10g_proto_conf *conf = &lynx_10g_proto_conf[mode];
 
-	lynx_10g_lane_rmw(lane, LNaGCR0, LNaGCR0_PROTS(conf->proto_sel) |
-			  (conf->if20bit_en ? LNaGCR0_IF20BIT_EN : 0),
-			  LNaGCR0_PROTS_MSK | LNaGCR0_IF20BIT_EN);
-	lynx_10g_lane_rmw(lane, LNaGCR1,
-			  LNaGCR1_REIDL_TH(conf->reidl_th) |
-			  (conf->reidl_et_msb ? LNaGCR1_REIDL_ET_MSB : 0) |
-			  LNaGCR1_REIDL_ET_SEL(conf->reidl_et_sel) |
-			  (conf->reidl_ex_msb ? LNaGCR1_REIDL_EX_MSB : 0) |
-			  LNaGCR1_REIDL_EX_SEL(conf->reidl_ex_sel) |
-			  LNaGCR1_ISLEW_RCTL(conf->islew_rctl) |
-			  LNaGCR1_OSLEW_RCTL(conf->oslew_rctl),
-			  LNaGCR1_REIDL_TH_MSK |
-			  LNaGCR1_REIDL_ET_MSB | LNaGCR1_REIDL_ET_SEL_MSK |
-			  LNaGCR1_REIDL_EX_MSB | LNaGCR1_REIDL_EX_SEL_MSK |
-			  LNaGCR1_ISLEW_RCTL_MSK | LNaGCR1_OSLEW_RCTL_MSK);
-	lynx_10g_lane_rmw(lane, LNaRECR0,
-			  (conf->rxeq_bst ? LNaRECR0_RXEQ_BST : 0) |
-			  LNaRECR0_GK2OVD(conf->gk2ovd) |
-			  LNaRECR0_GK3OVD(conf->gk3ovd) |
-			  (conf->gk2ovd_en ? LNaRECR0_GK2OVD_EN : 0) |
-			  (conf->gk3ovd_en ? LNaRECR0_GK3OVD_EN : 0) |
-			  LNaRECR0_BASE_WAND(conf->base_wand),
-			  LNaRECR0_RXEQ_BST |
-			  LNaRECR0_GK2OVD_MSK | LNaRECR0_GK3OVD_MSK |
-			  LNaRECR0_GK2OVD_EN | LNaRECR0_GK3OVD_EN |
-			  LNaRECR0_BASE_WAND_MSK);
-	lynx_10g_lane_rmw(lane, LNaTECR0,
-			  LNaTECR0_TEQ_TYPE(conf->teq_type) |
-			  (conf->sgn_preq ? LNaTECR0_SGN_PREQ : 0) |
-			  LNaTECR0_RATIO_PREQ(conf->ratio_preq) |
-			  (conf->sgn_post1q ? LNaTECR0_SGN_POST1Q : 0) |
-			  LNaTECR0_RATIO_PST1Q(conf->ratio_post1q) |
-			  LNaTECR0_ADPT_EQ(conf->adpt_eq) |
-			  LNaTECR0_AMP_RED(conf->amp_red),
-			  LNaTECR0_TEQ_TYPE_MSK | LNaTECR0_SGN_PREQ |
-			  LNaTECR0_RATIO_PREQ_MSK | LNaTECR0_SGN_POST1Q |
-			  LNaTECR0_RATIO_PST1Q_MSK | LNaTECR0_ADPT_EQ_MSK |
-			  LNaTECR0_AMP_RED_MSK);
-	lynx_10g_lane_write(lane, LNaTTLCR0, conf->ttlcr0);
+	lynx_lane_rmw(lane, LNaGCR0, LNaGCR0_PROTS(conf->proto_sel) |
+		      (conf->if20bit_en ? LNaGCR0_IF20BIT_EN : 0),
+		      LNaGCR0_PROTS_MSK | LNaGCR0_IF20BIT_EN);
+	lynx_lane_rmw(lane, LNaGCR1,
+		      LNaGCR1_REIDL_TH(conf->reidl_th) |
+		      (conf->reidl_et_msb ? LNaGCR1_REIDL_ET_MSB : 0) |
+		      LNaGCR1_REIDL_ET_SEL(conf->reidl_et_sel) |
+		      (conf->reidl_ex_msb ? LNaGCR1_REIDL_EX_MSB : 0) |
+		      LNaGCR1_REIDL_EX_SEL(conf->reidl_ex_sel) |
+		      LNaGCR1_ISLEW_RCTL(conf->islew_rctl) |
+		      LNaGCR1_OSLEW_RCTL(conf->oslew_rctl),
+		      LNaGCR1_REIDL_TH_MSK |
+		      LNaGCR1_REIDL_ET_MSB | LNaGCR1_REIDL_ET_SEL_MSK |
+		      LNaGCR1_REIDL_EX_MSB | LNaGCR1_REIDL_EX_SEL_MSK |
+		      LNaGCR1_ISLEW_RCTL_MSK | LNaGCR1_OSLEW_RCTL_MSK);
+	lynx_lane_rmw(lane, LNaRECR0,
+		      (conf->rxeq_bst ? LNaRECR0_RXEQ_BST : 0) |
+		      LNaRECR0_GK2OVD(conf->gk2ovd) |
+		      LNaRECR0_GK3OVD(conf->gk3ovd) |
+		      (conf->gk2ovd_en ? LNaRECR0_GK2OVD_EN : 0) |
+		      (conf->gk3ovd_en ? LNaRECR0_GK3OVD_EN : 0) |
+		      LNaRECR0_BASE_WAND(conf->base_wand),
+		      LNaRECR0_RXEQ_BST |
+		      LNaRECR0_GK2OVD_MSK | LNaRECR0_GK3OVD_MSK |
+		      LNaRECR0_GK2OVD_EN | LNaRECR0_GK3OVD_EN |
+		      LNaRECR0_BASE_WAND_MSK);
+	lynx_lane_rmw(lane, LNaTECR0,
+		      LNaTECR0_TEQ_TYPE(conf->teq_type) |
+		      (conf->sgn_preq ? LNaTECR0_SGN_PREQ : 0) |
+		      LNaTECR0_RATIO_PREQ(conf->ratio_preq) |
+		      (conf->sgn_post1q ? LNaTECR0_SGN_POST1Q : 0) |
+		      LNaTECR0_RATIO_PST1Q(conf->ratio_post1q) |
+		      LNaTECR0_ADPT_EQ(conf->adpt_eq) |
+		      LNaTECR0_AMP_RED(conf->amp_red),
+		      LNaTECR0_TEQ_TYPE_MSK | LNaTECR0_SGN_PREQ |
+		      LNaTECR0_RATIO_PREQ_MSK | LNaTECR0_SGN_POST1Q |
+		      LNaTECR0_RATIO_PST1Q_MSK | LNaTECR0_ADPT_EQ_MSK |
+		      LNaTECR0_AMP_RED_MSK);
+	lynx_lane_write(lane, LNaTTLCR0, conf->ttlcr0);
 }
 
-static int lynx_10g_lane_disable_pcvt(struct lynx_10g_lane *lane,
+static int lynx_10g_lane_disable_pcvt(struct lynx_lane *lane,
 				      enum lynx_lane_mode mode)
 {
-	struct lynx_10g_priv *priv = lane->priv;
+	struct lynx_priv *priv = lane->priv;
 	int err;
 
-	spin_lock(&priv->pccr_lock);
+	spin_lock(&priv->pcc_lock);
 
 	err = lynx_pccr_write(lane, mode, 0);
 	if (err)
@@ -1683,19 +1349,19 @@ static int lynx_10g_lane_disable_pcvt(struct lynx_10g_lane *lane,
 	}
 
 out:
-	spin_unlock(&priv->pccr_lock);
+	spin_unlock(&priv->pcc_lock);
 
 	return err;
 }
 
-static int lynx_10g_lane_enable_pcvt(struct lynx_10g_lane *lane,
+static int lynx_10g_lane_enable_pcvt(struct lynx_lane *lane,
 				     enum lynx_lane_mode mode)
 {
-	struct lynx_10g_priv *priv = lane->priv;
+	struct lynx_priv *priv = lane->priv;
 	u32 val;
 	int err;
 
-	spin_lock(&priv->pccr_lock);
+	spin_lock(&priv->pcc_lock);
 
 	switch (mode) {
 	case LANE_MODE_1000BASEX_SGMII:
@@ -1719,12 +1385,42 @@ static int lynx_10g_lane_enable_pcvt(struct lynx_10g_lane *lane,
 		err = 0;
 	}
 
-	err = lynx_10g_lane_pccr_val(lane, mode, &val);
-	if (err == 0)
-		err = lynx_pccr_write(lane, mode, val);
+	if (lane->default_pccr[mode]) {
+		err = lynx_pccr_write(lane, mode, lane->default_pccr[mode]);
+		goto out;
+	}
 
+	val = 0;
+
+	switch (mode) {
+	case LANE_MODE_1000BASEKX:
+		val |= PCCR8_SGMIIa_KX;
+		fallthrough;
+	case LANE_MODE_1000BASEX_SGMII:
+	case LANE_MODE_2500BASEX:
+		val |= PCCR8_SGMIIa_CFG;
+		break;
+	case LANE_MODE_QSGMII:
+		val |= PCCR9_QSGMIIa_CFG;
+		break;
+	case LANE_MODE_10G_QXGMII:
+		val |= PCCR9_QXGMIIa_CFG;
+		break;
+	case LANE_MODE_10GBASER:
+	case LANE_MODE_10GBASEKR:
+		val |= PCCRB_XFIa_CFG;
+		break;
+	case LANE_MODE_USXGMII:
+		val |= PCCRB_SXGMIIa_CFG;
+		break;
+	default:
+		err = 0;
+		goto out;
+	}
+
+	err = lynx_pccr_write(lane, mode, val);
 out:
-	spin_unlock(&priv->pccr_lock);
+	spin_unlock(&priv->pcc_lock);
 
 	return err;
 }
@@ -1743,21 +1439,188 @@ static bool lynx_10g_switch_needs_rcw_override(enum lynx_lane_mode crr,
 	return true;
 }
 
-static int lynx_10g_set_lane_mode(struct phy *phy, enum lynx_lane_mode lane_mode)
+static void lynx_10g_tune_tx_eq(struct phy *phy,
+				const struct lynx_xgkr_tx_eq *tx_eq)
 {
-	struct lynx_10g_lane *lane = phy_get_drvdata(phy);
-	struct lynx_10g_priv *priv = lane->priv;
+	struct lynx_lane *lane = phy_get_drvdata(phy);
+
+	lynx_lane_rmw(lane, LNaTECR0,
+		      LNaTECR0_RATIO_PREQ(tx_eq->ratio_preq) |
+		      LNaTECR0_RATIO_PST1Q(tx_eq->ratio_post1q) |
+		      LNaTECR0_ADPT_EQ(tx_eq->adapt_eq) |
+		      LNaTECR0_AMP_RED(tx_eq->amp_reduction),
+		      LNaTECR0_RATIO_PREQ_MSK |
+		      LNaTECR0_RATIO_PST1Q_MSK |
+		      LNaTECR0_ADPT_EQ_MSK |
+		      LNaTECR0_AMP_RED_MSK);
+}
+
+static void lynx_10g_read_tx_eq(struct phy *phy, struct lynx_xgkr_tx_eq *tx_eq)
+{
+	struct lynx_lane *lane = phy_get_drvdata(phy);
+	int val = lynx_lane_read(lane, LNaTECR0);
+
+	tx_eq->ratio_preq = LNaTECR0_RATIO_PREQ_X(val);
+	tx_eq->ratio_post1q = LNaTECR0_RATIO_PST1Q_X(val);
+	tx_eq->amp_reduction = LNaTECR0_AMP_RED(val);
+	tx_eq->adapt_eq = LNaTECR0_ADPT_EQ_X(val);
+}
+
+static int lynx_10g_snapshot_rx_eq_gains(struct phy *phy, u8 *gaink2,
+					 u8 *gaink3, u8 *eq_offset)
+{
+	struct lynx_lane *lane = phy_get_drvdata(phy);
+	bool cdr_locked;
+	int err, val;
+
+	err = read_poll_timeout(lynx_10g_cdr_lock_check, cdr_locked,
+				cdr_locked, CDR_SLEEP_US, CDR_TIMEOUT_US,
+				false, lane);
+	if (err) {
+		dev_err(&phy->dev, "CDR not locked, cannot collect RX EQ snapshots\n");
+		return err;
+	}
+
+	/* wait until a previous snapshot has cleared */
+	err = read_poll_timeout(lynx_lane_read, val,
+				!(val & LNaRECR1_CTL_SNP_DONE),
+				SNAPSHOT_SLEEP_US, SNAPSHOT_TIMEOUT_US,
+				false, lane, LNaRECR1);
+	if (err)
+		return err;
+
+	/* start snapshot of RX Equalization Control Gaink2, Gaink3
+	 * and Offset Registers
+	 */
+	lynx_lane_rmw(lane, LNaGCR1, LNaGCR1_REQ_CTL_SNP, LNaGCR1_REQ_CTL_SNP);
+
+	/* wait for the snapshot to finish */
+	err = read_poll_timeout(lynx_lane_read, val,
+				!!(val & LNaRECR1_CTL_SNP_DONE),
+				SNAPSHOT_SLEEP_US, SNAPSHOT_TIMEOUT_US,
+				false, lane, LNaRECR1);
+	if (err) {
+		dev_err(&phy->dev,
+			"Failed to snapshot RX EQ: undetected loss of CDR lock?\n");
+		lynx_lane_rmw(lane, LNaGCR1, 0, LNaGCR1_REQ_CTL_SNP);
+		return err;
+	}
+
+	val = lynx_lane_read(lane, LNaRECR1);
+	*gaink2 = LNaRECR1_GK2STAT_X(val);
+	*gaink3 = LNaRECR1_GK3STAT_X(val);
+	/* The algorithm should only be looking at offset_stat[5:0].
+	 * Bit 6 is only used at higher bit rates to adjust the overall range
+	 * of the internal offset DAC
+	 */
+	*eq_offset = LNaRECR1_OSETSTAT_X(val) & GENMASK(5, 0);
+
+	/* terminate the snapshot */
+	lynx_lane_rmw(lane, LNaGCR1, 0, LNaGCR1_REQ_CTL_SNP);
+
+	return 0;
+}
+
+static int lynx_10g_snapshot_rx_eq_bin(struct phy *phy, enum lynx_bin_type bin_type,
+				       s16 *bin)
+{
+	int bin_sel = lynx_10g_bin_type_to_bin_sel[bin_type];
+	struct lynx_lane *lane = phy_get_drvdata(phy);
+	bool cdr_locked;
+	int err, val;
+
+	if (WARN_ON(bin_sel < 0))
+		return bin_sel;
+
+	err = read_poll_timeout(lynx_10g_cdr_lock_check, cdr_locked,
+				cdr_locked, CDR_SLEEP_US, CDR_TIMEOUT_US,
+				false, lane);
+	if (err) {
+		dev_err(&phy->dev, "CDR not locked, cannot collect RX EQ snapshots\n");
+		return err;
+	}
+
+	/* wait until a previous snapshot has cleared */
+	err = read_poll_timeout(lynx_lane_read, val,
+				!(val & LNaRECR1_BIN_SNP_DONE),
+				SNAPSHOT_SLEEP_US, SNAPSHOT_TIMEOUT_US,
+				false, lane, LNaRECR1);
+	if (err)
+		return err;
+
+	/* select the binning register we would like to snapshot */
+	lynx_lane_rmw(lane, LNaTCSR1, LNaTCSR1_CDR_SEL(bin_sel),
+		      LNaTCSR1_CDR_SEL_MSK);
+
+	/* start snapshot */
+	lynx_lane_rmw(lane, LNaGCR1, LNaGCR1_REQ_BIN_SNP,
+		      LNaGCR1_REQ_BIN_SNP);
+
+	/* wait for the snapshot to finish */
+	err = read_poll_timeout(lynx_lane_read, val,
+				!!(val & LNaRECR1_BIN_SNP_DONE),
+				SNAPSHOT_SLEEP_US, SNAPSHOT_TIMEOUT_US,
+				false, lane, LNaRECR1);
+	if (err) {
+		dev_err(&phy->dev,
+			"Failed to snapshot RX EQ: undetected loss of CDR lock?\n");
+		lynx_lane_rmw(lane, LNaGCR1, 0, LNaGCR1_REQ_BIN_SNP);
+		return err;
+	}
+
+	val = lynx_lane_read(lane, LNaTCSR1);
+	val = LNaTCSR1_EQ_SNPBIN_DATA_X(val);
+
+	/* The snapshot is a 2's complement value stored on 9 bits
+	 * (-256 to 255)
+	 */
+	if (val & LNaTCSR1_EQ_SNPBIN_DATA_SGN) {
+		val &= ~LNaTCSR1_EQ_SNPBIN_DATA_SGN;
+		val -= 256;
+	}
+
+	*bin = (s16)val;
+
+	/* terminate the snapshot */
+	lynx_lane_rmw(lane, LNaGCR1, 0, LNaGCR1_REQ_BIN_SNP);
+
+	return 0;
+}
+
+static const struct lynx_xgkr_algorithm_ops lynx_10g_xgkr_ops = {
+	.tune_tx_eq = lynx_10g_tune_tx_eq,
+	.read_tx_eq = lynx_10g_read_tx_eq,
+	.snapshot_rx_eq_gains = lynx_10g_snapshot_rx_eq_gains,
+	.snapshot_rx_eq_bin = lynx_10g_snapshot_rx_eq_bin,
+};
+
+static int lynx_10g_set_mode(struct phy *phy, enum phy_mode mode, int submode)
+{
+	struct lynx_lane *lane = phy_get_drvdata(phy);
+	struct lynx_xgkr_algorithm *algorithm = NULL;
+	struct lynx_priv *priv = lane->priv;
 	bool powered_up = lane->powered_up;
+	enum lynx_lane_mode lane_mode;
 	int err;
+
+	if (mode != PHY_MODE_ETHERNET)
+		return -EOPNOTSUPP;
 
 	if (lane->mode == LANE_MODE_UNKNOWN)
 		return -EOPNOTSUPP;
 
+	lane_mode = phy_interface_to_lane_mode(submode);
 	if (!lynx_lane_supports_mode(lane, lane_mode))
 		return -EOPNOTSUPP;
 
 	if (lane_mode == lane->mode)
 		return 0;
+
+	if (lynx_lane_mode_needs_link_training(lane_mode)) {
+		algorithm = lynx_xgkr_algorithm_create(phy, &lynx_10g_xgkr_ops);
+		if (!algorithm)
+			return -ENOMEM;
+	}
 
 	/* If the lane is powered up, put the lane into the halt state while
 	 * the reconfiguration is being done.
@@ -1783,10 +1646,14 @@ static int lynx_10g_set_lane_mode(struct phy *phy, enum lynx_lane_mode lane_mode
 	 * through EX_DLY_CLK.
 	 */
 	if (lane_mode == LANE_MODE_1000BASEKX)
-		lynx_10g_pll_get_ex_dly_clk(lynx_10g_pll_get(priv, lane_mode));
+		lynx_10g_pll_get_ex_dly_clk(lynx_pll_get(priv, lane_mode));
 	else if (lane->mode == LANE_MODE_1000BASEKX)
-		lynx_10g_pll_put_ex_dly_clk(lynx_10g_pll_get(priv, lane->mode));
+		lynx_10g_pll_put_ex_dly_clk(lynx_pll_get(priv, lane->mode));
 
+	if (lane->algorithm)
+		lynx_xgkr_algorithm_destroy(lane->algorithm);
+
+	lane->algorithm = algorithm;
 	lane->mode = lane_mode;
 
 out:
@@ -1796,213 +1663,17 @@ out:
 	return err;
 }
 
-static int lynx_10g_set_interface(struct phy *phy, phy_interface_t submode)
+static int lynx_10g_validate(struct phy *phy, enum phy_mode mode, int submode,
+			     union phy_configure_opts *opts __always_unused)
 {
-	struct lynx_10g_lane *lane = phy_get_drvdata(phy);
+	struct lynx_lane *lane = phy_get_drvdata(phy);
+	struct lynx_priv *priv = lane->priv;
+	enum lynx_lane_mode lane_mode;
 
-	if (lane->algorithm)
-		lynx_xgkr_algorithm_destroy(lane->algorithm);
-
-	return lynx_10g_set_lane_mode(phy, phy_interface_to_lane_mode(submode));
-}
-
-static void lynx_10g_tune_tx_eq(struct phy *phy,
-				const struct lynx_xgkr_tx_eq *tx_eq)
-{
-	struct lynx_10g_lane *lane = phy_get_drvdata(phy);
-
-	lynx_10g_lane_rmw(lane, LNaTECR0,
-			  LNaTECR0_RATIO_PREQ(tx_eq->ratio_preq) |
-			  LNaTECR0_RATIO_PST1Q(tx_eq->ratio_post1q) |
-			  LNaTECR0_ADPT_EQ(tx_eq->adapt_eq) |
-			  LNaTECR0_AMP_RED(tx_eq->amp_reduction),
-			  LNaTECR0_RATIO_PREQ_MSK |
-			  LNaTECR0_RATIO_PST1Q_MSK |
-			  LNaTECR0_ADPT_EQ_MSK |
-			  LNaTECR0_AMP_RED_MSK);
-}
-
-static void lynx_10g_read_tx_eq(struct phy *phy, struct lynx_xgkr_tx_eq *tx_eq)
-{
-	struct lynx_10g_lane *lane = phy_get_drvdata(phy);
-	int val = lynx_10g_lane_read(lane, LNaTECR0);
-
-	tx_eq->ratio_preq = LNaTECR0_RATIO_PREQ_X(val);
-	tx_eq->ratio_post1q = LNaTECR0_RATIO_PST1Q_X(val);
-	tx_eq->amp_reduction = LNaTECR0_AMP_RED(val);
-	tx_eq->adapt_eq = LNaTECR0_ADPT_EQ_X(val);
-}
-
-static int lynx_10g_snapshot_rx_eq_gains(struct phy *phy, u8 *gaink2,
-					 u8 *gaink3, u8 *eq_offset)
-{
-	struct lynx_10g_lane *lane = phy_get_drvdata(phy);
-	bool cdr_locked;
-	int err, val;
-
-	err = read_poll_timeout(lynx_10g_cdr_lock_check, cdr_locked,
-				cdr_locked, CDR_SLEEP_US, CDR_TIMEOUT_US,
-				false, lane);
-	if (err) {
-		dev_err(&phy->dev, "CDR not locked, cannot collect RX EQ snapshots\n");
-		return err;
-	}
-
-	/* wait until a previous snapshot has cleared */
-	err = read_poll_timeout(lynx_10g_lane_read, val,
-				!(val & LNaRECR1_CTL_SNP_DONE),
-				SNAPSHOT_SLEEP_US, SNAPSHOT_TIMEOUT_US,
-				false, lane, LNaRECR1);
-	if (err)
-		return err;
-
-	/* start snapshot of RX Equalization Control Gaink2, Gaink3
-	 * and Offset Registers
-	 */
-	lynx_10g_lane_rmw(lane, LNaGCR1, LNaGCR1_REQ_CTL_SNP,
-			  LNaGCR1_REQ_CTL_SNP);
-
-	/* wait for the snapshot to finish */
-	err = read_poll_timeout(lynx_10g_lane_read, val,
-				!!(val & LNaRECR1_CTL_SNP_DONE),
-				SNAPSHOT_SLEEP_US, SNAPSHOT_TIMEOUT_US,
-				false, lane, LNaRECR1);
-	if (err) {
-		dev_err(&phy->dev,
-			"Failed to snapshot RX EQ: undetected loss of CDR lock?\n");
-		lynx_10g_lane_rmw(lane, LNaGCR1, 0, LNaGCR1_REQ_CTL_SNP);
-		return err;
-	}
-
-	val = lynx_10g_lane_read(lane, LNaRECR1);
-	*gaink2 = LNaRECR1_GK2STAT_X(val);
-	*gaink3 = LNaRECR1_GK3STAT_X(val);
-	/* The algorithm should only be looking at offset_stat[5:0].
-	 * Bit 6 is only used at higher bit rates to adjust the overall range
-	 * of the internal offset DAC
-	 */
-	*eq_offset = LNaRECR1_OSETSTAT_X(val) & GENMASK(5, 0);
-
-	/* terminate the snapshot */
-	lynx_10g_lane_rmw(lane, LNaGCR1, 0, LNaGCR1_REQ_CTL_SNP);
-
-	return 0;
-}
-
-static int lynx_10g_snapshot_rx_eq_bin(struct phy *phy, enum lynx_bin_type bin_type,
-				       s16 *bin)
-{
-	int bin_sel = lynx_10g_bin_type_to_bin_sel[bin_type];
-	struct lynx_10g_lane *lane = phy_get_drvdata(phy);
-	bool cdr_locked;
-	int err, val;
-
-	if (WARN_ON(bin_sel < 0))
-		return bin_sel;
-
-	err = read_poll_timeout(lynx_10g_cdr_lock_check, cdr_locked,
-				cdr_locked, CDR_SLEEP_US, CDR_TIMEOUT_US,
-				false, lane);
-	if (err) {
-		dev_err(&phy->dev, "CDR not locked, cannot collect RX EQ snapshots\n");
-		return err;
-	}
-
-	/* wait until a previous snapshot has cleared */
-	err = read_poll_timeout(lynx_10g_lane_read, val,
-				!(val & LNaRECR1_BIN_SNP_DONE),
-				SNAPSHOT_SLEEP_US, SNAPSHOT_TIMEOUT_US,
-				false, lane, LNaRECR1);
-	if (err)
-		return err;
-
-	/* select the binning register we would like to snapshot */
-	lynx_10g_lane_rmw(lane, LNaTCSR1, LNaTCSR1_CDR_SEL(bin_sel),
-			  LNaTCSR1_CDR_SEL_MSK);
-
-	/* start snapshot */
-	lynx_10g_lane_rmw(lane, LNaGCR1, LNaGCR1_REQ_BIN_SNP,
-			  LNaGCR1_REQ_BIN_SNP);
-
-	/* wait for the snapshot to finish */
-	err = read_poll_timeout(lynx_10g_lane_read, val,
-				!!(val & LNaRECR1_BIN_SNP_DONE),
-				SNAPSHOT_SLEEP_US, SNAPSHOT_TIMEOUT_US,
-				false, lane, LNaRECR1);
-	if (err) {
-		dev_err(&phy->dev,
-			"Failed to snapshot RX EQ: undetected loss of CDR lock?\n");
-		lynx_10g_lane_rmw(lane, LNaGCR1, 0, LNaGCR1_REQ_BIN_SNP);
-		return err;
-	}
-
-	val = lynx_10g_lane_read(lane, LNaTCSR1);
-	val = LNaTCSR1_EQ_SNPBIN_DATA_X(val);
-
-	/* The snapshot is a 2's complement value stored on 9 bits
-	 * (-256 to 255)
-	 */
-	if (val & LNaTCSR1_EQ_SNPBIN_DATA_SGN) {
-		val &= ~LNaTCSR1_EQ_SNPBIN_DATA_SGN;
-		val -= 256;
-	}
-
-	*bin = (s16)val;
-
-	/* terminate the snapshot */
-	lynx_10g_lane_rmw(lane, LNaGCR1, 0, LNaGCR1_REQ_BIN_SNP);
-
-	return 0;
-}
-
-static const struct lynx_xgkr_algorithm_ops lynx_10g_xgkr_ops = {
-	.tune_tx_eq = lynx_10g_tune_tx_eq,
-	.read_tx_eq = lynx_10g_read_tx_eq,
-	.snapshot_rx_eq_gains = lynx_10g_snapshot_rx_eq_gains,
-	.snapshot_rx_eq_bin = lynx_10g_snapshot_rx_eq_bin,
-};
-
-static int lynx_10g_set_link_mode(struct phy *phy,
-				  enum ethtool_link_mode_bit_indices submode)
-{
-	struct lynx_10g_lane *lane = phy_get_drvdata(phy);
-	struct lynx_xgkr_algorithm *algorithm;
-	int err;
-
-	err = lynx_10g_set_lane_mode(phy, link_mode_to_lane_mode(submode));
-	if (err)
-		return err;
-
-	algorithm = lynx_xgkr_algorithm_create(phy, &lynx_10g_xgkr_ops);
-	if (!algorithm)
-		return -ENOMEM;
-
-	if (lane->algorithm)
-		lynx_xgkr_algorithm_destroy(lane->algorithm);
-
-	lane->algorithm = algorithm;
-
-	return 0;
-}
-
-static int lynx_10g_set_mode(struct phy *phy, enum phy_mode mode, int submode)
-{
-	switch (mode) {
-	case PHY_MODE_ETHERNET:
-		return lynx_10g_set_interface(phy, submode);
-	case PHY_MODE_ETHERNET_LINKMODE:
-		return lynx_10g_set_link_mode(phy, submode);
-	default:
+	if (mode != PHY_MODE_ETHERNET)
 		return -EOPNOTSUPP;
-	}
-}
 
-static int lynx_10g_validate_interface(struct phy *phy, phy_interface_t submode)
-{
-	enum lynx_lane_mode lane_mode = phy_interface_to_lane_mode(submode);
-	struct lynx_10g_lane *lane = phy_get_drvdata(phy);
-	struct lynx_10g_priv *priv = lane->priv;
-
+	lane_mode = phy_interface_to_lane_mode(submode);
 	if (!lynx_lane_supports_mode(lane, lane_mode))
 		return -EOPNOTSUPP;
 
@@ -2012,34 +1683,9 @@ static int lynx_10g_validate_interface(struct phy *phy, phy_interface_t submode)
 	return 0;
 }
 
-static int lynx_10g_validate_link_mode(struct phy *phy,
-				       enum ethtool_link_mode_bit_indices submode)
-{
-	enum lynx_lane_mode lane_mode = link_mode_to_lane_mode(submode);
-	struct lynx_10g_lane *lane = phy_get_drvdata(phy);
-
-	if (!lynx_lane_supports_mode(lane, lane_mode))
-		return -EOPNOTSUPP;
-
-	return 0;
-}
-
-static int lynx_10g_validate(struct phy *phy, enum phy_mode mode, int submode,
-			     union phy_configure_opts *opts __always_unused)
-{
-	switch (mode) {
-	case PHY_MODE_ETHERNET:
-		return lynx_10g_validate_interface(phy, submode);
-	case PHY_MODE_ETHERNET_LINKMODE:
-		return lynx_10g_validate_link_mode(phy, submode);
-	default:
-		return -EOPNOTSUPP;
-	}
-}
-
 static int lynx_10g_init(struct phy *phy)
 {
-	struct lynx_10g_lane *lane = phy_get_drvdata(phy);
+	struct lynx_lane *lane = phy_get_drvdata(phy);
 
 	/* Mark the fact that the lane was init */
 	lane->init = true;
@@ -2056,7 +1702,7 @@ static int lynx_10g_init(struct phy *phy)
 
 static int lynx_10g_exit(struct phy *phy)
 {
-	struct lynx_10g_lane *lane = phy_get_drvdata(phy);
+	struct lynx_lane *lane = phy_get_drvdata(phy);
 
 	/* The lane returns to the state where it isn't managed by the
 	 * consumer, so we must treat is as if it isn't initialized, and always
@@ -2072,7 +1718,7 @@ static int lynx_10g_exit(struct phy *phy)
 static void lynx_10g_check_cdr_lock(struct phy *phy,
 				    struct phy_status_opts_cdr *cdr)
 {
-	struct lynx_10g_lane *lane = phy_get_drvdata(phy);
+	struct lynx_lane *lane = phy_get_drvdata(phy);
 
 	cdr->cdr_locked = lynx_10g_cdr_lock_check(lane);
 }
@@ -2080,7 +1726,7 @@ static void lynx_10g_check_cdr_lock(struct phy *phy,
 static void lynx_10g_get_pcvt_count(struct phy *phy,
 				    struct phy_status_opts_pcvt_count *opts)
 {
-	struct lynx_10g_lane *lane = phy_get_drvdata(phy);
+	struct lynx_lane *lane = phy_get_drvdata(phy);
 	enum lynx_lane_mode lane_mode = lane->mode;
 
 	switch (opts->type) {
@@ -2120,7 +1766,7 @@ static void lynx_10g_get_pcvt_count(struct phy *phy,
 static void lynx_10g_get_pcvt_addr(struct phy *phy,
 				   struct phy_status_opts_pcvt *pcvt)
 {
-	struct lynx_10g_lane *lane = phy_get_drvdata(phy);
+	struct lynx_lane *lane = phy_get_drvdata(phy);
 	u32 cr1;
 
 	switch (pcvt->type) {
@@ -2156,7 +1802,7 @@ static int lynx_10g_get_status(struct phy *phy, enum phy_status_type type,
 
 static int lynx_10g_configure(struct phy *phy, union phy_configure_opts *opts)
 {
-	struct lynx_10g_lane *lane = phy_get_drvdata(phy);
+	struct lynx_lane *lane = phy_get_drvdata(phy);
 
 	return lynx_xgkr_algorithm_configure(lane->algorithm, &opts->ethernet);
 }
@@ -2205,76 +1851,90 @@ static const char *lynx_10g_clock_net_str(int frate)
 	}
 }
 
-static void lynx_10g_pll_dump(struct lynx_10g_pll *pll)
+#define LYNX_SUPPORT_BUF_LEN		128
+
+static void lynx_10g_pll_dump(struct lynx_pll *pll)
 {
-	struct lynx_10g_priv *priv = pll->priv;
+	struct lynx_priv *priv = pll->priv;
+	char buf[LYNX_SUPPORT_BUF_LEN];
 	struct device *dev = priv->dev;
 	enum lynx_lane_mode mode;
+	int total_len = 0, len;
+	bool truncated = false;
 	int i;
 
 	dev_info(dev, "PLL%c: %s, %s, reference clock %s, clock net %s\n",
 		 pll->id == 0 ? 'F' : 'S',
-		 PLLnCR0_POFF(pll->cr0) ? "disabled" : "enabled",
-		 PLLnCR0_PLL_LCK(pll->cr0) ? "locked" : "unlocked",
-		 lynx_10g_refclk_str(PLLnCR0_REFCLK_SEL(pll->cr0)),
-		 lynx_10g_clock_net_str(PLLnCR0_FRATE_SEL(pll->cr0)));
+		 str_enabled_disabled(pll->enabled),
+		 pll->locked ? "locked" : "unlocked",
+		 lynx_10g_refclk_str(pll->refclk_sel),
+		 lynx_10g_clock_net_str(pll->frate_sel));
 
-	if (PLLnCR0_POFF(pll->cr0))
+	if (!pll->enabled)
 		return;
-
-	dev_info(dev, "\tSupported interfaces and link modes:\n");
 
 	for (mode = LANE_MODE_UNKNOWN; mode < LANE_MODE_MAX; mode++) {
 		if (!test_bit(mode, pll->supported))
 			continue;
 
-		for (i = 0; i < priv->info->num_lanes; i++) {
-			if (lynx_lane_supports_mode(&priv->lane[i], mode)) {
-				enum ethtool_link_mode_bit_indices link_mode;
-				phy_interface_t intf;
+		for (i = priv->info->first_lane; i < priv->info->num_lanes; i++) {
+			if (!priv->info->lane_supports_mode(i, mode))
+				continue;
 
-				for (intf = 0; intf < PHY_INTERFACE_MODE_MAX; intf++)
-					if (phy_interface_to_lane_mode(intf) == mode)
-						dev_info(dev, "\t\t%s\n", phy_modes(intf));
+			len = snprintf(&buf[total_len],
+				       LYNX_SUPPORT_BUF_LEN - total_len,
+				       " %s", lynx_lane_mode_str(mode));
+			if (len >= LYNX_SUPPORT_BUF_LEN - total_len)
+				truncated = true;
+			total_len += len;
 
-				for (link_mode = 0; link_mode < __ETHTOOL_LINK_MODE_MASK_NBITS; link_mode++)
-					if (link_mode_to_lane_mode(link_mode) == mode)
-						dev_info(dev, "\t\t%s\n", ethtool_link_mode_str(link_mode));
-
-				break;
-			}
+			break;
 		}
+
+		if (truncated)
+			break;
 	}
+
+	dev_info(dev, "\tSupported lane modes:%s%s\n", buf,
+		 truncated ? " (truncated)" : "");
 }
 
-static void lynx_10g_pll_read_configuration(struct lynx_10g_priv *priv)
+static void lynx_10g_pll_read_configuration(struct lynx_priv *priv)
 {
-	struct lynx_10g_pll *pll;
+	struct lynx_pll *pll;
 	int dlydiv_sel;
+	u32 val;
 	int i;
 
-	for (i = 0; i < NUM_PLL; i++) {
+	for (i = 0; i < LYNX_NUM_PLL; i++) {
 		pll = &priv->pll[i];
 		pll->priv = priv;
 		pll->id = i;
+		spin_lock_init(&pll->lock);
 
-		pll->cr0 = lynx_10g_pll_read(pll, PLLnCR0);
-		if (PLLnCR0_POFF(pll->cr0))
+		val = lynx_pll_read(pll, PLLnCR0);
+		pll->frate_sel = FIELD_GET(PLLnCR0_FRATE_SEL, val);
+		pll->refclk_sel = FIELD_GET(PLLnCR0_REFCLK_SEL, val);
+		pll->enabled = !(val & PLLnCR0_POFF);
+		pll->locked = !!(val & PLLnCR0_PLL_LCK);
+
+		if (!pll->enabled)
 			continue;
 
-		dlydiv_sel = PLLnCR0_DLYDIV_SEL(pll->cr0);
+		dlydiv_sel = FIELD_GET(PLLnCR0_DLYDIV_SEL, val);
 		if (dlydiv_sel) {
 			dev_dbg(priv->dev, "PLL%cCR0[DLYDIV_SEL] found set\n",
 				pll->id == 0 ? 'F' : 'S');
 			pll->ex_dly_clk_use_count = 1;
 		}
 
-		switch (PLLnCR0_FRATE_SEL(pll->cr0)) {
+		switch (pll->frate_sel) {
 		case PLLnCR0_FRATE_5G:
 			/* 5GHz clock net */
 			__set_bit(LANE_MODE_1000BASEX_SGMII, pll->supported);
+			__set_bit(LANE_MODE_1000BASEKX, pll->supported);
 			__set_bit(LANE_MODE_QSGMII, pll->supported);
-			if (dlydiv_sel && dlydiv_sel != DLYDIV_SEL_312_5_MHZ) {
+			if (dlydiv_sel && dlydiv_sel != PLLnCR0_DLYDIV_SEL_312_5_MHZ) {
 				dev_dbg(priv->dev,
 					"PLL%c has ex_dly_clk provisioned for a frequency incompatible with 1000Base-KX\n",
 					pll->id == 0 ? 'F' : 'S');
@@ -2296,6 +1956,9 @@ static void lynx_10g_pll_read_configuration(struct lynx_10g_priv *priv)
 			break;
 		}
 	}
+
+	for (i = 0; i < LYNX_NUM_PLL; i++)
+		lynx_10g_pll_dump(&priv->pll[i]);
 }
 
 /* On LS1028A, SGMIIA_CFG, SGMIIB_CFG, and SGMIIC_CFG from PCCR8 have the
@@ -2306,7 +1969,7 @@ static void lynx_10g_pll_read_configuration(struct lynx_10g_priv *priv)
  * the original value to keep the same muxing, and for that we need to back
  * it up (here).
  */
-static void lynx_10g_backup_pccr_val(struct lynx_10g_lane *lane)
+static void lynx_10g_backup_pccr_val(struct lynx_lane *lane)
 {
 	u32 val;
 	int err;
@@ -2338,20 +2001,20 @@ static void lynx_10g_backup_pccr_val(struct lynx_10g_lane *lane)
 	}
 }
 
-static bool lynx_10g_lane_is_3_125g(struct lynx_10g_lane *lane)
+static bool lynx_10g_lane_is_3_125g(struct lynx_lane *lane)
 {
-	struct lynx_10g_priv *priv = lane->priv;
-	struct lynx_10g_pll *pll;
+	struct lynx_priv *priv = lane->priv;
+	struct lynx_pll *pll;
 	u32 gcr0;
 
-	gcr0 = lynx_10g_lane_read(lane, LNaGCR0);
+	gcr0 = lynx_lane_read(lane, LNaGCR0);
 
 	if (gcr0 & LNaGCR0_TPLL_PLLF)
 		pll = &priv->pll[0];
 	else
 		pll = &priv->pll[1];
 
-	if (PLLnCR0_FRATE_SEL(pll->cr0) != PLLnCR0_FRATE_3_125G)
+	if (pll->frate_sel != PLLnCR0_FRATE_3_125G)
 		return false;
 
 	if (LNaGCR0_TRAT_SEL_X(gcr0) != RAT_SEL_FULL ||
@@ -2361,10 +2024,10 @@ static bool lynx_10g_lane_is_3_125g(struct lynx_10g_lane *lane)
 	return true;
 }
 
-static void lynx_10g_lane_read_configuration(struct lynx_10g_lane *lane)
+static void lynx_10g_lane_read_configuration(struct lynx_lane *lane)
 {
-	u32 pssr0 = lynx_10g_lane_read(lane, LNaPSSR0);
-	struct lynx_10g_priv *priv = lane->priv;
+	u32 pssr0 = lynx_lane_read(lane, LNaPSSR0);
+	struct lynx_priv *priv = lane->priv;
 	int proto = LNaPSSR0_TYPE_X(pssr0);
 
 	switch (proto) {
@@ -2398,7 +2061,7 @@ static void lynx_10g_lane_read_configuration(struct lynx_10g_lane *lane)
 static struct phy *lynx_10g_xlate(struct device *dev,
 				  const struct of_phandle_args *args)
 {
-	struct lynx_10g_priv *priv = dev_get_drvdata(dev);
+	struct lynx_priv *priv = dev_get_drvdata(dev);
 	int idx = args->args[0];
 
 	if (idx >= priv->info->num_lanes)
@@ -2411,8 +2074,7 @@ static int lynx_10g_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct phy_provider *provider;
-	struct lynx_10g_priv *priv;
-	int i;
+	struct lynx_priv *priv;
 
 	priv = devm_kzalloc(&pdev->dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
@@ -2425,47 +2087,48 @@ static int lynx_10g_probe(struct platform_device *pdev)
 	if (IS_ERR(priv->base))
 		return PTR_ERR(priv->base);
 
+	dev_set_drvdata(dev, priv);
+	spin_lock_init(&priv->pcc_lock);
+	INIT_DELAYED_WORK(&priv->cdr_check, lynx_10g_cdr_lock_check_work);
+
+	priv->lane = devm_kcalloc(dev, priv->info->num_lanes,
+				  sizeof(*priv->lane), GFP_KERNEL);
+	if (!priv->lane)
+		return -ENOMEM;
+
 	lynx_10g_pll_read_configuration(priv);
 
-	for (i = 0; i < priv->info->num_lanes; i++) {
-		struct lynx_10g_lane *lane = &priv->lane[i];
+	for (int reg = 0; reg < priv->info->num_lanes; reg++) {
+		struct lynx_lane *lane;
 		struct phy *phy;
 
-		memset(lane, 0, sizeof(*lane));
-
+		lane = &priv->lane[reg];
 		phy = devm_phy_create(&pdev->dev, NULL, &lynx_10g_ops);
 		if (IS_ERR(phy))
 			return PTR_ERR(phy);
 
 		lane->priv = priv;
 		lane->phy = phy;
-		lane->id = i;
+		lane->id = reg;
 		phy_set_drvdata(phy, lane);
 		lynx_10g_lane_read_configuration(lane);
 		fsl_guts_lane_init(priv->info->index, lane->id, lane->mode);
 	}
 
-	for (i = 0; i < NUM_PLL; i++)
-		lynx_10g_pll_dump(&priv->pll[i]);
-
-	dev_set_drvdata(dev, priv);
-
-	spin_lock_init(&priv->pccr_lock);
-	INIT_DELAYED_WORK(&priv->cdr_check, lynx_10g_cdr_lock_check_work);
+	provider = devm_of_phy_provider_register(&pdev->dev, lynx_10g_xlate);
+	if (IS_ERR(provider))
+		return PTR_ERR(provider);
 
 	queue_delayed_work(system_power_efficient_wq, &priv->cdr_check,
 			   msecs_to_jiffies(1000));
 
-	dev_set_drvdata(&pdev->dev, priv);
-	provider = devm_of_phy_provider_register(&pdev->dev, lynx_10g_xlate);
-
-	return PTR_ERR_OR_ZERO(provider);
+	return 0;
 }
 
 static void lynx_10g_remove(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
-	struct lynx_10g_priv *priv = dev_get_drvdata(dev);
+	struct lynx_priv *priv = dev_get_drvdata(dev);
 
 	cancel_delayed_work_sync(&priv->cdr_check);
 }
@@ -2483,7 +2146,7 @@ MODULE_DEVICE_TABLE(of, lynx_10g_of_match_table);
 
 static struct platform_driver lynx_10g_driver = {
 	.probe	= lynx_10g_probe,
-	.remove_new = lynx_10g_remove,
+	.remove	= lynx_10g_remove,
 	.driver	= {
 		.name = "lynx-10g",
 		.of_match_table = lynx_10g_of_match_table,

@@ -36,18 +36,18 @@
 			<&clk IMX_SC_R_AUDIO_PLL_1 IMX_SC_PM_CLK_PLL>,
 			<&clk IMX_SC_R_AUDIO_PLL_1 IMX_SC_PM_CLK_SLV_BUS>,
 			<&clk IMX_SC_R_AUDIO_PLL_1 IMX_SC_PM_CLK_MST_BUS>,
-			<&sai5_lpcg 0>;
-	assigned-clock-parents = <&aud_pll_div0_lpcg 0>, <&aud_rec1_lpcg 0>;
+			<&sai5_lpcg IMX_LPCG_CLK_0>;
+	assigned-clock-parents = <&aud_pll_div0_lpcg IMX_LPCG_CLK_0>, <&aud_rec1_lpcg IMX_LPCG_CLK_0>;
 	assigned-clock-rates = <0>, <0>, <786432000>, <49152000>, <12288000>,
 				 <722534400>, <45158400>, <11289600>,
 				<49152000>;
-	clocks = <&sai5_lpcg 1>,
+	clocks = <&sai5_lpcg IMX_LPCG_CLK_0>,
 		<&clk_dummy>,
-		<&sai5_lpcg 0>,
+		<&sai5_lpcg IMX_LPCG_CLK_4>,
 		<&clk_dummy>,
 		<&clk_dummy>,
-		<&aud_pll_div0_lpcg 0>,
-		<&aud_pll_div1_lpcg 0>;
+		<&aud_pll_div0_lpcg IMX_LPCG_CLK_0>,
+		<&aud_pll_div1_lpcg IMX_LPCG_CLK_0>;
 	clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3", "pll8k", "pll11k";
 	status = "okay";
 };

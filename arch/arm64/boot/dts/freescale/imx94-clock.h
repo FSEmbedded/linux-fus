@@ -3,8 +3,8 @@
  * Copyright 2024-2025 NXP
  */
 
-#ifndef __CLOCK_IMX94_H
-#define __CLOCK_IMX94_H
+#ifndef __IMX94_CLOCK_H
+#define __IMX94_CLOCK_H
 
 #define IMX94_CLK_EXT				0
 #define IMX94_CLK_32K				1
@@ -52,7 +52,6 @@
 #define IMX94_CLK_LDBPLL			43
 #define IMX94_CLK_EXT1				44
 #define IMX94_CLK_EXT2				45
-
 #define IMX94_CLK_ADC				46
 #define IMX94_CLK_BUSAON			47
 #define IMX94_CLK_CAN1				48
@@ -181,7 +180,6 @@
 #define IMX94_CLK_XSPISLVROOT			171
 #define IMX94_CLK_XSPI1				172
 #define IMX94_CLK_XSPI2				173
-
 #define IMX94_CLK_SEL_EXT			174
 #define IMX94_CLK_SEL_A55C0			175
 #define IMX94_CLK_SEL_A55C1			176
@@ -192,4 +190,4 @@
 #define IMX94_CLK_SEL_TEMPSENSE			181
 #define IMX94_CLK_NPU_CGC			182
 
-#endif /* __CLOCK_IMX94_H */
+#endif /* __IMX94_CLOCK_H */

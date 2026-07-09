@@ -736,7 +736,6 @@ void qman_done_cleanup(void)
 	__qman_requires_cleanup = 0;
 }
 
-
 static int fsl_qman_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -881,7 +880,6 @@ static int fsl_qman_probe(struct platform_device *pdev)
 		return ret;
 
 	__qman_probed = 1;
-	dev_dbg(dev, "Qman probed successfully [%d]\n", __qman_probed);
 
 	return 0;
 }
@@ -893,10 +891,13 @@ static const struct of_device_id fsl_qman_ids[] = {
 	{}
 };
 
+#if IS_ENABLED(CONFIG_ACPI)
 static const struct acpi_device_id fsl_qman_acpi_ids[] = {
-	{"NXP0028", 0}
+	{"NXP0028", 0},
+	{}
 };
 MODULE_DEVICE_TABLE(acpi, fsl_qman_acpi_ids);
+#endif
 
 static struct platform_driver fsl_qman_driver = {
 	.driver = {

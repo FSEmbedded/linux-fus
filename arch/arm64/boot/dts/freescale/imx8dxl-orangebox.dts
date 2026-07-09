@@ -79,6 +79,18 @@
 		};
 	};
 
+	imx8dxl-cm4 {
+		compatible = "fsl,imx8qxp-cm4";
+		clocks = <&clk_dummy>;
+		mbox-names = "tx", "rx", "rxdb";
+		mboxes = <&lsio_mu5 0 1 &lsio_mu5 1 1 &lsio_mu5 3 1>;
+		memory-region = <&vdevbuffer>, <&vdev0vring0>, <&vdev0vring1>,
+				<&vdev1vring0>, <&vdev1vring1>, <&rsc_table>;
+		power-domains = <&pd IMX_SC_R_M4_0_PID0>, <&pd IMX_SC_R_M4_0_MU_1A>;
+		fsl,resource-id = <IMX_SC_R_M4_0_PID0>;
+		fsl,entry-address = <0x34fe0000>;
+	};
+
 	pps {
 		compatible = "pps-gpio";
 		pinctrl-names = "default";
@@ -221,12 +233,6 @@
 		spi-tx-bus-width = <8>;
 		spi-rx-bus-width = <8>;
 	};
-};
-
-&imx8dxl_cm4 {
-	memory-region = <&vdevbuffer>, <&vdev0vring0>, <&vdev0vring1>,
-			<&vdev1vring0>, <&vdev1vring1>, <&rsc_table>;
-	status = "okay";
 };
 
 &cm40_intmux {
@@ -481,7 +487,7 @@
 			reg = <0x0>;
 
 			fxls8967@19 {
-				compatible = "nxp,fxls8967af";
+				compatible = "nxp,fxls8967af", "nxp,fxls8962af";
 				reg = <0x19>;
 				status = "okay";
 			};
@@ -716,7 +722,7 @@
 &hsio_phy{
 	fsl,hsio-cfg = "pciea-x2-pcieb";
 	fsl,refclk-pad-mode = "output";
-	status = "okay";
+        status = "okay";
 };
 
 &pcieb{
@@ -731,7 +737,6 @@
 };
 
 &lpspi1 {
-	fsl,spi-num-chipselects = <1>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_lpspi1 &pinctrl_lpspi1_cs>;
 	cs-gpios = <&lsio_gpio3 3 GPIO_ACTIVE_LOW>;
@@ -776,7 +781,7 @@
 	assigned-clocks = <&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_PLL>,
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_SLV_BUS>,
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_MST_BUS>,
-			<&sai0_lpcg 0>;
+			<&sai0_lpcg IMX_LPCG_CLK_0>;
 	assigned-clock-rates = <786432000>, <49152000>, <12288000>, <49152000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_sai0>;
@@ -788,7 +793,7 @@
 	assigned-clocks = <&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_PLL>,
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_SLV_BUS>,
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_MST_BUS>,
-			<&sai3_lpcg 0>;
+			<&sai3_lpcg IMX_LPCG_CLK_0>;
 	assigned-clock-rates = <786432000>, <49152000>, <12288000>, <49152000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_sai3>;

@@ -9,7 +9,6 @@
 #include <linux/list.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
-#include <linux/vmalloc.h>
 #include <linux/videodev2.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-event.h>
@@ -17,7 +16,6 @@
 #include <media/v4l2-ioctl.h>
 #include <media/videobuf2-v4l2.h>
 #include <media/videobuf2-dma-contig.h>
-#include <media/videobuf2-vmalloc.h>
 #include "vpu.h"
 #include "vpu_defs.h"
 #include "vpu_core.h"
@@ -242,6 +240,35 @@ static int vdec_ctrl_init(struct vpu_inst *inst)
 			  V4L2_CID_MPEG_VIDEO_DEC_DISPLAY_DELAY_ENABLE,
 			  0, 1, 1, 0);
 
+	v4l2_ctrl_new_std_menu(&inst->ctrl_handler, NULL,
+			       V4L2_CID_MPEG_VIDEO_H264_PROFILE,
+			       V4L2_MPEG_VIDEO_H264_PROFILE_MULTIVIEW_HIGH,
+			       ~((1 << V4L2_MPEG_VIDEO_H264_PROFILE_BASELINE) |
+				 (1 << V4L2_MPEG_VIDEO_H264_PROFILE_CONSTRAINED_BASELINE) |
+				 (1 << V4L2_MPEG_VIDEO_H264_PROFILE_MAIN) |
+				 (1 << V4L2_MPEG_VIDEO_H264_PROFILE_EXTENDED) |
+				 (1 << V4L2_MPEG_VIDEO_H264_PROFILE_HIGH)),
+			       V4L2_MPEG_VIDEO_H264_PROFILE_MAIN);
+
+	v4l2_ctrl_new_std_menu(&inst->ctrl_handler, NULL,
+			       V4L2_CID_MPEG_VIDEO_H264_LEVEL,
+			       V4L2_MPEG_VIDEO_H264_LEVEL_6_2,
+			       0,
+			       V4L2_MPEG_VIDEO_H264_LEVEL_4_0);
+
+	v4l2_ctrl_new_std_menu(&inst->ctrl_handler, NULL,
+			       V4L2_CID_MPEG_VIDEO_HEVC_PROFILE,
+			       V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN_10,
+			       ~((1 << V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN) |
+				 (1 << V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN_10)),
+			       V4L2_MPEG_VIDEO_HEVC_PROFILE_MAIN);
+
+	v4l2_ctrl_new_std_menu(&inst->ctrl_handler, NULL,
+			       V4L2_CID_MPEG_VIDEO_HEVC_LEVEL,
+			       V4L2_MPEG_VIDEO_HEVC_LEVEL_6_2,
+			       0,
+			       V4L2_MPEG_VIDEO_HEVC_LEVEL_4);
+
 	ctrl = v4l2_ctrl_new_std(&inst->ctrl_handler, &vdec_ctrl_ops,
 				 V4L2_CID_MIN_BUFFERS_FOR_CAPTURE, 1, 32, 1, 2);
 	if (ctrl)
@@ -340,16 +367,12 @@ static void vdec_handle_resolution_change(struct vpu_inst *inst)
 	if (!vdec->source_change)
 		return;
 
-	if (inst->changes) {
-		vpu_notify_source_change(inst);
-		inst->changes = 0;
-	}
-
 	q = v4l2_m2m_get_dst_vq(inst->fh.m2m_ctx);
 	if (!list_empty(&q->done_list))
 		return;
 
 	vdec->source_change--;
+	vpu_notify_source_change(inst);
 	vpu_set_last_buffer_dequeued(inst, false);
 }
 
@@ -881,7 +904,7 @@ static void vdec_buf_done(struct vpu_inst *inst, struct vpu_frame_info *frame)
 	cur_fmt = vpu_get_format(inst, inst->cap_format.type);
 	vbuf = &vpu_buf->m2m_buf.vb;
 	if (vpu_buf->fs_id != frame->id)
-		dev_err(inst->dev, "[%d] buffer id(%d(%d), %d) dismatch\n",
+		dev_err(inst->dev, "[%d] buffer id(%d(%d), %d) mismatch\n",
 			inst->id, vpu_buf->fs_id, vbuf->vb2_buf.index, frame->id);
 
 	if (vdec->params.display_delay_enable)
@@ -933,7 +956,6 @@ static bool vdec_check_source_change(struct vpu_inst *inst, struct vpu_dec_codec
 {
 	struct vdec_t *vdec = inst->priv;
 	const struct vpu_format *sibling;
-	u32 changes = 0;
 
 	if (!inst->fh.m2m_ctx)
 		return false;
@@ -946,37 +968,32 @@ static bool vdec_check_source_change(struct vpu_inst *inst, struct vpu_dec_codec
 		hdr->pixfmt = inst->cap_format.pixfmt;
 
 	if (!vb2_is_streaming(v4l2_m2m_get_dst_vq(inst->fh.m2m_ctx)))
-		changes |= V4L2_EVENT_SRC_CH_RESOLUTION;
+		return true;
 	if (inst->cap_format.pixfmt != hdr->pixfmt)
-		changes |= V4L2_EVENT_SRC_CH_RESOLUTION;
+		return true;
 	if (inst->cap_format.width != hdr->decoded_width)
-		changes |= V4L2_EVENT_SRC_CH_RESOLUTION;
+		return true;
 	if (inst->cap_format.height != hdr->decoded_height)
-		changes |= V4L2_EVENT_SRC_CH_RESOLUTION;
+		return true;
 	if (vpu_get_num_buffers(inst, inst->cap_format.type) < inst->min_buffer_cap)
-		changes |= V4L2_EVENT_SRC_CH_RESOLUTION;
+		return true;
 	if (inst->crop.left != hdr->offset_x)
-		changes |= V4L2_EVENT_SRC_CH_RESOLUTION;
+		return true;
 	if (inst->crop.top != hdr->offset_y)
-		changes |= V4L2_EVENT_SRC_CH_RESOLUTION;
+		return true;
 	if (inst->crop.width != hdr->width)
-		changes |= V4L2_EVENT_SRC_CH_RESOLUTION;
+		return true;
 	if (inst->crop.height != hdr->height)
-		changes |= V4L2_EVENT_SRC_CH_RESOLUTION;
+		return true;
 	if (!hdr->progressive)
-		changes |= V4L2_EVENT_SRC_CH_RESOLUTION;
+		return true;
 
 	if (vdec->seq_hdr_found &&
 	    (hdr->color_primaries != vdec->codec_info.color_primaries ||
 	     hdr->transfer_chars != vdec->codec_info.transfer_chars ||
 	     hdr->matrix_coeffs != vdec->codec_info.matrix_coeffs ||
 	     hdr->full_range != vdec->codec_info.full_range))
-		changes |= V4L2_EVENT_SRC_CH_COLORSPACE;
-
-	if (changes) {
-		inst->changes |= changes;
 		return true;
-	}
 
 	return false;
 }
@@ -1295,6 +1312,35 @@ static void vdec_clear_slots(struct vpu_inst *inst)
 	}
 }
 
+static void vdec_update_v4l2_ctrl(struct vpu_inst *inst, u32 id, u32 val)
+{
+	struct v4l2_ctrl *ctrl = v4l2_ctrl_find(&inst->ctrl_handler, id);
+
+	if (ctrl)
+		v4l2_ctrl_s_ctrl(ctrl, val);
+}
+
+static void vdec_update_v4l2_profile_level(struct vpu_inst *inst, struct vpu_dec_codec_info *hdr)
+{
+	switch (inst->out_format.pixfmt) {
+	case V4L2_PIX_FMT_H264:
+	case V4L2_PIX_FMT_H264_MVC:
+		vdec_update_v4l2_ctrl(inst, V4L2_CID_MPEG_VIDEO_H264_PROFILE,
+				      vpu_get_h264_v4l2_profile(hdr));
+		vdec_update_v4l2_ctrl(inst, V4L2_CID_MPEG_VIDEO_H264_LEVEL,
+				      vpu_get_h264_v4l2_level(hdr));
+		break;
+	case V4L2_PIX_FMT_HEVC:
+		vdec_update_v4l2_ctrl(inst, V4L2_CID_MPEG_VIDEO_HEVC_PROFILE,
+				      vpu_get_hevc_v4l2_profile(hdr));
+		vdec_update_v4l2_ctrl(inst, V4L2_CID_MPEG_VIDEO_HEVC_LEVEL,
+				      vpu_get_hevc_v4l2_level(hdr));
+		break;
+	default:
+		return;
+	}
+}
+
 static void vdec_event_seq_hdr(struct vpu_inst *inst, struct vpu_dec_codec_info *hdr)
 {
 	struct vdec_t *vdec = inst->priv;
@@ -1323,6 +1369,7 @@ static void vdec_event_seq_hdr(struct vpu_inst *inst, struct vpu_dec_codec_info 
 	vdec_init_crop(inst);
 	vdec_init_mbi(inst);
 	vdec_init_dcp(inst);
+	vdec_update_v4l2_profile_level(inst, hdr);
 	if (!vdec->seq_hdr_found) {
 		vdec->seq_tag = vdec->codec_info.tag;
 		if (vdec->is_source_changed) {
@@ -1619,9 +1666,9 @@ static void vdec_cleanup(struct vpu_inst *inst)
 		vdec->slots = NULL;
 		vdec->slot_count = 0;
 	}
-	vfree(vdec);
+	kfree(vdec);
 	inst->priv = NULL;
-	vfree(inst);
+	kfree(inst);
 }
 
 static void vdec_init_params(struct vdec_t *vdec)
@@ -1890,13 +1937,13 @@ static int vdec_open(struct file *file)
 	struct vdec_t *vdec;
 	int ret;
 
-	inst = vzalloc(sizeof(*inst));
+	inst = kzalloc(sizeof(*inst), GFP_KERNEL);
 	if (!inst)
 		return -ENOMEM;
 
-	vdec = vzalloc(sizeof(*vdec));
+	vdec = kzalloc(sizeof(*vdec), GFP_KERNEL);
 	if (!vdec) {
-		vfree(inst);
+		kfree(inst);
 		return -ENOMEM;
 	}
 
@@ -1904,8 +1951,8 @@ static int vdec_open(struct file *file)
 				    sizeof(*vdec->slots),
 				    GFP_KERNEL | __GFP_ZERO);
 	if (!vdec->slots) {
-		vfree(vdec);
-		vfree(inst);
+		kfree(vdec);
+		kfree(inst);
 		return -ENOMEM;
 	}
 	vdec->slot_count = VDEC_SLOT_CNT_DFT;

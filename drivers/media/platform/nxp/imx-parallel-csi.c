@@ -1074,7 +1074,7 @@ MODULE_DEVICE_TABLE(of, _of_match);
 
 static struct platform_driver _driver = {
 	.probe = parallel_csi_probe,
-	.remove_new = parallel_csi_remove,
+	.remove = parallel_csi_remove,
 	.driver = {
 		   .of_match_table = _of_match,
 		   .name = PARALLEL_CSI_DRIVER_NAME,

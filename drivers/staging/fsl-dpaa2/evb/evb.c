@@ -375,7 +375,8 @@ static inline int evb_port_fdb_prep(struct nlattr *tb[],
 
 static int evb_port_fdb_add(struct ndmsg *ndm, struct nlattr *tb[],
 			    struct net_device *netdev,
-			    const unsigned char *addr, u16 vid, u16 flags,
+			    const unsigned char *addr,
+			    u16 vid, u16 flags, bool *notified,
 			    struct netlink_ext_ack *extack)
 {
 	u16 _vid;
@@ -417,7 +418,7 @@ static int evb_port_fdb_add(struct ndmsg *ndm, struct nlattr *tb[],
 static int evb_port_fdb_del(struct ndmsg *ndm, struct nlattr *tb[],
 			    struct net_device *netdev,
 			    const unsigned char *addr, u16 vid,
-			    struct netlink_ext_ack *extack)
+			    bool *notified, struct netlink_ext_ack *extack)
 {
 	u16 _vid;
 	int err;
@@ -702,7 +703,7 @@ static int evb_getlink(struct sk_buff *skb, u32 pid, u32 seq,
 	hdr->ifi_family = AF_BRIDGE;
 	hdr->ifi_type = netdev->type;
 	hdr->ifi_index = netdev->ifindex;
-	hdr->ifi_flags = dev_get_flags(netdev);
+	hdr->ifi_flags = netif_get_flags(netdev);
 
 	err = __nla_put_netdev(skb, netdev);
 	if (unlikely(err))

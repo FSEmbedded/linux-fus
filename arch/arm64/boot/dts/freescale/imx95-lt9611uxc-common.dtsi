@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: (GPL-2.0+ OR MIT)
 /*
- * Copyright 2024 NXP
+ * Copyright 2024,2026 NXP
  */
 
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/interrupt-controller/irq.h>
-
-#include "imx95-clock.h"
 
 &{/} {
 	hdmi-connector-dsi {
@@ -26,14 +24,6 @@
 	status = "okay";
 };
 
-&dpu {
-	assigned-clocks = <&scmi_clk IMX95_CLK_DISP1PIX>,
-			  <&scmi_clk IMX95_CLK_VIDEOPLL1_VCO>,
-			  <&scmi_clk IMX95_CLK_VIDEOPLL1>;
-	assigned-clock-parents = <&scmi_clk IMX95_CLK_VIDEOPLL1>;
-	assigned-clock-rates = <0>, <2673000000>, <297000000>;
-};
-
 &mipi_dsi {
 	status = "okay";
 
@@ -48,16 +38,5 @@
 				remote-endpoint = <&lt9611uxc_to_dsi>;
 			};
 		};
-	};
-};
-
-&pixel_interleaver {
-	#address-cells = <1>;
-	#size-cells = <0>;
-	status = "okay";
-
-	channel@0 {
-		reg = <0>;
-		status = "okay";
 	};
 };

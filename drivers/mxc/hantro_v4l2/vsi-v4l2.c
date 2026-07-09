@@ -307,7 +307,7 @@ static void put_ctx(struct vsi_v4l2_ctx *ctx)
 	}
 }
 
-static void release_ctx(struct vsi_v4l2_ctx *ctx, int notifydaemon)
+static void release_ctx(struct vsi_v4l2_ctx *ctx, int notifydaemon, struct file *filp)
 {
 	int ret = 0;
 
@@ -335,8 +335,10 @@ static void release_ctx(struct vsi_v4l2_ctx *ctx, int notifydaemon)
 	vb2_queue_release(&ctx->input_que);
 	vb2_queue_release(&ctx->output_que);
 	v4l2_ctrl_handler_free(&ctx->ctrlhdl);
-	v4l2_fh_del(&ctx->fh);
-	v4l2_fh_exit(&ctx->fh);
+	if (filp) {
+		v4l2_fh_del(&ctx->fh, filp);
+		v4l2_fh_exit(&ctx->fh);
+	}
 	vsi_free_dma(&ctx->custom_qp_map);
 	vsi_free_dma(&ctx->zero_qp_map);
 	mutex_unlock(&ctx->ctxlock);
@@ -482,13 +484,13 @@ int vsi_v4l2_reset_ctx(struct vsi_v4l2_ctx *ctx)
 
 int vsi_v4l2_release(struct file *filp)
 {
-	struct vsi_v4l2_ctx *ctx = fh_to_ctx(filp->private_data);
+	struct vsi_v4l2_ctx *ctx = fh_to_ctx(file_to_v4l2_fh(filp));
 
 	vsi_v4l2_remove_dbgfs_file(ctx);
 	/*normal streaming end should fall here*/
 	v4l2_klog(LOGLVL_BRIEF, "%s ctx %llx", __func__, ctx->ctxid);
 	vsi_clear_daemonmsg(CTX_ARRAY_ID(ctx->ctxid));
-	release_ctx(ctx, 1);
+	release_ctx(ctx, 1, filp);
 	vsi_v4l2_quitinstance();
 	return 0;
 }
@@ -569,16 +571,18 @@ int vsi_v4l2_handleerror(unsigned long ctxid, int error)
 
 int vsi_v4l2_send_reschange(struct vsi_v4l2_ctx *ctx)
 {
-	struct v4l2_event event;
+	static const struct v4l2_event event = {
+		.type = V4L2_EVENT_SOURCE_CHANGE,
+		.u.src_change.changes = V4L2_EVENT_SRC_CH_RESOLUTION,
+	};
 
-	trace_vsiv4l2_source_change(&ctx->mediacfg, ctx->ctxid, ctx->src_change);
-	dev_dbg(ctx->dev->dev, "[%llx] source change: %dx%d %d bits, %d dpbs, change 0x%x\n",
+	trace_vsiv4l2_source_change(&ctx->mediacfg, ctx->ctxid);
+	dev_dbg(ctx->dev->dev, "[%llx] source change: %dx%d %d bits, %d dpbs\n",
 		ctx->ctxid,
 		ctx->mediacfg.decparams.dec_info.io_buffer.srcwidth,
 		ctx->mediacfg.decparams.dec_info.io_buffer.srcheight,
 		ctx->mediacfg.src_pixeldepth,
-		ctx->mediacfg.minbuf_4capture,
-		ctx->src_change);
+		ctx->mediacfg.minbuf_4capture);
 
 	if (!ctx->reschanged_need_notify) {
 		if (ctx->need_capture_on)
@@ -588,15 +592,9 @@ int vsi_v4l2_send_reschange(struct vsi_v4l2_ctx *ctx)
 
 	vsi_v4l2_update_decfmt(ctx);
 
-	memset((void *)&event, 0, sizeof(struct v4l2_event));
-	event.type = V4L2_EVENT_SOURCE_CHANGE;
-	event.u.src_change.changes = V4L2_EVENT_SRC_CH_RESOLUTION;
-	if (ctx->src_change == V4L2_EVENT_SRC_CH_COLORSPACE)
-		event.u.src_change.changes = V4L2_EVENT_SRC_CH_COLORSPACE;
 	v4l2_event_queue_fh(&ctx->fh, &event);
 	ctx->reschanged_need_notify = false;
 	ctx->reschange_notified = true;
-	ctx->src_change = 0;
 
 	if (ctx->need_capture_on) {
 		int ret;
@@ -644,7 +642,7 @@ int vsi_v4l2_notify_reschange(struct vsi_v4l2_msg *pmsg)
 		pcfg->sizeimagedst_bkup = pmsg->params.dec_params.io_buffer.OutBufSize;
 		if (vsi_dec_updatevui(&pmsg->params.dec_params.dec_info.dec_info,
 				      &pcfg->decparams.dec_info.dec_info))
-			ctx->src_change |= V4L2_EVENT_SRC_CH_COLORSPACE;
+			v4l2_klog(LOGLVL_BRIEF, "%llx colorspace change\n", ctx->ctxid);
 		set_bit(CTX_FLAG_SRCCHANGED_BIT, &ctx->flag);
 		if ((ctx->status == DEC_STATUS_DECODING || ctx->status == DEC_STATUS_DRAINING)
 			&& !list_empty(&ctx->output_que.done_list)) {
@@ -794,7 +792,7 @@ int vsi_v4l2_handle_cropchange(struct vsi_v4l2_msg *pmsg)
 	return 0;
 }
 
-static bool vsi_v4l2_dec_in_source_change(struct vsi_v4l2_ctx *ctx)
+bool vsi_v4l2_dec_in_source_change(struct vsi_v4l2_ctx *ctx)
 {
 	if (test_bit(CTX_FLAG_DELAY_SRCCHANGED_BIT, &ctx->flag))
 		return true;
@@ -852,7 +850,7 @@ int vsi_v4l2_bufferdone(struct vsi_v4l2_msg *pmsg)
 			goto out;
 		}
 		vq = &ctx->input_que;
-		vb = vq->bufs[inbufidx];
+		vb = vb2_get_buffer(vq, inbufidx);
 		if (!vb) {
 			v4l2_klog(LOGLVL_ERROR, "%llx:%s:%lx:%d:%d, input vb is NULL pointer\n",
 				  ctx->ctxid, __func__, ctx->flag, inbufidx,
@@ -904,7 +902,7 @@ int vsi_v4l2_bufferdone(struct vsi_v4l2_msg *pmsg)
 		if (bytesused[0] > 0)
 			ctx->frameidx++;
 		vq = &ctx->output_que;
-		vb = vq->bufs[outbufidx];
+		vb = vb2_get_buffer(vq, outbufidx);
 		if (!vb) {
 			v4l2_klog(LOGLVL_ERROR, "%llx:%s:%lx:%d:%d, output vb is NULL pointer\n",
 				  ctx->ctxid, __func__, ctx->flag, outbufidx,
@@ -1120,7 +1118,7 @@ static void v4l2_remove(struct platform_device *pdev)
 
 	idr_for_each_entry(&vsi_inst_array, obj, id) {
 		if (obj) {
-			release_ctx(obj, 0);
+			release_ctx(obj, 0, 0);
 			vsi_v4l2_quitinstance();
 		}
 	}

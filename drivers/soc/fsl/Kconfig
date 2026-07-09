@@ -43,7 +43,7 @@ config FSL_SLEEP_FSM
 config DPAA2_CONSOLE
 	tristate "QorIQ DPAA2 console driver"
 	depends on OF && (ARCH_LAYERSCAPE || COMPILE_TEST)
-	default y
+	default ARCH_LAYERSCAPE
 	help
 	  Console driver for DPAA2 platforms. Exports 2 char devices,
 	  /dev/dpaa2_mc_console and /dev/dpaa2_aiop_console,
@@ -59,15 +59,4 @@ config FSL_RCPM
 	  tasks associated with power management, such as wakeup source control.
 	  Note that currently this driver will not support PowerPC based
 	  QorIQ processor.
-
-config FSL_QIXIS
-	tristate "QIXIS system controller driver"
-	depends on OF
-	select REGMAP_I2C
-	select REGMAP_MMIO
-	default n
-	help
-	  Say y here to enable QIXIS system controller api. The qixis driver
-	  provides FPGA functions to control system.
-
 endmenu

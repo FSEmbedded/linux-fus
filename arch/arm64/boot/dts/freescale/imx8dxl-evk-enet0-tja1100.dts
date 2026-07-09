@@ -11,11 +11,11 @@
 
 &fec1 {
 	pinctrl-0 = <&pinctrl_fec1_rmii>;
-	clocks = <&enet0_lpcg 4>,
-		 <&enet0_lpcg 2>,
+	clocks = <&enet0_lpcg IMX_LPCG_CLK_4>,
+		 <&enet0_lpcg IMX_LPCG_CLK_2>,
 		 <&clk IMX_SC_R_ENET_0 IMX_SC_C_DISABLE_50>,
-		 <&enet0_lpcg 0>,
-		 <&enet0_lpcg 1>;
+		 <&enet0_lpcg IMX_LPCG_CLK_0>,
+		 <&enet0_lpcg IMX_LPCG_CLK_1>;
 	phy-mode = "rmii";
 	phy-handle = <&ethphy2>;
 	phy-supply = <&mii_select>;

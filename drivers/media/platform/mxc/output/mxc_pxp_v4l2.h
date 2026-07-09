@@ -13,6 +13,7 @@
 
 #include <linux/dmaengine.h>
 #include <linux/pxp_dma.h>
+#include <media/v4l2-fh.h>
 
 struct pxp_buffer {
 	/* Must be first! */
@@ -38,6 +39,8 @@ struct pxps {
 	int users;
 
 	struct video_device *vdev;
+
+	struct v4l2_fh fh;
 
 	struct videobuf_queue s0_vbq;
 	struct pxp_buffer *active;

@@ -234,7 +234,8 @@
 
 	sound {
 		compatible = "fsl,imx-audio-tlv320aic32x4";
-		model = "tq-tlv320aic32x";
+		model = "tqm-tlv320aic32";
+		audio-asrc = <&easrc>;
 		audio-cpu = <&sai3>;
 		audio-codec = <&tlv320aic3x04>;
 	};
@@ -859,7 +860,7 @@
 		fsl,pins = <MX8MP_IOMUXC_HDMI_DDC_SCL__HDMIMIX_HDMI_SCL	0x400001c2>,
 			   <MX8MP_IOMUXC_HDMI_DDC_SDA__HDMIMIX_HDMI_SDA	0x400001c2>,
 			   <MX8MP_IOMUXC_HDMI_HPD__HDMIMIX_HDMI_HPD	0x40000010>,
-			   <MX8MP_IOMUXC_HDMI_CEC__HDMIMIX_HDMI_CEC	0x40000010>;
+			   <MX8MP_IOMUXC_HDMI_CEC__HDMIMIX_HDMI_CEC	0x40000030>;
 	};
 
 	pinctrl_hoggpio2: hoggpio2grp {
@@ -968,8 +969,8 @@
 	};
 
 	pinctrl_usb0: usb0grp {
-		fsl,pins = <MX8MP_IOMUXC_GPIO1_IO13__USB1_OTG_OC	0x1c0>,
-			   <MX8MP_IOMUXC_GPIO1_IO12__USB1_OTG_PWR	0x1c0>;
+		fsl,pins = <MX8MP_IOMUXC_GPIO1_IO13__USB1_OC		0x1c0>,
+			   <MX8MP_IOMUXC_GPIO1_IO12__USB1_PWR		0x1c0>;
 	};
 
 	pinctrl_usbcon0: usb0congrp {

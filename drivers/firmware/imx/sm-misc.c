@@ -3,17 +3,43 @@
  * Copyright 2024 NXP
  */
 
+#include <linux/debugfs.h>
+#include <linux/device/devres.h>
 #include <linux/firmware/imx/sm.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/scmi_protocol.h>
 #include <linux/scmi_imx_protocol.h>
+#include <linux/seq_file.h>
 #include <linux/slab.h>
 
 static const struct scmi_imx_misc_proto_ops *imx_misc_ctrl_ops;
 static struct scmi_protocol_handle *ph;
 struct notifier_block scmi_imx_misc_ctrl_nb;
+
+static const char * const rst_imx95[] = {
+	"cm33_lockup", "cm33_swreq", "cm7_lockup", "cm7_swreq", "fccu",
+	"jtag_sw", "ele", "tempsense", "wdog1", "wdog2", "wdog3", "wdog4",
+	"wdog5", "jtag", "cm33_exc", "bbm", "sw", "sm_err", "fusa_sreco",
+	"pmic", "unused", "unused", "unused", "unused", "unused", "unused",
+	"unused", "unused", "unused", "unused", "unused", "por",
+};
+
+static const char * const rst_imx94[] = {
+	"cm33_lockup", "cm33_swreq", "cm70_lockup", "cm70_swreq", "fccu",
+	"jtag_sw", "ele", "tempsense", "wdog1", "wdog2", "wdog3", "wdog4",
+	"wdog5", "jtag", "wdog6", "wdog7", "wdog8", "wo_netc", "cm33s_lockup",
+	"cm33s_swreq", "cm71_lockup", "cm71_swreq", "cm33_exc", "bbm", "sw",
+	"sm_err", "fusa_sreco", "pmic", "unused", "unused", "unused", "por",
+};
+
+static const struct of_device_id allowlist[] = {
+	{ .compatible = "fsl,imx952", .data = rst_imx95 },
+	{ .compatible = "fsl,imx95", .data = rst_imx95 },
+	{ .compatible = "fsl,imx94", .data = rst_imx94 },
+	{ /* Sentinel */ }
+};
 
 int scmi_imx_misc_ctrl_set(u32 id, u32 val)
 {
@@ -45,104 +71,91 @@ static int scmi_imx_misc_ctrl_notifier(struct notifier_block *nb,
 	return 0;
 }
 
-static ssize_t syslog_show(struct device *device, struct device_attribute *attr,
-			   char *buf)
+static int syslog_show(struct seq_file *file, void *priv)
 {
-	struct scmi_imx_misc_sys_sleep_rec *rec;
-	struct scmi_imx_misc_syslog *syslog;
+	struct device *dev = file->private;
+	/* 4KB is large enough for syslog */
+	void *syslog __free(kfree) = kmalloc(SZ_4K, GFP_KERNEL);
+	/* syslog API use num words, not num bytes */
+	u16 size = SZ_4K / 4;
 	int ret;
-	size_t len = 0;
 
 	if (!ph)
-		return 0;
+		return -ENODEV;
 
-	syslog = kmalloc(sizeof(*syslog), GFP_KERNEL);
-	if (!syslog)
-		return -ENOMEM;
-
-	ret = imx_misc_ctrl_ops->misc_syslog(ph, sizeof(*syslog), syslog);
+	ret = imx_misc_ctrl_ops->misc_syslog(ph, &size, syslog);
 	if (ret) {
-		kfree(syslog);
-		return ret;
+		if (size > SZ_4K / 4) {
+			dev_err(dev, "syslog size is larger than 4KB, please enlarge\n");
+			return ret;
+		}
 	}
 
-	rec = &syslog->syssleeprecord;
+	seq_hex_dump(file, " ", DUMP_PREFIX_NONE, 16, sizeof(u32), syslog, size * 4, false);
+	seq_putc(file, '\n');
 
-	len += sysfs_emit_at(buf, len, "Wake Vector = %u\n", rec->wakesource);
-	len += sysfs_emit_at(buf, len, "Sys sleep mode = %u\n", rec->syssleepmode);
-	len += sysfs_emit_at(buf, len, "Sys sleep flags = 0x%08x\n", rec->syssleepflags);
-	len += sysfs_emit_at(buf, len, "MIX power status = 0x%08x\n", rec->mixpwrstat);
-	len += sysfs_emit_at(buf, len, "MEM power status = 0x%08x\n", rec->mempwrstat);
-	len += sysfs_emit_at(buf, len, "PLL power status = 0x%08x\n", rec->pllpwrstat);
-	len += sysfs_emit_at(buf, len, "Sleep latency = %u\n", rec->sleepentryusec);
-	len += sysfs_emit_at(buf, len, "Wake latency = %u\n", rec->sleepexitusec);
-	len += sysfs_emit_at(buf, len, "Sleep count = %u\n", rec->sleepcnt);
+	return 0;
+}
+DEFINE_SHOW_ATTRIBUTE(syslog);
 
-	kfree(syslog);
-
-	return len;
+static void scmi_imx_misc_put(void *p)
+{
+	debugfs_remove((struct dentry *)p);
 }
 
-static DEVICE_ATTR_RO(syslog);
-
-static ssize_t system_info_show(struct device *device, struct device_attribute *attr,
-				char *buf)
+static int scmi_imx_misc_get_reason(struct scmi_device *sdev)
 {
-	struct scmi_imx_misc_system_info *info;
-	int len = 0;
+	struct scmi_imx_misc_reset_reason boot, shutdown;
+	const char **rst;
+	bool system = true;
 	int ret;
 
-	if (!ph)
+	if (!of_machine_device_match(allowlist))
 		return 0;
 
-	info = kmalloc(sizeof(*info), GFP_KERNEL);
-	if (!info)
-		return -ENOMEM;
+	rst = (const char **)of_machine_get_match_data(allowlist);
 
-	ret = imx_misc_ctrl_ops->misc_discover_build_info(ph, info);
-	if (ret)
-		goto err;
+	ret = imx_misc_ctrl_ops->misc_reset_reason(ph, system, &boot, &shutdown, NULL);
+	if (!ret) {
+		if (boot.valid)
+			dev_info(&sdev->dev, "%s Boot reason: %s, origin: %d, errid: %d\n",
+				 system ? "SYS" : "LM", rst[boot.reason],
+				 boot.orig_valid ? boot.origin : -1,
+				 boot.err_valid ? boot.errid : -1);
+		if (shutdown.valid)
+			dev_info(&sdev->dev, "%s shutdown reason: %s, origin: %d, errid: %d\n",
+				 system ? "SYS" : "LM", rst[shutdown.reason],
+				 shutdown.orig_valid ? shutdown.origin : -1,
+				 shutdown.err_valid ? shutdown.errid : -1);
+	} else {
+		dev_err(&sdev->dev, "Failed to get system reset reason: %d\n", ret);
+	}
 
-	ret = imx_misc_ctrl_ops->misc_cfg_info(ph, info);
-	if (ret)
-		goto err;
+	system = false;
+	ret = imx_misc_ctrl_ops->misc_reset_reason(ph, system, &boot, &shutdown, NULL);
+	if (!ret) {
+		if (boot.valid)
+			dev_info(&sdev->dev, "%s Boot reason: %s, origin: %d, errid: %d\n",
+				 system ? "SYS" : "LM", rst[boot.reason],
+				 boot.orig_valid ? boot.origin : -1,
+				 boot.err_valid ? boot.errid : -1);
+		if (shutdown.valid)
+			dev_info(&sdev->dev, "%s shutdown reason: %s, origin: %d, errid: %d\n",
+				 system ? "SYS" : "LM", rst[shutdown.reason],
+				 shutdown.orig_valid ? shutdown.origin : -1,
+				 shutdown.err_valid ? shutdown.errid : -1);
+	} else {
+		dev_err(&sdev->dev, "Failed to get lm reset reason: %d\n", ret);
+	}
 
-	ret = imx_misc_ctrl_ops->misc_silicon_info(ph, info);
-	if (ret)
-		goto err;
-
-	ret = imx_misc_ctrl_ops->misc_board_info(ph, info);
-	if (ret)
-		goto err;
-
-	len += sysfs_emit_at(buf, len, "SM Version    = Build %u, Commit 08%x\n",
-			     info->buildnum, info->buildcommit);
-	len += sysfs_emit_at(buf, len, "SM Config     = %s, mSel=%u\n",
-			     info->cfgname, info->msel);
-	len += sysfs_emit_at(buf, len, "Silicon       = %s\n", info->siname);
-	len += sysfs_emit_at(buf, len, "Board         = %s, attr=0x%08x\n",
-			     info->brdname, info->brd_attributes);
-
-	ret = len;
-err:
-	kfree(info);
-	return ret;
+	return 0;
 }
-
-static DEVICE_ATTR_RO(system_info);
-
-static struct attribute *sm_misc_attrs[] = {
-	&dev_attr_syslog.attr,
-	&dev_attr_system_info.attr,
-	NULL,
-};
-
-ATTRIBUTE_GROUPS(sm_misc);
 
 static int scmi_imx_misc_ctrl_probe(struct scmi_device *sdev)
 {
 	const struct scmi_handle *handle = sdev->handle;
 	struct device_node *np = sdev->dev.of_node;
+	struct dentry *scmi_imx_dentry;
 	u32 src_id, flags;
 	int ret, i, num;
 
@@ -193,6 +206,14 @@ static int scmi_imx_misc_ctrl_probe(struct scmi_device *sdev)
 		}
 	}
 
+	scmi_imx_dentry = debugfs_create_dir("scmi_imx", NULL);
+	if (!IS_ERR(scmi_imx_dentry))
+		debugfs_create_file("syslog", 0444, scmi_imx_dentry, &sdev->dev, &syslog_fops);
+
+	scmi_imx_misc_get_reason(sdev);
+
+	devm_add_action_or_reset(&sdev->dev, scmi_imx_misc_put, scmi_imx_dentry);
+
 	return 0;
 }
 
@@ -203,9 +224,6 @@ static const struct scmi_device_id scmi_id_table[] = {
 MODULE_DEVICE_TABLE(scmi, scmi_id_table);
 
 static struct scmi_driver scmi_imx_misc_ctrl_driver = {
-	.driver = {
-		.dev_groups = sm_misc_groups,
-	},
 	.name = "scmi-imx-misc-ctrl",
 	.probe = scmi_imx_misc_ctrl_probe,
 	.id_table = scmi_id_table,

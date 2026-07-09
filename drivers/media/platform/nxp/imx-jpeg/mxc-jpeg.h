@@ -2,7 +2,7 @@
 /*
  * i.MX8QXP/i.MX8QM JPEG encoder/decoder v4l2 driver
  *
- * Copyright 2018-2019 NXP
+ * Copyright 2018-2019, 2026 NXP
  */
 
 #include <media/v4l2-ctrls.h>
@@ -30,6 +30,7 @@
 #define MXC_JPEG_MAX_PLANES		2
 #define MXC_JPEG_PATTERN_WIDTH		128
 #define MXC_JPEG_PATTERN_HEIGHT		64
+#define MXC_JPEG_ADDR_ALIGNMENT		16
 
 enum mxc_jpeg_enc_state {
 	MXC_JPEG_ENCODING	= 0, /* jpeg encode phase */
@@ -80,6 +81,17 @@ struct mxc_jpeg_desc {
 	u32 stm_bufsize;
 	u32 imgsize;
 	u32 stm_ctrl;
+	/* below parameters are valid for v1 */
+	u32 mode;
+	u32 cfg_mode;
+	u32 quality;
+	u32 rc_regs_sel;
+	u32 lumth;
+	u32 chrth;
+	u32 nomfrsize_lo;
+	u32 nomfrsize_hi;
+	u32 ofbsize_lo;
+	u32 ofbsize_hi;
 } __packed;
 
 struct mxc_jpeg_q_data {
@@ -140,6 +152,7 @@ struct mxc_jpeg_dev {
 	int				num_domains;
 	struct device			**pd_dev;
 	struct device_link		**pd_link;
+	struct gen_pool			*sram_pool;
 };
 
 /**

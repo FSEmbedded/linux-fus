@@ -73,53 +73,76 @@ static void wave6_vpu_get_clk(struct vpu_device *vpu_dev)
 static irqreturn_t wave6_vpu_irq(int irq, void *dev_id)
 {
 	struct vpu_device *dev = dev_id;
-	u32 irq_status;
+	struct vpu_irq irq_info;
 
-	if (wave6_vdi_readl(dev, W6_VPU_VPU_INT_STS)) {
-		irq_status = wave6_vdi_readl(dev, W6_VPU_VINT_REASON);
+	if (!wave6_vdi_readl(dev, W6_VPU_VPU_INT_STS))
+		return IRQ_NONE;
 
-		wave6_vdi_writel(dev, W6_VPU_VINT_REASON_CLR, irq_status);
-		wave6_vdi_writel(dev, W6_VPU_VINT_CLEAR, 0x1);
+	irq_info.status = wave6_vdi_readl(dev, W6_VPU_VINT_REASON);
+	irq_info.inst_idc = wave6_vdi_readl(dev, W6_RET_INT_INSTANCE_INFO);
 
-		trace_irq(dev, irq_status);
+	wave6_vdi_writel(dev, W6_RET_INT_INSTANCE_INFO, 0);
+	wave6_vdi_writel(dev, W6_VPU_VINT_REASON_CLR, irq_info.status);
+	wave6_vdi_writel(dev, W6_VPU_VINT_CLEAR, 0x1);
 
-		if (irq_status & BIT(W6_INT_BIT_REQ_WORK_BUF)) {
-			if (dev->ctrl)
-				wave6_vpu_ctrl_require_buffer(dev->ctrl, &dev->entity);
-			return IRQ_HANDLED;
-		}
+	trace_irq(dev, irq_info.status, irq_info.inst_idc);
 
-		kfifo_in(&dev->irq_status, &irq_status, sizeof(int));
+	if (irq_info.status & BIT(W6_INT_BIT_REQ_WORK_BUF)) {
+		if (dev->ctrl)
+			wave6_vpu_ctrl_require_buffer(dev->ctrl, &dev->entity);
 
-		return IRQ_WAKE_THREAD;
+		return IRQ_HANDLED;
 	}
 
-	return IRQ_HANDLED;
+	kfifo_in(&dev->irq_fifo, &irq_info, sizeof(struct vpu_irq));
+
+	return IRQ_WAKE_THREAD;
+}
+
+static struct vpu_instance *wave6_vpu_get_instance(struct vpu_device *dev,
+						   u32 inst_idc)
+{
+	struct vpu_instance *inst;
+
+	spin_lock(&dev->inst_lock);
+
+	list_for_each_entry(inst, &dev->instances, list) {
+		if (BIT(inst->id) & inst_idc) {
+			spin_unlock(&dev->inst_lock);
+			return inst;
+		}
+	}
+
+	spin_unlock(&dev->inst_lock);
+
+	return NULL;
 }
 
 static irqreturn_t wave6_vpu_irq_thread(int irq, void *dev_id)
 {
 	struct vpu_device *dev = dev_id;
 	struct vpu_instance *inst;
-	int irq_status, ret;
+	struct vpu_irq irq_info;
 
-	while (kfifo_len(&dev->irq_status)) {
+	while (kfifo_len(&dev->irq_fifo)) {
 		bool error = false;
 
-		ret = kfifo_out(&dev->irq_status, &irq_status, sizeof(int));
-		if (!ret)
+		if (!kfifo_out(&dev->irq_fifo, &irq_info, sizeof(struct vpu_irq)))
 			break;
 
-		if ((irq_status & BIT(W6_INT_BIT_INIT_SEQ)) ||
-		    (irq_status & BIT(W6_INT_BIT_ENC_SET_PARAM))) {
-			complete(&dev->irq_done);
+		inst = wave6_vpu_get_instance(dev, irq_info.inst_idc);
+		if (!inst)
+			break;
+
+		if ((irq_info.status & BIT(W6_INT_BIT_INIT_SEQ)) ||
+		    (irq_info.status & BIT(W6_INT_BIT_ENC_SET_PARAM))) {
+			complete(&inst->irq_done);
 			continue;
 		}
 
-		if (irq_status & BIT(W6_INT_BIT_BSBUF_ERROR))
+		if (irq_info.status & BIT(W6_INT_BIT_BSBUF_ERROR))
 			error = true;
 
-		inst = v4l2_m2m_get_curr_priv(dev->m2m_dev);
 		if (inst)
 			inst->ops->finish_process(inst, error);
 	}
@@ -257,7 +280,8 @@ static int wave6_vpu_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	mutex_init(&dev->hw_lock);
-	init_completion(&dev->irq_done);
+	spin_lock_init(&dev->inst_lock);
+	INIT_LIST_HEAD(&dev->instances);
 	dev_set_drvdata(&pdev->dev, dev);
 	dev->dev = &pdev->dev;
 	dev->res = match_data;
@@ -315,7 +339,8 @@ static int wave6_vpu_probe(struct platform_device *pdev)
 		goto err_m2m_dev_release;
 	}
 
-	if (kfifo_alloc(&dev->irq_status, 16 * sizeof(int), GFP_KERNEL)) {
+	if (kfifo_alloc(&dev->irq_fifo,
+			WAVE6_MAX_INST_NUMBER * sizeof(struct vpu_irq), GFP_KERNEL)) {
 		dev_err(&pdev->dev, "failed to allocate fifo\n");
 		goto err_m2m_dev_release;
 	}
@@ -387,7 +412,7 @@ err_dec_unreg:
 err_temp_vbuf_free:
 	wave6_free_dma(&dev->temp_vbuf);
 err_kfifo_free:
-	kfifo_free(&dev->irq_status);
+	kfifo_free(&dev->irq_fifo);
 err_m2m_dev_release:
 	wave6_vpu_release_m2m_dev(dev);
 err_v4l2_unregister:
@@ -409,7 +434,7 @@ static void wave6_vpu_remove(struct platform_device *pdev)
 	wave6_vpu_enc_unregister_device(dev);
 	wave6_vpu_dec_unregister_device(dev);
 	wave6_free_dma(&dev->temp_vbuf);
-	kfifo_free(&dev->irq_status);
+	kfifo_free(&dev->irq_fifo);
 	wave6_vpu_release_m2m_dev(dev);
 	v4l2_device_unregister(&dev->v4l2_dev);
 	if (!dev->ctrl)
@@ -469,6 +494,7 @@ static int wave6_vpu_suspend(struct device *dev)
 	int ret;
 
 	dprintk(dev, "suspend\n");
+
 	v4l2_m2m_suspend(vpu_dev->m2m_dev);
 
 	ret = pm_runtime_force_suspend(dev);
@@ -484,11 +510,13 @@ static int wave6_vpu_resume(struct device *dev)
 	int ret;
 
 	dprintk(dev, "resume\n");
+
 	ret = pm_runtime_force_resume(dev);
 	if (ret)
 		return ret;
 
 	v4l2_m2m_resume(vpu_dev->m2m_dev);
+
 	return 0;
 }
 #endif

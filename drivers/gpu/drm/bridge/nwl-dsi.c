@@ -889,9 +889,8 @@ static int nwl_dsi_disable(struct nwl_dsi *dsi)
 	return 0;
 }
 
-static void
-nwl_dsi_bridge_atomic_post_disable(struct drm_bridge *bridge,
-				   struct drm_bridge_state *old_bridge_state)
+static void nwl_dsi_bridge_atomic_post_disable(struct drm_bridge *bridge,
+					       struct drm_atomic_state *state)
 {
 	struct nwl_dsi *dsi = bridge_to_dsi(bridge);
 	int ret;
@@ -1085,9 +1084,8 @@ nwl_dsi_bridge_mode_set(struct drm_bridge *bridge,
 	memcpy(&dsi->phy_cfg, &new_cfg, sizeof(new_cfg));
 }
 
-static void
-nwl_dsi_bridge_atomic_pre_enable(struct drm_bridge *bridge,
-				 struct drm_bridge_state *old_bridge_state)
+static void nwl_dsi_bridge_atomic_enable(struct drm_bridge *bridge,
+					 struct drm_atomic_state *state)
 {
 	struct nwl_dsi *dsi = bridge_to_dsi(bridge);
 	int ret;
@@ -1136,29 +1134,22 @@ nwl_dsi_bridge_atomic_pre_enable(struct drm_bridge *bridge,
 	 * bridge_enable, where we will enable the DPI and start streaming
 	 * pixels on the data lanes.
 	 */
-	drm_atomic_bridge_chain_enable(dsi->panel_bridge,
-				       old_bridge_state->base.state);
-
-	return;
-
-runtime_put:
-	pm_runtime_put_sync(dsi->dev);
-}
-
-static void
-nwl_dsi_bridge_atomic_enable(struct drm_bridge *bridge,
-			     struct drm_bridge_state *old_bridge_state)
-{
-	struct nwl_dsi *dsi = bridge_to_dsi(bridge);
-	int ret;
+	drm_atomic_bridge_chain_enable(dsi->panel_bridge, state);
 
 	/* Step 5 from DSI reset-out instructions */
 	ret = dsi->pdata->dpi_reset(dsi, false);
 	if (ret < 0)
 		DRM_DEV_ERROR(dsi->dev, "Failed to deassert DPI: %d\n", ret);
+
+	return;
+
+runtime_put:
+	pm_runtime_put_sync(dsi->dev);
+
 }
 
 static int nwl_dsi_bridge_attach(struct drm_bridge *bridge,
+				 struct drm_encoder *encoder,
 				 enum drm_bridge_attach_flags flags)
 {
 	struct nwl_dsi *dsi = bridge_to_dsi(bridge);
@@ -1190,8 +1181,7 @@ static int nwl_dsi_bridge_attach(struct drm_bridge *bridge,
 			clk_set_rate(dsi->rx_esc_clk, dsi->pdata->rx_clk_rate);
 	}
 
-	return drm_bridge_attach(bridge->encoder, dsi->panel_bridge, bridge,
-				 flags);
+	return drm_bridge_attach(encoder, dsi->panel_bridge, bridge, flags);
 }
 
 static u32 *nwl_bridge_atomic_get_input_bus_fmts(struct drm_bridge *bridge,
@@ -1233,7 +1223,6 @@ static const struct drm_bridge_funcs nwl_dsi_bridge_funcs = {
 	.atomic_destroy_state	= drm_atomic_helper_bridge_destroy_state,
 	.atomic_reset		= drm_atomic_helper_bridge_reset,
 	.atomic_check		= nwl_dsi_bridge_atomic_check,
-	.atomic_pre_enable	= nwl_dsi_bridge_atomic_pre_enable,
 	.atomic_enable		= nwl_dsi_bridge_atomic_enable,
 	.atomic_post_disable	= nwl_dsi_bridge_atomic_post_disable,
 	.atomic_get_input_bus_fmts = nwl_bridge_atomic_get_input_bus_fmts,
@@ -1823,9 +1812,10 @@ static int nwl_dsi_probe(struct platform_device *pdev)
 	if (!of_id || !of_id->data)
 		return -ENODEV;
 
-	dsi = devm_kzalloc(dev, sizeof(*dsi), GFP_KERNEL);
-	if (!dsi)
-		return -ENOMEM;
+	dsi = devm_drm_bridge_alloc(dev, struct nwl_dsi, bridge,
+				    &nwl_dsi_bridge_funcs);
+	if (IS_ERR(dsi))
+		return PTR_ERR(dsi);
 
 	dsi->dev = dev;
 	dsi->pdata = of_id->data;
@@ -1855,9 +1845,9 @@ static int nwl_dsi_probe(struct platform_device *pdev)
 	}
 
 	dsi->bridge.driver_private = dsi;
-	dsi->bridge.funcs = &nwl_dsi_bridge_funcs;
 	dsi->bridge.of_node = dev->of_node;
 	dsi->bridge.timings = &nwl_dsi_timings;
+	dsi->bridge.type = DRM_MODE_CONNECTOR_DSI;
 
 	dev_set_drvdata(dev, dsi);
 	pm_runtime_enable(dev);
@@ -1905,7 +1895,7 @@ static void nwl_dsi_remove(struct platform_device *pdev)
 
 static struct platform_driver nwl_dsi_driver = {
 	.probe		= nwl_dsi_probe,
-	.remove_new	= nwl_dsi_remove,
+	.remove		= nwl_dsi_remove,
 	.driver		= {
 		.of_match_table = nwl_dsi_dt_ids,
 		.name	= DRV_NAME,

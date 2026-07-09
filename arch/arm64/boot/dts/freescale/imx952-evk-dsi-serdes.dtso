@@ -1,0 +1,20 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/*
+ * Copyright 2026 NXP
+ */
+
+/dts-v1/;
+/plugin/;
+
+#include "imx952-clock.h"
+#include "imx952-pinfunc.h"
+#include "imx95-evk-dsi-serdes-common.dtsi"
+
+&dpu {
+	assigned-clocks = <&scmi_clk IMX952_CLK_DISP1PIX>;
+	assigned-clock-parents = <&scmi_clk IMX952_CLK_VIDEOPLL1>;
+};
+
+&mipi_dphy {
+	status = "okay";
+};

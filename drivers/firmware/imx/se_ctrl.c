@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
- * Copyright 2024-2025 NXP
+ * Copyright 2024-2026 NXP
  */
 
 #include <linux/completion.h>
@@ -41,15 +41,24 @@
 #define MBOX_TXDB_NAME			"txdb"
 #define MBOX_RXDB_NAME			"rxdb"
 
-#define IMX_SE_LOG_PATH "/var/lib/se_"
+#define SOC_ID_MASK_IMX952		0xFFF0
+#define SOC_ID_MASK_IMX95		0xFF00
 #define SE_RCV_MSG_DEFAULT_TIMEOUT	5000
 #define SE_RCV_MSG_LONG_TIMEOUT		5000000
+#define IMX_SE_LOG_PATH			"/var/lib/se_"
 
 #define FW_NAME_SIZE			50
+
+/* Primary HSM MU interface index */
+#define SE_PRIMARY_HSM_INSTANCE		0
+
+#define VAL_TO_REQ_LOADING_RUNTIME_FW	1
 
 static int se_log;
 static struct kobject *se_kobj;
 u32 se_rcv_msg_timeout = SE_RCV_MSG_DEFAULT_TIMEOUT;
+
+static struct work_struct se_fw_load_work;
 
 struct fw_info {
 	u8 fw_name[FW_NAME_SIZE];
@@ -65,6 +74,7 @@ struct se_fw_load_info {
 	struct se_fw_img_name se_fw_img_nm;
 	bool is_fw_loaded;
 	bool imem_mgmt;
+	struct mutex inprogress;
 	struct se_imem_buf imem;
 };
 
@@ -181,7 +191,7 @@ static struct se_if_node_info_list imx95_info = {
 				.base_api_ver = MESSAGING_VERSION_6,
 				.fw_api_ver = MESSAGING_VERSION_7,
 			},
-			.reserved_dma_ranges = false,
+			.reserved_dma_ranges = true,
 			.start_rng = ele_start_rng,
 			.init_trng = ele_trng_init,
 			.se_if_early_init = NULL,
@@ -189,12 +199,12 @@ static struct se_if_node_info_list imx95_info = {
 			},
 			{
 			.se_if_id = 1,
-			.mu_buff_size = 0,
+			.mu_buff_size = 64,
 			.if_defs = {
 				.se_if_type = SE_TYPE_ID_V2X_DBG,
 				.se_instance_id = 0,
-				.cmd_tag = 0x1a,
-				.rsp_tag = 0xe4,
+				.cmd_tag = 0x17,
+				.rsp_tag = 0xe1,
 				.success_tag = ELE_SUCCESS_IND,
 				.base_api_ver = MESSAGING_VERSION_2,
 				.fw_api_ver = MESSAGING_VERSION_2,
@@ -207,7 +217,7 @@ static struct se_if_node_info_list imx95_info = {
 			},
 			{
 			.se_if_id = 2,
-			.mu_buff_size = 16,
+			.mu_buff_size = 64,
 			.if_defs = {
 				.se_if_type = SE_TYPE_ID_V2X_SV,
 				.se_instance_id = 0,
@@ -243,7 +253,7 @@ static struct se_if_node_info_list imx95_info = {
 			},
 			{
 			.se_if_id = 4,
-			.mu_buff_size = 0,
+			.mu_buff_size = 16,
 			.if_defs = {
 				.se_if_type = SE_TYPE_ID_V2X_SG,
 				.se_instance_id = 0,
@@ -261,7 +271,7 @@ static struct se_if_node_info_list imx95_info = {
 			},
 			{
 			.se_if_id = 5,
-			.mu_buff_size = 0,
+			.mu_buff_size = 16,
 			.if_defs = {
 				.se_if_type = SE_TYPE_ID_V2X_SG,
 				.se_instance_id = 1,
@@ -431,7 +441,7 @@ static struct se_if_node_info_list imx8dxl_info = {
 				.rsp_tag = 0xe1,
 				.success_tag = SECO_SUCCESS_IND,
 				.base_api_ver = MESSAGING_VERSION_6,
-				.fw_api_ver = MESSAGING_VERSION_7,
+				.fw_api_ver = MESSAGING_VERSION_6,
 			},
 			.reserved_dma_ranges = false,
 			.start_rng = NULL,
@@ -449,7 +459,7 @@ static struct se_if_node_info_list imx8dxl_info = {
 				.rsp_tag = 0xe1,
 				.success_tag = SECO_SUCCESS_IND,
 				.base_api_ver = MESSAGING_VERSION_6,
-				.fw_api_ver = MESSAGING_VERSION_7,
+				.fw_api_ver = MESSAGING_VERSION_6,
 			},
 			.reserved_dma_ranges = false,
 			.start_rng = NULL,
@@ -467,7 +477,7 @@ static struct se_if_node_info_list imx8dxl_info = {
 				.rsp_tag = 0xe2,
 				.success_tag = SECO_SUCCESS_IND,
 				.base_api_ver = MESSAGING_VERSION_2,
-				.fw_api_ver = MESSAGING_VERSION_7,
+				.fw_api_ver = MESSAGING_VERSION_2,
 			},
 			.reserved_dma_ranges = false,
 			.start_rng = NULL,
@@ -485,7 +495,7 @@ static struct se_if_node_info_list imx8dxl_info = {
 				.rsp_tag = 0xe3,
 				.success_tag = SECO_SUCCESS_IND,
 				.base_api_ver = MESSAGING_VERSION_2,
-				.fw_api_ver = MESSAGING_VERSION_7,
+				.fw_api_ver = MESSAGING_VERSION_2,
 			},
 			.reserved_dma_ranges = false,
 			.start_rng = NULL,
@@ -503,7 +513,7 @@ static struct se_if_node_info_list imx8dxl_info = {
 				.rsp_tag = 0xe4,
 				.success_tag = SECO_SUCCESS_IND,
 				.base_api_ver = MESSAGING_VERSION_2,
-				.fw_api_ver = MESSAGING_VERSION_7,
+				.fw_api_ver = MESSAGING_VERSION_2,
 			},
 			.reserved_dma_ranges = false,
 			.start_rng = NULL,
@@ -521,7 +531,7 @@ static struct se_if_node_info_list imx8dxl_info = {
 				.rsp_tag = 0xe7,
 				.success_tag = SECO_SUCCESS_IND,
 				.base_api_ver = MESSAGING_VERSION_2,
-				.fw_api_ver = MESSAGING_VERSION_7,
+				.fw_api_ver = MESSAGING_VERSION_2,
 			},
 			.reserved_dma_ranges = false,
 			.start_rng = NULL,
@@ -539,7 +549,7 @@ static struct se_if_node_info_list imx8dxl_info = {
 				.rsp_tag = 0xe8,
 				.success_tag = SECO_SUCCESS_IND,
 				.base_api_ver = MESSAGING_VERSION_2,
-				.fw_api_ver = MESSAGING_VERSION_7,
+				.fw_api_ver = MESSAGING_VERSION_2,
 			},
 			.reserved_dma_ranges = false,
 			.start_rng = NULL,
@@ -557,6 +567,64 @@ static const struct of_device_id se_match[] = {
 	{ .compatible = "fsl,imx8dxl-se", .data = (void *)&imx8dxl_info},
 	{ .compatible = "fsl,imx94-se", .data = (void *)&imx94_info},
 	{},
+};
+
+/* Device attribute show/store functions */
+static ssize_t timeout_count_show(struct device *dev,
+				  struct device_attribute *attr,
+				  char *buf)
+{
+	struct se_if_priv *priv = dev_get_drvdata(dev);
+
+	return sysfs_emit(buf, "%u\n", atomic_read(&priv->timeout_count));
+}
+
+static DEVICE_ATTR_RO(timeout_count);
+
+static ssize_t recovery_count_show(struct device *dev,
+				   struct device_attribute *attr,
+				   char *buf)
+{
+	struct se_if_priv *priv = dev_get_drvdata(dev);
+
+	return sysfs_emit(buf, "%u\n", atomic_read(&priv->recovery_count));
+}
+static DEVICE_ATTR_RO(recovery_count);
+
+static ssize_t circuit_breaker_state_show(struct device *dev,
+					  struct device_attribute *attr,
+					  char *buf)
+{
+	struct se_if_priv *priv = dev_get_drvdata(dev);
+
+	return sysfs_emit(buf, "%s\n", atomic_read(&priv->fw_busy) ? "open" : "closed");
+}
+static DEVICE_ATTR_RO(circuit_breaker_state);
+
+static ssize_t circuit_breaker_reset_store(struct device *dev,
+					   struct device_attribute *attr,
+					   const char *buf, size_t count)
+{
+	struct se_if_priv *priv = dev_get_drvdata(dev);
+
+	atomic_set(&priv->fw_busy, 0);
+	dev_info(dev, "Circuit breaker manually reset\n");
+
+	return count;
+}
+static DEVICE_ATTR_WO(circuit_breaker_reset);
+
+static struct attribute *se_dev_attrs[] = {
+	&dev_attr_timeout_count.attr,
+	&dev_attr_recovery_count.attr,
+	&dev_attr_circuit_breaker_state.attr,
+	&dev_attr_circuit_breaker_reset.attr,
+	NULL,
+};
+
+static const struct attribute_group se_dev_attr_group = {
+	.attrs = se_dev_attrs,
+	.name = "ele_stats",  /* Creates a subdirectory */
 };
 
 char *get_se_if_name(u8 se_if_id)
@@ -584,10 +652,13 @@ char *get_se_if_name(u8 se_if_id)
  * se_rcv_msg_timeout: to change the rcv_msg timeout value in jiffies for
  *                     the operations that take more time.
  * echo 180000 > /sys/kernel/se/se_rcv_msg_timeout
+ *
+ * se_load_fw: to trigger firmware load
+ * echo 1 > /sys/kernel/se/se_load_fw
  */
 static ssize_t se_store(struct kobject *kobj,
-				   struct kobj_attribute *attr,
-				   const char *buf, size_t count)
+			struct kobj_attribute *attr,
+			const char *buf, size_t count)
 {
 	int var, ret;
 
@@ -597,10 +668,21 @@ static ssize_t se_store(struct kobject *kobj,
 		return ret;
 	}
 
-	if (strcmp(attr->attr.name, "se_log") == 0)
+	if (strcmp(attr->attr.name, "se_log") == 0) {
 		se_log = var;
-	else
+	} else if (strcmp(attr->attr.name, "se_rcv_msg_timeout") == 0) {
 		se_rcv_msg_timeout = var;
+	} else if (strcmp(attr->attr.name, "se_load_fw") == 0) {
+		if (var != VAL_TO_REQ_LOADING_RUNTIME_FW ) {
+			pr_err("Invalid value. Write 1 to trigger firmware load\n");
+			return -EINVAL;
+		}
+		if (var_se_info.load_fw.is_fw_loaded) {
+			pr_info("Firmware already loaded\n");
+			return count;
+		}
+		schedule_work(&se_fw_load_work);
+	}
 
 	return count;
 }
@@ -611,17 +693,21 @@ static ssize_t se_store(struct kobject *kobj,
  * se_log: to know SE logging is enabled/disabled
  *
  * se_rcv_msg_timeout: to read the current rcv_msg timeout value in jiffies
+ *
+ * se_load_fw: to check if firmware is loaded
  */
 static ssize_t se_show(struct kobject *kobj,
-				  struct kobj_attribute *attr,
-				  char *buf)
+		       struct kobj_attribute *attr,
+		       char *buf)
 {
 	int var = 0;
 
 	if (strcmp(attr->attr.name, "se_log") == 0)
 		var = se_log;
-	else
+	else if (strcmp(attr->attr.name, "se_rcv_msg_timeout") == 0)
 		var = se_rcv_msg_timeout;
+	else if (strcmp(attr->attr.name, "se_load_fw") == 0)
+		var = var_se_info.load_fw.is_fw_loaded ? 1 : 0;
 
 	return sysfs_emit(buf, "%d\n", var);
 }
@@ -634,8 +720,12 @@ struct kobj_attribute se_rcv_msg_timeout_attr = __ATTR(se_rcv_msg_timeout,
 						       0664, se_show,
 						       se_store);
 
-/* Exposing the variable se_log via sysfs to enable/disable logging */
-static int  se_sysfs_log(void)
+struct kobj_attribute se_load_fw_attr = __ATTR(se_load_fw, 0664,
+					       se_show,
+					       se_store);
+
+/* Expose sysfs attributes for se_log, se_rcv_msg_timeout, and se_load_fw */
+static int se_sysfs_init(void)
 {
 	int ret = 0;
 
@@ -661,6 +751,12 @@ static int  se_sysfs_log(void)
 		goto out;
 	}
 
+	/* Create file for the se_load_fw attribute */
+	if (sysfs_create_file(se_kobj, &se_load_fw_attr.attr)) {
+		pr_err("Failed to create se_load_fw file\n");
+		ret = -ENOMEM;
+	}
+
 out:
 	if (ret)
 		kobject_put(se_kobj);
@@ -675,12 +771,25 @@ static bool runtime_fw_status(struct se_if_priv *priv)
 	 */
 	bool fw_prsnt_n_running = false;
 
-	if (get_se_soc_id(priv) == SOC_ID_OF_IMX95 || get_se_soc_id(priv) == SOC_ID_OF_IMX94)
+	if (get_se_soc_id(priv) == SOC_ID_OF_IMX95 ||
+	    get_se_soc_id(priv) == SOC_ID_OF_IMX94 ||
+	    get_se_soc_id(priv) == SOC_ID_OF_IMX952)
 		fw_prsnt_n_running =
 			(var_se_info.fw_vers_word & 0x1000000) ? true : false;
 
 	return fw_prsnt_n_running;
 }
+
+/**
+ * get_ele_fw_vers_word() - Get ELE firmware version word
+ *
+ * Return: Firmware version word on success, 0 on failure.
+ */
+u32 get_ele_fw_vers_word(void)
+{
+	return var_se_info.fw_vers_word;
+}
+
 /*
  * get_se_soc_id() - to fetch the soc_id of the platform
  *
@@ -712,13 +821,14 @@ void *imx_get_se_data_info(uint32_t soc_id, u32 idx)
 	switch (soc_id) {
 	case SOC_ID_OF_IMX8ULP:
 		info_list = &imx8ulp_info; break;
-	case SOC_ID_OF_IMX8DXL:
-	case SOC_ID_OF_IMX8QXP:
-		info_list = &imx8dxl_info; break;
 	case SOC_ID_OF_IMX93:
 		info_list = &imx93_info; break;
 	case SOC_ID_OF_IMX95:
+	case SOC_ID_OF_IMX952:
 		info_list = &imx95_info; break;
+	case SOC_ID_OF_IMX8DXL:
+	case SOC_ID_OF_IMX8QXP:
+		info_list = &imx8dxl_info; break;
 	case SOC_ID_OF_IMX94:
 		info_list = &imx94_info; break;
 	default:
@@ -759,6 +869,8 @@ static char *get_soc_id_str(struct se_if_priv *priv)
 		return "mx95";
 	case SOC_ID_OF_IMX94:
 		return "mx943";
+	case SOC_ID_OF_IMX952:
+		return "mx952";
 	default:
 		return "Unknown SoC ID";
 	}
@@ -778,7 +890,8 @@ static void get_fw_nm_in_rfs(struct se_if_priv *priv)
 		var_se_info.load_fw.se_fw_img_nm.prim_fw.is_fw_name_valid = true;
 		var_se_info.load_fw.se_fw_img_nm.secn_fw.is_fw_name_valid = true;
 	} else if (get_se_soc_id(priv) == SOC_ID_OF_IMX95 ||
-		   get_se_soc_id(priv) == SOC_ID_OF_IMX94) {
+		   get_se_soc_id(priv) == SOC_ID_OF_IMX94 ||
+		   get_se_soc_id(priv) == SOC_ID_OF_IMX952) {
 		sprintf(var_se_info.load_fw.se_fw_img_nm.secn_fw.fw_name,
 			"%s%s%xruntime-ahab-container.img",
 			IMX_ELE_FW_DIR,
@@ -789,10 +902,22 @@ static void get_fw_nm_in_rfs(struct se_if_priv *priv)
 	}
 }
 
+static u32 get_normalized_soc_id(u32 info_list_soc_id, u32 get_info_soc_id)
+{
+	/* Handle SOC-specific ID normalization */
+	if (info_list_soc_id == SOC_ID_OF_IMX93)
+		return get_info_soc_id;  /* iMX93 uses Get-Info value */
+
+	if (info_list_soc_id == SOC_ID_OF_IMX95 &&
+	    ((get_info_soc_id & SOC_ID_MASK_IMX952) == SOC_ID_OF_IMX952))
+		return SOC_ID_OF_IMX952;
+
+	return info_list_soc_id;  /* Default to list value */
+}
+
 static int se_soc_info(struct se_if_priv *priv)
 {
-	const struct se_if_node_info_list *info_list
-			= device_get_match_data(priv->dev);
+	const struct se_if_node_info_list *info_list = device_get_match_data(priv->dev);
 	struct se_fw_load_info *load_fw = get_load_fw_instance(priv);
 	struct soc_device_attribute *attr;
 	struct ele_dev_info *s_info;
@@ -827,7 +952,9 @@ static int se_soc_info(struct se_if_priv *priv)
 			s_info = (void *)data;
 
 			var_se_info.board_type = 0;
-			var_se_info.soc_id = s_info->d_info.soc_id;
+			var_se_info.soc_id = get_normalized_soc_id(info_list->soc_id,
+								   s_info->d_info.soc_id);
+
 			var_se_info.soc_rev = s_info->d_info.soc_rev;
 			if (load_fw)
 				load_fw->imem.state = s_info->d_addn_info.imem_state;
@@ -899,13 +1026,17 @@ static int se_load_firmware(struct se_if_priv *priv)
 	u8 *se_fw_buf;
 	int ret;
 
-	if (!load_fw || load_fw->is_fw_loaded)
+	if (!load_fw)
+		return 0;
+
+	guard(mutex)(&load_fw->inprogress);
+
+	if (load_fw->is_fw_loaded)
 		return 0;
 
 	se_img_file_to_load = load_fw->se_fw_img_nm.secn_fw.fw_name;
-
-	if (load_fw->imem.state == ELE_IMEM_STATE_BAD &&
-			load_fw->se_fw_img_nm.prim_fw.is_fw_name_valid)
+	if (load_fw->se_fw_img_nm.prim_fw.is_fw_name_valid &&
+			load_fw->imem.state == ELE_IMEM_STATE_BAD)
 		se_img_file_to_load = load_fw->se_fw_img_nm.prim_fw.fw_name;
 
 	do {
@@ -955,8 +1086,6 @@ static int se_load_firmware(struct se_if_priv *priv)
 		dev_err(priv->dev, "Failed to fetch FW version");
 
 	if (!ret) {
-		load_fw->is_fw_loaded = true;
-
 		/* ELE INIT FW not to be sent for SoC: i.MX8ULP and i.MX8DXL. */
 		if (get_se_soc_id(priv) != SOC_ID_OF_IMX8ULP &&
 		    get_se_soc_id(priv) != SOC_ID_OF_IMX8DXL) {
@@ -966,9 +1095,32 @@ static int se_load_firmware(struct se_if_priv *priv)
 				ret = -EPERM;
 			}
 		}
+		/* FW-version API(s) are mandated to be exchanged with FW,
+		 * only after ele-init-fw().
+		 */
+		load_fw->is_fw_loaded = true;
 	}
 exit:
 	return ret;
+}
+
+/* Work handler */
+static void se_fw_load_work_handler(struct work_struct *work)
+{
+	struct se_if_priv *priv;
+	int ret;
+
+	priv = imx_get_se_data_info(var_se_info.soc_id, SE_PRIMARY_HSM_INSTANCE);
+	if (!priv) {
+		pr_err("Failed to get SE data\n");
+		return;
+	}
+
+	ret = se_load_firmware(priv);
+	if (ret)
+		dev_err(priv->dev, "Firmware load failed: %d\n", ret);
+	else
+		dev_info(priv->dev, "Firmware loaded successfully\n");
 }
 
 #define NANO_SEC_PRN_LEN	9
@@ -1008,7 +1160,6 @@ int se_dump_to_logfl(struct se_if_device_ctx *dev_ctx,
 		caller_type_str = "MU_RCV";
 		break;
 	default:
-
 		is_hex = false;
 		caller_type_str = "SE_DBG";
 		va_start(args, buf);
@@ -1197,7 +1348,7 @@ static int se_dev_ctx_cpy_out_data(struct se_if_device_ctx *dev_ctx)
  * whether its Input Data copied from user buffers, or
  * Data received from FW.
  */
-static void se_dev_ctx_shared_mem_cleanup(struct se_if_device_ctx *dev_ctx)
+void se_dev_ctx_shared_mem_cleanup(struct se_if_device_ctx *dev_ctx)
 {
 	struct se_shared_mem_mgmt_info *se_shared_mem_mgmt = &dev_ctx->se_shared_mem_mgmt;
 	struct list_head *pending_lists[] = {&se_shared_mem_mgmt->pending_in,
@@ -1307,17 +1458,17 @@ static int init_device_context(struct se_if_priv *priv, int ch_id,
 
 	*new_dev_ctx = dev_ctx;
 
+	ret = init_se_shared_mem(dev_ctx);
+	if (ret < 0) {
+		kfree(dev_ctx->devname);
+		kfree(dev_ctx);
+		*new_dev_ctx = NULL;
+		return ret;
+	}
+
 	if (ch_id) {
 		list_add_tail(&dev_ctx->link, &priv->dev_ctx_list);
 		priv->active_devctx_count++;
-
-		ret = init_se_shared_mem(dev_ctx);
-		if (ret < 0) {
-			kfree(dev_ctx->devname);
-			kfree(dev_ctx);
-			*new_dev_ctx = NULL;
-			return ret;
-		}
 
 		return ret;
 	}
@@ -1356,6 +1507,17 @@ static int init_device_context(struct se_if_priv *priv, int ch_id,
 	return ret;
 }
 
+static void manage_sess_hdl(struct se_if_device_ctx *dev_ctx, struct se_api_msg *rx_msg)
+{
+	if (rx_msg->header.command == SE_OPEN_SESS_REQ &&
+	    rx_msg->data[0] == dev_ctx->priv->if_defs->success_tag)
+		dev_ctx->sess_hdl = rx_msg->data[1];
+
+	if (rx_msg->header.command == SE_CLOSE_SESS_REQ &&
+	    rx_msg->data[0] == dev_ctx->priv->if_defs->success_tag)
+		dev_ctx->sess_hdl = 0;
+}
+
 static int se_ioctl_cmd_snd_rcv_rsp_handler(struct se_if_device_ctx *dev_ctx,
 					    u64 arg)
 {
@@ -1363,6 +1525,7 @@ static int se_ioctl_cmd_snd_rcv_rsp_handler(struct se_if_device_ctx *dev_ctx,
 	struct se_if_priv *priv = dev_ctx->priv;
 	struct se_api_msg *tx_msg __free(kfree) = NULL;
 	struct se_api_msg *rx_msg __free(kfree) = NULL;
+	int rsp_status_err = 0;
 	int err = 0;
 
 	if (copy_from_user(&cmd_snd_rcv_rsp_info, (u8 __user *)arg,
@@ -1422,9 +1585,18 @@ static int se_ioctl_cmd_snd_rcv_rsp_handler(struct se_if_device_ctx *dev_ctx,
 			       cmd_snd_rcv_rsp_info.tx_buf_sz,
 			       rx_msg,
 			       cmd_snd_rcv_rsp_info.rx_buf_sz);
-
 	if (err < 0)
 		goto exit;
+
+	rsp_status_err
+		= se_val_rsp_hdr_n_status(priv, rx_msg, tx_msg->header.command,
+					  cmd_snd_rcv_rsp_info.rx_buf_sz,
+					  tx_msg->header.ver
+					     == priv->if_defs->fw_api_ver ? false : true);
+
+	if (!rsp_status_err && (rx_msg->header.command == SE_OPEN_SESS_REQ ||
+				rx_msg->header.command == SE_CLOSE_SESS_REQ))
+		manage_sess_hdl(dev_ctx, rx_msg);
 
 	dev_dbg(priv->dev,
 		"%s: %s %s\n",
@@ -1435,9 +1607,8 @@ static int se_ioctl_cmd_snd_rcv_rsp_handler(struct se_if_device_ctx *dev_ctx,
 	/* We may need to copy the output data to user before
 	 * delivering the completion message.
 	 */
-	err = se_dev_ctx_cpy_out_data(dev_ctx);
-	if (err < 0)
-		goto exit;
+	if (!rsp_status_err)
+		err = se_dev_ctx_cpy_out_data(dev_ctx);
 
 	/* Copy data from the buffer */
 	print_hex_dump_debug("to user ", DUMP_PREFIX_OFFSET, 4, 4,
@@ -1465,6 +1636,26 @@ exit:
 	}
 
 	return err;
+}
+
+static int se_ioctl_get_v2x_version(struct se_if_device_ctx *dev_ctx,
+				    u64 arg)
+{
+	struct se_ioctl_get_v2x_version v2x_version = {0};
+	struct se_if_priv *priv = dev_ctx->priv;
+
+	if (v2x_get_version(priv, &v2x_version))
+		return -EFAULT;
+
+	if (v2x_version.commit_id &&
+	    copy_to_user((u8 __user *)arg, &v2x_version, sizeof(v2x_version))) {
+		dev_err(priv->dev,
+			"%s: Failed to copy V2X version to user\n",
+			dev_ctx->devname);
+		return -EFAULT;
+	}
+
+	return 0;
 }
 
 static int se_ioctl_get_mu_info(struct se_if_device_ctx *dev_ctx,
@@ -1512,6 +1703,71 @@ exit:
 	return err;
 }
 
+int get_shared_mem_slot(struct se_if_device_ctx *dev_ctx, uint32_t flags,
+			u32 length, dma_addr_t *ele_dma_addr, void **ptr)
+{
+	struct se_shared_mem *shared_mem = NULL;
+	u32 pos;
+
+	/* Select the shared memory to be used for this buffer. */
+	if (flags & SE_IO_BUF_FLAGS_USE_MU_BUF)
+		shared_mem = &dev_ctx->priv->mu_mem;
+	else {
+		if ((flags & SE_IO_BUF_FLAGS_USE_SEC_MEM) &&
+		    (dev_ctx->priv->flags & SCU_MEM_CFG)) {
+			/* App requires to use secure memory for this buffer.*/
+			shared_mem = &dev_ctx->se_shared_mem_mgmt.secure_mem;
+		} else {
+			/* No specific requirement for this buffer. */
+			shared_mem = &dev_ctx->se_shared_mem_mgmt.non_secure_mem;
+		}
+	}
+	/* Check there is enough space in the shared memory. */
+	dev_dbg(dev_ctx->priv->dev,
+		"%s: req_size = %d, max_size= %d, curr_pos = %d",
+		dev_ctx->devname,
+		round_up(length, 8u),
+		shared_mem->size, shared_mem->pos);
+
+	if (shared_mem->size < shared_mem->pos ||
+		round_up(length, 8u) > (shared_mem->size - shared_mem->pos)) {
+		dev_err(dev_ctx->priv->dev,
+			"%s: Not enough space in shared memory\n",
+			dev_ctx->devname);
+		if (flags & SE_IO_BUF_FLAGS_RESET_ON_ERROR) {
+			if (shared_mem->pos)
+				memset_io(shared_mem->ptr, 0, shared_mem->pos);
+			else
+				memset(shared_mem->ptr, 0, shared_mem->pos);
+
+			shared_mem->pos = 0;
+		}
+		return -ENOMEM;
+	}
+
+	/* Allocate space in shared memory. 8 bytes aligned. */
+	pos = shared_mem->pos;
+	shared_mem->pos += round_up(length, 8u);
+	*ele_dma_addr = (u64)shared_mem->dma_addr + pos;
+	*ptr = shared_mem->ptr + pos;
+
+	if (dev_ctx->priv->flags & SCU_MEM_CFG) {
+		if ((flags & SE_IO_BUF_FLAGS_USE_SEC_MEM) &&
+		    !(flags & SE_IO_BUF_FLAGS_USE_SHORT_ADDR)) {
+			/*Add base address to get full address.#TODO: Add API*/
+			*ele_dma_addr += SECURE_RAM_BASE_ADDRESS_SCU;
+			*ptr += SECURE_RAM_BASE_ADDRESS_SCU;
+		}
+	}
+
+	if (dev_ctx->priv->mu_mem.pos)
+		memset_io(shared_mem->ptr + pos, 0, length);
+	else
+		memset(shared_mem->ptr + pos, 0, length);
+
+	return 0;
+}
+
 /*
  * Copy a buffer of data to/from the user and return the address to use in
  * messages
@@ -1519,10 +1775,9 @@ exit:
 static int se_ioctl_setup_iobuf_handler(struct se_if_device_ctx *dev_ctx,
 					u64 arg)
 {
-	struct se_shared_mem *shared_mem = NULL;
+	void *dma_buf_ptr = NULL;
 	struct se_ioctl_setup_iobuf io = {0};
 	int err = 0;
-	u32 pos;
 
 	if (copy_from_user(&io, (u8 __user *)arg, sizeof(io))) {
 		dev_err(dev_ctx->priv->dev,
@@ -1548,61 +1803,9 @@ static int se_ioctl_setup_iobuf_handler(struct se_if_device_ctx *dev_ctx,
 		goto copy;
 	}
 
-	/* Select the shared memory to be used for this buffer. */
-	if (io.flags & SE_IO_BUF_FLAGS_USE_MU_BUF)
-		shared_mem = &dev_ctx->priv->mu_mem;
-	else {
-		if ((io.flags & SE_IO_BUF_FLAGS_USE_SEC_MEM) &&
-				(dev_ctx->priv->flags & SCU_MEM_CFG)) {
-			/* App requires to use secure memory for this buffer.*/
-			shared_mem = &dev_ctx->se_shared_mem_mgmt.secure_mem;
-		} else {
-			/* No specific requirement for this buffer. */
-			shared_mem = &dev_ctx->se_shared_mem_mgmt.non_secure_mem;
-		}
-	}
-
-	/* Check there is enough space in the shared memory. */
-	dev_dbg(dev_ctx->priv->dev,
-		"%s: req_size = %d, max_size= %d, curr_pos = %d",
-		dev_ctx->devname,
-		round_up(io.length, 8u),
-		shared_mem->size, shared_mem->pos);
-
-	if (shared_mem->size < shared_mem->pos ||
-		round_up(io.length, 8u) > (shared_mem->size - shared_mem->pos)) {
-		dev_err(dev_ctx->priv->dev,
-			"%s: Not enough space in shared memory\n",
-			dev_ctx->devname);
-		if (io.flags & SE_IO_BUF_FLAGS_RESET_ON_ERROR) {
-			if (shared_mem->pos)
-				memset_io(shared_mem->ptr, 0, shared_mem->pos);
-			else
-				memset(shared_mem->ptr, 0, shared_mem->pos);
-
-			shared_mem->pos = 0;
-		}
-		err = -ENOMEM;
+	err = get_shared_mem_slot(dev_ctx, io.flags, io.length, &io.ele_addr, &dma_buf_ptr);
+	if (err)
 		goto exit;
-	}
-
-	/* Allocate space in shared memory. 8 bytes aligned. */
-	pos = shared_mem->pos;
-	shared_mem->pos += round_up(io.length, 8u);
-	io.ele_addr = (u64)shared_mem->dma_addr + pos;
-
-	if (dev_ctx->priv->flags & SCU_MEM_CFG) {
-		if ((io.flags & SE_IO_BUF_FLAGS_USE_SEC_MEM) &&
-				!(io.flags & SE_IO_BUF_FLAGS_USE_SHORT_ADDR)) {
-			/*Add base address to get full address.#TODO: Add API*/
-			io.ele_addr += SECURE_RAM_BASE_ADDRESS_SCU;
-		}
-	}
-
-	if (dev_ctx->priv->mu_mem.pos)
-		memset_io(shared_mem->ptr + pos, 0, io.length);
-	else
-		memset(shared_mem->ptr + pos, 0, io.length);
 
 	if ((io.flags & SE_IO_BUF_FLAGS_IS_INPUT) ||
 	    (io.flags & SE_IO_BUF_FLAGS_IS_IN_OUT)) {
@@ -1610,7 +1813,7 @@ static int se_ioctl_setup_iobuf_handler(struct se_if_device_ctx *dev_ctx,
 		 * buffer is input:
 		 * copy data from user space to this allocated buffer.
 		 */
-		if (copy_from_user(shared_mem->ptr + pos, io.user_buf,
+		if (copy_from_user(dma_buf_ptr, io.user_buf,
 				   io.length)) {
 			dev_err(dev_ctx->priv->dev,
 				"%s: Failed copy data to shared memory\n",
@@ -1620,7 +1823,7 @@ static int se_ioctl_setup_iobuf_handler(struct se_if_device_ctx *dev_ctx,
 		}
 	}
 
-	err = add_b_desc_to_pending_list(shared_mem->ptr + pos,
+	err = add_b_desc_to_pending_list(dma_buf_ptr,
 					 &io,
 					 dev_ctx);
 	if (err < 0)
@@ -1733,17 +1936,11 @@ static int se_ioctl_signed_msg_handler(struct file *fp,
  */
 static int se_ioctl_get_time(struct se_if_device_ctx *dev_ctx, unsigned long arg)
 {
-	struct se_if_priv *priv = dev_ctx->priv;
 	int err = -EINVAL;
 	struct se_time_frame time_frame;
 
-	if (!priv) {
-		err = -EINVAL;
-		goto exit;
-	}
-
-	time_frame.t_start = priv->time_frame.t_start;
-	time_frame.t_end = priv->time_frame.t_end;
+	time_frame.t_start = dev_ctx->time_frame.t_start;
+	time_frame.t_end = dev_ctx->time_frame.t_end;
 	err = (int)copy_to_user((u8 *)arg, (u8 *)(&time_frame), sizeof(time_frame));
 	if (err) {
 		dev_err(dev_ctx->priv->dev,
@@ -1918,6 +2115,9 @@ static int se_if_fops_close(struct inode *nd, struct file *fp)
 	if (mutex_lock_interruptible(&dev_ctx->fops_lock))
 		return -EBUSY;
 
+	if (dev_ctx->sess_hdl && se_close_session(priv, dev_ctx->sess_hdl))
+		dev_err(priv->dev, "failed to close session.\n");
+
 	/* check if this device was registered as command receiver. */
 	if (priv->cmd_receiver_clbk_hdl.dev_ctx == dev_ctx) {
 		priv->cmd_receiver_clbk_hdl.dev_ctx = NULL;
@@ -1946,7 +2146,7 @@ static long se_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 {
 	struct se_if_device_ctx *dev_ctx = fp->private_data;
 	struct se_if_priv *priv = dev_ctx->priv;
-	int err = -EINVAL;
+	int err;
 
 	/* Prevent race during change of device context */
 	if (mutex_lock_interruptible(&dev_ctx->fops_lock))
@@ -2000,6 +2200,9 @@ static long se_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 		break;
 	case SE_IOCTL_GET_TIMER:
 		err = se_ioctl_get_time(dev_ctx, arg);
+		break;
+	case SE_IOCTL_GET_V2X_VERSION:
+		err = se_ioctl_get_v2x_version(dev_ctx, arg);
 		break;
 	default:
 		err = -EINVAL;
@@ -2069,6 +2272,11 @@ static void se_if_probe_cleanup(void *plat_dev)
 	priv = dev_get_drvdata(dev);
 	load_fw = get_load_fw_instance(priv);
 
+	sysfs_remove_group(&dev->kobj, &se_dev_attr_group);
+
+	/* Cancel work if it exists */
+	cancel_work_sync(&se_fw_load_work);
+
 	/* In se_if_request_channel(), passed the clean-up functional
 	 * pointer reference as action to devm_add_action().
 	 * No need to free the mbox channels here.
@@ -2111,6 +2319,7 @@ static void se_if_probe_cleanup(void *plat_dev)
 	if (se_kobj) {
 		sysfs_remove_file(se_kobj, &se_log_attr.attr);
 		sysfs_remove_file(se_kobj, &se_rcv_msg_timeout_attr.attr);
+		sysfs_remove_file(se_kobj, &se_load_fw_attr.attr);
 		kobject_put(se_kobj);
 		se_kobj = NULL;
 	}
@@ -2137,7 +2346,6 @@ static int se_if_probe(struct platform_device *pdev)
 			dev->of_node->name,
 			info_list->num_mu - 1);
 		ret = -EINVAL;
-
 		return ret;
 	}
 
@@ -2158,10 +2366,20 @@ static int se_if_probe(struct platform_device *pdev)
 	dev_set_drvdata(dev, priv);
 
 	if (info->se_if_early_init) {
-		/* start initializing ele fw */
+		/* start initializing ele/v2x fw */
 		ret = info->se_if_early_init(priv);
 		if (ret)
 			goto exit;
+	}
+
+	/* Setup firmware load work for HSM instance 0 */
+	if (info->if_defs.se_if_type == SE_TYPE_ID_HSM &&
+	    info->if_defs.se_instance_id == SE_PRIMARY_HSM_INSTANCE) {
+		dev_info(dev, "INIT_WORK call for i.MX secure-enclave: %s%d.\n",
+				get_se_if_name(priv->if_defs->se_if_type),
+				priv->if_defs->se_instance_id);
+
+		INIT_WORK(&se_fw_load_work, se_fw_load_work_handler);
 	}
 
 	list_add_tail(&priv->priv_data, &priv_data_list);
@@ -2170,6 +2388,12 @@ static int se_if_probe(struct platform_device *pdev)
 	if (ret)
 		goto exit;
 
+	/* Create device attribute group */
+	ret = sysfs_create_group(&dev->kobj, &se_dev_attr_group);
+	if (ret) {
+		dev_warn(dev, "Failed to create sysfs group: %d\n", ret);
+		/* Non-fatal, continue */
+	}
 
 	/* Mailbox client configuration */
 	priv->se_mb_cl.dev		= dev;
@@ -2199,7 +2423,13 @@ static int se_if_probe(struct platform_device *pdev)
 		priv->mu_mem.dma_addr = (u64)priv->mu_mem.ptr;
 	}
 	mutex_init(&priv->se_if_cmd_lock);
+	spin_lock_init(&priv->clbk_rx_lock);
 	mutex_init(&priv->se_msg_sq_ctl.se_msg_sq_lk);
+
+	/* Initialize circuit breaker state */
+	atomic_set(&priv->fw_busy, 0);
+	atomic_set(&priv->timeout_count, 0);
+	atomic_set(&priv->recovery_count, 0);
 
 	init_completion(&priv->waiting_rsp_clbk_hdl.done);
 	init_completion(&priv->cmd_receiver_clbk_hdl.done);
@@ -2249,7 +2479,7 @@ static int se_if_probe(struct platform_device *pdev)
 			goto exit;
 	}
 
-	/* start ele rng */
+	/* start ele/v2x rng */
 	if (info->start_rng) {
 		ret = info->start_rng(priv);
 		if (ret)
@@ -2268,6 +2498,7 @@ static int se_if_probe(struct platform_device *pdev)
 		if (load_fw) {
 			load_fw->is_fw_loaded = runtime_fw_status(priv);
 
+			mutex_init(&load_fw->inprogress);
 			if (load_fw->se_fw_img_nm.prim_fw.is_fw_name_valid) {
 				/* allocate buffer where SE store encrypted IMEM */
 				load_fw->imem.buf = dmam_alloc_coherent(priv->dev,
@@ -2285,11 +2516,11 @@ static int se_if_probe(struct platform_device *pdev)
 		}
 	}
 
-	/* exposing variables se_log and se_rcv_msg_timeout via sysfs */
+	/* exposing variables se_log, se_rcv_msg_timeout and se_load_fw via sysfs */
 	if (!se_kobj) {
-		ret = se_sysfs_log();
+		ret = se_sysfs_init();
 		if (ret)
-			pr_warn("Warn: Creating sysfs entry for se_log and  se_rcv_msg_timeout: %d\n", ret);
+			pr_warn("Failed to create SE sysfs entries: %d\n", ret);
 	}
 
 	dev_info(dev, "i.MX secure-enclave: %s%d interface to firmware, configured.\n",
@@ -2326,11 +2557,12 @@ static int se_suspend(struct device *dev)
 	int ret = 0;
 
 	se_rcv_msg_timeout = SE_RCV_MSG_DEFAULT_TIMEOUT;
+
 	if (priv->if_defs->se_if_type == SE_TYPE_ID_V2X_DBG) {
 		ret = v2x_suspend(priv);
 		if (ret) {
 			dev_err(dev, "Failure V2X-FW suspend[0x%x].", ret);
-			goto exit;
+			return ret;
 		}
 	}
 
@@ -2341,14 +2573,9 @@ static int se_suspend(struct device *dev)
 
 	load_fw = get_load_fw_instance(priv);
 
-	if (load_fw && load_fw->imem_mgmt) {
+	if (load_fw && load_fw->imem_mgmt)
 		ret = se_save_imem_state(priv, &load_fw->imem);
-		if (ret) {
-			dev_err(dev, "Failure saving IMEM state[0x%x]", ret);
-			goto exit;
-		}
-	}
-exit:
+
 	return ret;
 }
 
@@ -2360,8 +2587,7 @@ static int se_resume(struct device *dev)
 	int ret = 0;
 
 	if (priv->if_defs->se_if_type == SE_TYPE_ID_V2X_DBG) {
-		ret = v2x_resume(priv);
-		if (ret)
+		if (v2x_resume(priv))
 			dev_err(dev, "Failure V2X-FW resume[0x%x].", ret);
 	}
 
@@ -2375,11 +2601,8 @@ static int se_resume(struct device *dev)
 
 	load_fw = get_load_fw_instance(priv);
 
-	if (load_fw && load_fw->imem_mgmt) {
-		ret = se_restore_imem_state(priv, &load_fw->imem);
-		if (ret)
-			dev_err(dev, "Failure restoring IMEM state[0x%x]", ret);
-	}
+	if (load_fw && load_fw->imem_mgmt)
+		se_restore_imem_state(priv, &load_fw->imem);
 
 	return ret;
 }

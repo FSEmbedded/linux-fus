@@ -1249,7 +1249,6 @@ static u32 esdhc_irq(struct sdhci_host *host, u32 intmask)
 	return intmask;
 }
 
-#ifdef CONFIG_PM_SLEEP
 static u32 esdhc_proctl;
 static int esdhc_of_suspend(struct device *dev)
 {
@@ -1275,11 +1274,8 @@ static int esdhc_of_resume(struct device *dev)
 	}
 	return ret;
 }
-#endif
 
-static SIMPLE_DEV_PM_OPS(esdhc_of_dev_pm_ops,
-			esdhc_of_suspend,
-			esdhc_of_resume);
+static DEFINE_SIMPLE_DEV_PM_OPS(esdhc_of_dev_pm_ops, esdhc_of_suspend, esdhc_of_resume);
 
 static const struct sdhci_ops sdhci_esdhc_be_ops = {
 	.read_l = esdhc_be_readl,
@@ -1519,18 +1515,11 @@ static int sdhci_esdhc_probe(struct platform_device *pdev)
 	/* call to generic mmc_of_parse to support additional capabilities */
 	ret = mmc_of_parse(host->mmc);
 	if (ret)
-		goto err;
+		return ret;
 
 	mmc_of_parse_voltage(host->mmc, &host->ocr_mask);
 
-	ret = sdhci_add_host(host);
-	if (ret)
-		goto err;
-
-	return 0;
- err:
-	sdhci_pltfm_free(pdev);
-	return ret;
+	return sdhci_add_host(host);
 }
 
 static struct platform_driver sdhci_esdhc_driver = {
@@ -1541,10 +1530,10 @@ static struct platform_driver sdhci_esdhc_driver = {
 #ifdef CONFIG_ACPI
 		.acpi_match_table = sdhci_esdhc_ids,
 #endif
-		.pm = &esdhc_of_dev_pm_ops,
+		.pm = pm_sleep_ptr(&esdhc_of_dev_pm_ops),
 	},
 	.probe = sdhci_esdhc_probe,
-	.remove_new = sdhci_pltfm_remove,
+	.remove = sdhci_pltfm_remove,
 };
 
 module_platform_driver(sdhci_esdhc_driver);

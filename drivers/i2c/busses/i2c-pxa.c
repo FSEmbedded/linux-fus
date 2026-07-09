@@ -268,6 +268,7 @@ struct pxa_i2c {
 	struct pinctrl		*pinctrl;
 	struct pinctrl_state	*pinctrl_default;
 	struct pinctrl_state	*pinctrl_recovery;
+	bool			reset_before_xfer;
 };
 
 #define _IBMR(i2c)	((i2c)->reg_ibmr)
@@ -1144,6 +1145,11 @@ static int i2c_pxa_xfer(struct i2c_adapter *adap,
 {
 	struct pxa_i2c *i2c = adap->algo_data;
 
+	if (i2c->reset_before_xfer) {
+		i2c_pxa_reset(i2c);
+		i2c->reset_before_xfer = false;
+	}
+
 	return i2c_pxa_internal_xfer(i2c, msgs, num, i2c_pxa_do_xfer);
 }
 
@@ -1154,11 +1160,11 @@ static u32 i2c_pxa_functionality(struct i2c_adapter *adap)
 }
 
 static const struct i2c_algorithm i2c_pxa_algorithm = {
-	.master_xfer	= i2c_pxa_xfer,
-	.functionality	= i2c_pxa_functionality,
+	.xfer = i2c_pxa_xfer,
+	.functionality = i2c_pxa_functionality,
 #ifdef CONFIG_I2C_PXA_SLAVE
-	.reg_slave	= i2c_pxa_slave_reg,
-	.unreg_slave	= i2c_pxa_slave_unreg,
+	.reg_slave = i2c_pxa_slave_reg,
+	.unreg_slave = i2c_pxa_slave_unreg,
 #endif
 };
 
@@ -1244,11 +1250,11 @@ static int i2c_pxa_pio_xfer(struct i2c_adapter *adap,
 }
 
 static const struct i2c_algorithm i2c_pxa_pio_algorithm = {
-	.master_xfer	= i2c_pxa_pio_xfer,
-	.functionality	= i2c_pxa_functionality,
+	.xfer = i2c_pxa_pio_xfer,
+	.functionality = i2c_pxa_functionality,
 #ifdef CONFIG_I2C_PXA_SLAVE
-	.reg_slave	= i2c_pxa_slave_reg,
-	.unreg_slave	= i2c_pxa_slave_unreg,
+	.reg_slave = i2c_pxa_slave_reg,
+	.unreg_slave = i2c_pxa_slave_unreg,
 #endif
 };
 
@@ -1521,7 +1527,16 @@ static int i2c_pxa_probe(struct platform_device *dev)
 		}
 	}
 
-	i2c_pxa_reset(i2c);
+	/*
+	 * Skip reset on Armada 3700 when recovery is used to avoid
+	 * controller hang due to the pinctrl state changes done by
+	 * the generic recovery initialization code. The reset will
+	 * be performed later, prior to the first transfer.
+	 */
+	if (i2c_type == REGS_A3700 && i2c->adap.bus_recovery_info)
+		i2c->reset_before_xfer = true;
+	else
+		i2c_pxa_reset(i2c);
 
 	ret = i2c_add_numbered_adapter(&i2c->adap);
 	if (ret < 0)
@@ -1577,7 +1592,7 @@ static const struct dev_pm_ops i2c_pxa_dev_pm_ops = {
 
 static struct platform_driver i2c_pxa_driver = {
 	.probe		= i2c_pxa_probe,
-	.remove_new	= i2c_pxa_remove,
+	.remove		= i2c_pxa_remove,
 	.driver		= {
 		.name	= "pxa2xx-i2c",
 		.pm	= pm_sleep_ptr(&i2c_pxa_dev_pm_ops),

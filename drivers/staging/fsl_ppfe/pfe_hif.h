@@ -150,7 +150,7 @@ struct pfe_hif {
 	spinlock_t tx_lock;
 /* lock synchronizes hif rx queue processing */
 	spinlock_t lock;
-	struct net_device	dummy_dev;
+	struct net_device	*dummy_dev;
 	struct napi_struct	napi;
 	struct device *dev;
 

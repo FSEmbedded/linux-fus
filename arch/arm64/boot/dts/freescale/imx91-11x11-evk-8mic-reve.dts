@@ -140,7 +140,7 @@
 	status = "disabled";
 };
 
-&codec {
+&audio_codec {
 	status = "disabled";
 };
 

@@ -990,8 +990,12 @@ int pfe_hif_init(struct pfe *pfe)
 	}
 
 	/* Initialize NAPI for Rx processing */
-	init_dummy_netdev(&hif->dummy_dev);
-	netif_napi_add(&hif->dummy_dev, &hif->napi, pfe_hif_rx_poll);
+	hif->dummy_dev = alloc_netdev_dummy(0);
+	if (!hif->dummy_dev) {
+		pr_err("%s: Failed to allocate pfe dummy netdev\n", __func__);
+		goto err1;
+	}
+	netif_napi_add(hif->dummy_dev, &hif->napi, pfe_hif_rx_poll);
 	napi_enable(&hif->napi);
 
 	spin_lock_init(&hif->tx_lock);

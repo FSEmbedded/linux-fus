@@ -389,8 +389,6 @@
 };
 
 &iomuxc {
-	pinctrl-names = "default";
-
 	imx6-riotboard {
 		pinctrl_audmux: audmuxgrp {
 			fsl,pins = <

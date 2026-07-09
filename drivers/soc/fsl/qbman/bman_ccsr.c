@@ -198,19 +198,19 @@ void bman_done_cleanup(void)
 
 static int fsl_bman_probe(struct platform_device *pdev)
 {
-	int ret, err_irq;
 	struct device *dev = &pdev->dev;
-	struct device_node *node = dev->of_node;
+	struct fwnode_handle *fwnode = dev_fwnode(dev);
 	struct resource *res;
 	u16 id, bm_pool_cnt;
+	int ret, err_irq;
 	u8 major, minor;
 
 	__bman_probed = -1;
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res) {
-		dev_err(dev, "Can't get %pOF property 'IORESOURCE_MEM'\n",
-			node);
+		dev_err(dev, "Can't get %pfw property 'IORESOURCE_MEM'\n",
+			fwnode);
 		return -ENXIO;
 	}
 	bm_ccsr_start = devm_ioremap(dev, res->start, resource_size(res));
@@ -247,14 +247,14 @@ static int fsl_bman_probe(struct platform_device *pdev)
 
 	err_irq = platform_get_irq(pdev, 0);
 	if (err_irq <= 0) {
-		dev_info(dev, "Can't get %pOF IRQ\n", node);
+		dev_info(dev, "Can't get %pfw IRQ\n", fwnode);
 		return -ENODEV;
 	}
 	ret = devm_request_irq(dev, err_irq, bman_isr, IRQF_SHARED, "bman-err",
 			       dev);
 	if (ret)  {
-		dev_err(dev, "devm_request_irq() failed %d for '%pOF'\n",
-			ret, node);
+		dev_err(dev, "devm_request_irq() failed %d for '%pfw'\n",
+			ret, fwnode);
 		return ret;
 	}
 	/* Disable Buffer Pool State Change */
@@ -284,7 +284,6 @@ static int fsl_bman_probe(struct platform_device *pdev)
 
 	__bman_probed = 1;
 
-	dev_dbg(dev, "Bman probed successfully [%d]\n", __bman_probed);
 	return 0;
 };
 
@@ -295,9 +294,12 @@ static const struct of_device_id fsl_bman_ids[] = {
 	{}
 };
 
+#if IS_ENABLED(CONFIG_ACPI)
 static const struct acpi_device_id fsl_bman_acpi_ids[] = {
-	{"NXP0021", 0}
+	{"NXP0021", 0},
+	{}
 };
+#endif
 
 static struct platform_driver fsl_bman_driver = {
 	.driver = {

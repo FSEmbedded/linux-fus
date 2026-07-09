@@ -209,7 +209,7 @@ static snd_pcm_uframes_t imx_rpmsg_pcm_pointer(struct snd_soc_component *compone
 static void imx_rpmsg_timer_callback(struct timer_list *t)
 {
 	struct stream_timer  *stream_timer =
-			from_timer(stream_timer, t, timer);
+			timer_container_of(stream_timer, t, timer);
 	struct snd_pcm_substream *substream = stream_timer->substream;
 	struct rpmsg_info *info = stream_timer->info;
 	struct rpmsg_msg *msg;
@@ -301,7 +301,7 @@ static int imx_rpmsg_pcm_close(struct snd_soc_component *component,
 
 	info->send_message(msg, info);
 
-	del_timer(&info->stream_timer[substream->stream].timer);
+	timer_delete(&info->stream_timer[substream->stream].timer);
 
 	rtd->dai_link->ignore_suspend = 0;
 
@@ -452,7 +452,7 @@ static int imx_rpmsg_terminate_all(struct snd_soc_component *component,
 		info->msg[RX_POINTER].r_msg.param.buffer_offset = 0;
 	}
 
-	del_timer(&info->stream_timer[substream->stream].timer);
+	timer_delete(&info->stream_timer[substream->stream].timer);
 
 	return imx_rpmsg_insert_workqueue(substream, msg, info);
 }
@@ -606,15 +606,15 @@ static int imx_rpmsg_pcm_new(struct snd_soc_component *component,
 
 	substream = pcm->streams[SNDRV_PCM_STREAM_PLAYBACK].substream;
 	if (substream) {
-		ret = snd_pcm_set_fixed_buffer(substream, SNDRV_DMA_TYPE_DEV_WC,
-						 pcm->card->dev, rpmsg->buffer_size[SNDRV_PCM_STREAM_PLAYBACK]);
+		ret = snd_pcm_set_fixed_buffer(substream, SNDRV_DMA_TYPE_DEV_WC, pcm->card->dev,
+					       rpmsg->buffer_size[SNDRV_PCM_STREAM_PLAYBACK]);
 		if (ret < 0)
 			return ret;
 	}
 	substream = pcm->streams[SNDRV_PCM_STREAM_CAPTURE].substream;
 	if (substream) {
-		ret = snd_pcm_set_fixed_buffer(substream, SNDRV_DMA_TYPE_DEV_WC,
-						 pcm->card->dev, rpmsg->buffer_size[SNDRV_PCM_STREAM_CAPTURE]);
+		ret = snd_pcm_set_fixed_buffer(substream, SNDRV_DMA_TYPE_DEV_WC, pcm->card->dev,
+					       rpmsg->buffer_size[SNDRV_PCM_STREAM_CAPTURE]);
 		if (ret < 0)
 			return ret;
 	}

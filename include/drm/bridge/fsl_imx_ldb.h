@@ -36,4 +36,6 @@ struct ldb {
 
 int ldb_bind(struct ldb *ldb, struct drm_encoder **encoder);
 
+void *devm_ldb_channel_alloc(struct device *dev);
+
 #endif /* __FSL_IMX_LDB__ */

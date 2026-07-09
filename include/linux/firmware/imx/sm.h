@@ -26,7 +26,9 @@
 #define SCMI_IMX94_CTRL_SAI3_MCLK	5U	/*!< WAKE SAI3 MCLK */
 #define SCMI_IMX94_CTRL_SAI4_MCLK	6U	/*!< WAKE SAI4 MCLK */
 
-#if IS_ENABLED(CONFIG_IMX_SCMI_MISC_EXT)
+#define SCMI_IMX952_CTRL_BYPASS_AUDMIX	8U      /* WAKE AUDMIX */
+
+#if IS_ENABLED(CONFIG_IMX_SCMI_MISC_DRV)
 int scmi_imx_misc_ctrl_get(u32 id, u32 *num, u32 *val);
 int scmi_imx_misc_ctrl_set(u32 id, u32 val);
 #else
@@ -41,14 +43,13 @@ static inline int scmi_imx_misc_ctrl_set(u32 id, u32 val)
 }
 #endif
 
-#if IS_ENABLED(CONFIG_IMX_SCMI_CPU_EXT)
-extern int scmi_imx_cpu_start(u32 cpuid);
-extern int scmi_imx_cpu_started(u32 cpuid, bool *started);
-extern int scmi_imx_cpu_stop(u32 cpuid);
-extern int scmi_imx_cpu_reset_vector_set(u32 cpuid, u64 vector, bool start,
-					 bool boot, bool resume);
+#if IS_ENABLED(CONFIG_IMX_SCMI_CPU_DRV)
+int scmi_imx_cpu_start(u32 cpuid, bool start);
+int scmi_imx_cpu_started(u32 cpuid, bool *started);
+int scmi_imx_cpu_reset_vector_set(u32 cpuid, u64 vector, bool start, bool boot,
+				  bool resume);
 #else
-static inline int scmi_imx_cpu_start(u32 cpuid)
+static inline int scmi_imx_cpu_start(u32 cpuid, bool start)
 {
 	return -EOPNOTSUPP;
 }
@@ -58,26 +59,29 @@ static inline int scmi_imx_cpu_started(u32 cpuid, bool *started)
 	return -EOPNOTSUPP;
 }
 
-static inline int scmi_imx_cpu_stop(u32 cpuid)
-{
-	return -EOPNOTSUPP;
-}
-
-static inline int scmi_imx_cpu_reset_vector_set(u32 cpuid, u64 vector,
-						bool start, bool boot, bool resume)
+static inline int scmi_imx_cpu_reset_vector_set(u32 cpuid, u64 vector, bool start,
+						bool boot, bool resume)
 {
 	return -EOPNOTSUPP;
 }
 #endif
 
-#if IS_ENABLED(CONFIG_IMX_SCMI_LMM_EXT)
-extern int scmi_imx_lmm_boot(u32 lmid);
-extern int scmi_imx_lmm_info(u32 lmid, struct scmi_imx_lmm_info *info);
-extern int scmi_imx_lmm_reset_vector_set(u32 lmid, u32 cpuid, u64 vector);
-extern int scmi_imx_lmm_power_on(u32 lmid);
-extern int scmi_imx_lmm_shutdown(u32 lmid, u32 flags);
+enum scmi_imx_lmm_op {
+	SCMI_IMX_LMM_BOOT,
+	SCMI_IMX_LMM_POWER_ON,
+	SCMI_IMX_LMM_SHUTDOWN,
+};
+
+/* For shutdown pperation */
+#define SCMI_IMX_LMM_OP_FORCEFUL	0
+#define SCMI_IMX_LMM_OP_GRACEFUL	BIT(0)
+
+#if IS_ENABLED(CONFIG_IMX_SCMI_LMM_DRV)
+int scmi_imx_lmm_operation(u32 lmid, enum scmi_imx_lmm_op op, u32 flags);
+int scmi_imx_lmm_info(u32 lmid, struct scmi_imx_lmm_info *info);
+int scmi_imx_lmm_reset_vector_set(u32 lmid, u32 cpuid, u32 flags, u64 vector);
 #else
-static inline int scmi_imx_lmm_boot(u32 lmid)
+static inline int scmi_imx_lmm_operation(u32 lmid, enum scmi_imx_lmm_op op, u32 flags)
 {
 	return -EOPNOTSUPP;
 }
@@ -87,17 +91,7 @@ static inline int scmi_imx_lmm_info(u32 lmid, struct scmi_imx_lmm_info *info)
 	return -EOPNOTSUPP;
 }
 
-static inline int scmi_imx_lmm_reset_vector_set(u32 lmid, u32 cpuid, u64 vector)
-{
-	return -EOPNOTSUPP;
-}
-
-static inline int scmi_imx_lmm_power_on(u32 lmid)
-{
-	return -EOPNOTSUPP;
-}
-
-static inline int scmi_imx_lmm_shutdown(u32 lmid, u32 flags)
+static inline int scmi_imx_lmm_reset_vector_set(u32 lmid, u32 cpuid, u32 flags, u64 vector)
 {
 	return -EOPNOTSUPP;
 }

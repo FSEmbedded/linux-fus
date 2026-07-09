@@ -16,6 +16,7 @@
 		reg = <0x80000000 0x80000000>, <0x0 0x10000000>;
 		reg-names = "phys_baseaddr", "contiguous_mem";
 		depth-compression = <0>;
+		#cooling-cells = <2>;
 		/*<freq-kHz vol-uV>*/
 		operating-points = <
 			/*overdrive*/  800000  0  /*The first tuple is for core clock frequency*/
@@ -24,9 +25,6 @@
 				700000  0
 			/*underdrive*/ 400000  0  /*core/shader clock share the same frequency on underdrive mode*/
 		>;
-		status = "disabled";
-
 		throttle,max_state = <1>;
-		#cooling-cells = <2>;
 	};
 };

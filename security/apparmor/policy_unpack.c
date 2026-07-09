@@ -29,6 +29,7 @@
 #include "include/policy.h"
 #include "include/policy_unpack.h"
 #include "include/policy_compat.h"
+#include "include/signal.h"
 
 /* audit callback for unpack fields */
 static void audit_cb(struct audit_buffer *ab, void *va)
@@ -108,22 +109,8 @@ bool aa_rawdata_eq(struct aa_loaddata *l, struct aa_loaddata *r)
 	return memcmp(l->data, r->data, r->compressed_size ?: r->size) == 0;
 }
 
-/*
- * need to take the ns mutex lock which is NOT safe most places that
- * put_loaddata is called, so we have to delay freeing it
- */
-static void do_loaddata_free(struct work_struct *work)
+static void do_loaddata_free(struct aa_loaddata *d)
 {
-	struct aa_loaddata *d = container_of(work, struct aa_loaddata, work);
-	struct aa_ns *ns = aa_get_ns(d->ns);
-
-	if (ns) {
-		mutex_lock_nested(&ns->lock, ns->level);
-		__aa_fs_remove_rawdata(d);
-		mutex_unlock(&ns->lock);
-		aa_put_ns(ns);
-	}
-
 	kfree_sensitive(d->hash);
 	kfree_sensitive(d->name);
 	kvfree(d->data);
@@ -132,10 +119,38 @@ static void do_loaddata_free(struct work_struct *work)
 
 void aa_loaddata_kref(struct kref *kref)
 {
-	struct aa_loaddata *d = container_of(kref, struct aa_loaddata, count);
+	struct aa_loaddata *d = container_of(kref, struct aa_loaddata,
+					     count.count);
+
+	do_loaddata_free(d);
+}
+
+/*
+ * need to take the ns mutex lock which is NOT safe most places that
+ * put_loaddata is called, so we have to delay freeing it
+ */
+static void do_ploaddata_rmfs(struct work_struct *work)
+{
+	struct aa_loaddata *d = container_of(work, struct aa_loaddata, work);
+	struct aa_ns *ns = aa_get_ns(d->ns);
+
+	if (ns) {
+		mutex_lock_nested(&ns->lock, ns->level);
+		/* remove fs ref to loaddata */
+		__aa_fs_remove_rawdata(d);
+		mutex_unlock(&ns->lock);
+		aa_put_ns(ns);
+	}
+	/* called by dropping last pcount, so drop its associated icount */
+	aa_put_i_loaddata(d);
+}
+
+void aa_ploaddata_kref(struct kref *kref)
+{
+	struct aa_loaddata *d = container_of(kref, struct aa_loaddata, pcount);
 
 	if (d) {
-		INIT_WORK(&d->work, do_loaddata_free);
+		INIT_WORK(&d->work, do_ploaddata_rmfs);
 		schedule_work(&d->work);
 	}
 }
@@ -152,7 +167,9 @@ struct aa_loaddata *aa_loaddata_alloc(size_t size)
 		kfree(d);
 		return ERR_PTR(-ENOMEM);
 	}
-	kref_init(&d->count);
+	kref_init(&d->count.count);
+	d->count.reftype = REF_RAWDATA;
+	kref_init(&d->pcount);
 	INIT_LIST_HEAD(&d->list);
 
 	return d;
@@ -598,8 +615,8 @@ static bool unpack_secmark(struct aa_ext *e, struct aa_ruleset *rules)
 fail:
 	if (rules->secmark) {
 		for (i = 0; i < size; i++)
-			kfree(rules->secmark[i].label);
-		kfree(rules->secmark);
+			kfree_sensitive(rules->secmark[i].label);
+		kfree_sensitive(rules->secmark);
 		rules->secmark_count = 0;
 		rules->secmark = NULL;
 	}
@@ -645,10 +662,13 @@ fail:
 
 static bool unpack_perm(struct aa_ext *e, u32 version, struct aa_perms *perm)
 {
+	u32 reserved;
+
 	if (version != 1)
 		return false;
 
-	return	aa_unpack_u32(e, &perm->allow, NULL) &&
+	/* reserved entry is for later expansion, discard for now */
+	return	aa_unpack_u32(e, &reserved, NULL) &&
 		aa_unpack_u32(e, &perm->allow, NULL) &&
 		aa_unpack_u32(e, &perm->deny, NULL) &&
 		aa_unpack_u32(e, &perm->subtree, NULL) &&
@@ -683,8 +703,10 @@ static ssize_t unpack_perms_table(struct aa_ext *e, struct aa_perms **perms)
 		if (!aa_unpack_array(e, NULL, &size))
 			goto fail_reset;
 		*perms = kcalloc(size, sizeof(struct aa_perms), GFP_KERNEL);
-		if (!*perms)
-			goto fail_reset;
+		if (!*perms) {
+			e->pos = pos;
+			return -ENOMEM;
+		}
 		for (i = 0; i < size; i++) {
 			if (!unpack_perm(e, version, &(*perms)[i]))
 				goto fail;
@@ -713,6 +735,7 @@ static int unpack_pdb(struct aa_ext *e, struct aa_policydb **policy,
 	void *pos = e->pos;
 	int i, flags, error = -EPROTO;
 	ssize_t size;
+	u32 version = 0;
 
 	pdb = aa_alloc_pdb(GFP_KERNEL);
 	if (!pdb)
@@ -730,6 +753,9 @@ static int unpack_pdb(struct aa_ext *e, struct aa_policydb **policy,
 	if (pdb->perms) {
 		/* perms table present accept is index */
 		flags = TO_ACCEPT1_FLAG(YYTD_DATA32);
+		if (aa_unpack_u32(e, &version, "permsv") && version > 2)
+			/* accept2 used for dfa flags */
+			flags |= TO_ACCEPT2_FLAG(YYTD_DATA32);
 	} else {
 		/* packed perms in accept1 and accept2 */
 		flags = TO_ACCEPT1_FLAG(YYTD_DATA32) |
@@ -760,13 +786,38 @@ static int unpack_pdb(struct aa_ext *e, struct aa_policydb **policy,
 		if (!aa_unpack_u32(e, &pdb->start[AA_CLASS_FILE], "dfa_start")) {
 			/* default start state for xmatch and file dfa */
 			pdb->start[AA_CLASS_FILE] = DFA_START;
-		}	/* setup class index */
+		}
+
+		size_t state_count = pdb->dfa->tables[YYTD_ID_BASE]->td_lolen;
+
+		if (pdb->start[0] >= state_count ||
+		    pdb->start[AA_CLASS_FILE] >= state_count) {
+			*info = "invalid dfa start state";
+			goto fail;
+		}
+
+		/* setup class index */
 		for (i = AA_CLASS_FILE + 1; i <= AA_CLASS_LAST; i++) {
 			pdb->start[i] = aa_dfa_next(pdb->dfa, pdb->start[0],
 						    i);
 		}
 	}
 
+	/* accept2 is in some cases being allocated, even with perms */
+	if (pdb->perms && !pdb->dfa->tables[YYTD_ID_ACCEPT2]) {
+		/* add dfa flags table missing in v2 */
+		u32 noents = pdb->dfa->tables[YYTD_ID_ACCEPT]->td_lolen;
+		u16 tdflags = pdb->dfa->tables[YYTD_ID_ACCEPT]->td_flags;
+		size_t tsize = table_size(noents, tdflags);
+
+		pdb->dfa->tables[YYTD_ID_ACCEPT2] = kvzalloc(tsize, GFP_KERNEL);
+		if (!pdb->dfa->tables[YYTD_ID_ACCEPT2]) {
+			*info = "failed to alloc dfa flags table";
+			goto out;
+		}
+		pdb->dfa->tables[YYTD_ID_ACCEPT2]->td_lolen = noents;
+		pdb->dfa->tables[YYTD_ID_ACCEPT2]->td_flags = tdflags;
+	}
 	/*
 	 * Unfortunately due to a bug in earlier userspaces, a
 	 * transition table may be present even when the dfa is
@@ -780,9 +831,13 @@ static int unpack_pdb(struct aa_ext *e, struct aa_policydb **policy,
 	if (!pdb->dfa && pdb->trans.table)
 		aa_free_str_table(&pdb->trans);
 
-	/* TODO: move compat mapping here, requires dfa merging first */
-	/* TODO: move verify here, it has to be done after compat mappings */
-
+	/* TODO:
+	 * - move compat mapping here, requires dfa merging first
+	 * - move verify here, it has to be done after compat mappings
+	 * - move free of unneeded trans table here, has to be done
+	 *   after perm mapping.
+	 */
+out:
 	*policy = pdb;
 	return 0;
 
@@ -859,7 +914,7 @@ static struct aa_profile *unpack_profile(struct aa_ext *e, char **ns_name)
 		error = -ENOMEM;
 		goto fail;
 	}
-	rules = list_first_entry(&profile->rules, typeof(*rules), list);
+	rules = profile->label.rules[0];
 
 	/* profile renaming is optional */
 	(void) aa_unpack_str(e, &profile->rename, "rename");
@@ -895,6 +950,12 @@ static struct aa_profile *unpack_profile(struct aa_ext *e, char **ns_name)
 	(void) aa_unpack_strdup(e, &disconnected, "disconnected");
 	profile->disconnected = disconnected;
 
+	/* optional */
+	(void) aa_unpack_u32(e, &profile->signal, "kill");
+	if (profile->signal < 1 || profile->signal > MAXMAPPED_SIG) {
+		info = "profile kill.signal invalid value";
+		goto fail;
+	}
 	/* per profile debug flags (complain, audit) */
 	if (!aa_unpack_nameX(e, AA_STRUCT, "flags")) {
 		info = "profile missing flags";
@@ -1098,6 +1159,8 @@ static struct aa_profile *unpack_profile(struct aa_ext *e, char **ns_name)
 		goto fail;
 	}
 
+	aa_compute_profile_mediates(profile);
+
 	return profile;
 
 fail:
@@ -1130,7 +1193,6 @@ static int verify_header(struct aa_ext *e, int required, const char **ns)
 {
 	int error = -EPROTONOSUPPORT;
 	const char *name = NULL;
-	*ns = NULL;
 
 	/* get the interface version */
 	if (!aa_unpack_u32(e, &e->version, "version")) {
@@ -1212,21 +1274,32 @@ static bool verify_perm(struct aa_perms *perm)
 static bool verify_perms(struct aa_policydb *pdb)
 {
 	int i;
+	int xidx, xmax = -1;
 
 	for (i = 0; i < pdb->size; i++) {
 		if (!verify_perm(&pdb->perms[i]))
 			return false;
 		/* verify indexes into str table */
-		if ((pdb->perms[i].xindex & AA_X_TYPE_MASK) == AA_X_TABLE &&
-		    (pdb->perms[i].xindex & AA_X_INDEX_MASK) >= pdb->trans.size)
-			return false;
+		if ((pdb->perms[i].xindex & AA_X_TYPE_MASK) == AA_X_TABLE) {
+			xidx = pdb->perms[i].xindex & AA_X_INDEX_MASK;
+			if (xidx >= pdb->trans.size)
+				return false;
+			if (xmax < xidx)
+				xmax = xidx;
+		}
 		if (pdb->perms[i].tag && pdb->perms[i].tag >= pdb->trans.size)
 			return false;
 		if (pdb->perms[i].label &&
 		    pdb->perms[i].label >= pdb->trans.size)
 			return false;
 	}
-
+	/* deal with incorrectly constructed string tables */
+	if (xmax == -1) {
+		aa_free_str_table(&pdb->trans);
+	} else if (pdb->trans.size > xmax + 1) {
+		if (!aa_resize_str_table(&pdb->trans, xmax + 1, GFP_KERNEL))
+			return false;
+	}
 	return true;
 }
 
@@ -1240,8 +1313,8 @@ static bool verify_perms(struct aa_policydb *pdb)
  */
 static int verify_profile(struct aa_profile *profile)
 {
-	struct aa_ruleset *rules = list_first_entry(&profile->rules,
-						    typeof(*rules), list);
+	struct aa_ruleset *rules = profile->label.rules[0];
+
 	if (!rules)
 		return 0;
 

@@ -24,7 +24,7 @@ static void gen_pci_unmap_cfg(void *ptr)
 	pci_ecam_free((struct pci_config_window *)ptr);
 }
 
-static struct pci_config_window *gen_pci_init(struct device *dev,
+struct pci_config_window *pci_host_common_ecam_create(struct device *dev,
 		struct pci_host_bridge *bridge, const struct pci_ecam_ops *ops)
 {
 	int err;
@@ -52,36 +52,47 @@ static struct pci_config_window *gen_pci_init(struct device *dev,
 
 	return cfg;
 }
+EXPORT_SYMBOL_GPL(pci_host_common_ecam_create);
 
-int pci_host_common_probe(struct platform_device *pdev)
+int pci_host_common_init(struct platform_device *pdev,
+			 const struct pci_ecam_ops *ops)
 {
 	struct device *dev = &pdev->dev;
 	struct pci_host_bridge *bridge;
 	struct pci_config_window *cfg;
+
+	bridge = devm_pci_alloc_host_bridge(dev, 0);
+	if (!bridge)
+		return -ENOMEM;
+
+	of_pci_check_probe_only();
+
+	platform_set_drvdata(pdev, bridge);
+
+	/* Parse and map our Configuration Space windows */
+	cfg = pci_host_common_ecam_create(dev, bridge, ops);
+	if (IS_ERR(cfg))
+		return PTR_ERR(cfg);
+
+	bridge->sysdata = cfg;
+	bridge->ops = (struct pci_ops *)&ops->pci_ops;
+	bridge->enable_device = ops->enable_device;
+	bridge->disable_device = ops->disable_device;
+	bridge->msi_domain = true;
+
+	return pci_host_probe(bridge);
+}
+EXPORT_SYMBOL_GPL(pci_host_common_init);
+
+int pci_host_common_probe(struct platform_device *pdev)
+{
 	const struct pci_ecam_ops *ops;
 
 	ops = of_device_get_match_data(&pdev->dev);
 	if (!ops)
 		return -ENODEV;
 
-	bridge = devm_pci_alloc_host_bridge(dev, 0);
-	if (!bridge)
-		return -ENOMEM;
-
-	platform_set_drvdata(pdev, bridge);
-
-	of_pci_check_probe_only();
-
-	/* Parse and map our Configuration Space windows */
-	cfg = gen_pci_init(dev, bridge, ops);
-	if (IS_ERR(cfg))
-		return PTR_ERR(cfg);
-
-	bridge->sysdata = cfg;
-	bridge->ops = (struct pci_ops *)&ops->pci_ops;
-	bridge->msi_domain = true;
-
-	return pci_host_probe(bridge);
+	return pci_host_common_init(pdev, ops);
 }
 EXPORT_SYMBOL_GPL(pci_host_common_probe);
 
@@ -98,59 +109,36 @@ void pci_host_common_remove(struct platform_device *pdev)
 }
 EXPORT_SYMBOL_GPL(pci_host_common_remove);
 
-#if IS_ENABLED(CONFIG_PCIEAER)
 static pci_ers_result_t pci_host_reset_root_port(struct pci_dev *dev)
 {
 	int ret;
 
+	pci_lock_rescan_remove();
 	ret = pci_bus_error_reset(dev);
+	pci_unlock_rescan_remove();
 	if (ret) {
-		pci_err(dev, "Failed to reset root port: %d\n", ret);
+		pci_err(dev, "Failed to reset Root Port: %d\n", ret);
 		return PCI_ERS_RESULT_DISCONNECT;
 	}
 
-	pci_info(dev, "Root port has been reset\n");
+	pci_info(dev, "Root Port has been reset\n");
 
 	return PCI_ERS_RESULT_RECOVERED;
 }
 
-static void pci_host_reset_root_ports(struct pci_host_bridge *host)
+static void pci_host_recover_root_port(struct pci_dev *port)
 {
-	struct pci_bus *bus = host->bus;
-	struct pci_dev *dev;
-
-	for_each_pci_bridge(dev, bus) {
-		if (!pci_is_root_bus(bus))
-			continue;
-
-		pcie_do_recovery(dev, pci_channel_io_frozen,
-				 pci_host_reset_root_port);
-	}
-}
+#if IS_ENABLED(CONFIG_PCIEAER)
+	pcie_do_recovery(port, pci_channel_io_frozen, pci_host_reset_root_port);
 #else
-static void pci_host_reset_root_ports(struct pci_host_bridge *host)
-{
-	struct pci_bus *bus = host->bus;
-	struct pci_dev *dev;
-	int ret;
-
-	for_each_pci_bridge(dev, bus) {
-		if (!pci_is_root_bus(bus))
-			continue;
-
-		ret = pci_bus_error_reset(dev);
-		if (ret)
-			pci_err(dev, "Failed to reset root port: %d\n", ret);
-		else
-			pci_info(dev, "Root port has been reset\n");
-	}
-}
+	pci_host_reset_root_port(port);
 #endif
+}
 
-void pci_host_handle_link_down(struct pci_host_bridge *bridge)
+void pci_host_handle_link_down(struct pci_dev *port)
 {
-	dev_info(&bridge->dev, "Recovering root ports due to Link Down\n");
-	pci_host_reset_root_ports(bridge);
+	pci_info(port, "Recovering Root Port due to Link Down\n");
+	pci_host_recover_root_port(port);
 }
 EXPORT_SYMBOL_GPL(pci_host_handle_link_down);
 

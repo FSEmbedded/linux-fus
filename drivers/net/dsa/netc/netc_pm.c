@@ -66,7 +66,7 @@ static void netc_restore_bpt_entries(struct netc_switch *priv)
 	for (i = 0; i < priv->caps.num_bp; i++) {
 		struct bpt_cfge_data *cfge = &priv->bpt_list[i];
 
-		ntmp_bpt_update_entry(&priv->ntmp.cbdrs, i, cfge);
+		ntmp_bpt_update_entry(&priv->user, i, cfge);
 	}
 }
 
@@ -86,7 +86,7 @@ static int netc_restore_vlan_egress_rule(struct netc_switch *priv,
 static int netc_restore_vlan_entry(struct netc_switch *priv,
 				   struct netc_vlan_entry *entry)
 {
-	struct netc_cbdrs *cbdrs = &priv->ntmp.cbdrs;
+	struct ntmp_user *user = &priv->user;
 	struct device *dev = priv->dev;
 	u16 vid = entry->vid;
 	int err;
@@ -100,7 +100,7 @@ static int netc_restore_vlan_entry(struct netc_switch *priv,
 		}
 	}
 
-	err = ntmp_vft_add_entry(cbdrs, &entry->entry_id, vid, &entry->cfge);
+	err = ntmp_vft_add_entry(user, &entry->entry_id, vid, &entry->cfge);
 	if (err) {
 		dev_err(dev, "Failed to restore VFT entry, VLAN %u\n", vid);
 		goto del_vlan_egress_rule;
@@ -117,7 +117,7 @@ del_vlan_egress_rule:
 
 static int netc_restore_vlan_entries(struct netc_switch *priv)
 {
-	struct netc_cbdrs *cbdrs = &priv->ntmp.cbdrs;
+	struct ntmp_user *user = &priv->user;
 	struct netc_vlan_entry *entry, *tmp;
 	int err;
 
@@ -138,15 +138,15 @@ del_vlan_entries:
 		if (tmp == entry)
 			break;
 
-		ntmp_vft_delete_entry(cbdrs, tmp->vid);
+		ntmp_vft_delete_entry(user, tmp->vid);
 
 		if (tmp->vid != NETC_STANDALONE_PVID)
 			netc_switch_delete_vlan_egress_rule(priv, tmp);
 	}
 
 	netc_destroy_vlan_list(priv);
-	bitmap_zero(priv->ntmp.ect_gid_bitmap, priv->ntmp.ect_bitmap_size);
-	bitmap_zero(priv->ntmp.ett_gid_bitmap, priv->ntmp.ett_bitmap_size);
+	bitmap_zero(user->ect_gid_bitmap, user->ect_bitmap_size);
+	bitmap_zero(user->ett_gid_bitmap, user->ett_bitmap_size);
 
 	mutex_unlock(&priv->vft_lock);
 
@@ -155,14 +155,14 @@ del_vlan_entries:
 
 static void netc_remove_vlan_entries(struct netc_switch *priv)
 {
-	struct netc_cbdrs *cbdrs = &priv->ntmp.cbdrs;
+	struct ntmp_user *user = &priv->user;
 	struct netc_vlan_entry *entry;
 	struct hlist_node *tmp;
 
 	mutex_lock(&priv->vft_lock);
 
 	hlist_for_each_entry_safe(entry, tmp, &priv->vlan_list, node) {
-		ntmp_vft_delete_entry(cbdrs, entry->vid);
+		ntmp_vft_delete_entry(user, entry->vid);
 
 		if (entry->vid != NETC_STANDALONE_PVID)
 			netc_switch_delete_vlan_egress_rule(priv, entry);
@@ -175,14 +175,14 @@ static void netc_remove_vlan_entries(struct netc_switch *priv)
 
 static int netc_restore_fdbt_entries(struct netc_switch *priv)
 {
-	struct netc_cbdrs *cbdrs = &priv->ntmp.cbdrs;
+	struct ntmp_user *user = &priv->user;
 	struct netc_fdb_entry *entry, *tmp;
 	int err;
 
 	mutex_lock(&priv->fdbt_lock);
 
 	hlist_for_each_entry(entry, &priv->fdb_list, node) {
-		err = ntmp_fdbt_add_entry(cbdrs, &entry->entry_id,
+		err = ntmp_fdbt_add_entry(user, &entry->entry_id,
 					  &entry->keye, &entry->cfge);
 		if (err) {
 			dev_err(priv->dev,
@@ -201,7 +201,7 @@ del_fdb_entries:
 		if (tmp == entry)
 			break;
 
-		ntmp_fdbt_delete_entry(cbdrs, tmp->entry_id);
+		ntmp_fdbt_delete_entry(user, tmp->entry_id);
 	}
 
 	netc_destroy_fdb_list(priv);
@@ -213,14 +213,14 @@ del_fdb_entries:
 
 static void netc_remove_fdbt_entries(struct netc_switch *priv)
 {
-	struct netc_cbdrs *cbdrs = &priv->ntmp.cbdrs;
+	struct ntmp_user *user = &priv->user;
 	struct netc_fdb_entry *entry;
 	struct hlist_node *tmp;
 
 	mutex_lock(&priv->fdbt_lock);
 
 	hlist_for_each_entry_safe(entry, tmp, &priv->fdb_list, node) {
-		ntmp_fdbt_delete_entry(cbdrs, entry->entry_id);
+		ntmp_fdbt_delete_entry(user, entry->entry_id);
 		netc_del_fdb_entry(entry);
 	}
 
@@ -235,7 +235,7 @@ static int netc_port_restore_taprio(struct netc_port *port)
 	if (!port->taprio)
 		return 0;
 
-	return netc_setup_taprio(&priv->ntmp, entry_id, port->taprio);
+	return netc_setup_taprio(&priv->user, entry_id, port->taprio);
 }
 
 static int netc_port_restore_config(struct netc_port *port)
@@ -301,16 +301,58 @@ static void netc_remove_ports_config(struct netc_switch *priv)
 		netc_port_remove_config(NETC_PORT(priv, i));
 }
 
+static int netc_restore_hsr_config(struct netc_switch *priv)
+{
+	struct netc_port *port;
+	int i, err;
+
+	for (i = 0; i < priv->num_ports; i++) {
+		port = NETC_PORT(priv, i);
+		if (!port->hsr_enabled)
+			continue;
+
+		err = netc_port_set_hsr(port, port->hsr_data.type);
+		if (err)
+			goto del_hsr_config;
+	}
+
+	return 0;
+
+del_hsr_config:
+	while (--i >= 0) {
+		if (!port->hsr_enabled)
+			continue;
+
+		netc_port_set_hsr(NETC_PORT(priv, i), NETC_HSR_DISABLED);
+	}
+
+	return err;
+}
+
+static void netc_remove_hsr_config(struct netc_switch *priv)
+{
+	int i;
+
+	for (i = 0; i < priv->num_ports; i++) {
+		struct netc_port *port = NETC_PORT(priv, i);
+
+		if (!port->hsr_enabled)
+			continue;
+
+		netc_port_set_hsr(NETC_PORT(priv, i), NETC_HSR_DISABLED);
+	}
+}
+
 static void netc_enable_all_cdbrs(struct netc_switch *priv)
 {
-	struct netc_cbdrs *cbdrs = &priv->ntmp.cbdrs;
 	struct netc_switch_regs *regs = &priv->regs;
+	struct ntmp_user *user = &priv->user;
 	int i;
 
 	netc_base_wr(regs, NETC_CCAR, NETC_DEFAULT_CMD_CACHE_ATTR);
 
-	for (i = 0; i < cbdrs->cbdr_num; i++)
-		netc_enable_cbdr(&cbdrs->ring[i]);
+	for (i = 0; i < user->cbdr_num; i++)
+		ntmp_enable_cbdr(&user->ring[i]);
 }
 
 static int netc_restore_hw_config(struct netc_switch *priv)
@@ -335,12 +377,18 @@ static int netc_restore_hw_config(struct netc_switch *priv)
 	if (err)
 		goto del_fdb_entries;
 
-	err = netc_restore_flower_list_config(&priv->ntmp);
+	err = netc_restore_hsr_config(priv);
 	if (err)
 		goto del_ports_config;
 
+	err = netc_restore_flower_list_config(&priv->user);
+	if (err)
+		goto del_hsr_config;
+
 	return 0;
 
+del_hsr_config:
+	netc_remove_hsr_config(priv);
 del_ports_config:
 	netc_remove_ports_config(priv);
 del_fdb_entries:
@@ -395,7 +443,7 @@ int netc_suspend(struct dsa_switch *ds)
 	}
 
 	if (power_off) {
-		netc_clear_flower_table_restored_flag(&priv->ntmp);
+		netc_clear_flower_table_restored_flag(&priv->user);
 	} else {
 		pci_save_state(pdev);
 		pci_set_power_state(pdev, PCI_D3hot);

@@ -1,5 +1,6 @@
 config DRM_IMX_DCNANO
 	tristate "DRM support for NXP i.MX DCNANO Graphics"
+	select DRM_CLIENT_SELECTION
 	select DRM_KMS_HELPER
 	select VIDEOMODE_HELPERS
 	select DRM_GEM_DMA_HELPER

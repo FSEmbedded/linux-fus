@@ -2691,15 +2691,14 @@ MODULE_DEVICE_TABLE(of, fman_muram_match);
 
 static struct fman *read_acpi_node(struct platform_device *pdev)
 {
-	struct fwnode_handle *fwnode_muram, *fw_fmnode;
+	struct fwnode_handle *fwnode_fman = dev_fwnode(&pdev->dev);
+	struct fwnode_handle *fwnode_muram;
 	phys_addr_t phys_base_addr;
-	phys_addr_t phys_end_addr;
 	resource_size_t mem_size;
 	struct resource *res;
 	struct fman *fman;
 	u32 val, range[2];
 	u32 io_size = 0;
-	const char *cp;
 	int err, irq;
 	u32 clk_rate;
 
@@ -2707,13 +2706,10 @@ static struct fman *read_acpi_node(struct platform_device *pdev)
 	if (!fman)
 		return ERR_PTR(-ENOMEM);
 
-	fw_fmnode = fwnode_handle_get(pdev->dev.fwnode);
-	err = fwnode_property_read_u32(pdev->dev.fwnode,
-				       "cell-index", &val);
-
+	err = fwnode_property_read_u32(fwnode_fman, "cell-index", &val);
 	if (err) {
-		dev_err(&pdev->dev, "%s: failed to read cell-index\n",
-			__func__);
+		dev_err(&pdev->dev, "%s: failed to read cell-index for %pfw\n",
+			__func__, fwnode_fman);
 		goto fman_free;
 	}
 	fman->dts_params.id = (u8)val;
@@ -2773,25 +2769,20 @@ static struct fman *read_acpi_node(struct platform_device *pdev)
 
 	/* Get the MURAM base address and size */
 	device_for_each_child_node(&pdev->dev, fwnode_muram) {
-		if (!fwnode_property_read_string(fwnode_muram,
-						 "compatible", &cp)) {
-			if (!strcmp(cp, "fsl,fman-muram")) {
-				if (fwnode_property_present(fwnode_muram, "reg")) {
-					fwnode_property_read_u32_array(fwnode_muram,
-								       "reg",
-								       &io_size,
-								       1);
-				}
-				break;
+		if (fwnode_device_is_compatible(fwnode_muram, "fsl,fman-muram")) {
+			if (fwnode_property_present(fwnode_muram, "reg")) {
+				fwnode_property_read_u32_array(fwnode_muram,
+							       "reg",
+							       &io_size,
+							       1);
 			}
+			break;
 		}
 	}
-	fman->dts_params.muram_res.start = phys_base_addr;
 	if (!io_size)
-		phys_end_addr = phys_base_addr + MRM_SIZE - 1;
-	else
-		phys_end_addr = phys_base_addr + io_size - 1;
-	fman->dts_params.muram_res.end   = phys_end_addr;
+		io_size = MRM_SIZE;
+	fman->dts_params.muram_res.start = phys_base_addr;
+	fman->dts_params.muram_res.end   = phys_base_addr + io_size - 1;
 	fman->dts_params.muram_res.flags = IORESOURCE_MEM;
 
 	err = devm_request_irq(&pdev->dev, irq, fman_irq, IRQF_SHARED,
@@ -2847,13 +2838,12 @@ static struct fman *read_dts_node(struct platform_device *of_dev)
 {
 	struct fman *fman;
 	struct device_node *fm_node, *muram_node;
+	void __iomem *base_addr;
 	struct resource *res;
 	u32 val, range[2];
 	int err, irq;
 	struct clk *clk;
 	u32 clk_rate;
-	phys_addr_t phys_base_addr;
-	resource_size_t mem_size;
 
 	fman = kzalloc(sizeof(*fman), GFP_KERNEL);
 	if (!fman)
@@ -2880,18 +2870,6 @@ static struct fman *read_dts_node(struct platform_device *of_dev)
 	if (err < 0)
 		goto fman_node_put;
 	fman->dts_params.err_irq = err;
-
-	/* Get the FM address */
-	res = platform_get_resource(of_dev, IORESOURCE_MEM, 0);
-	if (!res) {
-		err = -EINVAL;
-		dev_err(&of_dev->dev, "%s: Can't get FMan memory resource\n",
-			__func__);
-		goto fman_node_put;
-	}
-
-	phys_base_addr = res->start;
-	mem_size = resource_size(res);
 
 	clk = of_clk_get(fm_node, 0);
 	if (IS_ERR(clk)) {
@@ -2960,23 +2938,15 @@ static struct fman *read_dts_node(struct platform_device *of_dev)
 		}
 	}
 
-	fman->dts_params.res =
-		devm_request_mem_region(&of_dev->dev, phys_base_addr,
-					mem_size, "fman");
-	if (!fman->dts_params.res) {
-		err = -EBUSY;
-		dev_err(&of_dev->dev, "%s: request_mem_region() failed\n",
-			__func__);
-		goto fman_free;
-	}
-
-	fman->dts_params.base_addr =
-		devm_ioremap(&of_dev->dev, phys_base_addr, mem_size);
-	if (!fman->dts_params.base_addr) {
-		err = -ENOMEM;
+	base_addr = devm_platform_get_and_ioremap_resource(of_dev, 0, &res);
+	if (IS_ERR(base_addr)) {
+		err = PTR_ERR(base_addr);
 		dev_err(&of_dev->dev, "%s: devm_ioremap() failed\n", __func__);
 		goto fman_free;
 	}
+
+	fman->dts_params.base_addr = base_addr;
+	fman->dts_params.res = res;
 
 	fman->dev = &of_dev->dev;
 
@@ -3063,11 +3033,13 @@ static const struct of_device_id fman_match[] = {
 
 MODULE_DEVICE_TABLE(of, fman_match);
 
+#if IS_ENABLED(CONFIG_ACPI)
 static const struct acpi_device_id acpi_fman_match[] = {
 	{"NXP0024", 0},
 	{},
 };
 MODULE_DEVICE_TABLE(acpi, acpi_fman_match);
+#endif
 
 static struct platform_driver fman_driver = {
 	.driver = {

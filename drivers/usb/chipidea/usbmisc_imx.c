@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright 2012 Freescale Semiconductor, Inc.
+ * Copyright 2025 NXP
  */
 
 #include <linux/module.h>
@@ -145,7 +146,7 @@
 
 #define BLKCTL_USB_WAKEUP_CTRL		0x0
 #define BLKCTL_OTG_WAKE_ENABLE		BIT(31)
-#define BLKCTL_OTG_VBUS_SOURCE_SESSVALID	BIT(4)
+#define BLKCTL_OTG_VBUS_SESSVALID	BIT(4)
 #define BLKCTL_OTG_ID_WAKEUP_EN		BIT(2)
 #define BLKCTL_OTG_VBUS_WAKEUP_EN	BIT(1)
 #define BLKCTL_OTG_DPDM_WAKEUP_EN	BIT(0)
@@ -154,6 +155,18 @@
 					 BLKCTL_OTG_ID_WAKEUP_EN   | \
 					 BLKCTL_OTG_VBUS_WAKEUP_EN | \
 					 BLKCTL_OTG_DPDM_WAKEUP_EN)
+
+#define S32G_WAKEUP_IE		BIT(0)
+#define S32G_CORE_IE		BIT(1)
+#define S32G_PWRFLTEN		BIT(7)
+#define S32G_WAKEUPCTRL		BIT(10)
+#define S32G_WAKEUPEN		BIT(11)
+
+/* Workaround errata ERR050474 (handle packages that aren't 4 byte aligned) */
+#define S32G_UCMALLBE		BIT(15)
+
+#define S32G_WAKEUP_BITS (S32G_WAKEUP_IE | S32G_CORE_IE | S32G_WAKEUPEN | \
+			  S32G_WAKEUPCTRL)
 
 struct usbmisc_ops {
 	/* It's called once when probe a usb device */
@@ -460,7 +473,7 @@ static int usbmisc_imx6q_init(struct imx_usbmisc_data *data)
 		else if (data->oc_pol_configured)
 			reg &= ~MX6_BM_OVER_CUR_POLARITY;
 	}
-	/* If the polarity is not set keep it as setup by the bootlader */
+	/* If the polarity is not set keep it as setup by the bootloader */
 	if (data->pwr_pol == 1)
 		reg |= MX6_BM_PWR_POLARITY;
 	writel(reg, usbmisc->base + data->index * 4);
@@ -617,6 +630,57 @@ static int usbmisc_vf610_init(struct imx_usbmisc_data *data)
 	return 0;
 }
 
+static int usbmisc_s32g_set_wakeup(struct imx_usbmisc_data *data, bool enabled)
+{
+	struct imx_usbmisc *usbmisc = dev_get_drvdata(data->dev);
+	unsigned long flags;
+	u32 reg;
+
+	spin_lock_irqsave(&usbmisc->lock, flags);
+
+	reg = readl(usbmisc->base);
+	if (enabled)
+		reg |= S32G_WAKEUP_BITS;
+	else
+		reg &= ~S32G_WAKEUP_BITS;
+
+	writel(reg, usbmisc->base);
+	spin_unlock_irqrestore(&usbmisc->lock, flags);
+
+	return 0;
+}
+
+static int usbmisc_s32g_init(struct imx_usbmisc_data *data, u32 extra_flags)
+{
+	struct imx_usbmisc *usbmisc = dev_get_drvdata(data->dev);
+	unsigned long flags;
+	u32 reg;
+
+	spin_lock_irqsave(&usbmisc->lock, flags);
+
+	reg = readl(usbmisc->base);
+
+	reg |= S32G_PWRFLTEN;
+	reg |= extra_flags;
+
+	writel(reg, usbmisc->base);
+
+	spin_unlock_irqrestore(&usbmisc->lock, flags);
+	usbmisc_s32g_set_wakeup(data, false);
+
+	return 0;
+}
+
+static int usbmisc_s32g2_init(struct imx_usbmisc_data *data)
+{
+	return usbmisc_s32g_init(data, S32G_UCMALLBE);
+}
+
+static int usbmisc_s32g3_init(struct imx_usbmisc_data *data)
+{
+	return usbmisc_s32g_init(data, 0);
+}
+
 static int usbmisc_imx7d_set_wakeup
 	(struct imx_usbmisc_data *data, bool enabled)
 {
@@ -665,7 +729,7 @@ static int usbmisc_imx7d_init(struct imx_usbmisc_data *data)
 		else if (data->oc_pol_configured)
 			reg &= ~MX6_BM_OVER_CUR_POLARITY;
 	}
-	/* If the polarity is not set keep it as setup by the bootlader */
+	/* If the polarity is not set keep it as setup by the bootloader */
 	if (data->pwr_pol == 1)
 		reg |= MX6_BM_PWR_POLARITY;
 	writel(reg, usbmisc->base);
@@ -959,7 +1023,7 @@ static int usbmisc_imx7ulp_init(struct imx_usbmisc_data *data)
 		else if (data->oc_pol_configured)
 			reg &= ~MX6_BM_OVER_CUR_POLARITY;
 	}
-	/* If the polarity is not set keep it as setup by the bootlader */
+	/* If the polarity is not set keep it as setup by the bootloader */
 	if (data->pwr_pol == 1)
 		reg |= MX6_BM_PWR_POLARITY;
 
@@ -1064,6 +1128,11 @@ static int usbmisc_imx6sx_power_lost_check(struct imx_usbmisc_data *data)
 		return 0;
 }
 
+static int usbmisc_s32g_power_lost_check(struct imx_usbmisc_data *data)
+{
+	return 1;
+}
+
 static u32 usbmisc_blkctl_wakeup_setting(struct imx_usbmisc_data *data)
 {
 	u32 wakeup_setting = BLKCTL_WAKEUP_SOURCE;
@@ -1074,8 +1143,8 @@ static u32 usbmisc_blkctl_wakeup_setting(struct imx_usbmisc_data *data)
 	if (data->ext_vbus || data->available_role == USB_DR_MODE_HOST)
 		wakeup_setting &= ~BLKCTL_OTG_VBUS_WAKEUP_EN;
 
-	/* Selet session valid as VBUS wakeup source */
-	wakeup_setting |= BLKCTL_OTG_VBUS_SOURCE_SESSVALID;
+	/* Select session valid as VBUS wakeup source */
+	wakeup_setting |= BLKCTL_OTG_VBUS_SESSVALID;
 
 	return wakeup_setting;
 }
@@ -1086,6 +1155,9 @@ static int usbmisc_imx95_set_wakeup(struct imx_usbmisc_data *data, bool enabled)
 	unsigned long flags;
 	u32 val;
 
+	if (!usbmisc->blkctl)
+		return 0;
+
 	spin_lock_irqsave(&usbmisc->lock, flags);
 	val = readl(usbmisc->blkctl + BLKCTL_USB_WAKEUP_CTRL);
 	val &= ~BLKCTL_WAKEUP_SOURCE;
@@ -1095,43 +1167,6 @@ static int usbmisc_imx95_set_wakeup(struct imx_usbmisc_data *data, bool enabled)
 
 	writel(val, usbmisc->blkctl + BLKCTL_USB_WAKEUP_CTRL);
 	spin_unlock_irqrestore(&usbmisc->lock, flags);
-
-	return 0;
-}
-
-static int usbmisc_imx95_init(struct imx_usbmisc_data *data)
-{
-	struct imx_usbmisc *usbmisc = dev_get_drvdata(data->dev);
-	unsigned long flags;
-	u32 reg;
-
-	if (data->index >= 1)
-		return -EINVAL;
-
-	spin_lock_irqsave(&usbmisc->lock, flags);
-	reg = readl(usbmisc->base);
-	if (data->disable_oc) {
-		reg |= MX6_BM_OVER_CUR_DIS;
-	} else {
-		reg &= ~MX6_BM_OVER_CUR_DIS;
-
-		/*
-		 * If the polarity is not configured keep it as setup by the
-		 * bootloader.
-		 */
-		if (data->oc_pol_configured && data->oc_pol_active_low)
-			reg |= MX6_BM_OVER_CUR_POLARITY;
-		else if (data->oc_pol_configured)
-			reg &= ~MX6_BM_OVER_CUR_POLARITY;
-	}
-	/* If the polarity is not set keep it as setup by the bootlader */
-	if (data->pwr_pol == 1)
-		reg |= MX6_BM_PWR_POLARITY;
-	writel(reg, usbmisc->base);
-	spin_unlock_irqrestore(&usbmisc->lock, flags);
-
-	/* Will use HSIO blkctl wakeup as source, so disable usbmisc wakeup */
-	usbmisc_imx7d_set_wakeup(data, false);
 
 	return 0;
 }
@@ -1190,12 +1225,24 @@ static const struct usbmisc_ops imx7ulp_usbmisc_ops = {
 };
 
 static const struct usbmisc_ops imx95_usbmisc_ops = {
-	.init = usbmisc_imx95_init,
+	.init = usbmisc_imx7d_init,
 	.set_wakeup = usbmisc_imx95_set_wakeup,
 	.charger_detection = imx7d_charger_detection,
 	.power_lost_check = usbmisc_imx7d_power_lost_check,
 	.pullup = usbmisc_imx7d_pullup,
 	.vbus_comparator_on = usbmisc_imx7d_vbus_comparator_on,
+};
+
+static const struct usbmisc_ops s32g2_usbmisc_ops = {
+	.init = usbmisc_s32g2_init,
+	.set_wakeup = usbmisc_s32g_set_wakeup,
+	.power_lost_check = usbmisc_s32g_power_lost_check,
+};
+
+static const struct usbmisc_ops s32g3_usbmisc_ops = {
+	.init = usbmisc_s32g3_init,
+	.set_wakeup = usbmisc_s32g_set_wakeup,
+	.power_lost_check = usbmisc_s32g_power_lost_check,
 };
 
 static inline bool is_imx53_usbmisc(struct imx_usbmisc_data *data)
@@ -1330,7 +1377,7 @@ int imx_usbmisc_suspend(struct imx_usbmisc_data *data, bool wakeup)
 	if (usbmisc->ops->hsic_set_clk && data->hsic)
 		ret = usbmisc->ops->hsic_set_clk(data, false);
 	if (ret) {
-		dev_err(data->dev, "set_wakeup failed, ret=%d\n", ret);
+		dev_err(data->dev, "hsic_set_clk failed, ret=%d\n", ret);
 		return ret;
 	}
 
@@ -1369,7 +1416,7 @@ int imx_usbmisc_resume(struct imx_usbmisc_data *data, bool wakeup)
 	if (usbmisc->ops->hsic_set_clk && data->hsic)
 		ret = usbmisc->ops->hsic_set_clk(data, true);
 	if (ret) {
-		dev_err(data->dev, "set_wakeup failed, ret=%d\n", ret);
+		dev_err(data->dev, "hsic_set_clk failed, ret=%d\n", ret);
 		goto hsic_set_clk_fail;
 	}
 
@@ -1438,6 +1485,14 @@ static const struct of_device_id usbmisc_imx_dt_ids[] = {
 		.compatible = "fsl,imx95-usbmisc",
 		.data = &imx95_usbmisc_ops,
 	},
+	{
+		.compatible = "nxp,s32g2-usbmisc",
+		.data = &s32g2_usbmisc_ops,
+	},
+	{
+		.compatible = "nxp,s32g3-usbmisc",
+		.data = &s32g3_usbmisc_ops,
+	},
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, usbmisc_imx_dt_ids);
@@ -1445,6 +1500,7 @@ MODULE_DEVICE_TABLE(of, usbmisc_imx_dt_ids);
 static int usbmisc_imx_probe(struct platform_device *pdev)
 {
 	struct imx_usbmisc *data;
+	struct resource *res;
 
 	data = devm_kzalloc(&pdev->dev, sizeof(*data), GFP_KERNEL);
 	if (!data)
@@ -1456,10 +1512,13 @@ static int usbmisc_imx_probe(struct platform_device *pdev)
 	if (IS_ERR(data->base))
 		return PTR_ERR(data->base);
 
-	if (of_device_is_compatible(pdev->dev.of_node, "fsl,imx95-usbmisc")) {
-		data->blkctl = devm_platform_ioremap_resource(pdev, 1);
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+	if (res) {
+		data->blkctl = devm_ioremap_resource(&pdev->dev, res);
 		if (IS_ERR(data->blkctl))
 			return PTR_ERR(data->blkctl);
+	} else if (device_is_compatible(&pdev->dev, "fsl,imx95-usbmisc")) {
+		dev_warn(&pdev->dev, "wakeup setting is missing\n");
 	}
 
 	data->ops = of_device_get_match_data(&pdev->dev);

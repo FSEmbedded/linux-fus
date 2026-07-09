@@ -43,9 +43,9 @@ int wave6_vpu_build_up_dec_param(struct vpu_instance *inst, struct dec_open_para
 
 void wave6_vpu_dec_set_bitstream_end(struct vpu_instance *inst, bool eos);
 int wave6_vpu_dec_register_frame_buffer(struct vpu_instance *inst,
-					struct frame_buffer *fb_arr, enum tiled_map_type map_type,
-					u32 offset, uint32_t count);
-int wave6_vpu_dec_register_display_buffer(struct vpu_instance *inst, struct frame_buffer fb);
+					struct frame_buffer fb);
+int wave6_vpu_dec_register_display_buffer(struct vpu_instance *inst,
+					  struct frame_buffer fb);
 int wave6_vpu_dec_init_seq(struct vpu_instance *inst);
 int wave6_vpu_dec_get_seq_info(struct vpu_instance *inst, struct dec_initial_info *info);
 int wave6_vpu_decode(struct vpu_instance *inst, struct dec_param *option, u32 *fail_res);

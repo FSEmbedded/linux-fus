@@ -14,6 +14,19 @@
 #ifndef __ASSEMBLY__
 
 /*
+ * C23 introduces "auto" as a standard way to define type-inferred
+ * variables, but "auto" has been a (useless) keyword even since K&R C,
+ * so it has always been "namespace reserved."
+ *
+ * Until at some future time we require C23 support, we need the gcc
+ * extension __auto_type, but there is no reason to put that elsewhere
+ * in the source code.
+ */
+#if __STDC_VERSION__ < 202311L
+# define auto __auto_type
+#endif
+
+/*
  * Skipped when running bindgen due to a libclang issue;
  * see https://github.com/rust-lang/rust-bindgen/issues/2244.
  */
@@ -57,7 +70,7 @@ static inline void __chk_io_ptr(const volatile void __iomem *ptr) { }
 #  define __user	BTF_TYPE_TAG(user)
 # endif
 # define __iomem
-# define __percpu	BTF_TYPE_TAG(percpu)
+# define __percpu	__percpu_qual BTF_TYPE_TAG(percpu)
 # define __rcu		BTF_TYPE_TAG(rcu)
 
 # define __chk_user_ptr(x)	(void)0
@@ -250,10 +263,9 @@ struct ftrace_likely_data {
 /*
  * GCC does not warn about unused static inline functions for -Wunused-function.
  * Suppress the warning in clang as well by using __maybe_unused, but enable it
- * for W=1 build. This will allow clang to find unused functions. Remove the
- * __inline_maybe_unused entirely after fixing most of -Wunused-function warnings.
+ * for W=2 build. This will allow clang to find unused functions.
  */
-#ifdef KBUILD_EXTRA_WARN1
+#ifdef KBUILD_EXTRA_WARN2
 #define __inline_maybe_unused
 #else
 #define __inline_maybe_unused __maybe_unused
@@ -264,6 +276,12 @@ struct ftrace_likely_data {
  * noinline_for_stack instead.  For documentation reasons.
  */
 #define noinline_for_stack noinline
+
+/*
+ * Use noinline_for_tracing for functions that should not be inlined.
+ * For tracing reasons.
+ */
+#define noinline_for_tracing noinline
 
 /*
  * Sanitizer helper attributes: Because using __always_inline and
@@ -285,6 +303,22 @@ struct ftrace_likely_data {
 # define __no_kasan_or_inline __always_inline
 #endif
 
+#ifdef CONFIG_KCSAN
+/*
+ * Type qualifier to mark variables where all data-racy accesses should be
+ * ignored by KCSAN. Note, the implementation simply marks these variables as
+ * volatile, since KCSAN will treat such accesses as "marked".
+ *
+ * Defined here because defining __data_racy as volatile for KCSAN objects only
+ * causes problems in BPF Type Format (BTF) generation since struct members
+ * of core kernel data structs will be volatile in some objects and not in
+ * others.  Instead define it globally for KCSAN kernels.
+ */
+# define __data_racy volatile
+#else
+# define __data_racy
+#endif
+
 #ifdef __SANITIZE_THREAD__
 /*
  * Clang still emits instrumentation for __tsan_func_{entry,exit}() and builtin
@@ -296,16 +330,9 @@ struct ftrace_likely_data {
  * disable all instrumentation. See Kconfig.kcsan where this is mandatory.
  */
 # define __no_kcsan __no_sanitize_thread __disable_sanitizer_instrumentation
-/*
- * Type qualifier to mark variables where all data-racy accesses should be
- * ignored by KCSAN. Note, the implementation simply marks these variables as
- * volatile, since KCSAN will treat such accesses as "marked".
- */
-# define __data_racy volatile
 # define __no_sanitize_or_inline __no_kcsan notrace __maybe_unused
 #else
 # define __no_kcsan
-# define __data_racy
 #endif
 
 #ifdef __SANITIZE_MEMORY__
@@ -321,6 +348,29 @@ struct ftrace_likely_data {
 
 #ifndef __no_sanitize_or_inline
 #define __no_sanitize_or_inline __always_inline
+#endif
+
+/*
+ * The assume attribute is used to indicate that a certain condition is
+ * assumed to be true. If this condition is violated at runtime, the behavior
+ * is undefined. Compilers may or may not use this indication to generate
+ * optimized code.
+ *
+ * Note that the clang documentation states that optimizers may react
+ * differently to this attribute, and this may even have a negative
+ * performance impact. Therefore this attribute should be used with care.
+ *
+ * Optional: only supported since gcc >= 13
+ * Optional: only supported since clang >= 19
+ *
+ *   gcc: https://gcc.gnu.org/onlinedocs/gcc/Statement-Attributes.html#index-assume-statement-attribute
+ * clang: https://clang.llvm.org/docs/AttributeReference.html#id13
+ *
+ */
+#ifdef CONFIG_CC_HAS_ASSUME
+# define __assume(expr)			__attribute__((__assume__(expr)))
+#else
+# define __assume(expr)
 #endif
 
 /*
@@ -343,6 +393,18 @@ struct ftrace_likely_data {
 #endif
 
 /*
+ * Optional: only supported since gcc >= 15
+ * Optional: not supported by Clang
+ *
+ * gcc: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=117178
+ */
+#ifdef CONFIG_CC_HAS_MULTIDIMENSIONAL_NONSTRING
+# define __nonstring_array		__attribute__((__nonstring__))
+#else
+# define __nonstring_array
+#endif
+
+/*
  * Apply __counted_by() when the Endianness matches to increase test coverage.
  */
 #ifdef __LITTLE_ENDIAN
@@ -354,7 +416,7 @@ struct ftrace_likely_data {
 #endif
 
 /* Do not trap wrapping arithmetic within an annotated function. */
-#ifdef CONFIG_UBSAN_SIGNED_WRAP
+#ifdef CONFIG_UBSAN_INTEGER_WRAP
 # define __signed_wrap __attribute__((no_sanitize("signed-integer-overflow")))
 #else
 # define __signed_wrap
@@ -406,12 +468,24 @@ struct ftrace_likely_data {
 # define randomized_struct_fields_end
 #endif
 
+#ifndef __no_kstack_erase
+# define __no_kstack_erase
+#endif
+
 #ifndef __noscs
 # define __noscs
 #endif
 
-#ifndef __nocfi
+#if defined(CONFIG_CFI)
+# define __nocfi		__attribute__((__no_sanitize__("kcfi")))
+#else
 # define __nocfi
+#endif
+
+#if defined(CONFIG_ARCH_USES_CFI_GENERIC_LLVM_PASS)
+# define __nocfi_generic	__nocfi
+#else
+# define __nocfi_generic
 #endif
 
 /*
@@ -431,6 +505,11 @@ struct ftrace_likely_data {
 /*
  * When the size of an allocated object is needed, use the best available
  * mechanism to find it. (For cases where sizeof() cannot be used.)
+ *
+ * Optional: only supported since gcc >= 12
+ *
+ *   gcc: https://gcc.gnu.org/onlinedocs/gcc/Object-Size-Checking.html
+ * clang: https://clang.llvm.org/docs/LanguageExtensions.html#evaluating-object-size
  */
 #if __has_builtin(__builtin_dynamic_object_size)
 #define __struct_size(p)	__builtin_dynamic_object_size(p, 0)
@@ -440,11 +519,14 @@ struct ftrace_likely_data {
 #define __member_size(p)	__builtin_object_size(p, 1)
 #endif
 
-/* Determine if an attribute has been applied to a variable. */
+/*
+ * Determine if an attribute has been applied to a variable.
+ * Using __annotated needs to check for __annotated being available,
+ * or negative tests may fail when annotation cannot be checked. For
+ * example, see the definition of __is_cstr().
+ */
 #if __has_builtin(__builtin_has_attribute)
 #define __annotated(var, attr)	__builtin_has_attribute(var, attr)
-#else
-#define __annotated(var, attr)	(false)
 #endif
 
 /*
@@ -504,6 +586,12 @@ struct ftrace_likely_data {
 	 sizeof(t) == sizeof(int) || sizeof(t) == sizeof(long))
 
 #ifdef __OPTIMIZE__
+/*
+ * #ifdef __OPTIMIZE__ is only a good approximation; for instance "make
+ * CFLAGS_foo.o=-Og" defines __OPTIMIZE__, does not elide the conditional code
+ * and can break compilation with wrong error message(s). Combine with
+ * -U__OPTIMIZE__ when needed.
+ */
 # define __compiletime_assert(condition, msg, prefix, suffix)		\
 	do {								\
 		/*							\
@@ -517,7 +605,7 @@ struct ftrace_likely_data {
 			prefix ## suffix();				\
 	} while (0)
 #else
-# define __compiletime_assert(condition, msg, prefix, suffix) do { } while (0)
+# define __compiletime_assert(condition, msg, prefix, suffix) ((void)(condition))
 #endif
 
 #define _compiletime_assert(condition, msg, prefix, suffix) \

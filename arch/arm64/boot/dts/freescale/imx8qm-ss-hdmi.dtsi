@@ -22,7 +22,7 @@
 			interrupts = <GIC_SPI 61 IRQ_TYPE_LEVEL_HIGH>;
 			fsl,channel = <0>;
 			fsl,num-irqs = <32>;
-			clocks = <&hdmi_lpcg_lis_ipg 0>;
+			clocks = <&hdmi_lpcg_lis_ipg IMX_LPCG_CLK_4>;
 			clock-names = "ipg";
 			assigned-clocks = <&clk IMX_SC_R_HDMI_PLL_0 IMX_SC_PM_CLK_PLL>,
 							<&clk IMX_SC_R_HDMI IMX_SC_PM_CLK_MISC4>;
@@ -37,7 +37,7 @@
 			#clock-cells = <1>;
 			clocks = <&clk IMX_SC_R_HDMI_I2C_0 IMX_SC_PM_CLK_MISC2>,
 					<&clk IMX_SC_R_HDMI IMX_SC_PM_CLK_MISC4>;
-			bit-offset = <0 16>;
+			clock-indices = <IMX_LPCG_CLK_0>, <IMX_LPCG_CLK_4>;
 			clock-output-names = "hdmi_lpcg_i2c0_clk",
 								"hdmi_lpcg_i2c0_ipg_clk";
 			power-domains = <&pd IMX_SC_R_HDMI_I2C_0>;
@@ -49,7 +49,7 @@
 			reg = <0x56263004 0x4>;
 			#clock-cells = <1>;
 			clocks = <&clk IMX_SC_R_HDMI IMX_SC_PM_CLK_MISC4>;
-			bit-offset = <16>;
+			clock-indices = <IMX_LPCG_CLK_4>;
 			clock-output-names = "hdmi_lpcg_lis_ipg_clk";
 			power-domains = <&pd IMX_SC_R_HDMI>;
 			status = "disabled";
@@ -60,7 +60,7 @@
 			reg = <0x56263008 0x4>;
 			#clock-cells = <1>;
 			clocks = <&clk IMX_SC_R_HDMI IMX_SC_PM_CLK_MISC4>;
-			bit-offset = <16>;
+			clock-indices = <IMX_LPCG_CLK_4>;
 			clock-output-names = "hdmi_lpcg_pwm_ipg_clk";
 			power-domains = <&pd IMX_SC_R_HDMI>;
 			status = "disabled";
@@ -71,7 +71,7 @@
 			reg = <0x5626300c 0x4>;
 			#clock-cells = <1>;
 			clocks = <&clk IMX_SC_R_HDMI_I2S IMX_SC_PM_CLK_MISC0>;
-			bit-offset = <0>;
+			clock-indices = <IMX_LPCG_CLK_0>;
 			clock-output-names = "hdmi_lpcg_i2s_clk";
 			power-domains = <&pd IMX_SC_R_HDMI_I2S>;
 			status = "disabled";
@@ -82,7 +82,7 @@
 			reg = <0x56263010 0x4>;
 			#clock-cells = <1>;
 			clocks = <&clk IMX_SC_R_HDMI IMX_SC_PM_CLK_MISC4>;
-			bit-offset = <16>;
+			clock-indices = <IMX_LPCG_CLK_4>;
 			clock-output-names = "hdmi_lpcg_gpio_ipg_clk";
 			power-domains = <&pd IMX_SC_R_HDMI>;
 			status = "disabled";
@@ -93,7 +93,7 @@
 			reg = <0x56263014 0x4>;
 			#clock-cells = <1>;
 			clocks = <&clk IMX_SC_R_HDMI IMX_SC_PM_CLK_MISC4>;
-			bit-offset = <0>;
+			clock-indices = <IMX_LPCG_CLK_0>;
 			clock-output-names = "hdmi_lpcg_msi_hclk_clk";
 			power-domains = <&pd IMX_SC_R_HDMI>;
 			status = "disabled";
@@ -104,7 +104,7 @@
 			reg = <0x56263018 0x4>;
 			#clock-cells = <1>;
 			clocks = <&clk IMX_SC_R_HDMI IMX_SC_PM_CLK_MISC0>;
-			bit-offset = <0>;
+			clock-indices = <IMX_LPCG_CLK_0>;
 			clock-output-names = "hdmi_lpcg_pxl_clk";
 			power-domains = <&pd IMX_SC_R_HDMI>;
 			status = "disabled";
@@ -116,7 +116,7 @@
 			#clock-cells = <1>;
 			clocks = <&clk IMX_SC_R_HDMI IMX_SC_PM_CLK_MISC0>,
 					<&clk IMX_SC_R_HDMI IMX_SC_PM_CLK_MISC4>;
-			bit-offset = <0 16>;
+			clock-indices = <IMX_LPCG_CLK_0>, <IMX_LPCG_CLK_4>;
 			clock-output-names = "hdmi_lpcg_phy_vif_clk",
 							"hdmi_lpcg_phy_pclk";
 			power-domains = <&pd IMX_SC_R_HDMI>;
@@ -127,8 +127,8 @@
 			compatible = "fsl,imx8qxp-lpcg";
 			reg = <0x56263020 0x4>;
 			#clock-cells = <1>;
-			clocks = <&hdmi_lpcg_apb 0>;
-			bit-offset = <16>;
+			clocks = <&hdmi_lpcg_apb IMX_LPCG_CLK_4>;
+			clock-indices = <IMX_LPCG_CLK_4>;
 			clock-output-names = "hdmi_lpcg_apb_mux_csr_clk";
 			power-domains = <&pd IMX_SC_R_HDMI>;
 			status = "disabled";
@@ -138,8 +138,8 @@
 			compatible = "fsl,imx8qxp-lpcg";
 			reg = <0x56263024 0x4>;
 			#clock-cells = <1>;
-			clocks = <&hdmi_lpcg_apb 0>;
-			bit-offset = <16>;
+			clocks = <&hdmi_lpcg_apb IMX_LPCG_CLK_4>;
+			clock-indices = <IMX_LPCG_CLK_4>;
 			clock-output-names = "hdmi_lpcg_apb_mux_ctrl_clk";
 			power-domains = <&pd IMX_SC_R_HDMI>;
 			status = "disabled";
@@ -150,7 +150,7 @@
 			reg = <0x56263028 0x4>;
 			#clock-cells = <1>;
 			clocks = <&clk IMX_SC_R_HDMI IMX_SC_PM_CLK_MISC4>;
-			bit-offset = <16>;
+			clock-indices = <IMX_LPCG_CLK_4>;
 			clock-output-names = "hdmi_lpcg_apb_clk";
 			power-domains = <&pd IMX_SC_R_HDMI>;
 			status = "disabled";
@@ -161,8 +161,8 @@
 			reg = <0x56266000 0x1000>;
 			interrupts = <8 IRQ_TYPE_LEVEL_HIGH>;
 			interrupt-parent = <&irqsteer_hdmi>;
-			clocks = <&hdmi_lpcg_i2c0 0>,
-					<&hdmi_lpcg_i2c0 1>;
+			clocks = <&hdmi_lpcg_i2c0 IMX_LPCG_CLK_0>,
+					<&hdmi_lpcg_i2c0 IMX_LPCG_CLK_4>;
 			clock-names = "per", "ipg";
 			assigned-clocks = <&clk IMX_SC_R_HDMI_I2C_0 IMX_SC_PM_CLK_MISC2>;
 			assigned-clock-rates = <24000000>;
@@ -186,16 +186,16 @@
 					<&clk IMX_SC_R_HDMI IMX_SC_PM_CLK_MISC3>,
 					<&clk IMX_SC_R_HDMI IMX_SC_PM_CLK_MISC0>,
 					<&clk IMX_SC_R_HDMI IMX_SC_PM_CLK_MISC1>,
-					<&hdmi_lpcg_phy 1>,
-					<&hdmi_lpcg_msi_hclk 0>,
-					<&hdmi_lpcg_pxl 0>,
-					<&hdmi_lpcg_phy 0>,
-					<&hdmi_lpcg_lis_ipg 0>,
-					<&hdmi_lpcg_apb 0>,
-					<&hdmi_lpcg_apb_mux_csr 0>,
-					<&hdmi_lpcg_apb_mux_ctrl 0>,
+					<&hdmi_lpcg_phy IMX_LPCG_CLK_4>,
+					<&hdmi_lpcg_msi_hclk IMX_LPCG_CLK_0>,
+					<&hdmi_lpcg_pxl IMX_LPCG_CLK_0>,
+					<&hdmi_lpcg_phy IMX_LPCG_CLK_0>,
+					<&hdmi_lpcg_lis_ipg IMX_LPCG_CLK_4>,
+					<&hdmi_lpcg_apb IMX_LPCG_CLK_4>,
+					<&hdmi_lpcg_apb_mux_csr IMX_LPCG_CLK_4>,
+					<&hdmi_lpcg_apb_mux_ctrl IMX_LPCG_CLK_4>,
 					<&clk IMX_SC_R_HDMI_I2S IMX_SC_PM_CLK_BYPASS>,
-					<&hdmi_lpcg_i2s 0>;
+					<&hdmi_lpcg_i2s IMX_LPCG_CLK_0>;
 			clock-names = "dig_pll", "av_pll", "clk_ipg",
 							"clk_core", "clk_pxl", "clk_pxl_mux",
 							"clk_pxl_link",	"lpcg_hdp", "lpcg_msi",

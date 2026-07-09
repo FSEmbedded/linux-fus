@@ -21,10 +21,10 @@
 	status = "okay";
 
 	/* i2c device */
-	codec: wm8962@1a {
+	audio_codec: wm8962@1a {
 		compatible = "wlf,wm8962";
 		reg = <0x1a 0x00 (I2C_FM | I2C_NO_FILTER_LOW_FREQUENCY)>;
-		clocks = <&clk IMX91_CLK_SAI3_GATE>;
+		clocks = <&clk IMX93_CLK_SAI3_GATE>;
 		DCVDD-supply = <&reg_audio_pwr>;
 		DBVDD-supply = <&reg_audio_pwr>;
 		AVDD-supply = <&reg_audio_pwr>;

@@ -6,6 +6,8 @@
 #define ENETC_MM_VERIFY_SLEEP_US	USEC_PER_MSEC
 #define ENETC_MM_VERIFY_RETRIES		3
 
+#define ENETC_NUM_TC			8
+
 /* ENETC device IDs */
 #define ENETC_DEV_ID_PF		0xe100
 #define ENETC_DEV_ID_VF		0xef00
@@ -42,7 +44,6 @@
 
 #define ENETC_SIPMAR0	0x80
 #define ENETC_SIPMAR1	0x84
-
 #define ENETC_SICVLANR1	0x90
 #define ENETC_SICVLANR2	0x94
 #define  SICVLANR_ETYPE	GENMASK(15, 0)
@@ -108,6 +109,7 @@ static inline u32 enetc_vsi_set_msize(u32 size)
 #define  VSIIER_MRIE	BIT(9)
 
 #define ENETC_PSIIDR	0xa08
+#define  PSIIDR_VSI_FLR(n)	GENMASK(16 + (n), 17)
 #define ENETC_VSIIDR	0xa08
 #define  VSIIDR_MR	BIT(9)
 #define ENETC_SITXIDR	0xa18
@@ -159,8 +161,6 @@ enum enetc_bdr_type {TX, RX};
 #define ENETC_TBMR_VIH	BIT(9)
 #define ENETC_TBMR_PRIO_MASK		GENMASK(2, 0)
 #define ENETC_TBMR_SET_PRIO(val)	((val) & ENETC_TBMR_PRIO_MASK)
-#define ENETC_TBMR_WRR	GENMASK(6, 4)
-#define ENETC_TBMR_FWB	BIT(24)
 #define ENETC_TBMR_EN	BIT(31)
 #define ENETC_TBSR	0x4
 #define ENETC_TBBAR0	0x10
@@ -207,7 +207,7 @@ enum enetc_bdr_type {TX, RX};
 #define ENETC_PVCLCTR_OVTPIDL(bmp)	((bmp) & 0xff) /* VLAN_TYPE */
 #define ENETC_PSIVLANR(n)	(0x0240 + (n) * 4) /* n = SI index */
 #define ENETC_PSIVLAN_EN	BIT(31)
-#define ENETC_PSIVLAN_SET_QOS(val)	((u32)(val) << 13)
+#define ENETC_PSIVLAN_SET_QOS(val)	((u32)(val) << 12)
 #define ENETC_PPAUONTR		0x0410
 #define ENETC_PPAUOFFTR		0x0414
 #define ENETC_PTXMBAR		0x0608
@@ -276,7 +276,6 @@ enum enetc_bdr_type {TX, RX};
 #define ENETC_MMFCTXR		0x1f18
 #define ENETC_MMHCR		0x1f1c
 #define ENETC_PTCMSDUR(n)	(0x2020 + (n) * 4) /* n = TC index [0..7] */
-#define ENETC_PTCMSDUR_MAXSDU	GENMASK(15, 0)
 
 #define ENETC_PMAC_OFFSET	0x1000
 
@@ -395,10 +394,12 @@ enum enetc_bdr_type {TX, RX};
 /** Global regs, offset: 2_0000h */
 #define ENETC_GLOBAL_BASE	0x20000
 #define ENETC_G_EIPBRR0		0x0bf8
-#define  EIPBRR0_REVISION	GENMASK(15, 0)
-#define  ENETC_REV_1_0		0x0100
-#define  ENETC_REV_4_1		0x0401
-#define  ENETC_REV_4_3		0x0403
+#define EIPBRR0_REVISION	GENMASK(15, 0)
+#define ENETC_REV_1_0		0x0100
+#define ENETC_REV_4_1		0X0401
+#define ENETC_REV_4_3		0x0403
+#define ENETC_REV_4_6		0x0406
+
 #define ENETC_G_EIPBRR1		0x0bfc
 #define ENETC_G_EPFBLPR(n)	(0xd00 + 4 * (n))
 #define ENETC_G_EPFBLPR1_XGMII	0x80000000
@@ -555,8 +556,8 @@ static inline u64 _enetc_rd_reg64_wa(void __iomem *reg)
 #define enetc_rd64(hw, off)		_enetc_rd_reg64_wa((hw)->reg + (off))
 /* port register accessors - PF only */
 #define enetc_port_rd(hw, off)		enetc_rd_reg((hw)->port + (off))
-#define enetc_port_rd64(hw, off)	_enetc_rd_reg64_wa((hw)->port + (off))
 #define enetc_port_wr(hw, off, val)	enetc_wr_reg((hw)->port + (off), val)
+#define enetc_port_rd64(hw, off)	_enetc_rd_reg64_wa((hw)->port + (off))
 #define enetc_port_rd_mdio(hw, off)	_enetc_rd_mdio_reg_wa((hw)->port + (off))
 #define enetc_port_wr_mdio(hw, off, val)	_enetc_wr_mdio_reg_wa(\
 							(hw)->port + (off), val)
@@ -579,21 +580,23 @@ static inline u64 _enetc_rd_reg64_wa(void __iomem *reg)
 union enetc_tx_bd {
 	struct {
 		__le64 addr;
-		struct {
-			union {
-				__le16 buf_len;
-				__le16 hdr_len;	// For LSO only
-			};
-			__le16 frm_len;
+		union {
+			__le16 buf_len;
+			__le16 hdr_len;	/* For LSO, ENETC 4.1 and later */
 		};
+		__le16 frm_len;
 		union {
 			struct {
-				u8 l3_start:7;
-				u8 ipcs:1;
-				u8 l3_hdr_size:7;
-				u8 l3t:1;
-				u8 resv:5;
-				u8 l4t:3;
+				u8 l3_aux0;
+#define ENETC_TX_BD_L3_START	GENMASK(6, 0)
+#define ENETC_TX_BD_IPCS	BIT(7)
+				u8 l3_aux1;
+#define ENETC_TX_BD_L3_HDR_LEN	GENMASK(6, 0)
+#define ENETC_TX_BD_L3T		BIT(7)
+				u8 l4_aux;
+#define ENETC_TX_BD_L4T		GENMASK(7, 5)
+#define ENETC_TXBD_L4T_UDP	1
+#define ENETC_TXBD_L4T_TCP	2
 				u8 flags;
 			}; /* default layout */
 			__le32 txstart;
@@ -602,30 +605,29 @@ union enetc_tx_bd {
 	};
 	struct {
 		__le32 tstamp;
-#define ENETC_TXBD_TSTAMP	GENMASK(29, 0)
 		__le16 tpid;
 		__le16 vid;
-		__le16 lso_sg_size;	// For enetc4
-		__le16 frm_len_ext;	// For enetc4
-		u8 resv[2];
+		__le16 lso_sg_size; /* For ENETC 4.1 and later */
+		__le16 frm_len_ext; /* For ENETC 4.1 and later */
+		u8 reserved[2];
 		u8 e_flags;
 		u8 flags;
 	} ext; /* Tx BD extension */
 	struct {
 		__le32 tstamp;
-		u8 resv[8];
-		__le16 lso_err_count;	// For enetc4
+		u8 reserved[8];
+		__le16 lso_err_count; /* For ENETC 4.1 and later */
 		u8 status;
 		u8 flags;
 	} wb; /* writeback descriptor */
 };
 
 enum enetc_txbd_flags {
-	ENETC_TXBD_FLAGS_L4CS = BIT(0),
+	ENETC_TXBD_FLAGS_L4CS = BIT(0), /* For ENETC 4.1 and later */
 	ENETC_TXBD_FLAGS_TSE = BIT(1),
-	ENETC_TXBD_FLAGS_LSO = BIT(1), // For ENETC4
+	ENETC_TXBD_FLAGS_LSO = BIT(1), /* For ENETC 4.1 and later */
 	ENETC_TXBD_FLAGS_W = BIT(2),
-	ENETC_TXBD_FLAGS_CSUM_LSO = BIT(3), // For ENETC4
+	ENETC_TXBD_FLAGS_CSUM_LSO = BIT(3), /* For ENETC 4.1 and later */
 	ENETC_TXBD_FLAGS_TXSTART = BIT(4),
 	ENETC_TXBD_FLAGS_EX = BIT(6),
 	ENETC_TXBD_FLAGS_F = BIT(7)
@@ -633,10 +635,7 @@ enum enetc_txbd_flags {
 #define ENETC_TXBD_STATS_WIN	BIT(7)
 #define ENETC_TXBD_TXSTART_MASK GENMASK(24, 0)
 #define ENETC_TXBD_FLAGS_OFFSET 24
-
-#define ENETC_TXBD_L4T_NONE	0
-#define ENETC_TXBD_L4T_UDP	BIT(0)
-#define ENETC_TXBD_L4T_TCP	BIT(1)
+#define ENETC_TXBD_TSTAMP	GENMASK(29, 0)
 
 static inline __le32 enetc_txbd_set_tx_start(u64 tx_start, u8 flags)
 {
@@ -698,7 +697,6 @@ union enetc_rx_bd {
 #define ENETC_RXBD_FLAG_RSSV	BIT(8)
 #define ENETC_RXBD_FLAG_VLAN	BIT(9)
 #define ENETC_RXBD_FLAG_TSTMP	BIT(10)
-#define ENETC_RXBD_FLAG_L4_CSUM_OK	BIT(12) /* Only TCP and UDP */
 #define ENETC_RXBD_FLAG_TPID	GENMASK(1, 0)
 #define ENETC_RXBD_TPID_8021Q	0
 #define ENETC_RXBD_TPID_8021AD	1
@@ -707,10 +705,12 @@ union enetc_rx_bd {
 
 #define ENETC_MAC_ADDR_FILT_CNT	8 /* # of supported entries per port */
 #define EMETC_MAC_ADDR_FILT_RES	3 /* # of reserved entries at the beginning */
-#define ENETC_MAX_NUM_VFS	8
+#define ENETC_MAX_NUM_VFS	15
 
 #define ENETC_CBD_FLAGS_SF	BIT(7) /* short format */
 #define ENETC_CBD_STATUS_MASK	0xf
+
+#define ENETC_TPID_8021Q	0
 
 struct enetc_cmd_rfse {
 	u8 smac_h[6];
@@ -741,20 +741,25 @@ struct enetc_cmd_rfse {
 #define ENETC_RFSE_EN	BIT(15)
 #define ENETC_RFSE_MODE_BD	2
 
+static inline void enetc_get_primary_mac_addr(struct enetc_hw *hw, u8 *addr)
+{
+	u32 upper;
+	u16 lower;
+
+	upper = __raw_readl(hw->reg + ENETC_SIPMAR0);
+	lower = __raw_readl(hw->reg + ENETC_SIPMAR1);
+
+	put_unaligned_le32(upper, addr);
+	put_unaligned_le16(lower, addr + 4);
+}
+
 static inline void enetc_load_primary_mac_addr(struct enetc_hw *hw,
 					       struct net_device *ndev)
 {
-	u8 addr[ETH_ALEN] __aligned(4);
+	u8 addr[ETH_ALEN];
 
-	*(u32 *)addr = __raw_readl(hw->reg + ENETC_SIPMAR0);
-	*(u16 *)(addr + 4) = __raw_readw(hw->reg + ENETC_SIPMAR1);
+	enetc_get_primary_mac_addr(hw, addr);
 	eth_hw_addr_set(ndev, addr);
-}
-
-static inline void enetc_get_si_primary_mac(struct enetc_hw *hw, u8 *addr)
-{
-	*(u32 *)addr = __raw_readl(hw->reg + ENETC_SIPMAR0);
-	*(u16 *)(addr + 4) = __raw_readw(hw->reg + ENETC_SIPMAR1);
 }
 
 #define ENETC_SI_INT_IDX	0
@@ -766,8 +771,7 @@ static inline void enetc_get_si_primary_mac(struct enetc_hw *hw, u8 *addr)
 /* Command completion status */
 enum enetc_msg_cmd_status {
 	ENETC_MSG_CMD_STATUS_OK,
-	ENETC_MSG_CMD_STATUS_FAIL,
-	ENETC_MSG_CMD_NOT_SUPPORT
+	ENETC_MSG_CMD_STATUS_FAIL
 };
 
 /* VSI-PSI command message types */
@@ -1194,8 +1198,10 @@ struct enetc_cbd {
 	u8 status_flags;
 };
 
-#define ENETC_CLK  400000000ULL
-#define ENETC4_CLK 333000000ULL
+#define ENETC_CLK_400M		400000000ULL
+#define ENETC_CLK_333M		333000000ULL
+#define ENETC_CLK_133M		133000000ULL
+
 static inline u32 enetc_cycles_to_usecs(u32 cycles, u64 clk_freq)
 {
 	return (u32)div_u64(cycles * 1000000ULL, clk_freq);

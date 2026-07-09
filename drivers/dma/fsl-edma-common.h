@@ -8,6 +8,7 @@
 
 #include <linux/dma-direction.h>
 #include <linux/platform_device.h>
+#include <linux/pm_qos.h>
 #include "virt-dma.h"
 
 #define EDMA_CR_EDBG		BIT(1)
@@ -45,11 +46,18 @@
 
 #define EDMA_CH_MATTR_RCACHE		GENMASK(3, 0)
 #define EDMA_CH_MATTR_WCACHE		GENMASK(7, 4)
+#define EDMA_CH_MATTR_RDOMAINS(x)       (((x) & GENMASK(1, 0)) << 8)
+#define EDMA_CH_MATTR_WDOMAINS(x)       (((x) & GENMASK(1, 0)) << 10)
 
 #define EDMA_V3_TCD_NBYTES_MLOFF_NBYTES(x) ((x) & GENMASK(9, 0))
 #define EDMA_V3_TCD_NBYTES_MLOFF(x)        (x << 10)
 #define EDMA_V3_TCD_NBYTES_DMLOE           (1 << 30)
 #define EDMA_V3_TCD_NBYTES_SMLOE           (1 << 31)
+
+#define EDMA_DEFAULT_BURST_SIZE         0x1
+#define EDMA_ACP_ADDR_FLAG              BIT_ULL(36)
+#define EDMA_ACP_ALIGNMENT              0x10
+#define EDMA_ACP_ALIGNMENT_MASK         (EDMA_ACP_ALIGNMENT - 1)
 
 #define EDMAMUX_CHCFG_DIS		0x0
 #define EDMAMUX_CHCFG_ENBL		0x80
@@ -71,6 +79,20 @@
 #define EDMA_V3_CH_CSR_EEI         BIT(2)
 #define EDMA_V3_CH_CSR_DONE        BIT(30)
 #define EDMA_V3_CH_CSR_ACTIVE      BIT(31)
+#define EDMA_V3_CH_ES_ERR          BIT(31)
+#define EDMA_V3_MP_ES_VLD          BIT(31)
+
+#define EDMA_V3_CH_ERR_DBE	BIT(0)
+#define EDMA_V3_CH_ERR_SBE	BIT(1)
+#define EDMA_V3_CH_ERR_SGE	BIT(2)
+#define EDMA_V3_CH_ERR_NCE	BIT(3)
+#define EDMA_V3_CH_ERR_DOE	BIT(4)
+#define EDMA_V3_CH_ERR_DAE	BIT(5)
+#define EDMA_V3_CH_ERR_SOE	BIT(6)
+#define EDMA_V3_CH_ERR_SAE	BIT(7)
+#define EDMA_V3_CH_ERR_ECX	BIT(8)
+#define EDMA_V3_CH_ERR_UCE	BIT(9)
+#define EDMA_V3_CH_ERR		BIT(31)
 
 enum fsl_edma_pm_state {
 	RUNNING = 0,
@@ -182,6 +204,7 @@ struct fsl_edma_chan {
 	bool				is_remote;
 	bool				is_multi_fifo;
 	u32				chn_real_count;
+	struct pm_qos_request		req;
 };
 
 struct fsl_edma_desc {
@@ -217,20 +240,9 @@ struct fsl_edma3_reg_save {
 /* Need clean CHn_CSR DONE before enable TCD's MAJORELINK */
 #define FSL_EDMA_DRV_CLEAR_DONE_E_LINK	BIT(14)
 #define FSL_EDMA_DRV_TCD64		BIT(15)
-#define FSL_EDMA_DRV_HAS_MPCLK         BIT(16)
-#define FSL_EDMA_DRV_ERRIRQ_SHARE       BIT(17)
-
-#define EDMA_CH_ERR_DBE                 BIT(0)
-#define EDMA_CH_ERR_SBE                 BIT(1)
-#define EDMA_CH_ERR_SGE                 BIT(2)
-#define EDMA_CH_ERR_NCE                 BIT(3)
-#define EDMA_CH_ERR_DOE                 BIT(4)
-#define EDMA_CH_ERR_DAE                 BIT(5)
-#define EDMA_CH_ERR_SOE                 BIT(6)
-#define EDMA_CH_ERR_SAE                 BIT(7)
-#define EDMA_CH_ERR_ECX                 BIT(8)
-#define EDMA_CH_ERR_UCE                 BIT(9)
-#define EDMA_CH_ERR                     BIT(31)
+/* All channel ERR IRQ share one IRQ line */
+#define FSL_EDMA_DRV_ERRIRQ_SHARE       BIT(16)
+#define FSL_EDMA_DRV_SEL_ACP            BIT(17)
 
 #define FSL_EDMA_DRV_EDMA3	(FSL_EDMA_DRV_SPLIT_REG |	\
 				 FSL_EDMA_DRV_BUS_8BYTE |	\
@@ -266,6 +278,7 @@ struct fsl_edma_engine {
 	const struct fsl_edma_drvdata *drvdata;
 	u32			n_chans;
 	int			txirq;
+	int			txirq_16_31;
 	int			errirq;
 	int                     txirq_count;
 	#define MAX_CHAN_NUM    64
@@ -492,7 +505,7 @@ void fsl_edma_tx_chan_handler(struct fsl_edma_chan *fsl_chan);
 void fsl_edma_disable_request(struct fsl_edma_chan *fsl_chan);
 void fsl_edma_chan_mux(struct fsl_edma_chan *fsl_chan,
 			unsigned int slot, bool enable);
-void fsl_edma_free_desc(struct virt_dma_desc *vdesc);
+void fsl_edma_free_vdesc(struct virt_dma_desc *vdesc);
 int fsl_edma_terminate_all(struct dma_chan *chan);
 int fsl_edma_pause(struct dma_chan *chan);
 int fsl_edma_resume(struct dma_chan *chan);

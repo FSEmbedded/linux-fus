@@ -63,7 +63,6 @@ extern int vsi_kloglvl;
 //compound type for extension ctrls
 #define VSI_V4L2_CMPTYPE_ROI				(V4L2_CTRL_COMPOUND_TYPES + 100)
 #define VSI_V4L2_CMPTYPE_IPCM				(V4L2_CTRL_COMPOUND_TYPES + 101)
-#define VSI_V4L2_CMPTYPE_HDR10META		(V4L2_CTRL_COMPOUND_TYPES + 102)
 
 enum {
 	LOGLVL_VERBOSE = 0,	//log all
@@ -380,12 +379,12 @@ struct vsi_v4l2_ctx {
 	struct cropinfo *crophead;
 	struct cropinfo *croptail;
 
-	u32 src_change;
 	u32 reschange_cnt;
 	bool reschanged_need_notify;
 	bool reschange_notified;
 	bool need_capture_on;
 	bool need_output_on;
+	bool capture_pend_output_buffer;
 
 	u32 out_sequence;
 	u32 cap_sequence;
@@ -416,6 +415,7 @@ struct vsi_v4l2_ctx *vsi_create_ctx(void);
 void vsi_set_ctx_error(struct vsi_v4l2_ctx *ctx, s32 error);
 void wakeup_ctxqueues(void);
 int vsi_v4l2_reset_ctx(struct vsi_v4l2_ctx *ctx);
+bool vsi_v4l2_dec_in_source_change(struct vsi_v4l2_ctx *ctx);
 int vsi_v4l2_send_reschange(struct vsi_v4l2_ctx *ctx);
 int vsi_v4l2_notify_reschange(struct vsi_v4l2_msg *pmsg);
 int vsi_v4l2_handle_linear_alloc(struct vsi_v4l2_msg *pmsg);
@@ -654,9 +654,13 @@ static inline void return_all_buffers(struct vb2_queue *vq, int status, int bRel
 		plist = &ctx->output_list;
 
 	for (i = 0; i < vb2_get_num_buffers(vq); ++i) {
-		if (vq->bufs[i]->state == VB2_BUF_STATE_ACTIVE) {
+		struct vb2_buffer *vb = vb2_get_buffer(vq, i);
+
+		if (!vb)
+			continue;
+		if (vb->state == VB2_BUF_STATE_ACTIVE) {
 			v4l2_klog(LOGLVL_FLOW, "return buffer %d", i);
-			vb2_buffer_done(vq->bufs[i], status);
+			vb2_buffer_done(vb, status);
 		}
 	}
 	if (bRelbuf) {
@@ -675,8 +679,10 @@ static inline void print_queinfo(struct vb2_queue *q)
 
 	v4l2_klog(LOGLVL_VERBOSE, "got %d buffer", vb2_get_num_buffers(q));
 	for (i = 0; i < vb2_get_num_buffers(q); i++) {
-		struct vb2_buffer	*buf = q->bufs[i];
+		struct vb2_buffer *buf = vb2_get_buffer(q, i);
 
+		if (!buf)
+			continue;
 		v4l2_klog(LOGLVL_VERBOSE, "buf %d%p has %d planes", i, buf, buf->num_planes);
 		for (k = 0; k < buf->num_planes; k++) {
 			int *data = vb2_plane_vaddr(buf, k);

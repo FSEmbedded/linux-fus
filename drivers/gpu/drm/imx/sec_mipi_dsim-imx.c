@@ -334,7 +334,7 @@ static int sec_dsim_of_parse_resets(struct imx_sec_dsim_device *dsim)
 		if (!compat)
 			continue;
 
-		rstc = of_reset_control_array_get(child, false, false, true);
+		rstc = of_reset_control_array_get(child, RESET_CONTROL_EXCLUSIVE);
 		if (IS_ERR(rstc))
 			continue;
 

@@ -30,7 +30,7 @@
 #include <linux/iopoll.h>
 #include <linux/dma-mapping.h>
 
-#include <asm/irq.h>
+#include <linux/irq.h>
 #include <linux/dma/imx-dma.h>
 #include <linux/busfreq-imx.h>
 #include <linux/pm_qos.h>
@@ -235,9 +235,9 @@ struct imx_port {
 	enum imx_tx_state	tx_state;
 	struct hrtimer		trigger_start_tx;
 	struct hrtimer		trigger_stop_tx;
+	unsigned int		rxtl;
 
 	struct pm_qos_request   pm_qos_req;
-	unsigned int		rxtl;
 };
 
 struct imx_port_ucrs {
@@ -375,6 +375,7 @@ static void imx_uart_soft_reset(struct imx_port *sport)
 	sport->idle_counter = 0;
 }
 
+/* called with port.lock taken and irqs off */
 static void imx_uart_disable_loopback_rs485(struct imx_port *sport)
 {
 	unsigned int uts;
@@ -475,6 +476,7 @@ static void imx_uart_stop_tx(struct uart_port *port)
 	}
 }
 
+/* called with port.lock taken and irqs off */
 static void imx_uart_stop_rx_with_loopback_ctrl(struct uart_port *port, bool loopback)
 {
 	struct imx_port *sport = to_imx_port(port);
@@ -823,6 +825,8 @@ static irqreturn_t imx_uart_txint(int irq, void *dev_id)
  * issuing soft reset to the UART (just stop/start of RX does not help). Note
  * that what we do here is sending isolated start bit about 2.4 times shorter
  * than it is to be on UART configured baud rate.
+ *
+ * Called with port.lock taken and irqs off.
  */
 static void imx_uart_check_flood(struct imx_port *sport, u32 usr2)
 {
@@ -858,6 +862,7 @@ static void imx_uart_check_flood(struct imx_port *sport, u32 usr2)
 	}
 }
 
+/* called with port.lock taken and irqs off */
 static irqreturn_t __imx_uart_rxint(int irq, void *dev_id)
 {
 	struct imx_port *sport = dev_id;
@@ -936,6 +941,7 @@ static void imx_uart_clear_rx_errors(struct imx_port *sport);
 /*
  * We have a modem side uart, so the meanings of RTS and CTS are inverted.
  */
+/* called with port.lock taken and irqs off */
 static unsigned int imx_uart_get_hwmctrl(struct imx_port *sport)
 {
 	unsigned int tmp = TIOCM_DSR;
@@ -958,6 +964,8 @@ static unsigned int imx_uart_get_hwmctrl(struct imx_port *sport)
 
 /*
  * Handle any change of modem status signal since we were last called.
+ *
+ * Called with port.lock taken and irqs off.
  */
 static void imx_uart_mctrl_check(struct imx_port *sport)
 {
@@ -1160,7 +1168,7 @@ static void imx_uart_break_ctl(struct uart_port *port, int break_state)
  */
 static void imx_uart_timeout(struct timer_list *t)
 {
-	struct imx_port *sport = from_timer(sport, t, timer);
+	struct imx_port *sport = timer_container_of(sport, t, timer);
 	unsigned long flags;
 
 	if (sport->port.state) {
@@ -1297,6 +1305,7 @@ static int imx_uart_start_rx_dma(struct imx_port *sport)
 	return 0;
 }
 
+/* called with port.lock taken and irqs off */
 static void imx_uart_clear_rx_errors(struct imx_port *sport)
 {
 	struct tty_port *port = &sport->port.state->port;
@@ -1435,6 +1444,7 @@ err:
 	return ret;
 }
 
+/* called with port.lock taken and irqs off */
 static void imx_uart_enable_dma(struct imx_port *sport)
 {
 	u32 ucr1;
@@ -1626,7 +1636,7 @@ static void imx_uart_shutdown(struct uart_port *port)
 	/*
 	 * Stop our timer.
 	 */
-	del_timer_sync(&sport->timer);
+	timer_delete_sync(&sport->timer);
 
 	/*
 	 * Disable all interrupts, port and break condition.
@@ -1759,7 +1769,7 @@ imx_uart_set_termios(struct uart_port *port, struct ktermios *termios,
 		old_csize = CS8;
 	}
 
-	del_timer_sync(&sport->timer);
+	timer_delete_sync(&sport->timer);
 
 	/*
 	 * Ask the core to calculate the divisor for us.
@@ -2509,10 +2519,10 @@ static int imx_uart_probe(struct platform_device *pdev)
 		imx_uart_writel(sport, ucr3, UCR3);
 	}
 
-	hrtimer_init(&sport->trigger_start_tx, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
-	hrtimer_init(&sport->trigger_stop_tx, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
-	sport->trigger_start_tx.function = imx_trigger_start_tx;
-	sport->trigger_stop_tx.function = imx_trigger_stop_tx;
+	hrtimer_setup(&sport->trigger_start_tx, imx_trigger_start_tx, CLOCK_MONOTONIC,
+		      HRTIMER_MODE_REL);
+	hrtimer_setup(&sport->trigger_stop_tx, imx_trigger_stop_tx, CLOCK_MONOTONIC,
+		      HRTIMER_MODE_REL);
 
 	/*
 	 * Allocate the IRQ(s) i.MX1 has three interrupts whereas later
@@ -2614,16 +2624,35 @@ static void imx_uart_save_context(struct imx_port *sport)
 	uart_port_unlock_irqrestore(&sport->port, flags);
 }
 
+/* called with irq off */
 static void imx_uart_enable_wakeup(struct imx_port *sport, bool on)
 {
-	u32 ucr3;
+	struct tty_port *port = &sport->port.state->port;
+	struct device *tty_dev;
+	bool may_wake = false, wake_active = false;
+	u32 ucr3, usr1;
 
+	scoped_guard(tty_port_tty, port) {
+		struct tty_struct *tty = scoped_tty();
+
+		tty_dev = tty->dev;
+		may_wake = tty_dev && device_may_wakeup(tty_dev);
+	}
+
+	/* only configure the wake register when device set as wakeup source */
+	if (!may_wake)
+		return;
+
+	uart_port_lock_irq(&sport->port);
+
+	usr1 = imx_uart_readl(sport, USR1);
 	ucr3 = imx_uart_readl(sport, UCR3);
 	if (on) {
 		imx_uart_writel(sport, USR1_AWAKE, USR1);
 		ucr3 |= UCR3_AWAKEN;
 	} else {
 		ucr3 &= ~UCR3_AWAKEN;
+		wake_active = usr1 & USR1_AWAKE;
 	}
 	imx_uart_writel(sport, ucr3, UCR3);
 
@@ -2634,9 +2663,15 @@ static void imx_uart_enable_wakeup(struct imx_port *sport, bool on)
 			ucr1 |= UCR1_RTSDEN;
 		} else {
 			ucr1 &= ~UCR1_RTSDEN;
+			wake_active = wake_active || (usr1 & USR1_RTSD);
 		}
 		imx_uart_writel(sport, ucr1, UCR1);
 	}
+
+	if (wake_active && irqd_is_wakeup_set(irq_get_irq_data(sport->port.irq)))
+		pm_wakeup_event(tty_port_tty_get(port)->dev, 0);
+
+	uart_port_unlock_irq(&sport->port);
 }
 
 static int imx_uart_suspend_noirq(struct device *dev)
@@ -2736,7 +2771,7 @@ static const struct dev_pm_ops imx_uart_pm_ops = {
 
 static struct platform_driver imx_uart_platform_driver = {
 	.probe = imx_uart_probe,
-	.remove_new = imx_uart_remove,
+	.remove = imx_uart_remove,
 
 	.driver = {
 		.name = "imx-uart",

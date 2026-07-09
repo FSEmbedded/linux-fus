@@ -6,7 +6,7 @@
 
 /dts-v1/;
 
-#include "fsl-lx2160a.dtsi"
+#include "fsl-lx2162a.dtsi"
 #include "fsl-lx2162a-sr-som.dtsi"
 
 / {
@@ -91,64 +91,64 @@
 &dpmac3 {
 	sfp = <&sfp_at>;
 	managed = "in-band-status";
-	phys = <&serdes_1 7>;
+	phys = <&serdes_1_lane_h>;
 };
 
 &dpmac4 {
 	sfp = <&sfp_ab>;
 	managed = "in-band-status";
-	phys = <&serdes_1 6>;
+	phys = <&serdes_1_lane_g>;
 };
 
 &dpmac5 {
 	sfp = <&sfp_bt>;
 	managed = "in-band-status";
-	phys = <&serdes_1 5>;
+	phys = <&serdes_1_lane_f>;
 };
 
 &dpmac6 {
 	sfp = <&sfp_bb>;
 	managed = "in-band-status";
-	phys = <&serdes_1 4>;
+	phys = <&serdes_1_lane_e>;
 };
 
 &dpmac11 {
-	phys = <&serdes_2 0>;
+	phys = <&serdes_2_lane_a>;
 	phy-handle = <&ethernet_phy3>;
 	phy-connection-type = "sgmii";
 	status = "okay";
 };
 
 &dpmac12 {
-	phys = <&serdes_2 1>;
+	phys = <&serdes_2_lane_b>;
 	phy-handle = <&ethernet_phy1>;
 	phy-connection-type = "sgmii";
 	status = "okay";
 };
 
 &dpmac13 {
-	phys = <&serdes_2 6>;
+	phys = <&serdes_2_lane_g>;
 	phy-handle = <&ethernet_phy6>;
 	phy-connection-type = "sgmii";
 	status = "okay";
 };
 
 &dpmac14 {
-	phys = <&serdes_2 7>;
+	phys = <&serdes_2_lane_h>;
 	phy-handle = <&ethernet_phy8>;
 	phy-connection-type = "sgmii";
 	status = "okay";
 };
 
 &dpmac15 {
-	phys = <&serdes_2 4>;
+	phys = <&serdes_2_lane_e>;
 	phy-handle = <&ethernet_phy4>;
 	phy-connection-type = "sgmii";
 	status = "okay";
 };
 
 &dpmac16 {
-	phys = <&serdes_2 5>;
+	phys = <&serdes_2_lane_f>;
 	phy-handle = <&ethernet_phy2>;
 	phy-connection-type = "sgmii";
 	status = "okay";
@@ -159,14 +159,14 @@
 	/delete-property/ phy-handle;
 	/delete-property/ phy-connection-type;
 
-	phys = <&serdes_2 2>;
+	phys = <&serdes_2_lane_c>;
 	phy-handle = <&ethernet_phy5>;
 	phy-connection-type = "sgmii";
 	status = "okay";
 };
 
 &dpmac18 {
-	phys = <&serdes_2 3>;
+	phys = <&serdes_2_lane_d>;
 	phy-handle = <&ethernet_phy7>;
 	phy-connection-type = "sgmii";
 	status = "okay";

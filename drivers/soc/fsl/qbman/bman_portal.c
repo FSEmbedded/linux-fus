@@ -99,7 +99,7 @@ EXPORT_SYMBOL_GPL(bman_portals_probed);
 static int bman_portal_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
-	struct device_node *node = dev->of_node;
+	struct fwnode_handle *fwnode = dev_fwnode(dev);
 	struct bm_portal_config *pcfg;
 	struct resource *addr_phys[2];
 	int irq, cpu, err, i;
@@ -123,14 +123,14 @@ static int bman_portal_probe(struct platform_device *pdev)
 	addr_phys[0] = platform_get_resource(pdev, IORESOURCE_MEM,
 					     DPAA_PORTAL_CE);
 	if (!addr_phys[0]) {
-		dev_err(dev, "Can't get %pOF property 'reg::CE'\n", node);
+		dev_err(dev, "Can't get %pfw property 'reg::CE'\n", fwnode);
 		goto err_ioremap1;
 	}
 
 	addr_phys[1] = platform_get_resource(pdev, IORESOURCE_MEM,
 					     DPAA_PORTAL_CI);
 	if (!addr_phys[1]) {
-		dev_err(dev, "Can't get %pOF property 'reg::CI'\n", node);
+		dev_err(dev, "Can't get %pfw property 'reg::CI'\n", fwnode);
 		goto err_ioremap1;
 	}
 
@@ -194,8 +194,7 @@ check_cleanup:
 		}
 		bman_done_cleanup();
 	}
-	dev_dbg(dev, "Bman : Portal[%d] probed successfully [%d]\n",
-		cpu, __bman_portals_probed);
+
 	return 0;
 
 err_portal_init:
@@ -216,10 +215,13 @@ static const struct of_device_id bman_portal_ids[] = {
 };
 MODULE_DEVICE_TABLE(of, bman_portal_ids);
 
+#if IS_ENABLED(CONFIG_ACPI)
 static const struct acpi_device_id bman_portal_acpi_ids[] = {
-	{"NXP0023", 0}
+	{"NXP0023", 0},
+	{}
 };
 MODULE_DEVICE_TABLE(acpi, bman_portal_acpi_ids);
+#endif
 
 static struct platform_driver bman_portal_driver = {
 	.driver = {

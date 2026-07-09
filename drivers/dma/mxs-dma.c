@@ -401,7 +401,6 @@ static int mxs_dma_alloc_chan_resources(struct dma_chan *chan)
 {
 	struct mxs_dma_chan *mxs_chan = to_mxs_dma_chan(chan);
 	struct mxs_dma_engine *mxs_dma = mxs_chan->mxs_dma;
-	struct device *dev = &mxs_dma->pdev->dev;
 	int ret;
 
 	mxs_chan->ccw = dma_pool_zalloc(mxs_chan->ccw_pool,
@@ -418,13 +417,9 @@ static int mxs_dma_alloc_chan_resources(struct dma_chan *chan)
 	if (ret)
 		goto err_irq;
 
-	ret = pm_runtime_get_sync(dev);
-	if (ret < 0) {
-		dev_err(dev, "Failed to enable clock\n");
-		goto err_clk;
-	}
-
+	pm_runtime_get_sync(mxs_dma->dma_device.dev);
 	mxs_dma_reset_chan(chan);
+	pm_runtime_put_sync(mxs_dma->dma_device.dev);
 
 	dma_async_tx_descriptor_init(&mxs_chan->desc, chan);
 	mxs_chan->desc.tx_submit = mxs_dma_tx_submit;
@@ -434,8 +429,6 @@ static int mxs_dma_alloc_chan_resources(struct dma_chan *chan)
 
 	return 0;
 
-err_clk:
-	free_irq(mxs_chan->chan_irq, mxs_dma);
 err_irq:
 	dma_pool_free(mxs_chan->ccw_pool, mxs_chan->ccw,
 		      mxs_chan->ccw_phys);
@@ -447,7 +440,6 @@ static void mxs_dma_free_chan_resources(struct dma_chan *chan)
 {
 	struct mxs_dma_chan *mxs_chan = to_mxs_dma_chan(chan);
 	struct mxs_dma_engine *mxs_dma = mxs_chan->mxs_dma;
-	struct device *dev = &mxs_dma->pdev->dev;
 
 	mxs_dma_disable_chan(chan);
 
@@ -455,10 +447,6 @@ static void mxs_dma_free_chan_resources(struct dma_chan *chan)
 
 	dma_pool_free(mxs_chan->ccw_pool, mxs_chan->ccw,
 		      mxs_chan->ccw_phys);
-
-	pm_runtime_mark_last_busy(dev);
-	pm_runtime_put_autosuspend(dev);
-
 }
 
 /*
@@ -681,25 +669,10 @@ static enum dma_status mxs_dma_tx_status(struct dma_chan *chan,
 	return mxs_chan->status;
 }
 
-static int mxs_dma_init_rpm(struct mxs_dma_engine *mxs_dma)
-{
-	struct device *dev = &mxs_dma->pdev->dev;
-
-	pm_runtime_enable(dev);
-	pm_runtime_set_autosuspend_delay(dev, MXS_DMA_RPM_TIMEOUT);
-	pm_runtime_use_autosuspend(dev);
-
-	return 0;
-}
-
 static int mxs_dma_init(struct mxs_dma_engine *mxs_dma)
 {
 	struct device *dev = &mxs_dma->pdev->dev;
 	int ret;
-
-	ret = mxs_dma_init_rpm(mxs_dma);
-	if (ret)
-		return ret;
 
 	ret = pm_runtime_get_sync(dev);
 	if (ret < 0) {
@@ -724,8 +697,7 @@ static int mxs_dma_init(struct mxs_dma_engine *mxs_dma)
 		mxs_dma->base + HW_APBHX_CTRL1 + STMP_OFFSET_REG_SET);
 
 err_out:
-	pm_runtime_mark_last_busy(dev);
-	pm_runtime_put_autosuspend(dev);
+	pm_runtime_put_sync_suspend(dev);
 	return ret;
 }
 
@@ -830,6 +802,8 @@ static int mxs_dma_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, mxs_dma);
 	mxs_dma->pdev = pdev;
 
+	devm_pm_runtime_enable(&pdev->dev);
+
 	ret = mxs_dma_init(mxs_dma);
 	if (ret)
 		return ret;
@@ -912,6 +886,12 @@ static int mxs_dma_pm_resume(struct device *dev)
 	struct mxs_dma_engine *mxs_dma = dev_get_drvdata(dev);
 	int ret;
 
+	ret = pm_runtime_force_resume(dev);
+	if (ret) {
+		dev_err(dev, "failed to resume\n");
+		return ret;
+	}
+
 	ret = mxs_dma_init(mxs_dma);
 	if (ret)
 		return ret;
@@ -944,14 +924,14 @@ static int mxs_dma_runtime_resume(struct device *dev)
 }
 
 static const struct dev_pm_ops mxs_dma_pm_ops = {
-	SET_RUNTIME_PM_OPS(mxs_dma_runtime_suspend, mxs_dma_runtime_resume, NULL)
-	SET_SYSTEM_SLEEP_PM_OPS(mxs_dma_pm_suspend, mxs_dma_pm_resume)
+	RUNTIME_PM_OPS(mxs_dma_runtime_suspend, mxs_dma_runtime_resume, NULL)
+	SYSTEM_SLEEP_PM_OPS(mxs_dma_pm_suspend, mxs_dma_pm_resume)
 };
 
 static struct platform_driver mxs_dma_driver = {
 	.driver		= {
 		.name	= "mxs-dma",
-		.pm = &mxs_dma_pm_ops,
+		.pm = pm_ptr(&mxs_dma_pm_ops),
 		.of_match_table = mxs_dma_dt_ids,
 	},
 	.remove		= mxs_dma_remove,

@@ -334,7 +334,6 @@
 };
 
 &pwm2 {
-	 pinctrl-names = "default";
 	 status = "okay";
 };
 

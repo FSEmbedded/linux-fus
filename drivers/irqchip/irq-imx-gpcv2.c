@@ -363,14 +363,14 @@ static int __init imx_gpcv2_irqchip_init(struct device_node *node,
 		return -ENOMEM;
 	}
 
-	domain = irq_domain_add_hierarchy(parent_domain, 0, GPC_MAX_IRQS,
-				node, &gpcv2_irqchip_data_domain_ops, cd);
+	domain = irq_domain_create_hierarchy(parent_domain, 0, GPC_MAX_IRQS,
+				of_fwnode_handle(node), &gpcv2_irqchip_data_domain_ops, cd);
 	if (!domain) {
 		iounmap(cd->gpc_base);
 		kfree(cd);
 		return -ENOMEM;
 	}
-	irq_set_default_host(domain);
+	irq_set_default_domain(domain);
 
 	if (of_machine_is_compatible("fsl,imx8mq")) {
 		/* sw workaround for IPI can't wakeup CORE

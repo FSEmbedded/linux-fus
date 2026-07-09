@@ -1,26 +1,31 @@
 // SPDX-License-Identifier: GPL-2.0+
 
 /*
- * Copyright 2023 NXP
+ * Copyright 2023,2026 NXP
  */
 
 #include <linux/module.h>
+#include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/platform_device.h>
 #include <linux/pm.h>
 #include <linux/pm_runtime.h>
 
+#include <drm/clients/drm_client_setup.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_drv.h>
 #include <drm/drm_fb_helper.h>
 #include <drm/drm_fbdev_dma.h>
+#include <drm/drm_fourcc.h>
 #include <drm/drm_gem_dma_helper.h>
 #include <drm/drm_modeset_helper.h>
 #include <drm/drm_module.h>
 #include <drm/drm_print.h>
 
 #include "dpu95.h"
+#include "dpu95-data.h"
 #include "dpu95-drv.h"
+#include "dpu952-data.h"
 
 #define DRIVER_NAME	"imx95-dpu"
 
@@ -29,12 +34,12 @@ DEFINE_DRM_GEM_DMA_FOPS(dpu95_drm_driver_fops);
 static struct drm_driver dpu95_drm_driver = {
 	.driver_features = DRIVER_MODESET | DRIVER_GEM | DRIVER_ATOMIC | DRIVER_RENDER,
 	DRM_GEM_DMA_DRIVER_OPS,
+	DRM_FBDEV_DMA_DRIVER_OPS,
 	.ioctls                 = imx_drm_dpu95_ioctls,
 	.num_ioctls             = ARRAY_SIZE(imx_drm_dpu95_ioctls),
 	.fops = &dpu95_drm_driver_fops,
 	.name = DRIVER_NAME,
 	.desc = "i.MX95 DPU DRM graphics",
-	.date = "20230213",
 	.major = 1,
 	.minor = 0,
 	.patchlevel = 0,
@@ -52,6 +57,10 @@ static int dpu95_load(struct dpu95_drm_device *dpu_drm)
 	if (ret)
 		return ret;
 
+	ret = dpu95_ld_load(dpu_drm);
+	if (ret)
+		return ret;
+
 	ret = dpu95_bliteng_load(dpu_drm);
 	if (ret)
 		return ret;
@@ -62,6 +71,7 @@ static int dpu95_load(struct dpu95_drm_device *dpu_drm)
 static void dpu95_unload(struct dpu95_drm_device *dpu_drm)
 {
 	dpu95_bliteng_unload(dpu_drm);
+	dpu95_ld_unload(dpu_drm);
 	dpu95_kms_unprepare(dpu_drm);
 }
 
@@ -94,7 +104,7 @@ static int dpu95_probe(struct platform_device *pdev)
 	if (ret)
 		goto unload;
 
-	drm_fbdev_dma_setup(drm, 0);
+	drm_client_setup_with_fourcc(drm, DRM_FORMAT_XRGB8888);
 
 	return 0;
 unload:
@@ -164,7 +174,7 @@ static int dpu95_runtime_resume(struct device *dev)
 		return ret;
 	}
 
-	ret = dpu95_set_qos(dpu);
+	ret = dpu->data->set_qos(dpu);
 	if (ret) {
 		clk_disable_unprepare(dpu->clk_ocram);
 		clk_disable_unprepare(dpu->clk_apb);
@@ -210,23 +220,32 @@ static int dpu95_resume(struct device *dev)
 	return drm_mode_config_helper_resume(drm_dev);
 }
 
+static void dpu95_shutdown(struct platform_device *pdev)
+{
+	struct drm_device *drm = platform_get_drvdata(pdev);
+
+	drm_atomic_helper_shutdown(drm);
+}
+
 static const struct dev_pm_ops dpu95_pm_ops = {
 	RUNTIME_PM_OPS(dpu95_runtime_suspend, dpu95_runtime_resume, NULL)
 	SYSTEM_SLEEP_PM_OPS(dpu95_suspend, dpu95_resume)
 };
 
-static const struct of_device_id dpu95_dt_ids[] = {
-	{ .compatible = "nxp,imx95-dpu", },
+static const struct of_device_id dpu95_ids[] = {
+	{ .compatible = "nxp,imx95-dpu", .data = &dpu95_data },
+	{ .compatible = "nxp,imx952-dpu", .data = &dpu952_data },
 	{ /* sentinel */ }
 };
-MODULE_DEVICE_TABLE(of, dpu95_dt_ids);
+MODULE_DEVICE_TABLE(of, dpu95_ids);
 
 static struct platform_driver dpu95_platform_driver = {
 	.probe = dpu95_probe,
 	.remove = dpu95_remove,
+	.shutdown = dpu95_shutdown,
 	.driver = {
 		.name = DRIVER_NAME,
-		.of_match_table	= dpu95_dt_ids,
+		.of_match_table	= dpu95_ids,
 		.pm = pm_sleep_ptr(&dpu95_pm_ops),
 	},
 };

@@ -13,15 +13,6 @@
 static const struct scmi_imx_lmm_proto_ops *imx_lmm_ops;
 static struct scmi_protocol_handle *ph;
 
-int scmi_imx_lmm_boot(u32 lmid)
-{
-	if (!ph)
-		return -EPROBE_DEFER;
-
-	return imx_lmm_ops->lmm_boot(ph, lmid);
-};
-EXPORT_SYMBOL(scmi_imx_lmm_boot);
-
 int scmi_imx_lmm_info(u32 lmid, struct scmi_imx_lmm_info *info)
 {
 	if (!ph)
@@ -34,32 +25,34 @@ int scmi_imx_lmm_info(u32 lmid, struct scmi_imx_lmm_info *info)
 };
 EXPORT_SYMBOL(scmi_imx_lmm_info);
 
-int scmi_imx_lmm_reset_vector_set(u32 lmid, u32 cpuid, u64 vector)
+int scmi_imx_lmm_reset_vector_set(u32 lmid, u32 cpuid, u32 flags, u64 vector)
 {
 	if (!ph)
 		return -EPROBE_DEFER;
 
-	return imx_lmm_ops->lmm_reset_vector_set(ph, lmid, cpuid, vector);
+	return imx_lmm_ops->lmm_reset_vector_set(ph, lmid, cpuid, flags, vector);
 }
 EXPORT_SYMBOL(scmi_imx_lmm_reset_vector_set);
 
-int scmi_imx_lmm_power_on(u32 lmid)
+int scmi_imx_lmm_operation(u32 lmid, enum scmi_imx_lmm_op op, u32 flags)
 {
 	if (!ph)
 		return -EPROBE_DEFER;
 
-	return imx_lmm_ops->lmm_power_on(ph, lmid);
-};
-EXPORT_SYMBOL(scmi_imx_lmm_power_on);
+	switch (op) {
+	case SCMI_IMX_LMM_BOOT:
+		return imx_lmm_ops->lmm_power_boot(ph, lmid, true);
+	case SCMI_IMX_LMM_POWER_ON:
+		return imx_lmm_ops->lmm_power_boot(ph, lmid, false);
+	case SCMI_IMX_LMM_SHUTDOWN:
+		return imx_lmm_ops->lmm_shutdown(ph, lmid, flags);
+	default:
+		break;
+	}
 
-int scmi_imx_lmm_shutdown(u32 lmid, u32 flags)
-{
-	if (!ph)
-		return -EPROBE_DEFER;
-
-	return imx_lmm_ops->lmm_shutdown(ph, lmid, flags);
-};
-EXPORT_SYMBOL(scmi_imx_lmm_shutdown);
+	return -EINVAL;
+}
+EXPORT_SYMBOL(scmi_imx_lmm_operation);
 
 static int scmi_imx_lmm_probe(struct scmi_device *sdev)
 {

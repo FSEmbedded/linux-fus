@@ -5,6 +5,8 @@
 
 #include <net/tsn.h>
 
+#define ENETC_CLK  400000000ULL
+
 static int alloc_cbdr(struct enetc_si *si, struct enetc_cbd **curr_cbd)
 {
 	struct enetc_cbdr *ring = &si->cbd_ring;
@@ -1522,7 +1524,7 @@ static int enetc_set_cbs(struct net_device *ndev, u8 tc, u8 bw)
 
 	if (bw_sum + bw >= 100) {
 		dev_err(&ndev->dev,
-			"The sum of all CBS Bandwidth cann't exceed 100\n");
+			"The sum of all CBS Bandwidth can't exceed 100\n");
 		return -EINVAL;
 	}
 

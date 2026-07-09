@@ -193,7 +193,7 @@ static int imx_pcm186x_dai_init(struct snd_soc_pcm_runtime *rtd)
 		return ret;
 	}
 
-	ret = snd_soc_dai_set_fmt(adc_dai, SND_SOC_DAIFMT_CBS_CFS |
+	ret = snd_soc_dai_set_fmt(adc_dai, SND_SOC_DAIFMT_CBC_CFC |
 				  SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF);
 	if (ret) {
 		dev_err(rtd->dev, "Failed set set pcm1863 dai format: %d\n", ret);
@@ -603,7 +603,7 @@ static int imx_asoc_card_parse_dt(struct snd_soc_card *card,
 		if (ret) {
 			dev_warn(dev, "failed to parse dai format\n");
 			link->dai_fmt = SND_SOC_DAIFMT_NB_NF |
-				SND_SOC_DAIFMT_CBS_CFS |
+				SND_SOC_DAIFMT_CBC_CFC |
 				SND_SOC_DAIFMT_I2S;
 		}
 

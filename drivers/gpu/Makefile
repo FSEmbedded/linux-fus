@@ -6,3 +6,4 @@ obj-y			+= arm/
 obj-y			+= host1x/ drm/ vga/
 obj-y			+= imx/
 obj-$(CONFIG_TRACE_GPU_MEM)		+= trace/
+obj-$(CONFIG_NOVA_CORE)		+= nova-core/

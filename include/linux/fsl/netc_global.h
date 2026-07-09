@@ -5,7 +5,6 @@
 #define __NETC_GLOBAL_H
 
 #include <linux/io.h>
-#include <linux/platform_device.h>
 
 static inline u32 netc_read(void __iomem *reg)
 {
@@ -37,6 +36,15 @@ static inline void netc_write(void __iomem *reg, u32 val)
 	iowrite32(val, reg);
 }
 
+#if IS_ENABLED(CONFIG_PTP_NETC_V4_TIMER)
+u64 netc_timer_get_current_time(struct pci_dev *timer_dev);
+#else
+static inline u64 netc_timer_get_current_time(struct pci_dev *timer_dev)
+{
+	return 0;
+}
+#endif
+
 #if IS_ENABLED(CONFIG_NXP_NETC_BLK_CTRL)
 void netc_xpcs_port_init(int port);
 void netc_ierb_enable_wakeonlan(void);
@@ -58,21 +66,6 @@ static inline void netc_ierb_disable_wakeonlan(void)
 static inline int netc_ierb_may_wakeonlan(void)
 {
 	return -EINVAL;
-}
-#endif
-
-#if IS_ENABLED(CONFIG_PTP_1588_CLOCK_NETC)
-int netc_timer_get_phc_index(struct pci_dev *timer_pdev);
-u64 netc_timer_get_current_time(struct pci_dev *timer_dev);
-#else
-static inline int netc_timer_get_phc_index(struct pci_dev *timer_pdev)
-{
-	return -1;
-}
-
-static inline u64 netc_timer_get_current_time(struct pci_dev *timer_dev)
-{
-	return 0;
 }
 #endif
 

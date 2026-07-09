@@ -45,6 +45,7 @@ static bool kbase_fence_enable_signaling(struct dma_fence *fence)
 	return true;
 }
 
+#if (KERNEL_VERSION(6, 15, 0) > LINUX_VERSION_CODE)
 static void kbase_fence_fence_value_str(struct dma_fence *fence, char *str, int size)
 {
 	char *format;
@@ -57,6 +58,7 @@ static void kbase_fence_fence_value_str(struct dma_fence *fence, char *str, int 
 	if (unlikely(!scnprintf(str, (size_t)size, format, fence->seqno)))
 		pr_err("Fail to encode fence seqno to string");
 }
+#endif
 
 static void kbase_fence_release(struct dma_fence *fence)
 {
@@ -73,7 +75,9 @@ const struct dma_fence_ops kbase_fence_ops = { .wait = dma_fence_default_wait,
 					       .get_driver_name = kbase_fence_get_driver_name,
 					       .get_timeline_name = kbase_fence_get_timeline_name,
 					       .enable_signaling = kbase_fence_enable_signaling,
+#if (KERNEL_VERSION(6, 15, 0) > LINUX_VERSION_CODE)
 					       .fence_value_str = kbase_fence_fence_value_str,
+#endif
 					       .release = kbase_fence_release };
 
 KBASE_EXPORT_TEST_API(kbase_fence_ops);

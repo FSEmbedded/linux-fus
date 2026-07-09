@@ -7,7 +7,7 @@
  * split out from mpc85xx_edac EDAC driver.
  *
  * Parts Copyrighted (c) 2013 by Freescale Semiconductor, Inc.
- * Parts Copyrighted (c) 2022 NXP
+ *
  * Author: Dave Jiang <djiang@mvista.com>
  *
  * 2006-2007 (c) MontaVista Software, Inc.
@@ -31,15 +31,14 @@
 
 static int edac_mc_idx;
 
-static u32 orig_ddr_err_disable;
-static u32 orig_ddr_err_sbe;
-static bool little_endian;
-
 static inline void __iomem *ddr_reg_addr(struct fsl_mc_pdata *pdata, unsigned int off)
 {
 	if (pdata->flag == TYPE_IMX9 && off >= FSL_MC_DATA_ERR_INJECT_HI && off <= FSL_MC_ERR_SBE)
-		return pdata->mc_vbase + off - FSL_MC_DATA_ERR_INJECT_HI
-		       + IMX9_MC_DATA_ERR_INJECT_HI;
+		return pdata->inject_vbase + off - FSL_MC_DATA_ERR_INJECT_HI
+		       + IMX9_MC_DATA_ERR_INJECT_OFF;
+
+	if (pdata->flag == TYPE_IMX9 && off >= IMX9_MC_ERR_EN)
+		return pdata->inject_vbase + off - IMX9_MC_ERR_EN;
 
 	return pdata->mc_vbase + off;
 }
@@ -48,14 +47,14 @@ static inline u32 ddr_in32(struct fsl_mc_pdata *pdata, unsigned int off)
 {
 	void __iomem *addr = ddr_reg_addr(pdata, off);
 
-	return little_endian ? ioread32(addr) : ioread32be(addr);
+	return pdata->little_endian ? ioread32(addr) : ioread32be(addr);
 }
 
 static inline void ddr_out32(struct fsl_mc_pdata *pdata, unsigned int off, u32 value)
 {
 	void __iomem *addr = ddr_reg_addr(pdata, off);
 
-	if (little_endian)
+	if (pdata->little_endian)
 		iowrite32(value, addr);
 	else
 		iowrite32be(value, addr);
@@ -341,27 +340,25 @@ static void fsl_mc_check(struct mem_ctl_info *mci)
 	 * TODO: Add support for 32-bit wide buses
 	 */
 	if ((err_detect & DDR_EDE_SBE) && (bus_width == 64)) {
+		u64 cap = (u64)cap_high << 32 | cap_low;
+		u32 s = syndrome;
+
 		sbe_ecc_decode(cap_high, cap_low, syndrome,
 				&bad_data_bit, &bad_ecc_bit);
 
-		if (bad_data_bit >= 0)
-			fsl_mc_printk(mci, KERN_ERR,
-				"Faulty Data bit: %d\n", bad_data_bit);
-		if (bad_ecc_bit >= 0)
-			fsl_mc_printk(mci, KERN_ERR,
-					"Faulty ECC bit: %d\n", bad_ecc_bit);
-		if ((bad_data_bit > 0 && bad_data_bit < 32) && bad_ecc_bit > 0) {
-			fsl_mc_printk(mci, KERN_ERR,
-				"Expected Data / ECC:\t%#8.8x_%08x / %#2.2x\n",
-				cap_high, cap_low ^ (1 << bad_data_bit),
-				syndrome ^ (1 << bad_ecc_bit));
+		if (bad_data_bit >= 0) {
+			fsl_mc_printk(mci, KERN_ERR, "Faulty Data bit: %d\n", bad_data_bit);
+			cap ^= 1ULL << bad_data_bit;
 		}
-		if (bad_data_bit >= 32 && bad_ecc_bit > 0) {
-			fsl_mc_printk(mci, KERN_ERR,
-				"Expected Data / ECC:\t%#8.8x_%08x / %#2.2x\n",
-				cap_high ^ (1 << (bad_data_bit - 32)),
-				cap_low, syndrome ^ (1 << bad_ecc_bit));
+
+		if (bad_ecc_bit >= 0) {
+			fsl_mc_printk(mci, KERN_ERR, "Faulty ECC bit: %d\n", bad_ecc_bit);
+			s ^= 1 << bad_ecc_bit;
 		}
+
+		fsl_mc_printk(mci, KERN_ERR,
+			"Expected Data / ECC:\t%#8.8x_%08x / %#2.2x\n",
+			upper_32_bits(cap), lower_32_bits(cap), s);
 	}
 
 	fsl_mc_printk(mci, KERN_ERR,
@@ -500,7 +497,8 @@ int fsl_mc_err_probe(struct platform_device *op)
 	struct edac_mc_layer layers[2];
 	struct fsl_mc_pdata *pdata;
 	struct resource r;
-	u32 sdram_ctl, ecc_en_mask;
+	u32 ecc_en_mask;
+	u32 sdram_ctl;
 	int res;
 
 	if (!devres_open_group(&op->dev, fsl_mc_err_probe, GFP_KERNEL))
@@ -533,7 +531,7 @@ int fsl_mc_err_probe(struct platform_device *op)
 	 * Get the endianness of DDR controller registers.
 	 * Default is big endian.
 	 */
-	little_endian = of_property_read_bool(op->dev.of_node, "little-endian");
+	pdata->little_endian = of_property_read_bool(op->dev.of_node, "little-endian");
 
 	res = of_address_to_resource(op->dev.of_node, 0, &r);
 	if (res) {
@@ -558,12 +556,21 @@ int fsl_mc_err_probe(struct platform_device *op)
 	}
 
 	if (pdata->flag == TYPE_IMX9) {
+		pdata->inject_vbase = devm_platform_ioremap_resource_byname(op, "inject");
+		if (IS_ERR(pdata->inject_vbase)) {
+			res = -ENOMEM;
+			goto err;
+		}
+	}
+
+	if (pdata->flag == TYPE_IMX9) {
 		sdram_ctl = ddr_in32(pdata, IMX9_MC_ERR_EN);
 		ecc_en_mask = ERR_ECC_EN | ERR_INLINE_ECC;
 	} else {
 		sdram_ctl = ddr_in32(pdata, FSL_MC_DDR_SDRAM_CFG);
 		ecc_en_mask = DSC_ECC_EN;
 	}
+
 	if ((sdram_ctl & ecc_en_mask) != ecc_en_mask) {
 		/* no ECC */
 		pr_warn("%s: No ECC DIMMs discovered\n", __func__);
@@ -591,7 +598,7 @@ int fsl_mc_err_probe(struct platform_device *op)
 	fsl_ddr_init_csrows(mci);
 
 	/* store the original error disable bits */
-	orig_ddr_err_disable = ddr_in32(pdata, FSL_MC_ERR_DISABLE);
+	pdata->orig_ddr_err_disable = ddr_in32(pdata, FSL_MC_ERR_DISABLE);
 	ddr_out32(pdata, FSL_MC_ERR_DISABLE, 0);
 
 	/* clear all error bits */
@@ -608,8 +615,8 @@ int fsl_mc_err_probe(struct platform_device *op)
 			  DDR_EIE_MBEE | DDR_EIE_SBEE);
 
 		/* store the original error management threshold */
-		orig_ddr_err_sbe = ddr_in32(pdata,
-					    FSL_MC_ERR_SBE) & 0xff0000;
+		pdata->orig_ddr_err_sbe = ddr_in32(pdata,
+						   FSL_MC_ERR_SBE) & 0xff0000;
 
 		/* set threshold to 1 error per interrupt */
 		ddr_out32(pdata, FSL_MC_ERR_SBE, 0x10000);
@@ -657,8 +664,9 @@ void fsl_mc_err_remove(struct platform_device *op)
 	}
 
 	ddr_out32(pdata, FSL_MC_ERR_DISABLE,
-		  orig_ddr_err_disable);
-	ddr_out32(pdata, FSL_MC_ERR_SBE, orig_ddr_err_sbe);
+		  pdata->orig_ddr_err_disable);
+	ddr_out32(pdata, FSL_MC_ERR_SBE, pdata->orig_ddr_err_sbe);
+
 
 	edac_mc_del_mc(&op->dev);
 	edac_mc_free(mci);

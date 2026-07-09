@@ -542,7 +542,7 @@ static int tegra_slink_start_dma_based_transfer(
 	if (tspi->is_packed) {
 		val |= SLINK_PACKED;
 		tegra_slink_writel(tspi, val, SLINK_DMA_CTL);
-		/* HW need small delay after settign Packed mode */
+		/* HW need small delay after setting Packed mode */
 		udelay(1);
 	}
 	tspi->dma_control_reg = val;
@@ -1086,8 +1086,10 @@ static int tegra_slink_probe(struct platform_device *pdev)
 	reset_control_deassert(tspi->rst);
 
 	spi_irq = platform_get_irq(pdev, 0);
-	if (spi_irq < 0)
-		return spi_irq;
+	if (spi_irq < 0) {
+		ret = spi_irq;
+		goto exit_pm_put;
+	}
 	tspi->irq = spi_irq;
 	ret = request_threaded_irq(tspi->irq, tegra_slink_isr,
 				   tegra_slink_isr_thread, IRQF_ONESHOT,
@@ -1214,7 +1216,7 @@ static struct platform_driver tegra_slink_driver = {
 		.of_match_table	= tegra_slink_of_match,
 	},
 	.probe =	tegra_slink_probe,
-	.remove_new =	tegra_slink_remove,
+	.remove =	tegra_slink_remove,
 };
 module_platform_driver(tegra_slink_driver);
 

@@ -183,21 +183,14 @@ static int neutron_inference_run(struct neutron_inference *inf)
 	}
 
 	mutex_lock(&ndev->mutex);
-	for (int i = 0; i < 3; i++) {
-		ret = ndev->mbox->ops->send_data(ndev->mbox, &msg);
-		if (ret == 0)
-			break;
-		neutron_hw_reset(ndev);
-		neutron_firmw_reload(ndev, inf->buf);
-		msleep(5);
-	}
-	mutex_unlock(&ndev->mutex);
-
+	ret = ndev->mbox->ops->send_data(ndev->mbox, &msg);
 	if (ret < 0) {
 		inf->status = NEUTRON_UAPI_STATUS_ERROR;
-		dev_err(ndev->dev, "failed to send mbox_message\n");
+		neutron_hw_reset(ndev);
+		mutex_unlock(&ndev->mutex);
 		goto inf_stop_early;
 	}
+	mutex_unlock(&ndev->mutex);
 
 	if (inf->poll_mode) {
 		/* Loop state before setting timer to get result early */
@@ -453,10 +446,9 @@ int neutron_inference_create(struct neutron_device *ndev, enum neutron_cmd_type 
 	kref_init(&inf->kref);
 	init_waitqueue_head(&inf->waitq);
 
-	if (inf->poll_mode) {
-		hrtimer_init(&inf->poll_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
-		inf->poll_timer.function = &poll_result_callback;
-	}
+	if (inf->poll_mode)
+		hrtimer_setup(&inf->poll_timer, poll_result_callback,
+			      CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 
 	memcpy(&inf->args, uapi, sizeof(struct neutron_uapi_inference_args));
 

@@ -4,8 +4,11 @@
  */
 
 /dts-v1/;
-#include "imx8dx.dtsi"
-#include "imx8x-mek.dtsi"
+#include "imx8qxp-mek.dts"
+
+/delete-node/ &A35_2;
+/delete-node/ &A35_3;
+/delete-node/ &pmic_cooling_maps;
 
 / {
 	model = "Freescale i.MX8DX MEK";
@@ -31,7 +34,17 @@
 };
 
 &thermal_zones {
-	pmic-thermal0 {
+	cpu0-thermal {
+		cooling-maps {
+			map0 {
+				cooling-device =
+				<&A35_0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
+				<&A35_1 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
+			};
+		};
+	};
+
+	pmic-thermal {
 		cooling-maps {
 			map0 {
 				cooling-device =
@@ -45,4 +58,5 @@
 &imx8_gpu_ss {
 	reg = <0x80000000 0x40000000>, <0x0 0x08000000>;
 	reg-names = "phys_baseaddr", "contiguous_mem";
+	/delete-property/ memory-region;
 };

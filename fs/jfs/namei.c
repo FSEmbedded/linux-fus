@@ -187,13 +187,13 @@ static int jfs_create(struct mnt_idmap *idmap, struct inode *dip,
  *		dentry	- dentry of child directory
  *		mode	- create mode (rwxrwxrwx).
  *
- * RETURN:	Errors from subroutines
+ * RETURN:	ERR_PTR() of errors from subroutines.
  *
  * note:
  * EACCES: user needs search+write permission on the parent directory
  */
-static int jfs_mkdir(struct mnt_idmap *idmap, struct inode *dip,
-		     struct dentry *dentry, umode_t mode)
+static struct dentry *jfs_mkdir(struct mnt_idmap *idmap, struct inode *dip,
+				struct dentry *dentry, umode_t mode)
 {
 	int rc = 0;
 	tid_t tid;		/* transaction id */
@@ -308,7 +308,7 @@ static int jfs_mkdir(struct mnt_idmap *idmap, struct inode *dip,
       out1:
 
 	jfs_info("jfs_mkdir: rc:%d", rc);
-	return rc;
+	return ERR_PTR(rc);
 }
 
 /*
@@ -1228,7 +1228,7 @@ static int jfs_rename(struct mnt_idmap *idmap, struct inode *old_dir,
 				jfs_err("jfs_rename: dtInsert returned -EIO");
 			goto out_tx;
 		}
-		if (S_ISDIR(old_ip->i_mode))
+		if (S_ISDIR(old_ip->i_mode) && old_dir != new_dir)
 			inc_nlink(new_dir);
 	}
 	/*
@@ -1244,7 +1244,9 @@ static int jfs_rename(struct mnt_idmap *idmap, struct inode *old_dir,
 		goto out_tx;
 	}
 	if (S_ISDIR(old_ip->i_mode)) {
-		drop_nlink(old_dir);
+		if (new_ip || old_dir != new_dir)
+			drop_nlink(old_dir);
+
 		if (old_dir != new_dir) {
 			/*
 			 * Change inode number of parent for moved directory
@@ -1576,7 +1578,8 @@ out:
 	return result;
 }
 
-static int jfs_ci_revalidate(struct dentry *dentry, unsigned int flags)
+static int jfs_ci_revalidate(struct inode *dir, const struct qstr *name,
+			     struct dentry *dentry, unsigned int flags)
 {
 	/*
 	 * This is not negative dentry. Always valid.

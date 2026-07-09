@@ -157,7 +157,6 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_lpi2c8>;
 	pinctrl-1 = <&pinctrl_lpi2c8>;
-	pinctrl-assert-gpios = <&pcal6524 22 GPIO_ACTIVE_HIGH>;
 	status = "okay";
 
 	pca9538: gpio@70 {
@@ -194,6 +193,13 @@
 				pclk-sample = <1>;
 			};
 		};
+	};
+};
+
+&pcal6524 {
+	exp-sel-hog {
+		/delete-property/ output-low;
+		output-high;
 	};
 };
 

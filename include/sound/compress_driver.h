@@ -143,6 +143,10 @@ struct snd_compr_stream {
  * Not valid if copy is implemented
  * @get_caps: Retrieve DSP capabilities, mandatory
  * @get_codec_caps: Retrieve capabilities for a specific codec, mandatory
+ * @task_create: Create a set of input/output buffers for accel operations
+ * @task_start: Start (queue) a task for accel operations
+ * @task_stop: Stop (dequeue) a task for accel operations
+ * @task_free: Free a set of input/output buffers for accel operations
  */
 struct snd_compr_ops {
 	int (*open)(struct snd_compr_stream *stream);
@@ -157,7 +161,7 @@ struct snd_compr_ops {
 			struct snd_compr_metadata *metadata);
 	int (*trigger)(struct snd_compr_stream *stream, int cmd);
 	int (*pointer)(struct snd_compr_stream *stream,
-			struct snd_compr_tstamp *tstamp);
+		       struct snd_compr_tstamp64 *tstamp);
 	int (*copy)(struct snd_compr_stream *stream, char __user *buf,
 		       size_t count);
 	int (*mmap)(struct snd_compr_stream *stream,

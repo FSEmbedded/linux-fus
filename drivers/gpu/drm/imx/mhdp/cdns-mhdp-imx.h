@@ -13,7 +13,7 @@
 #define CDNS_MHDP_IMX_H_
 
 #include <drm/bridge/cdns-mhdp.h>
-#include <drm/drm_encoder_slave.h>
+#include <drm/drm_encoder.h>
 
 
 struct imx_mhdp_device;

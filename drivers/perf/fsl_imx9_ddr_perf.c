@@ -467,9 +467,11 @@ static void imx93_ddr_perf_monitor_config(struct ddr_pmu *pmu, int event,
 					  int counter, int axi_id, int axi_mask)
 {
 	u32 pmcfg1, pmcfg2;
-	u32 mask[] = {  MX93_PMCFG1_RD_TRANS_FILT_EN,
-			MX93_PMCFG1_WR_TRANS_FILT_EN,
-			MX93_PMCFG1_RD_BT_FILT_EN };
+	static const u32 mask[] = {
+		MX93_PMCFG1_RD_TRANS_FILT_EN,
+		MX93_PMCFG1_WR_TRANS_FILT_EN,
+		MX93_PMCFG1_RD_BT_FILT_EN
+	};
 
 	pmcfg1 = readl_relaxed(pmu->base + PMCFG1);
 
@@ -780,15 +782,8 @@ static int ddr_perf_probe(struct platform_device *pdev)
 	void __iomem *base;
 	int ret, irq;
 	char *name;
-	struct resource *r;
 
-	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!r) {
-		dev_err(&pdev->dev, "platform_get_resource() failed\n");
-		return -ENOMEM;
-	}
-
-	base = devm_ioremap(&pdev->dev, r->start, resource_size(r));
+	base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(base))
 		return PTR_ERR(base);
 
@@ -883,7 +878,7 @@ static struct platform_driver imx_ddr_pmu_driver = {
 		.suppress_bind_attrs = true,
 	},
 	.probe          = ddr_perf_probe,
-	.remove_new     = ddr_perf_remove,
+	.remove         = ddr_perf_remove,
 };
 module_platform_driver(imx_ddr_pmu_driver);
 

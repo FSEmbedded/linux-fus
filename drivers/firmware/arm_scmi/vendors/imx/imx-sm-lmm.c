@@ -5,8 +5,6 @@
  * Copyright 2025 NXP
  */
 
-#define pr_fmt(fmt) "SCMI LMM - " fmt
-
 #include <linux/bits.h>
 #include <linux/io.h>
 #include <linux/module.h>
@@ -37,7 +35,8 @@ struct scmi_imx_lmm_priv {
 	u32 nr_lmm;
 };
 
-#define	SCMI_IMX_LMM_PROTO_ATTR_NUM_LM(x)	(((x) & 0xFFU))
+#define SCMI_IMX_LMM_NR_LM_MASK	GENMASK(5, 0)
+#define SCMI_IMX_LMM_NR_MAX	16
 struct scmi_msg_imx_lmm_protocol_attributes {
 	__le32 attributes;
 };
@@ -53,14 +52,14 @@ struct scmi_msg_imx_lmm_attributes_out {
 struct scmi_imx_lmm_reset_vector_set_in {
 	__le32 lmid;
 	__le32 cpuid;
-	__le32 flags;
+	__le32 flags; /* reserved for future extension */
 	__le32 resetvectorlow;
 	__le32 resetvectorhigh;
 };
 
 struct scmi_imx_lmm_shutdown_in {
 	__le32 lmid;
-#define LMM_FLAGS_GRACEFUL(x)  ((x) & BIT(0))
+#define SCMI_IMX_LMM_SHUTDOWN_GRACEFUL	BIT(0)
 	__le32 flags;
 };
 
@@ -94,7 +93,7 @@ static int scmi_imx_lmm_attributes(const struct scmi_protocol_handle *ph,
 		info->errstatus = le32_to_cpu(out->errstatus);
 		strscpy(info->name, out->name);
 		dev_dbg(ph->dev, "i.MX LMM: Logical Machine(%d), name: %s\n",
-			info->lmid, out->name);
+			info->lmid, info->name);
 	} else {
 		dev_err(ph->dev, "i.MX LMM: Failed to get info of Logical Machine(%u)\n", lmid);
 	}
@@ -104,39 +103,23 @@ static int scmi_imx_lmm_attributes(const struct scmi_protocol_handle *ph,
 	return ret;
 }
 
-static int scmi_imx_lmm_boot(const struct scmi_protocol_handle *ph, u32 lmid)
+static int
+scmi_imx_lmm_power_boot(const struct scmi_protocol_handle *ph, u32 lmid, bool boot)
 {
 	struct scmi_xfer *t;
+	u8 msg_id;
 	int ret;
 
 	ret = scmi_imx_lmm_validate_lmid(ph, lmid);
 	if (ret)
 		return ret;
 
-	ret = ph->xops->xfer_get_init(ph, SCMI_IMX_LMM_BOOT, sizeof(u32),
-				      0, &t);
-	if (ret)
-		return ret;
+	if (boot)
+		msg_id = SCMI_IMX_LMM_BOOT;
+	else
+		msg_id = SCMI_IMX_LMM_POWER_ON;
 
-	put_unaligned_le32(lmid, t->tx.buf);
-	ret = ph->xops->do_xfer(ph, t);
-
-	ph->xops->xfer_put(ph, t);
-
-	return ret;
-}
-
-static int scmi_imx_lmm_power_on(const struct scmi_protocol_handle *ph, u32 lmid)
-{
-	struct scmi_xfer *t;
-	int ret;
-
-	ret = scmi_imx_lmm_validate_lmid(ph, lmid);
-	if (ret)
-		return ret;
-
-	ret = ph->xops->xfer_get_init(ph, SCMI_IMX_LMM_POWER_ON, sizeof(u32),
-				      0, &t);
+	ret = ph->xops->xfer_get_init(ph, msg_id, sizeof(u32), 0, &t);
 	if (ret)
 		return ret;
 
@@ -149,7 +132,7 @@ static int scmi_imx_lmm_power_on(const struct scmi_protocol_handle *ph, u32 lmid
 }
 
 static int scmi_imx_lmm_reset_vector_set(const struct scmi_protocol_handle *ph,
-					 u32 lmid, u32 cpuid, u64 vector)
+					 u32 lmid, u32 cpuid, u32 flags, u64 vector)
 {
 	struct scmi_imx_lmm_reset_vector_set_in *in;
 	struct scmi_xfer *t;
@@ -163,6 +146,7 @@ static int scmi_imx_lmm_reset_vector_set(const struct scmi_protocol_handle *ph,
 	in = t->tx.buf;
 	in->lmid = cpu_to_le32(lmid);
 	in->cpuid = cpu_to_le32(cpuid);
+	in->flags = cpu_to_le32(0);
 	in->resetvectorlow = cpu_to_le32(lower_32_bits(vector));
 	in->resetvectorhigh = cpu_to_le32(upper_32_bits(vector));
 	ret = ph->xops->do_xfer(ph, t);
@@ -190,7 +174,10 @@ static int scmi_imx_lmm_shutdown(const struct scmi_protocol_handle *ph, u32 lmid
 
 	in = t->tx.buf;
 	in->lmid = cpu_to_le32(lmid);
-	in->flags = cpu_to_le32(flags);
+	if (flags & SCMI_IMX_LMM_SHUTDOWN_GRACEFUL)
+		in->flags = cpu_to_le32(SCMI_IMX_LMM_SHUTDOWN_GRACEFUL);
+	else
+		in->flags = cpu_to_le32(0);
 	ret = ph->xops->do_xfer(ph, t);
 
 	ph->xops->xfer_put(ph, t);
@@ -199,9 +186,8 @@ static int scmi_imx_lmm_shutdown(const struct scmi_protocol_handle *ph, u32 lmid
 }
 
 static const struct scmi_imx_lmm_proto_ops scmi_imx_lmm_proto_ops = {
-	.lmm_boot = scmi_imx_lmm_boot,
+	.lmm_power_boot = scmi_imx_lmm_power_boot,
 	.lmm_info = scmi_imx_lmm_attributes,
-	.lmm_power_on = scmi_imx_lmm_power_on,
 	.lmm_reset_vector_set = scmi_imx_lmm_reset_vector_set,
 	.lmm_shutdown = scmi_imx_lmm_shutdown,
 };
@@ -222,9 +208,14 @@ static int scmi_imx_lmm_protocol_attributes_get(const struct scmi_protocol_handl
 
 	ret = ph->xops->do_xfer(ph, t);
 	if (!ret) {
-		priv->nr_lmm = SCMI_IMX_LMM_PROTO_ATTR_NUM_LM(attr->attributes);
-		dev_info(ph->dev, "i.MX LMM: %d Logical Machines\n",
-			 priv->nr_lmm);
+		priv->nr_lmm = le32_get_bits(attr->attributes, SCMI_IMX_LMM_NR_LM_MASK);
+		if (priv->nr_lmm > SCMI_IMX_LMM_NR_MAX) {
+			dev_err(ph->dev, "i.MX LMM: %d:Exceed max supported Logical Machines\n",
+				priv->nr_lmm);
+			ret = -EINVAL;
+		} else {
+			dev_info(ph->dev, "i.MX LMM: %d Logical Machines\n", priv->nr_lmm);
+		}
 	}
 
 	ph->xops->xfer_put(ph, t);
@@ -262,10 +253,11 @@ static const struct scmi_protocol scmi_imx_lmm = {
 	.instance_init = &scmi_imx_lmm_protocol_init,
 	.ops = &scmi_imx_lmm_proto_ops,
 	.supported_version = SCMI_PROTOCOL_SUPPORTED_VERSION,
-	.vendor_id = "NXP",
-	.sub_vendor_id = "IMX",
+	.vendor_id = SCMI_IMX_VENDOR,
+	.sub_vendor_id = SCMI_IMX_SUBVENDOR,
 };
 module_scmi_protocol(scmi_imx_lmm);
 
+MODULE_ALIAS("scmi-protocol-" __stringify(SCMI_PROTOCOL_IMX_LMM) "-" SCMI_IMX_VENDOR);
 MODULE_DESCRIPTION("i.MX SCMI LMM driver");
 MODULE_LICENSE("GPL");

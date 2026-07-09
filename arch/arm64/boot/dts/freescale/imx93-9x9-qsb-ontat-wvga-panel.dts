@@ -15,7 +15,6 @@
 		compatible = "ontat,kd50g21-40nt-a1";
 		backlight = <&backlight>;
 		power-supply = <&reg_rpi_3v3>;
-		enable-gpios = <&pcal6524 22 GPIO_ACTIVE_HIGH>;
 
 		port {
 			panel_in: endpoint {
@@ -27,7 +26,6 @@
 
 &lcdif {
 	status = "okay";
-	assigned-clock-rates = <150000000>, <30000000>, <400000000>, <133333333>;
 };
 
 &media_blk_ctrl {
@@ -48,6 +46,13 @@
 				remote-endpoint = <&panel_in>;
 			};
 		};
+	};
+};
+
+&pcal6524 {
+	exp-sel-hog {
+		/delete-property/ output-low;
+		output-high;
 	};
 };
 

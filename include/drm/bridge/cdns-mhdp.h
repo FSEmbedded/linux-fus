@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (C) Fuzhou Rockchip Electronics Co.Ltd
+ * Copyright (C) Rockchip Electronics Co., Ltd.
  * Author: Chris Zhong <zyw@rock-chips.com>
  *
  * This software is licensed under the terms of the GNU General Public
@@ -93,7 +93,7 @@
 #define SOURCE_PIF_PKT_ALLOC_WR_EN	0x30830
 #define SOURCE_PIF_SW_RESET		0x30834
 
-/* bellow registers need access by mailbox */
+/* below registers need access by mailbox */
 /* source phy comp */
 #define PHY_DATA_SEL			0x0818
 #define LANES_CONFIG			0x0814
@@ -768,7 +768,7 @@ struct cdns_mhdp_device {
 	struct platform_device	*audio_pdev;
 	struct audio_info	audio_info;
 
-	struct cdns_mhdp_bridge	bridge;
+	struct cdns_mhdp_bridge	*bridge;
 	struct phy		*phy;
 
 	struct video_info	video_info;
