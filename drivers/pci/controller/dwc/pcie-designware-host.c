@@ -1180,7 +1180,6 @@ static int dw_pcie_pme_turn_off(struct dw_pcie *pci)
 
 int dw_pcie_suspend_noirq(struct dw_pcie *pci)
 {
-	u8 offset = dw_pcie_find_capability(pci, PCI_CAP_ID_EXP);
 	int ret = 0;
 	u32 val;
 
@@ -1216,7 +1215,7 @@ int dw_pcie_suspend_noirq(struct dw_pcie *pci)
 	if (ret) {
 		/* Only log message when LTSSM isn't in DETECT or POLL */
 		dev_err(pci->dev, "Timeout waiting for L2 entry! LTSSM: 0x%x\n", val);
-		return ret;
+		ret = 0;
 	}
 
 	/*

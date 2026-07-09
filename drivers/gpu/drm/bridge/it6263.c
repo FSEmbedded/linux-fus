@@ -738,8 +738,8 @@ static void it6263_bridge_enable(struct drm_bridge *bridge)
 	hdmi_update_bits(it6263, HDMI_REG_SW_RST, SOFTV_RST, 0);
 
 	/* reconfigure LVDS and retry several times in case video is instable */
-	for (i = 0; i < 3; i++) {
-		timeout = jiffies + msecs_to_jiffies(500);
+	for (i = 0; i < 15; i++) {
+		timeout = jiffies + msecs_to_jiffies(150);
 		do {
 			regmap_read(regmap, HDMI_REG_SYS_STATUS, &status);
 		} while (!(status & TXVIDSTABLE) &&
@@ -1090,6 +1090,8 @@ static int it6263_probe(struct i2c_client *client)
 	it6263->bridge.ops = DRM_BRIDGE_OP_DETECT | DRM_BRIDGE_OP_EDID |
 		DRM_BRIDGE_OP_MODES;
 	it6263->bridge.type = DRM_MODE_CONNECTOR_HDMIA;
+	it6263->bridge.vendor = "ITE";
+	it6263->bridge.product = "IT6263";
 	drm_bridge_add(&it6263->bridge);
 
 	i2c_set_clientdata(client, it6263);

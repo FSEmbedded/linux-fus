@@ -7,6 +7,7 @@
 #include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/dmaengine.h>
+#include <linux/firmware/imx/sm.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/pinctrl/consumer.h>
@@ -1312,6 +1313,31 @@ static int fsl_sai_check_version(struct device *dev)
 	return 0;
 }
 
+static int fsl_sai_reset_hw(struct device *dev)
+{
+	struct fsl_sai *sai = dev_get_drvdata(dev);
+	unsigned char ofs = sai->soc_data->reg_offset;
+	int ret;
+
+	/*
+	 * Clear TCSR/RCSR to reset SAI and disable all interrupts.
+	 * Bootloader may leave SAI running causing interrupt storm.
+	 */
+	ret = regmap_write(sai->regmap, FSL_SAI_TCSR(ofs), 0);
+	if (ret) {
+		dev_err(dev, "Failed to clear TCSR: %d\n", ret);
+		return ret;
+	}
+
+	ret = regmap_write(sai->regmap, FSL_SAI_RCSR(ofs), 0);
+	if (ret) {
+		dev_err(dev, "Failed to clear RCSR: %d\n", ret);
+		return ret;
+	}
+
+	return 0;
+}
+
 /*
  * Calculate the offset between first two datalines, don't
  * different offset in one case.
@@ -1434,10 +1460,12 @@ static int fsl_sai_probe(struct platform_device *pdev)
 	struct fsl_sai *sai;
 	struct regmap *gpr;
 	void __iomem *base;
+	const char *str = NULL;
 	char tmp[8];
 	int irq, ret, i;
 	int index;
 	u32 dmas[4];
+	u32 val;
 
 	sai = devm_kzalloc(dev, sizeof(*sai), GFP_KERNEL);
 	if (!sai)
@@ -1515,13 +1543,6 @@ static int fsl_sai_probe(struct platform_device *pdev)
 	if (irq < 0)
 		return irq;
 
-	ret = devm_request_irq(dev, irq, fsl_sai_isr, IRQF_SHARED,
-			       np->name, sai);
-	if (ret) {
-		dev_err(dev, "failed to claim irq %u\n", irq);
-		return ret;
-	}
-
 	memcpy(&sai->cpu_dai_drv, fsl_sai_dai_template,
 	       sizeof(*fsl_sai_dai_template) * ARRAY_SIZE(fsl_sai_dai_template));
 
@@ -1596,6 +1617,10 @@ static int fsl_sai_probe(struct platform_device *pdev)
 	if (ret < 0)
 		dev_warn(dev, "Error reading SAI version: %d\n", ret);
 
+	ret = fsl_sai_reset_hw(dev);
+	if (ret < 0)
+		dev_warn(dev, "Failed to reset hardware: %d\n", ret);
+
 	/* Select MCLK direction */
 	if (sai->mclk_direction_output &&
 	    sai->soc_data->max_register >= FSL_SAI_MCTL) {
@@ -1606,6 +1631,31 @@ static int fsl_sai_probe(struct platform_device *pdev)
 	ret = pm_runtime_put_sync(dev);
 	if (ret < 0 && ret != -ENOSYS)
 		goto err_pm_get_sync;
+
+	ret = devm_request_irq(dev, irq, fsl_sai_isr, IRQF_SHARED,
+			       np->name, sai);
+	if (ret) {
+		dev_err(dev, "failed to claim irq %u\n", irq);
+		goto err_pm_get_sync;
+	}
+
+	if (of_device_is_compatible(np, "fsl,imx952-sai") &&
+	    !of_property_read_string(np, "fsl,sai-amix-mode", &str)) {
+		if (!strcmp(str, "bypass"))
+			val = FSL_SAI_AMIX_BYPASS;
+		else if (!strcmp(str, "audmix"))
+			val = FSL_SAI_AMIX_AUDMIX;
+		else
+			val = FSL_SAI_AMIX_NONE;
+
+		if (val < FSL_SAI_AMIX_NONE) {
+			ret = scmi_imx_misc_ctrl_set(SCMI_IMX952_CTRL_BYPASS_AUDMIX, val);
+			if (ret) {
+				dev_err_probe(dev, ret, "Error setting audmix mode\n");
+				goto err_pm_get_sync;
+			}
+		}
+	}
 
 	if (sai->verid.feature & FSL_SAI_VERID_TSTMP_EN) {
 		if (of_find_property(np, "fsl,sai-monitor-spdif", NULL) &&
@@ -1805,18 +1855,6 @@ static const struct fsl_sai_soc_data fsl_sai_imx95_data = {
 	.max_burst = {8, 8},
 };
 
-static const struct fsl_sai_soc_data fsl_sai_imx952_data = {
-	.use_imx_pcm = true,
-	.use_edma = true,
-	.fifo_depth = 128,
-	.reg_offset = 8,
-	.mclk0_is_mclk1 = false,
-	.pins = 8,
-	.flags = 0,
-	.max_register = FSL_SAI_MCTL,
-	.max_burst = {16, 16},
-};
-
 static const struct of_device_id fsl_sai_ids[] = {
 	{ .compatible = "fsl,vf610-sai", .data = &fsl_sai_vf610_data },
 	{ .compatible = "fsl,imx6sx-sai", .data = &fsl_sai_imx6sx_data },
@@ -1830,7 +1868,6 @@ static const struct of_device_id fsl_sai_ids[] = {
 	{ .compatible = "fsl,imx8mn-sai", .data = &fsl_sai_imx8mn_data },
 	{ .compatible = "fsl,imx93-sai", .data = &fsl_sai_imx93_data },
 	{ .compatible = "fsl,imx95-sai", .data = &fsl_sai_imx95_data },
-	{ .compatible = "fsl,imx952-sai", .data = &fsl_sai_imx952_data },
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, fsl_sai_ids);

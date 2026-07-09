@@ -287,6 +287,8 @@ static inline void __iomem *ioremap_prot(phys_addr_t phys, size_t size,
 	__ioremap_prot((addr), (size), __pgprot(PROT_NORMAL_NC))
 #define ioremap_np(addr, size)	\
 	__ioremap_prot((addr), (size), __pgprot(PROT_DEVICE_nGnRnE))
+#define ioremap_cache_ns(addr, size)  \
+	__ioremap_prot((addr), (size), __pgprot(PROT_NORMAL_NS))
 
 
 #define ioremap_encrypted(addr, size)	\

@@ -21,6 +21,10 @@
 #define BRD_SM_CTRL_PCIE2_WAKE		0x8003	/*!< PCAL6408A-6 */
 #define BRD_SM_CTRL_BUTTON		0x8004	/*!< PCAL6408A-7 */
 
+&ele_if0 {
+	memory-region = <&ele_reserved>;
+};
+
 / {
 	model = "NXP FRDM-IMX95-PRO";
 	compatible = "fsl,frdm-imx95-pro", "fsl,imx95";
@@ -101,6 +105,12 @@
 			reg = <0 0x88020000 0 0x100000>;
 			no-map;
 		};
+
+		ele_reserved: ele-reserved@a4120000 {
+			compatible = "shared-dma-pool";
+			reg = <0 0xa4120000 0 0x100000>;
+			no-map;
+		};
 	};
 
 	reg_1p8v: regulator-1p8v {
@@ -170,6 +180,7 @@
 		regulator-name = "EXP_1V8";
 		gpio = <&i2c4_gpio_expander_22 10 GPIO_ACTIVE_HIGH>;
 		enable-active-high;
+		regulator-enable-ramp-delay = <40000>;
 	};
 
 	reg_exp_3v3: regulator-exp-3v3 {
@@ -180,6 +191,7 @@
 		gpio = <&i2c4_gpio_expander_22 6 GPIO_ACTIVE_HIGH>;
 		vin-supply = <&reg_dcdc_3v3>;
 		enable-active-high;
+		regulator-enable-ramp-delay = <40000>;
 	};
 
 	reg_exp_5v: regulator-exp-5v {
@@ -381,9 +393,6 @@
 };
 
 &ldb {
-	assigned-clocks = <&scmi_clk IMX95_CLK_LDBPLL_VCO>,
-			  <&scmi_clk IMX95_CLK_LDBPLL>;
-	assigned-clock-rates = <4158000000>, <1039500000>;
 	status = "okay";
 
 	channel@0 {
@@ -540,11 +549,11 @@
 				  "";
 		vcc-supply = <&reg_3p3v>;
 
-		/* When low, select lpspi; When high, select gpio. */
+		/* When high, select lpspi; When low, select gpio. */
 		lpspi-gpio-sel-hog {
 			gpio-hog;
 			gpios = <16 GPIO_ACTIVE_HIGH>;
-			output-low;
+			output-high;
 		};
 	};
 };
@@ -674,13 +683,6 @@
 	status = "okay";
 };
 
-&enetc_port2 {
-	phy-handle = <&ethphy2>;
-	phy-mode = "10gbase-r";
-	managed = "in-band-status";
-	status = "okay";
-};
-
 &netc_timer {
 	status = "okay";
 };
@@ -702,12 +704,6 @@
 		reset-gpios = <&i2c3_gpio_expander_20 2 GPIO_ACTIVE_LOW>;
 		reset-assert-us = <10000>;
 		reset-deassert-us = <80000>;
-	};
-
-	ethphy2: ethernet-phy@8 {
-		compatible = "ethernet-phy-ieee802.3-c45";
-		reset-gpios = <&i2c3_gpio_expander_20 0 GPIO_ACTIVE_LOW>;
-		reg = <8>;
 	};
 };
 
@@ -1214,6 +1210,7 @@
 			mclk-fs = <256>;
 
 			sai1_endpoint1: endpoint {
+				system-clock-direction-out;
 				remote-endpoint = <&mqs1_endpoint>;
 			};
 		};

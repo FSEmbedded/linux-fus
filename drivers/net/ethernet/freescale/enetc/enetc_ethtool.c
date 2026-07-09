@@ -1487,6 +1487,8 @@ static void enetc_get_ringparam(struct net_device *ndev,
 {
 	struct enetc_ndev_priv *priv = netdev_priv(ndev);
 
+	ring->rx_max_pending = priv->rx_bd_count;
+	ring->tx_max_pending = priv->tx_bd_count;
 	ring->rx_pending = priv->rx_bd_count;
 	ring->tx_pending = priv->tx_bd_count;
 
@@ -1670,6 +1672,7 @@ static int enetc_get_phc_index_by_pdev(struct enetc_si *si)
 		devfn = PCI_DEVFN(24, 0);
 		break;
 	case ENETC_REV_4_3:
+	case ENETC_REV_4_6:
 		devfn = PCI_DEVFN(0, 1);
 		break;
 	default:
@@ -1847,6 +1850,7 @@ static int enetc_set_wol(struct net_device *dev,
 	u32 changed = priv->wolopts ^ wol->wolopts;
 	u32 support = WAKE_MAGIC | WAKE_FILTER;
 	struct enetc_si *si = priv->si;
+	struct pci_dev *rcec;
 	struct enetc_pf *pf;
 	int err;
 
@@ -1888,10 +1892,11 @@ static int enetc_set_wol(struct net_device *dev,
 		enetc4_enable_wol_filter(priv, en);
 	}
 
+	rcec = si->pdev->rcec;
 	if (!priv->wolopts && wol->wolopts) {
-		if (priv->rcec && !netc_ierb_may_wakeonlan()) {
-			priv->rcec->dev_flags |= PCI_DEV_FLAGS_NO_D3;
-			device_set_wakeup_enable(&priv->rcec->dev, 1);
+		if (rcec) {
+			rcec->dev_flags |= PCI_DEV_FLAGS_NO_D3;
+			device_set_wakeup_enable(&rcec->dev, 1);
 		}
 
 		netc_ierb_enable_wakeonlan();
@@ -1901,9 +1906,9 @@ static int enetc_set_wol(struct net_device *dev,
 	if (!wol->wolopts) {
 		netc_ierb_disable_wakeonlan();
 
-		if (priv->rcec && !netc_ierb_may_wakeonlan()) {
-			device_set_wakeup_enable(&priv->rcec->dev, 0);
-			priv->rcec->dev_flags &= ~PCI_DEV_FLAGS_NO_D3;
+		if (rcec) {
+			device_set_wakeup_enable(&rcec->dev, 0);
+			rcec->dev_flags &= ~PCI_DEV_FLAGS_NO_D3;
 		}
 
 		netdev_info(dev, "enetc: wakeup disable\n");

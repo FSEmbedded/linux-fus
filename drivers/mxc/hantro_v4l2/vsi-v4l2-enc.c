@@ -423,9 +423,11 @@ static int vsi_enc_dqbuf(struct file *file, void *priv, struct v4l2_buffer *p)
 		return -EBUSY;
 	ret = vb2_dqbuf(q, p, file->f_flags & O_NONBLOCK);
 	if (ret == 0) {
-		vb = q->bufs[p->index];
-		vsibuf = vb_to_vsibuf(vb);
-		list_del(&vsibuf->list);
+		vb = vb2_get_buffer(q, p->index);
+		if (vb) {
+			vsibuf = vb_to_vsibuf(vb);
+			list_del(&vsibuf->list);
+		}
 		p->flags &= ~(V4L2_BUF_FLAG_KEYFRAME | V4L2_BUF_FLAG_PFRAME | V4L2_BUF_FLAG_BFRAME);
 		if (!binputqueue(p->type)) {
 			if (ctx->vbufflag[p->index] & FRAMETYPE_I)
@@ -899,7 +901,7 @@ static void vsi_enc_buf_queue(struct vb2_buffer *vb)
 		if (ctx->roi_mode == V4L2_MPEG_VIDEO_ROI_MODE_MAP_DELTA_QP) {
 			if (!vsibuf->custom_qp_map.vaddr)
 				vsi_vpu_enc_custom_map_init(ctx, vsibuf);
-			if (vsibuf->custom_qp_map.vaddr)
+			if (vsibuf->custom_qp_map.vaddr && ctx->custom_qp_map.vaddr)
 				memcpy(vsibuf->custom_qp_map.vaddr,
 				       ctx->custom_qp_map.vaddr,
 				       vsibuf->custom_qp_map.size);
@@ -1234,8 +1236,7 @@ static int vsi_v4l2_enc_s_ctrl(struct v4l2_ctrl *ctrl)
 		}
 		break;
 	case V4L2_CID_IPCM:
-		if (ctrl->p_new.p)
-			vsiv4l2_setIPCM(ctx, ctrl->p_new.p);
+		vsiv4l2_setIPCM(ctx, ctrl->p_new.p);
 		break;
 	case V4L2_CID_MPEG_VIDEO_REPEAT_SEQ_HEADER:
 		ctx->mediacfg.encparams.specific.enc_h26x_cmd.idrHdr = ctrl->val;

@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: GPL-2.0+
 
 /*
- * Copyright 2017-2020,2022-2025 NXP
+ * Copyright 2017-2020,2022-2026 NXP
  */
 
 #include <linux/irq.h>
 #include <linux/irqflags.h>
-#include <linux/of.h>
-#include <linux/of_graph.h>
 #include <linux/pm_runtime.h>
 #include <linux/spinlock.h>
 
@@ -16,6 +14,7 @@
 #include <drm/drm_atomic_state_helper.h>
 #include <drm/drm_color_mgmt.h>
 #include <drm/drm_encoder.h>
+#include <drm/drm_mode.h>
 
 #include "dpu95.h"
 #include "dpu95-crtc.h"
@@ -148,6 +147,10 @@ dpu95_crtc_mode_valid(struct drm_crtc *crtc, const struct drm_display_mode *mode
 {
 	if (mode->crtc_clock > DPU95_FRAMEGEN_MAX_CLOCK)
 		return MODE_CLOCK_HIGH;
+	if (mode->flags & DRM_MODE_FLAG_INTERLACE)
+		return MODE_NO_INTERLACE;
+	if (mode->flags & DRM_MODE_FLAG_DBLCLK)
+		return MODE_BAD;
 
 	return MODE_OK;
 }
@@ -218,6 +221,9 @@ static void dpu95_crtc_mode_set_nofb(struct drm_crtc *crtc)
 		else
 			dpu95_dt_polvs_active_low(dpu_crtc->dt);
 	}
+
+	if (dpu_crtc->ld)
+		dpu95_ld_mode_set(dpu_crtc->ld, adj);
 }
 
 static int dpu95_crtc_atomic_check(struct drm_crtc *crtc,
@@ -442,6 +448,9 @@ static void dpu95_crtc_atomic_enable(struct drm_crtc *crtc,
 
 	DPU95_CRTC_WAIT_FOR_FRAMEGEN_PRIMARY_SYNCUP(dpu_crtc->fg);
 
+	if (dpu_crtc->ld)
+		dpu95_ld_enable(dpu_crtc->ld);
+
 	/* ignore initial empty primary pixel FIFO read status, just clear it */
 	dpu95_fg_primary_clear_channel_status(dpu_crtc->fg);
 
@@ -454,6 +463,9 @@ static void dpu95_crtc_disable(struct drm_crtc *crtc)
 	struct dpu95_crtc *dpu_crtc = to_dpu95_crtc(crtc);
 	struct drm_encoder *encoder = &dpu_drm->encoder[dpu_crtc->stream_id];
 	bool enc_is_dsi = encoder->encoder_type == DRM_MODE_ENCODER_DSI;
+
+	if (dpu_crtc->ld)
+		dpu95_ld_disable(dpu_crtc->ld);
 
 	enable_irq(dpu_crtc->dec_seq_complete_irq);
 	dpu95_fg_disable(dpu_crtc->fg);
@@ -538,6 +550,7 @@ static int dpu95_crtc_get_resources(struct dpu95_crtc *dpu_crtc)
 		{(void *)&dpu_crtc->fg,		(void *)dpu95_fg_get},
 		{(void *)&dpu_crtc->db,		(void *)dpu95_db_get},
 		{(void *)&dpu_crtc->dt,		(void *)dpu95_dt_get},
+		{(void *)&dpu_crtc->ld,		(void *)dpu95_ld_get},
 	};
 	int i, ret;
 
@@ -630,19 +643,8 @@ int dpu95_crtc_init(struct dpu95_drm_device *dpu_drm,
 	struct drm_device *drm = &dpu_drm->base;
 	struct drm_crtc *crtc = &dpu_crtc->base;
 	struct dpu95_plane *dpu_primary;
-	struct device *dev = drm->dev;
-	struct device_node *port;
+	const struct dpu95_data	*data;
 	int ret;
-
-	port = of_graph_get_port_by_id(dev->of_node, stream_id);
-	if (!port) {
-		drm_err(drm, "failed to get port for stream%d\n", stream_id);
-		return -ENODEV;
-	}
-
-	dpu_crtc->np = port;
-
-	of_node_put(port);
 
 	init_completion(&dpu_crtc->dec_seq_complete_done);
 	init_completion(&dpu_crtc->dec_shdld_done);
@@ -652,19 +654,12 @@ int dpu95_crtc_init(struct dpu95_drm_device *dpu_drm,
 	dpu_crtc->dpu = &dpu_drm->dpu_soc;
 	dpu_crtc->stream_id = stream_id;
 
-	if (stream_id == 0) {
-		dpu_crtc->dpu_dec_frame_complete_irq	= DPU95_IRQ_DISENGCFG_FRAMECOMPLETE0;
-		dpu_crtc->dpu_dec_seq_complete_irq	= DPU95_IRQ_DISENGCFG_SEQCOMPLETE0;
-		dpu_crtc->dpu_dec_shdld_irq		= DPU95_IRQ_DISENGCFG_SHDLOAD0;
-		dpu_crtc->dpu_db_shdld_irq		= DPU95_IRQ_DOMAINBLEND0_SHDLOAD;
-		dpu_crtc->dpu_ed_cont_shdld_irq		= DPU95_IRQ_EXTDST0_SHDLOAD;
-	} else {
-		dpu_crtc->dpu_dec_frame_complete_irq	= DPU95_IRQ_DISENGCFG_FRAMECOMPLETE1;
-		dpu_crtc->dpu_dec_seq_complete_irq	= DPU95_IRQ_DISENGCFG_SEQCOMPLETE1;
-		dpu_crtc->dpu_dec_shdld_irq		= DPU95_IRQ_DISENGCFG_SHDLOAD1;
-		dpu_crtc->dpu_db_shdld_irq		= DPU95_IRQ_DOMAINBLEND1_SHDLOAD;
-		dpu_crtc->dpu_ed_cont_shdld_irq		= DPU95_IRQ_EXTDST1_SHDLOAD;
-	}
+	data = dpu_crtc->dpu->data;
+	dpu_crtc->dpu_dec_frame_complete_irq	= data->dec_frame_complete_irq[stream_id];
+	dpu_crtc->dpu_dec_seq_complete_irq	= data->dec_seq_complete_irq[stream_id];
+	dpu_crtc->dpu_dec_shdld_irq		= data->dec_shdld_irq[stream_id];
+	dpu_crtc->dpu_db_shdld_irq		= data->db_shdld_irq[stream_id];
+	dpu_crtc->dpu_ed_cont_shdld_irq		= data->ed_cont_shdld_irq[stream_id];
 
 	ret = dpu95_crtc_get_resources(dpu_crtc);
 	if (ret) {

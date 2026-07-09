@@ -1369,6 +1369,7 @@ static int vpu_malone_insert_scode_vc1_l_seq(struct malone_scode_t *scode)
 	int size = 0;
 	u8 rcv_seqhdr[MALONE_VC1_RCV_SEQ_HEADER_LEN];
 
+	scode->need_data = 0;
 	if (scode->inst->total_input_count)
 		return 0;
 

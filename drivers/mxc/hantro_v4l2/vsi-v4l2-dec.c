@@ -202,8 +202,11 @@ static int vsi_dec_qbuf(struct file *filp, void *priv, struct v4l2_buffer *buf)
 			set_bit(BUF_FLAG_TIMESTAMP_INVALID, &ctx->srcvbufflag[buf->index]);
 		ret = vb2_qbuf(&ctx->input_que, vdev->v4l2_dev->mdev, buf);
 	}
-	if (ret == 0)
+	if (ret == 0 && ctx->need_output_on) {
 		ret = vsi_dec_output_on(ctx);
+		if (!ctx->need_output_on && ctx->need_capture_on && ctx->capture_pend_output_buffer)
+			vsi_dec_capture_on(ctx);
+	}
 	mutex_unlock(&ctx->ctxlock);
 	return ret;
 }
@@ -226,6 +229,11 @@ int vsi_dec_output_on(struct vsi_v4l2_ctx *ctx)
 
 	if (!ctx->need_output_on)
 		return 0;
+
+	dev_dbg(ctx->dev->dev, "[%llx] output on, %d, %d, %d\n",
+		ctx->ctxid, ctx->need_output_on,
+		ctx->input_que.queued_count, ctx->input_que.min_queued_buffers);
+
 	if (ctx->input_que.queued_count < ctx->input_que.min_queued_buffers)
 		return 0;
 
@@ -246,10 +254,27 @@ int vsi_dec_capture_on(struct vsi_v4l2_ctx *ctx)
 	if (!ctx->need_capture_on || !ctx->reschange_cnt)
 		return 0;
 
+	dev_dbg(ctx->dev->dev, "[%llx] capture on, %d, %d, %d\n",
+		ctx->ctxid,
+		ctx->need_capture_on, ctx->reschange_cnt, ctx->reschange_notified);
+
 	if (ctx->reschange_notified && !vb2_is_streaming(&ctx->input_que)) {
 		v4l2_klog(LOGLVL_BRIEF, "handle seek first, then source change\n");
+		dev_dbg(ctx->dev->dev,
+			"[%llx] handle seek first, then source change\n",
+			ctx->ctxid);
 		return 0;
 	}
+
+	if (ctx->reschange_notified && ctx->need_output_on) {
+		v4l2_klog(LOGLVL_BRIEF, "handle seek (waiting buffer) first, then source change\n");
+		dev_dbg(ctx->dev->dev,
+			"[%llx] handle seek (waiting buffer) first, then source change\n",
+			ctx->ctxid);
+		ctx->capture_pend_output_buffer = true;
+		return 0;
+	}
+	ctx->capture_pend_output_buffer = false;
 
 	ret = vb2_streamon(&ctx->output_que, V4L2_BUF_TYPE_VIDEO_CAPTURE);
 	if (ret)
@@ -261,11 +286,13 @@ int vsi_dec_capture_on(struct vsi_v4l2_ctx *ctx)
 	if (ret == 0)
 		vsi_dec_dec2drain(ctx);
 	if (test_bit(CTX_FLAG_ENDOFSTRM_BIT, &ctx->flag)) {
-		struct vb2_buffer *vb = ctx->output_que.bufs[0];
+		struct vb2_buffer *vb = vb2_get_buffer(&ctx->output_que, 0);
 
-		vb->planes[0].bytesused = 0;
-		ctx->lastcapbuffer_idx = 0;
-		vb2_buffer_done(vb, VB2_BUF_STATE_DONE);
+		if (vb) {
+			vb->planes[0].bytesused = 0;
+			ctx->lastcapbuffer_idx = 0;
+			vb2_buffer_done(vb, VB2_BUF_STATE_DONE);
+		}
 	}
 	ctx->need_capture_on = false;
 	ctx->reschange_notified = false;
@@ -286,8 +313,12 @@ static int vsi_dec_streamon(struct file *filp, void *priv, enum v4l2_buf_type ty
 	if (mutex_lock_interruptible(&ctx->ctxlock))
 		return -EBUSY;
 	trace_vsiv4l2_stream_on(ctx, type);
-	dev_dbg(ctx->dev->dev, "[%llx] dec %s streamon\n",
-		ctx->ctxid, V4L2_TYPE_IS_OUTPUT(type) ? "output" : "capture");
+	dev_dbg(ctx->dev->dev, "[%llx] %s streamon, source change %d, %d, %d, need %d, %d\n",
+		ctx->ctxid,
+		V4L2_TYPE_IS_OUTPUT(type) ? "output" : "capture",
+		ctx->reschange_cnt,
+		ctx->reschanged_need_notify, ctx->reschange_notified,
+		ctx->need_output_on, ctx->need_capture_on);
 	v4l2_klog(LOGLVL_BRIEF, "%llx %s:%d in status %d", ctx->ctxid, __func__, type, ctx->status);
 	if (!binputqueue(type)) {
 		vb2_clear_last_buffer_dequeued(&ctx->output_que);
@@ -313,6 +344,42 @@ static int vsi_dec_checkctx_srcbuf(struct vsi_v4l2_ctx *ctx)
 	if (ctx->queued_srcnum == 0 || ctx->error < 0)
 		ret = 1;
 	return ret;
+}
+
+static int vsi_dec_update_hdr10(struct vsi_v4l2_ctx *ctx, struct v4l2_vpu_hdr10_meta *hdr10_meta)
+{
+	struct v4l2_ctrl_hdr10_cll_info hdr10_cll;
+	struct v4l2_ctrl_hdr10_mastering_display hdr10_mastering;
+	struct v4l2_ctrl *ctrl;
+
+	if (!hdr10_meta->hasHdr10Meta)
+		return 0;
+
+	hdr10_cll.max_content_light_level = hdr10_meta->maxContentLightLevel;
+	hdr10_cll.max_pic_average_light_level = hdr10_meta->maxFrameAverageLightLevel;
+
+	hdr10_mastering.display_primaries_x[0] = hdr10_meta->greenPrimary[0];
+	hdr10_mastering.display_primaries_y[0] = hdr10_meta->greenPrimary[1];
+	hdr10_mastering.display_primaries_x[1] = hdr10_meta->bluePrimary[0];
+	hdr10_mastering.display_primaries_y[1] = hdr10_meta->bluePrimary[1];
+	hdr10_mastering.display_primaries_x[2] = hdr10_meta->redPrimary[0];
+	hdr10_mastering.display_primaries_y[2] = hdr10_meta->redPrimary[1];
+	hdr10_mastering.white_point_x = hdr10_meta->whitePoint[0];
+	hdr10_mastering.white_point_y = hdr10_meta->whitePoint[1];
+	hdr10_mastering.max_display_mastering_luminance = hdr10_meta->maxMasteringLuminance;
+	hdr10_mastering.min_display_mastering_luminance = hdr10_meta->minMasteringLuminance;
+
+	ctrl = v4l2_ctrl_find(ctx->fh.ctrl_handler, V4L2_CID_COLORIMETRY_HDR10_CLL_INFO);
+	if (ctrl)
+		v4l2_ctrl_s_ctrl_compound(ctrl, V4L2_CTRL_TYPE_HDR10_CLL_INFO, &hdr10_cll);
+
+	ctrl = v4l2_ctrl_find(ctx->fh.ctrl_handler, V4L2_CID_COLORIMETRY_HDR10_MASTERING_DISPLAY);
+	if (ctrl)
+		v4l2_ctrl_s_ctrl_compound(ctrl,
+					  V4L2_CTRL_TYPE_HDR10_MASTERING_DISPLAY,
+					  &hdr10_mastering);
+
+	return 0;
 }
 
 void vsi_dec_update_reso(struct vsi_v4l2_ctx *ctx)
@@ -343,8 +410,10 @@ void vsi_dec_update_reso(struct vsi_v4l2_ctx *ctx)
 	pcfg->sizeimagedst[2] = 0;
 	pcfg->sizeimagedst[3] = 0;
 
+	vsi_dec_update_hdr10(ctx, &pcfg->decparams.dec_info.dec_info.vpu_hdr10_meta);
+
 	if (change)
-		ctx->src_change |= V4L2_EVENT_SRC_CH_RESOLUTION;
+		v4l2_klog(LOGLVL_BRIEF, "%llx resoultion change\n", ctx->ctxid);
 }
 
 static void vsi_dec_return_queued_buffers(struct vb2_queue *q)
@@ -388,8 +457,16 @@ static int vsi_dec_streamoff(
 		return -EBUSY;
 
 	trace_vsiv4l2_stream_off(ctx, type);
-	dev_dbg(ctx->dev->dev, "[%llx] dec %s streamoff\n",
-		ctx->ctxid, V4L2_TYPE_IS_OUTPUT(type) ? "output" : "capture");
+	dev_dbg(ctx->dev->dev,
+		"[%llx] %s streamoff, change %d, %d, %d, need %d, %d, %lld->%lld->%lld\n",
+		ctx->ctxid,
+		V4L2_TYPE_IS_OUTPUT(type) ? "output" : "capture",
+		ctx->reschange_cnt,
+		ctx->reschanged_need_notify, ctx->reschange_notified,
+		ctx->need_output_on, ctx->need_capture_on,
+		ctx->performance.input_buf_num,
+		ctx->performance.processed_buf_num,
+		ctx->performance.display_frame_num);
 
 	if (!binputqueue(type)) {
 		vb2_clear_last_buffer_dequeued(q);
@@ -415,9 +492,13 @@ static int vsi_dec_streamoff(
 			ret = vsiv4l2_execcmd(ctx, V4L2_DAEMON_VIDIOC_STREAMOFF_OUTPUT, NULL);
 		vsi_v4l2_set_ctx_status(ctx, DEC_STATUS_SEEK);
 		ctx->need_output_on = false;
+		ctx->performance.input_buf_num = 0;
+		ctx->performance.processed_buf_num = 0;
+		ctx->performance.display_frame_num = 0;
 	} else {
 		ret = vsiv4l2_execcmd(ctx, V4L2_DAEMON_VIDIOC_STREAMOFF_CAPTURE, NULL);
-		if (ctx->status != DEC_STATUS_SEEK && ctx->status != DEC_STATUS_ENDSTREAM)
+		if (ctx->status != DEC_STATUS_SEEK && ctx->status != DEC_STATUS_ENDSTREAM &&
+		    !(vsi_v4l2_dec_in_source_change(ctx)))
 			vsi_v4l2_set_ctx_status(ctx, DEC_STATUS_STOPPED);
 	}
 	if (ret < 0) {
@@ -483,15 +564,17 @@ static int vsi_dec_dqbuf(struct file *file, void *priv, struct v4l2_buffer *p)
 		return -EBUSY;
 	ret = vb2_dqbuf(q, p, file->f_flags & O_NONBLOCK);
 	if (ret == 0) {
-		vb = q->bufs[p->index];
-		vsibuf = vb_to_vsibuf(vb);
-		list_del(&vsibuf->list);
-		if (!binputqueue(p->type) && !(p->flags & V4L2_BUF_FLAG_LAST)) {
-			clear_bit(BUF_FLAG_DONE, &ctx->vbufflag[p->index]);
-			ctx->buffed_capnum--;
-			ctx->buffed_cropcapnum--;
-		} else
-			clear_bit(BUF_FLAG_DONE, &ctx->srcvbufflag[p->index]);
+		vb = vb2_get_buffer(q, p->index);
+		if (vb) {
+			vsibuf = vb_to_vsibuf(vb);
+			list_del(&vsibuf->list);
+			if (!binputqueue(p->type) && !(p->flags & V4L2_BUF_FLAG_LAST)) {
+				clear_bit(BUF_FLAG_DONE, &ctx->vbufflag[p->index]);
+				ctx->buffed_capnum--;
+				ctx->buffed_cropcapnum--;
+			} else
+				clear_bit(BUF_FLAG_DONE, &ctx->srcvbufflag[p->index]);
+		}
 	}
 	if (!binputqueue(p->type)) {
 		p->reserved = ctx->rfc_luma_offset[p->index];
@@ -708,8 +791,12 @@ static int vsi_dec_start_cmd(struct vsi_v4l2_ctx *ctx)
 		return ret;
 
 	for (i = 0; i < vb2_get_num_buffers(q); ++i) {
-		if (q->bufs[i]->state == VB2_BUF_STATE_ACTIVE) {
-			ret = vsiv4l2_execcmd(ctx, V4L2_DAEMON_VIDIOC_BUF_RDY, q->bufs[i]);
+		struct vb2_buffer *vb = vb2_get_buffer(q, i);
+
+		if (!vb)
+			continue;
+		if (vb->state == VB2_BUF_STATE_ACTIVE) {
+			ret = vsiv4l2_execcmd(ctx, V4L2_DAEMON_VIDIOC_BUF_RDY, vb);
 			if (ret < 0)
 				return ret;
 		}
@@ -966,16 +1053,6 @@ static int vsi_v4l2_dec_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
 	case V4L2_CID_MIN_BUFFERS_FOR_OUTPUT:
 		ctrl->val = ctx->mediacfg.minbuf_4output;
 		break;
-	case V4L2_CID_HDR10META:
-		if (ctrl->p_new.p) {
-			if (!test_bit(CTX_FLAG_SRCCHANGED_BIT, &ctx->flag))
-				memset(ctrl->p_new.p, 0, sizeof(struct v4l2_hdr10_meta));
-			else
-				memcpy(ctrl->p_new.p,
-					&ctx->mediacfg.decparams.dec_info.dec_info.vpu_hdr10_meta,
-					sizeof(struct v4l2_hdr10_meta));
-		}
-		break;
 	default:
 		return -EINVAL;
 	}
@@ -1024,19 +1101,6 @@ static const struct v4l2_ctrl_ops vsi_dec_ctrl_ops = {
 };
 
 static struct v4l2_ctrl_config vsi_v4l2_dec_ctrl_defs[] = {
-	{
-		.ops = &vsi_dec_ctrl_ops,
-		.type_ops = &vsi_dec_type_ops,
-		.id = V4L2_CID_HDR10META,
-		.name = "vsi get 10bit meta",
-		.type = VSI_V4L2_CMPTYPE_HDR10META,
-		.flags = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_READ_ONLY,
-		.min = 0,
-		.max = 1,
-		.step = 1,
-		.def = 0,
-		.elem_size = sizeof(struct v4l2_hdr10_meta),
-	},
 	/* kernel defined controls */
 	{
 		.id = V4L2_CID_MPEG_VIDEO_H264_PROFILE,
@@ -1114,11 +1178,16 @@ static struct v4l2_ctrl_config vsi_v4l2_dec_ctrl_defs[] = {
 
 static int vsi_dec_setup_ctrls(struct v4l2_ctrl_handler *handler)
 {
+	const struct v4l2_ctrl_hdr10_mastering_display p_hdr10_mastering = {
+		{ 34000, 13250, 7500 },
+		{ 16000, 34500, 3000 }, 15635, 16450, 10000000, 500,
+	};
+	const struct v4l2_ctrl_hdr10_cll_info p_hdr10_cll = { 1000, 400 };
 	struct vsi_v4l2_ctx *ctx = container_of(handler, struct vsi_v4l2_ctx, ctrlhdl);
 	int i, ctrl_num = ARRAY_SIZE(vsi_v4l2_dec_ctrl_defs);
 	struct v4l2_ctrl *ctrl = NULL;
 
-	v4l2_ctrl_handler_init(handler, ctrl_num);
+	v4l2_ctrl_handler_init(handler, ctrl_num + 3);
 
 	if (handler->error)
 		return handler->error;
@@ -1158,6 +1227,17 @@ static int vsi_dec_setup_ctrls(struct v4l2_ctrl_handler *handler)
 			break;
 		}
 	}
+
+	v4l2_ctrl_new_std_compound(handler, NULL,
+				   V4L2_CID_COLORIMETRY_HDR10_CLL_INFO,
+				   v4l2_ctrl_ptr_create((void *)&p_hdr10_cll),
+				   v4l2_ctrl_ptr_create(NULL),
+				   v4l2_ctrl_ptr_create(NULL));
+	v4l2_ctrl_new_std_compound(handler, NULL,
+				   V4L2_CID_COLORIMETRY_HDR10_MASTERING_DISPLAY,
+				   v4l2_ctrl_ptr_create((void *)&p_hdr10_mastering),
+				   v4l2_ctrl_ptr_create(NULL),
+				   v4l2_ctrl_ptr_create(NULL));
 
 	imx_mur_new_v4l2_ctrl(handler, ctx->recorder);
 

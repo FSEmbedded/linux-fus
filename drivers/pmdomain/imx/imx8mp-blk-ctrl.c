@@ -70,6 +70,8 @@ struct imx8mp_blk_ctrl_domain_data {
 	const char * const *clk_names;
 	int num_clks;
 	const char *gpc_name;
+	const struct imx8m_blk_ctrl_hurry_data *hurry_data;
+	const struct imx8mp_blk_ctrl_noc_data *noc_data[DOMAIN_MAX_NOC];
 	const unsigned int flags;
 };
 
@@ -82,7 +84,6 @@ struct imx8mp_blk_ctrl_domain {
 	struct device *power_dev;
 	struct imx8mp_blk_ctrl *bc;
 	struct notifier_block power_nb;
-	int num_paths;
 	int id;
 };
 

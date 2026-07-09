@@ -14,6 +14,7 @@
 
 #include <linux/bits.h>
 #include <linux/clk.h>
+#include <linux/clk-provider.h>
 #include <linux/debugfs.h>
 #include <linux/delay.h>
 #include <linux/fsl/netc_global.h>
@@ -25,6 +26,7 @@
 #include <linux/phy.h>
 #include <linux/platform_device.h>
 #include <linux/seq_file.h>
+#include <linux/string.h>
 
 /* NETCMIX registers */
 #define IMX95_CFG_LINK_IO_VAR		0x0
@@ -54,6 +56,7 @@
 
 #define IMX94_EXT_PIN_CONTROL		0x10
 #define  MAC2_MAC3_SEL			BIT(1)
+#define  RMII_REF_CLK_EN(x)		BIT((x) + 2)
 
 #define IMX94_NETC_LINK_CFG(a)		(0x4c + (a) * 4)
 #define  NETC_LINK_CFG_MII_PROT		GENMASK(3, 0)
@@ -72,6 +75,8 @@
 #define IERB_EMDIOFAUXR			0x344
 #define IERB_T0FAUXR			0x444
 #define IERB_ETBCR(a)			(0x300c + 0x100 * (a))
+#define IERB_ETXHPTBCR(a)		(0x3070 + 0x100 * (a))
+#define IERB_ETXLPTBCR(a)		(0x3074 + 0x100 * (a))
 #define IERB_LBCR(a)			(0x1010 + 0x40 * (a))
 #define IERB_MDIO_PHYAD_PRTAD(addr)	(((addr) & 0x1f) << 8)
 #define IERB_EFAUXR(a)			(0x3044 + 0x100 * (a))
@@ -102,6 +107,10 @@
 #define IMX94_TIMER0_ID			0
 #define IMX94_TIMER1_ID			1
 #define IMX94_TIMER2_ID			2
+
+#define IMX952_ENETC0_BUS_DEVFN		0x0
+#define IMX952_ENETC1_BUS_DEVFN		0x100
+#define IMX952_BYTE_CREDIT		0xc35
 
 /* Flags for different platforms */
 #define NETC_HAS_NETCMIX		BIT(0)
@@ -253,10 +262,29 @@ static int imx94_enetc_get_link_num(struct device_node *np)
 	}
 }
 
+static bool imx94_rmii_refclk_is_from_ccm(struct clk *ref_clk)
+{
+	struct clk *parent = clk_get_parent(ref_clk);
+	const char *name;
+
+	if (!parent)
+		return false;
+
+	name = __clk_get_name(parent);
+	if (!name)
+		return false;
+
+	if (str_has_prefix(name, "syspll1"))
+		return true;
+
+	return false;
+}
+
 static int imx94_link_config(struct netc_blk_ctrl *priv,
 			     struct device_node *np, int link_id)
 {
 	phy_interface_t interface;
+	struct clk *ref_clk;
 	int mii_proto, err;
 	u32 val;
 
@@ -275,11 +303,19 @@ static int imx94_link_config(struct netc_blk_ctrl *priv,
 
 	netc_reg_write(priv->netcmix, IMX94_NETC_LINK_CFG(link_id), val);
 
-	if (link_id == IMX94_ENETC0_LINK) {
-		val = netc_reg_read(priv->netcmix, IMX94_EXT_PIN_CONTROL);
-		val |= MAC2_MAC3_SEL;
-		netc_reg_write(priv->netcmix, IMX94_EXT_PIN_CONTROL, val);
+	val = netc_reg_read(priv->netcmix, IMX94_EXT_PIN_CONTROL);
+	if (link_id == IMX94_ENETC0_LINK || link_id == IMX94_SWITCH_PORT2) {
+		val = u32_replace_bits(val, link_id == IMX94_ENETC0_LINK,
+				       MAC2_MAC3_SEL);
 	}
+
+	if (mii_proto == MII_PROT_RMII) {
+		ref_clk = of_clk_get_by_name(np, "ref");
+		if (!IS_ERR(ref_clk) && imx94_rmii_refclk_is_from_ccm(ref_clk))
+			val |= RMII_REF_CLK_EN(link_id);
+		clk_put(ref_clk);
+	}
+	netc_reg_write(priv->netcmix, IMX94_EXT_PIN_CONTROL, val);
 
 	return 0;
 }
@@ -360,6 +396,56 @@ static int imx94_netcmix_init(struct platform_device *pdev)
 
 		return -EINVAL;
 	}
+
+	return 0;
+}
+
+static int imx952_netcmix_init(struct platform_device *pdev)
+{
+	struct netc_blk_ctrl *priv = platform_get_drvdata(pdev);
+	struct device_node *np = pdev->dev.of_node;
+	phy_interface_t interface;
+	int bus_devfn, mii_proto;
+	u32 val;
+	int err;
+
+	/* Default setting */
+	val = MII_PROT(0, MII_PROT_RGMII) | MII_PROT(1, MII_PROT_RGMII);
+
+	/* Update the link MII protocol through parsing phy-mode */
+	for_each_child_of_node_scoped(np, child) {
+		for_each_child_of_node_scoped(child, gchild) {
+			if (!of_device_is_compatible(gchild, "pci1131,e101"))
+				continue;
+
+			bus_devfn = netc_of_pci_get_bus_devfn(gchild);
+			if (bus_devfn < 0)
+				return bus_devfn;
+
+			err = of_get_phy_mode(gchild, &interface);
+			if (err)
+				continue;
+
+			mii_proto = netc_get_link_mii_protocol(interface);
+			if (mii_proto < 0)
+				return mii_proto;
+
+			switch (bus_devfn) {
+			case IMX952_ENETC0_BUS_DEVFN:
+				val = u32_replace_bits(val, mii_proto,
+						       CFG_LINK_MII_PORT_0);
+				break;
+			case IMX952_ENETC1_BUS_DEVFN:
+				val = u32_replace_bits(val, mii_proto,
+						       CFG_LINK_MII_PORT_1);
+				break;
+			default:
+				return -EINVAL;
+			}
+		}
+	}
+
+	netc_reg_write(priv->netcmix, IMX95_CFG_LINK_MII_PROT, val);
 
 	return 0;
 }
@@ -564,6 +650,16 @@ static int imx94_ierb_init(struct platform_device *pdev)
 	return ret;
 }
 
+static int imx952_ierb_init(struct platform_device *pdev)
+{
+	struct netc_blk_ctrl *priv = platform_get_drvdata(pdev);
+
+	netc_reg_write(priv->ierb, IERB_ETXHPTBCR(0), IMX952_BYTE_CREDIT);
+	netc_reg_write(priv->ierb, IERB_ETXLPTBCR(0), IMX952_BYTE_CREDIT);
+
+	return 0;
+}
+
 static int netc_ierb_init(struct platform_device *pdev)
 {
 	struct netc_blk_ctrl *priv = platform_get_drvdata(pdev);
@@ -729,8 +825,15 @@ static const struct netc_devinfo imx94_devinfo = {
 	.xpcs_port_init = imx94_netc_xpcs_port_init,
 };
 
+static const struct netc_devinfo imx952_devinfo = {
+	.flags = NETC_HAS_NETCMIX,
+	.netcmix_init = imx952_netcmix_init,
+	.ierb_init = imx952_ierb_init,
+};
+
 static const struct of_device_id netc_blk_ctrl_match[] = {
 	{ .compatible = "nxp,imx95-netc-blk-ctrl", .data = &imx95_devinfo },
+	{ .compatible = "nxp,imx952-netc-blk-ctrl", .data = &imx952_devinfo },
 	{ .compatible = "nxp,imx94-netc-blk-ctrl", .data = &imx94_devinfo },
 	{},
 };

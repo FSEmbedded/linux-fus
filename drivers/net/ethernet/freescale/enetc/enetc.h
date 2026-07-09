@@ -86,10 +86,11 @@ struct enetc_lso_t {
 #define ENETC_PAGE_SIZE(order)		(PAGE_SIZE << (order))
 #define ENETC_RXB_TRUESIZE(order)	(ENETC_PAGE_SIZE(order) >> 1)
 #define ENETC_RXB_PAD		NET_SKB_PAD /* add extra space if needed */
-#define ENETC_RXB_DMA_SIZE	\
-	min(SKB_WITH_OVERHEAD(ENETC_RXB_TRUESIZE) - ENETC_RXB_PAD, 0xffff)
-#define ENETC_RXB_DMA_SIZE_XDP	\
-	min(SKB_WITH_OVERHEAD(ENETC_RXB_TRUESIZE) - XDP_PACKET_HEADROOM, 0xffff)
+#define ENETC_RXB_DMA_SIZE(order)	\
+	(SKB_WITH_OVERHEAD(ENETC_RXB_TRUESIZE(order)) - ENETC_RXB_PAD)
+#define ENETC_RXB_DMA_SIZE_XDP(order)	\
+	(SKB_WITH_OVERHEAD(ENETC_RXB_TRUESIZE(order)) \
+	 - XDP_PACKET_HEADROOM)
 
 struct enetc_rx_swbd {
 	dma_addr_t dma;
@@ -559,7 +560,6 @@ struct enetc_ndev_priv {
 	/* Kernel stack and XDP share the tx rings */
 	bool shared_tx_rings;
 
-	struct pci_dev *rcec;
 	u32 ipt_wol_eid;
 	int wolopts;
 
