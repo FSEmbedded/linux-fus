@@ -373,13 +373,14 @@ static int ak5558_runtime_resume(struct device *dev)
 	regcache_mark_dirty(ak5558->regmap);
 
 	ret = regcache_sync(ak5558->regmap);
-	if (ret) {
-		regulator_bulk_disable(ARRAY_SIZE(ak5558->supplies),
-				       ak5558->supplies);
-		return ret;
-	}
+	if (ret)
+		goto err;
 
 	return 0;
+err:
+	regcache_cache_only(ak5558->regmap, true);
+	regulator_bulk_disable(ARRAY_SIZE(ak5558->supplies), ak5558->supplies);
+	return ret;
 }
 
 static const struct dev_pm_ops ak5558_pm = {
