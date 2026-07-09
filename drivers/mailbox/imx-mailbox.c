@@ -125,7 +125,6 @@ struct imx_mu_dcfg {
 	u32	xRR;		/* Receive Register0 */
 	u32	xSR[IMX_MU_xSR_MAX];	/* Status Registers */
 	u32	xCR[IMX_MU_xCR_MAX];	/* Control Registers */
-	u32	xBUF;		/* MU Buffer Register */
 	bool	skip_suspend_flag;
 };
 
