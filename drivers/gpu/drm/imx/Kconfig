@@ -1,10 +1,11 @@
 # SPDX-License-Identifier: GPL-2.0-only
 config DRM_IMX
 	tristate "DRM Support for Freescale i.MX"
+	select DRM_CLIENT_SELECTION
 	select DRM_KMS_HELPER
 	select VIDEOMODE_HELPERS
 	select DRM_GEM_DMA_HELPER
-	depends on DRM && (ARCH_MXC || ARCH_MULTIPLATFORM || COMPILE_TEST)
+	depends on DRM && (ARCH_MXC || COMPILE_TEST)
 	depends on IMX_IPUV3_CORE || IMX_DPU_CORE || IMX8MM_LCDIF_CORE
 	help
 	  enable i.MX graphics support
@@ -16,8 +17,11 @@ config DRM_IMX_LCDIF_MUX_DISPLAY
 
 config DRM_IMX_PARALLEL_DISPLAY
 	tristate "Support for parallel displays"
-	select DRM_PANEL
 	depends on DRM_IMX
+	select DRM_BRIDGE
+	select DRM_BRIDGE_CONNECTOR
+	select DRM_IMX_LEGACY_BRIDGE
+	select DRM_PANEL_BRIDGE
 	select VIDEOMODE_HELPERS
 
 config DRM_IMX_TVE
@@ -31,14 +35,18 @@ config DRM_IMX_TVE
 
 config DRM_IMX_LDB
 	tristate "Support for LVDS displays"
-	depends on DRM_IMX && MFD_SYSCON
+	depends on DRM_IMX
 	depends on COMMON_CLK
-	select DRM_PANEL
+	select MFD_SYSCON
+	select DRM_BRIDGE
+	select DRM_BRIDGE_CONNECTOR
+	select DRM_PANEL_BRIDGE
+	select DRM_IMX_LEGACY_BRIDGE
 	help
 	  Choose this to enable the internal LVDS Display Bridge (LDB)
 	  found on i.MX53 and i.MX6 processors.
 
-config DRM_IMX8QM_LDB
+config DRM_IMX8QM_LDB_NXP
 	tristate "Support for i.MX8qm LVDS displays"
 	depends on DRM_IMX && DRM_FSL_IMX_LVDS_BRIDGE
 	depends on PHY_MIXEL_LVDS
@@ -46,7 +54,7 @@ config DRM_IMX8QM_LDB
 	  Choose this to enable the internal LVDS Display Bridge (LDB)
 	  found on i.MX8qm processors.
 
-config DRM_IMX8QXP_LDB
+config DRM_IMX8QXP_LDB_NXP
 	tristate "Support for i.MX8qxp LVDS displays"
 	depends on DRM_IMX && DRM_FSL_IMX_LVDS_BRIDGE
 	depends on PHY_MIXEL_LVDS_COMBO
@@ -107,6 +115,7 @@ config DRM_IMX_SEC_DSIM
 	  Choose this to enable the internal SEC MIPI DSIM controller
 	  found on i.MX platform.
 
+source "drivers/gpu/drm/imx/dc/Kconfig"
 source "drivers/gpu/drm/imx/dcif/Kconfig"
 source "drivers/gpu/drm/imx/dcnano/Kconfig"
 source "drivers/gpu/drm/imx/dpu/Kconfig"

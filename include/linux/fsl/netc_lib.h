@@ -1,14 +1,16 @@
 /* SPDX-License-Identifier: (GPL-2.0+ OR BSD-3-Clause) */
-/* Copyright 2024 NXP */
+/*
+ * Copyright 2025 NXP
+ */
+
 #ifndef __NETC_LIB_H
 #define __NETC_LIB_H
 
 #include <linux/debugfs.h>
-#include <linux/seq_file.h>
 #include <linux/fsl/ntmp.h>
-
-#define NETC_REVISION_4_1		0x0401
-#define NETC_REVISION_4_3		0x0403
+#include <linux/seq_file.h>
+#include <net/pkt_sched.h>
+#include <net/tc_act/tc_gate.h>
 
 #define is_en(x)	(x) ? "Enabled" : "Disabled"
 #define is_yes(x)	(x) ? "Yes" : "No"
@@ -18,6 +20,7 @@ enum netc_flower_type {
 	FLOWER_TYPE_TRAP,
 	FLOWER_TYPE_REDIRECT,
 	FLOWER_TYPE_POLICE,
+	FLOWER_TYPE_DROP,
 };
 
 enum netc_key_tbl_type {
@@ -91,233 +94,66 @@ struct netc_psfp_tbl_entries {
 };
 
 #if IS_ENABLED(CONFIG_NXP_NETC_LIB)
-/* tc flower API */
+int netc_setup_taprio(struct ntmp_user *user, u32 entry_id,
+		      struct tc_taprio_qopt_offload *f);
 struct netc_flower_rule *
-netc_find_flower_rule_by_cookie(struct ntmp_priv *priv, int port_id,
+netc_find_flower_rule_by_cookie(struct ntmp_user *user, int port_id,
 				unsigned long cookie);
 struct netc_flower_rule *
-netc_find_flower_rule_by_key(struct ntmp_priv *priv,
+netc_find_flower_rule_by_key(struct ntmp_user *user,
 			     enum netc_key_tbl_type tbl_type, void *key);
-void netc_init_ist_entry_eids(struct ntmp_priv *priv,
+void netc_init_ist_entry_eids(struct ntmp_user *user,
 			      struct ntmp_ist_entry *ist_entry);
-void netc_free_flower_key_tbl(struct ntmp_priv *priv,
+void netc_free_flower_key_tbl(struct ntmp_user *user,
 			      struct netc_flower_key_tbl *key_tbl);
-void netc_free_flower_police_tbl(struct ntmp_priv *priv,
-				 struct netc_police_tbl *police_tbl);
-int netc_police_entry_validate(struct ntmp_priv *priv,
+int netc_police_entry_validate(struct ntmp_user *user,
 			       const struct flow_action *action,
 			       const struct flow_action_entry *police_entry,
 			       struct netc_police_tbl **police_tbl,
 			       struct netlink_ext_ack *extack);
 void netc_rpt_entry_config(struct flow_action_entry *police_entry,
 			   struct ntmp_rpt_entry *rpt_entry);
-int netc_setup_psfp(struct ntmp_priv *priv, int port_id,
+int netc_setup_psfp(struct ntmp_user *user, int port_id,
 		    struct flow_cls_offload *f);
-void netc_delete_psfp_flower_rule(struct ntmp_priv *priv,
+void netc_delete_psfp_flower_rule(struct ntmp_user *user,
 				  struct netc_flower_rule *rule);
-int netc_psfp_flower_stat(struct ntmp_priv *priv, struct netc_flower_rule *rule,
+int netc_psfp_flower_stat(struct ntmp_user *user, struct netc_flower_rule *rule,
 			  u64 *byte_cnt, u64 *pkt_cnt, u64 *drop_cnt);
-int netc_setup_taprio(struct ntmp_priv *priv, u32 entry_id,
-		      struct tc_taprio_qopt_offload *f);
 int netc_ipft_keye_construct(struct flow_rule *rule, int port_id,
 			     u16 prio, struct ipft_keye_data *keye,
 			     struct netlink_ext_ack *extack);
-int netc_setup_police(struct ntmp_priv *priv, int port_id,
+void netc_free_flower_police_tbl(struct ntmp_user *user,
+				 struct netc_police_tbl *police_tbl);
+int netc_setup_police(struct ntmp_user *user, int port_id,
 		      struct flow_cls_offload *f);
-void netc_delete_police_flower_rule(struct ntmp_priv *priv,
+void netc_delete_police_flower_rule(struct ntmp_user *user,
 				    struct netc_flower_rule *rule);
-int netc_police_flower_stat(struct ntmp_priv *priv, struct netc_flower_rule *rule,
-			    u64 *pkt_cnt);
-int netc_restore_flower_list_config(struct ntmp_priv *priv);
-void netc_clear_flower_table_restored_flag(struct ntmp_priv *priv);
-
-/* debugfs API */
-int netc_kstrtouint(const char __user *buffer, size_t count, loff_t *ppos, u32 *val);
-void netc_show_psfp_flower(struct seq_file *s, struct netc_flower_rule *rule);
-int netc_show_isit_entry(struct ntmp_priv *priv, struct seq_file *s, u32 entry_id);
-int netc_show_ist_entry(struct ntmp_priv *priv, struct seq_file *s, u32 entry_id);
-int netc_show_isft_entry(struct ntmp_priv *priv, struct seq_file *s, u32 entry_id);
-int netc_show_sgit_entry(struct ntmp_priv *priv, struct seq_file *s, u32 entry_id);
-int netc_show_sgclt_entry(struct ntmp_priv *priv, struct seq_file *s, u32 entry_id);
-int netc_show_isct_entry(struct ntmp_priv *priv, struct seq_file *s, u32 entry_id);
-int netc_show_rpt_entry(struct ntmp_priv *priv, struct seq_file *s, u32 entry_id);
-int netc_show_ipft_entry(struct ntmp_priv *priv, struct seq_file *s, u32 entry_id);
-int netc_show_tgst_entry(struct ntmp_priv *priv, struct seq_file *s, u32 entry_id);
-void netc_show_ipft_flower(struct seq_file *s, struct netc_flower_rule *rule);
-#else
-static inline int netc_kstrtouint(const char __user *buffer, size_t count,
-				  loff_t *ppos, u32 *val)
-{
-	return 0;
-}
-
-static inline struct netc_flower_rule *
-netc_find_flower_rule_by_cookie(struct ntmp_priv *priv, int port_id,
-				unsigned long cookie)
-{
-	return NULL;
-}
-
-static inline struct netc_flower_rule *
-netc_find_flower_rule_by_key(struct ntmp_priv *priv,
-			     enum netc_key_tbl_type tbl_type, void *key)
-{
-	return NULL;
-}
-
-static inline void netc_init_ist_entry_eids(struct ntmp_priv *priv,
-					    struct ntmp_ist_entry *ist_entry)
-{
-}
-
-static inline void netc_free_flower_key_tbl(struct ntmp_priv *priv,
-					    struct netc_flower_key_tbl *key_tbl)
-{
-}
-
-static inline void netc_free_flower_police_tbl(struct ntmp_priv *priv,
-					       struct netc_police_tbl *police_tbl)
-{
-}
-
-static inline int netc_police_entry_validate(struct ntmp_priv *priv,
-					    const struct flow_action *action,
-					    const struct flow_action_entry *police_entry,
-					    struct netc_police_tbl **police_tbl,
-					    struct netlink_ext_ack *extack)
-{
-	return 0;
-}
-
-static inline void netc_rpt_entry_config(struct flow_action_entry *police_entry,
-					 struct ntmp_rpt_entry *rpt_entry)
-{
-}
-
-static inline int netc_setup_psfp(struct ntmp_priv *priv, int port_id,
-		    struct flow_cls_offload *f)
-{
-	return 0;
-}
-
-static inline void
-netc_delete_psfp_flower_rule(struct ntmp_priv *priv,
-			     struct netc_flower_rule *rule)
-{
-}
-
-static inline int netc_psfp_flower_stat(struct ntmp_priv *priv,
-					struct netc_flower_rule *rule,
-					u64 *byte_cnt, u64 *pkt_cnt,
-					u64 *drop_cnt)
-{
-	return 0;
-}
-
-static inline int netc_setup_taprio(struct ntmp_priv *priv, u32 entry_id,
-				    struct tc_taprio_qopt_offload *f)
-{
-	return 0;
-}
-
-static inline int netc_ipft_keye_construct(struct flow_rule *rule, int port_id,
-					   u16 prio, struct ipft_keye_data *keye,
-					   struct netlink_ext_ack *extack)
-{
-	return 0;
-}
-
-static inline int netc_setup_police(struct ntmp_priv *priv, int port_id,
-				    struct flow_cls_offload *f)
-{
-	return 0;
-}
-
-static inline void netc_delete_police_flower_rule(struct ntmp_priv *priv,
-						  struct netc_flower_rule *rule)
-{
-}
-
-static inline int netc_police_flower_stat(struct ntmp_priv *priv,
-					  struct netc_flower_rule *rule,
-					  u64 *pkt_cnt)
-{
-	return 0;
-}
-
-static inline int netc_restore_flower_list_config(struct ntmp_priv *priv)
-{
-	return 0;
-}
-
-static inline void netc_clear_flower_table_restored_flag(struct ntmp_priv *priv)
-{
-}
-
-static inline void netc_show_psfp_flower(struct seq_file *s,
-					 struct netc_flower_rule *rule)
-{
-}
-
-static inline int netc_show_isit_entry(struct ntmp_priv *priv,
-				       struct seq_file *s, u32 entry_id)
-{
-	return 0;
-}
-
-static inline int netc_show_ist_entry(struct ntmp_priv *priv,
-				      struct seq_file *s, u32 entry_id)
-{
-	return 0;
-}
-
-static inline int netc_show_isft_entry(struct ntmp_priv *priv,
-				       struct seq_file *s, u32 entry_id)
-{
-	return 0;
-}
-
-static inline int netc_show_sgit_entry(struct ntmp_priv *priv,
-				       struct seq_file *s, u32 entry_id)
-{
-	return 0;
-}
-
-static inline int netc_show_sgclt_entry(struct ntmp_priv *priv,
-					struct seq_file *s, u32 entry_id)
-{
-	return 0;
-}
-
-static inline int netc_show_isct_entry(struct ntmp_priv *priv,
-				       struct seq_file *s, u32 entry_id)
-{
-	return 0;
-}
-
-static inline int netc_show_rpt_entry(struct ntmp_priv *priv,
-				      struct seq_file *s, u32 entry_id)
-{
-	return 0;
-}
-
-static inline int netc_show_ipft_entry(struct ntmp_priv *priv,
-				       struct seq_file *s, u32 entry_id)
-{
-	return 0;
-}
-
-static inline int netc_show_tgst_entry(struct ntmp_priv *priv,
-				       struct seq_file *s, u32 entry_id)
-{
-	return 0;
-}
-
-static inline void netc_show_ipft_flower(struct seq_file *s,
-					 struct netc_flower_rule *rule)
-{
-}
-
+int netc_ipft_flower_stat(struct ntmp_user *user,
+			  struct netc_flower_rule *rule,
+			  u64 *pkt_cnt);
+int netc_restore_flower_list_config(struct ntmp_user *user);
+void netc_clear_flower_table_restored_flag(struct ntmp_user *user);
+int netc_setup_drop(struct ntmp_user *user, int port_id,
+		    struct flow_cls_offload *f);
+void netc_delete_drop_flower_rule(struct ntmp_user *user,
+				  struct netc_flower_rule *rule);
 #endif
 
-#endif /* __NETC_LIB_H */
+#if IS_ENABLED(CONFIG_NXP_NETC_LIB) && IS_ENABLED(CONFIG_DEBUG_FS)
+/* debugfs API */
+int netc_show_tgst_entry(struct ntmp_user *user, struct seq_file *s,
+			 u32 entry_id);
+int netc_kstrtouint(const char __user *buffer, size_t count, loff_t *ppos, u32 *val);
+void netc_show_psfp_flower(struct seq_file *s, struct netc_flower_rule *rule);
+int netc_show_isit_entry(struct ntmp_user *user, struct seq_file *s, u32 entry_id);
+int netc_show_ist_entry(struct ntmp_user *user, struct seq_file *s, u32 entry_id);
+int netc_show_isft_entry(struct ntmp_user *user, struct seq_file *s, u32 entry_id);
+int netc_show_sgit_entry(struct ntmp_user *user, struct seq_file *s, u32 entry_id);
+int netc_show_sgclt_entry(struct ntmp_user *user, struct seq_file *s, u32 entry_id);
+int netc_show_isct_entry(struct ntmp_user *user, struct seq_file *s, u32 entry_id);
+int netc_show_rpt_entry(struct ntmp_user *user, struct seq_file *s, u32 entry_id);
+int netc_show_ipft_entry(struct ntmp_user *user, struct seq_file *s, u32 entry_id);
+void netc_show_ipft_flower(struct seq_file *s, struct netc_flower_rule *rule);
+#endif
+
+#endif

@@ -117,7 +117,7 @@ static int imx6q_set_target(struct cpufreq_policy *policy, unsigned int index)
 		new_freq / 1000, volt / 1000);
 
 	if (low_power_run_support) {
-		if (old_freq == freq_table[0].frequency)
+		if (old_freq <= freq_table[0].frequency)
 			request_bus_freq(BUS_FREQ_HIGH);
 	} else if (old_freq <= FREQ_396_MHZ && new_freq > FREQ_396_MHZ) {
 		request_bus_freq(BUS_FREQ_HIGH);
@@ -271,7 +271,6 @@ static struct cpufreq_driver imx6q_cpufreq_driver = {
 	.init = imx6q_cpufreq_init,
 	.register_em = cpufreq_register_em_with_opp,
 	.name = "imx6q-cpufreq",
-	.attr = cpufreq_generic_attr,
 	.suspend = cpufreq_generic_suspend,
 };
 
@@ -564,7 +563,7 @@ soc_opp_out:
 	}
 
 	if (of_property_read_u32(np, "clock-latency", &transition_latency))
-		transition_latency = CPUFREQ_ETERNAL;
+		transition_latency = CPUFREQ_DEFAULT_TRANSITION_LATENCY_NS;
 
 	/*
 	 * Calculate the ramp time for max voltage change in the
@@ -645,7 +644,7 @@ static struct platform_driver imx6q_cpufreq_platdrv = {
 		.name	= "imx6q-cpufreq",
 	},
 	.probe		= imx6q_cpufreq_probe,
-	.remove_new	= imx6q_cpufreq_remove,
+	.remove		= imx6q_cpufreq_remove,
 };
 module_platform_driver(imx6q_cpufreq_platdrv);
 

@@ -206,7 +206,7 @@ static int q6apm_lpass_dai_prepare(struct snd_pcm_substream *substream, struct s
 
 	rc = q6apm_graph_start(dai_data->graph[dai->id]);
 	if (rc < 0) {
-		dev_err(dai->dev, "fail to start APM port %x\n", dai->id);
+		dev_err(dai->dev, "Failed to start APM port %d\n", dai->id);
 		goto err;
 	}
 	dai_data->is_port_started[dai->id] = true;
@@ -278,6 +278,7 @@ static const struct snd_soc_component_driver q6apm_lpass_dai_component = {
 	.of_xlate_dai_name = q6dsp_audio_ports_of_xlate_dai_name,
 	.be_pcm_base = AUDIOREACH_BE_PCM_BASE,
 	.use_dai_pcm_id = true,
+	.remove_order   = SND_SOC_COMP_ORDER_FIRST,
 };
 
 static int q6apm_lpass_dai_dev_probe(struct platform_device *pdev)

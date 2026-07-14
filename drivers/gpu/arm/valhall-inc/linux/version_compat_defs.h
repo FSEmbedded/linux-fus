@@ -116,6 +116,15 @@ static inline void kbase_timer_setup(struct timer_list *timer,
 	timer_setup(timer, callback, 0);
 #endif
 }
+#if KERNEL_VERSION(6, 14, 0) > LINUX_VERSION_CODE
+static inline void hrtimer_setup(struct hrtimer *timer,
+		enum hrtimer_restart (*function)(struct hrtimer *),
+		clockid_t clock_id, enum hrtimer_mode mode)
+{
+	hrtimer_init(timer, clock_id, mode);
+	timer->function = function;
+}
+#endif
 
 #ifndef WRITE_ONCE
 #ifdef ASSIGN_ONCE
@@ -750,6 +759,13 @@ static inline int of_changeset_add_prop_string_array(struct of_changeset *ocs,
 	kfree(prop.value);
 
 	return ret;
+}
+#endif
+#if (KERNEL_VERSION(6, 19, 0) > LINUX_VERSION_CODE)
+static inline bool dma_fence_check_and_signal(struct dma_fence *fence)
+{
+	dma_fence_signal(fence);
+	return 0;
 }
 #endif
 

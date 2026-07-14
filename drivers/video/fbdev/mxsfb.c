@@ -40,6 +40,7 @@
  * the required value in the imx_fb_videomode structure.
  */
 
+#include <linux/backlight.h>
 #include <linux/busfreq-imx.h>
 #include <linux/console.h>
 #include <linux/module.h>
@@ -242,6 +243,7 @@ struct mxsfb_info {
 	struct clk *clk_pix;
 	struct clk *clk_axi;
 	struct clk *clk_disp_axi;
+	struct backlight_device *bd;
 	bool clk_pix_enabled;
 	bool clk_axi_enabled;
 	bool clk_disp_axi_enabled;
@@ -2330,6 +2332,13 @@ static int mxsfb_probe(struct platform_device *pdev)
 		goto fb_release;
 	}
 
+	host->bd = devm_of_find_backlight(&pdev->dev);
+	if (IS_ERR(host->bd)) {
+		ret = PTR_ERR(host->bd);
+		dev_err(&pdev->dev, "failed to find backlight: %d\n", ret);
+		goto fb_release;
+	}
+
 	INIT_LIST_HEAD(&fb_info->modelist);
 
 	pm_runtime_enable(&host->pdev->dev);
@@ -2381,6 +2390,12 @@ static int mxsfb_probe(struct platform_device *pdev)
 	}
 #endif
 
+	ret = backlight_enable(host->bd);
+	if (ret) {
+		dev_err(&pdev->dev, "Failed to enable backlight %d\n", ret);
+		goto fb_unregister;
+	}
+
 	dev_info(&pdev->dev, "initialized\n");
 
 	return 0;
@@ -2411,6 +2426,8 @@ static void mxsfb_remove(struct platform_device *pdev)
 {
 	struct mxsfb_info *host = platform_get_drvdata(pdev);
 	struct fb_info *fb_info = host->fb_info;
+
+	backlight_disable(host->bd);
 
 	if (host->enabled)
 		mxsfb_disable_controller(fb_info);

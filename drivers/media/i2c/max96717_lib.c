@@ -11,7 +11,7 @@
 #include "max96717_regs.h"
 #include "max96717.h"
 
-#define MAX96717_DEV_ID			0xB7
+#define MAX96717_DEV_ID			0xBF
 #define MAX96717F_DEV_ID		0xC8
 
 static bool max96717_writable_register(struct device *dev, unsigned int reg)
@@ -387,6 +387,10 @@ bool max96717_is_dev_id_valid(struct max96717 *ser)
 		dev_err(ser->dev, "Wrong Maxim serializer detected: id 0x%x\n", chip_id);
 		return false;
 	}
+
+	dev_info(ser->dev, "Detected %s serializer with device id 0x%x.\n",
+		 chip_id == MAX96717_DEV_ID ? "MAX96717" : "MAX96717F",
+		 chip_id);
 
 	return true;
 }

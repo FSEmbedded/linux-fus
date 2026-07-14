@@ -53,8 +53,8 @@
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_PLL>,
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_SLV_BUS>,
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_MST_BUS>,
-			<&sai0_lpcg 0>;
-	assigned-clock-parents = <&aud_pll_div0_lpcg 0>;
+			<&sai0_lpcg IMX_LPCG_CLK_0>;
+	assigned-clock-parents = <&aud_pll_div0_lpcg IMX_LPCG_CLK_0>;
 	assigned-clock-rates = <0>, <786432000>, <49152000>, <24576000>, <49152000>;
 	status = "okay";
 };

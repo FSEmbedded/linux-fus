@@ -306,7 +306,7 @@
 	cs42888: cs42888@48 {
 		compatible = "cirrus,cs42888";
 		reg = <0x48>;
-		clocks = <&mclkout0_lpcg 0>;
+		clocks = <&mclkout0_lpcg IMX_LPCG_CLK_0>;
 		clock-names = "mclk";
 		VA-supply = <&reg_audio>;
 		VD-supply = <&reg_audio>;
@@ -326,7 +326,7 @@
 		assigned-clocks = <&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_PLL>,
 				<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_SLV_BUS>,
 				<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_MST_BUS>,
-				<&mclkout0_lpcg 0>;
+				<&mclkout0_lpcg IMX_LPCG_CLK_0>;
 		assigned-clock-rates = <786432000>, <49152000>, <12288000>, <12288000>;
 		fsl,txs-rxm;
 		status = "disabled";
@@ -432,8 +432,8 @@
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_PLL>,
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_SLV_BUS>,
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_MST_BUS>,
-			<&esai0_lpcg 0>;
-	assigned-clock-parents = <&aud_pll_div0_lpcg 0>;
+			<&esai0_lpcg IMX_LPCG_CLK_4>;
+	assigned-clock-parents = <&aud_pll_div0_lpcg IMX_LPCG_CLK_0>;
 	assigned-clock-rates = <0>, <786432000>, <49152000>, <12288000>, <49152000>;
 	fsl,txm-rxs;
 	status = "okay";
@@ -452,7 +452,7 @@
 	assigned-clocks = <&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_PLL>,
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_SLV_BUS>,
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_MST_BUS>,
-			<&sai1_lpcg 0>; /* FIXME: should be sai1, original code is 0 */
+			<&sai1_lpcg IMX_LPCG_CLK_4>; /* FIXME: should be sai1, original code is 0 */
 	assigned-clock-rates = <786432000>, <49152000>, <12288000>, <49152000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_sai1>;
@@ -480,8 +480,8 @@
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_PLL>,
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_SLV_BUS>,
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_MST_BUS>,
-			<&sai6_lpcg 0>;
-	assigned-clock-parents = <&aud_pll_div0_lpcg 0>;
+			<&sai6_lpcg IMX_LPCG_CLK_4>;
+	assigned-clock-parents = <&aud_pll_div0_lpcg IMX_LPCG_CLK_0>;
 	assigned-clock-rates = <0>, <786432000>, <49152000>, <12288000>, <49152000>;
 	fsl,sai-asynchronous;
 	fsl,txm-rxs;
@@ -494,8 +494,8 @@
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_PLL>,
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_SLV_BUS>,
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_MST_BUS>,
-			<&sai7_lpcg 0>;
-	assigned-clock-parents = <&aud_pll_div0_lpcg 0>;
+			<&sai7_lpcg IMX_LPCG_CLK_4>;
+	assigned-clock-parents = <&aud_pll_div0_lpcg IMX_LPCG_CLK_0>;
 	assigned-clock-rates = <0>, <786432000>, <49152000>, <12288000>, <49152000>;
 	fsl,sai-asynchronous;
 	fsl,txm-rxs;
@@ -528,7 +528,7 @@
 	status = "disabled";
 
 	lvds-to-hdmi-bridge@4c {
-		compatible = "ite,it6263";
+		compatible = "ite,it6263-nxp";
 		reg = <0x4c>;
 
 		port {
@@ -731,7 +731,7 @@
 	status = "okay";
 
 	lvds-to-hdmi-bridge@4c {
-		compatible = "ite,it6263";
+		compatible = "ite,it6263-nxp";
 		reg = <0x4c>;
 
 		port {
@@ -767,7 +767,6 @@
 &lpspi2 {
 	#address-cells = <1>;
 	#size-cells = <0>;
-	fsl,spi-num-chipselects = <1>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_lpspi2 &pinctrl_lpspi2_cs>;
 	cs-gpios = <&lsio_gpio3 10 GPIO_ACTIVE_LOW>;
@@ -1109,7 +1108,7 @@
 	wm8960: wm8960@1a {
 		compatible = "wlf,wm8960";
 		reg = <0x1a>;
-		clocks = <&mclkout0_lpcg 0>;
+		clocks = <&mclkout0_lpcg IMX_LPCG_CLK_0>;
 		clock-names = "mclk";
 		wlf,shared-lrclk;
 		wlf,hp-cfg = <2 2 3>;
@@ -1117,7 +1116,7 @@
 		assigned-clocks = <&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_PLL>,
 				<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_SLV_BUS>,
 				<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_MST_BUS>,
-				<&mclkout0_lpcg 0>;
+				<&mclkout0_lpcg IMX_LPCG_CLK_0>;
 		assigned-clock-rates = <786432000>, <49152000>, <12288000>, <12288000>;
 	};
 };
@@ -1641,13 +1640,8 @@
 	status = "disabled";
 };
 
-&gpu_3d1{
-	status = "okay";
-};
-
 &imx8_gpu_ss {
 	cores = <&gpu_3d1>;
-	status = "okay";
 };
 
 / {

@@ -27,6 +27,7 @@
 
 #include <media/videobuf-dma-contig.h>
 #include <media/v4l2-device.h>
+#include <media/v4l2-fh.h>
 #include <media/v4l2-ioctl.h>
 
 #define UYVY_BLACK	(0x00800080)
@@ -96,6 +97,8 @@ struct mxc_vout_output {
 	struct mutex accs_lock;
 	enum v4l2_buf_type type;
 
+	struct v4l2_fh fh;
+
 	struct videobuf_queue vbq;
 	spinlock_t vbq_lock;
 
@@ -153,6 +156,11 @@ struct mxc_vout_dev {
 static int debug;
 static int vdi_rate_double;
 static int video_nr = 16;
+
+static inline struct mxc_vout_output *file_to_vout(struct file *filp)
+{
+	return container_of(file_to_v4l2_fh(filp), struct mxc_vout_output, fh);
+}
 
 static int mxc_vidioc_s_input_crop(struct mxc_vout_output *vout,
 				const struct v4l2_crop *crop);
@@ -234,7 +242,7 @@ static const struct v4l2_fmtdesc mxc_formats[] = {
 #define DEF_INPUT_WIDTH		320
 #define DEF_INPUT_HEIGHT	240
 
-static int mxc_vidioc_streamoff(struct file *file, void *fh,
+static int mxc_vidioc_streamoff(struct file *file, void *priv,
 					enum v4l2_buf_type i);
 
 static struct mxc_vout_fb g_fb_setting[MAX_FB_NUM];
@@ -904,7 +912,7 @@ static void mxc_vout_buffer_release(struct videobuf_queue *q,
 static int mxc_vout_mmap(struct file *file, struct vm_area_struct *vma)
 {
 	int ret;
-	struct mxc_vout_output *vout = file->private_data;
+	struct mxc_vout_output *vout = file_to_vout(file);
 
 	if (!vout)
 		return -ENODEV;
@@ -922,7 +930,7 @@ static int mxc_vout_release(struct file *file)
 {
 	unsigned int ret = 0;
 	struct videobuf_queue *q;
-	struct mxc_vout_output *vout = file->private_data;
+	struct mxc_vout_output *vout = video_drvdata(file);
 
 	if (!vout)
 		return 0;
@@ -931,13 +939,16 @@ static int mxc_vout_release(struct file *file)
 	if (--vout->open_cnt == 0) {
 		q = &vout->vbq;
 		if (q->streaming)
-			mxc_vidioc_streamoff(file, vout, vout->type);
+			mxc_vidioc_streamoff(file, NULL, vout->type);
 		else {
 			release_disp_output(vout);
 			videobuf_queue_cancel(q);
 		}
 		destroy_workqueue(vout->v4l_wq);
 		ret = videobuf_mmap_free(q);
+
+		v4l2_fh_del(&vout->fh, file);
+		v4l2_fh_exit(&vout->fh);
 	}
 
 	mutex_unlock(&vout->accs_lock);
@@ -947,7 +958,7 @@ static int mxc_vout_release(struct file *file)
 static long mxc_vout_ioctl(struct file *file,
 	       unsigned int cmd, unsigned long arg)
 {
-	struct mxc_vout_output *vout = file->private_data;
+	struct mxc_vout_output *vout = file_to_vout(file);
 	struct v4l2_crop crop;
 	int ret;
 
@@ -1006,9 +1017,10 @@ static int mxc_vout_open(struct file *file)
 		vout->win_pos.x = 0;
 		vout->win_pos.y = 0;
 		vout->release = true;
-	}
 
-	file->private_data = vout;
+		v4l2_fh_init(&vout->fh, video_devdata(file));
+		v4l2_fh_add(&vout->fh, file);
+	}
 
 err:
 	mutex_unlock(&vout->accs_lock);
@@ -1018,10 +1030,10 @@ err:
 /*
  * V4L2 ioctls
  */
-static int mxc_vidioc_querycap(struct file *file, void *fh,
+static int mxc_vidioc_querycap(struct file *file, void *priv,
 		struct v4l2_capability *cap)
 {
-	struct mxc_vout_output *vout = fh;
+	struct mxc_vout_output *vout = file_to_vout(file);
 
 	strscpy(cap->driver, VOUT_NAME, sizeof(cap->driver));
 	strscpy(cap->card, vout->vfd->name, sizeof(cap->card));
@@ -1032,7 +1044,7 @@ static int mxc_vidioc_querycap(struct file *file, void *fh,
 	return 0;
 }
 
-static int mxc_vidioc_enum_fmt_vid_out(struct file *file, void *fh,
+static int mxc_vidioc_enum_fmt_vid_out(struct file *file, void *priv,
 			struct v4l2_fmtdesc *fmt)
 {
 	if (fmt->index >= NUM_MXC_VOUT_FORMATS)
@@ -1045,10 +1057,10 @@ static int mxc_vidioc_enum_fmt_vid_out(struct file *file, void *fh,
 	return 0;
 }
 
-static int mxc_vidioc_g_fmt_vid_out(struct file *file, void *fh,
+static int mxc_vidioc_g_fmt_vid_out(struct file *file, void *priv,
 			struct v4l2_format *f)
 {
-	struct mxc_vout_output *vout = fh;
+	struct mxc_vout_output *vout = file_to_vout(file);
 
 	f->fmt.pix.width = vout->task.input.width;
 	f->fmt.pix.height = vout->task.input.height;
@@ -1345,10 +1357,10 @@ static bool mxc_vout_need_fb_reconfig(struct mxc_vout_output *vout,
 	return false;
 }
 
-static int mxc_vidioc_s_fmt_vid_out(struct file *file, void *fh,
+static int mxc_vidioc_s_fmt_vid_out(struct file *file, void *priv,
 			struct v4l2_format *f)
 {
-	struct mxc_vout_output *vout = fh;
+	struct mxc_vout_output *vout = file_to_vout(file);
 	int ret = 0;
 
 	if (vout->vbq.streaming)
@@ -1363,10 +1375,10 @@ static int mxc_vidioc_s_fmt_vid_out(struct file *file, void *fh,
 	return ret;
 }
 
-static int mxc_vidioc_g_selection(struct file *file, void *fh,
+static int mxc_vidioc_g_selection(struct file *file, void *priv,
 				struct v4l2_selection *s)
 {
-	struct mxc_vout_output *vout = fh;
+	struct mxc_vout_output *vout = file_to_vout(file);
 
 	if (s->type != V4L2_BUF_TYPE_VIDEO_OUTPUT)
 		return -EINVAL;
@@ -1402,10 +1414,11 @@ static int mxc_vidioc_g_selection(struct file *file, void *fh,
 	return 0;
 }
 
-static int mxc_vidioc_s_selection(struct file *file, void *fh,
+static int mxc_vidioc_s_selection(struct file *file, void *priv,
 				struct v4l2_selection *s)
 {
-	struct mxc_vout_output *vout = fh, *pre_vout;
+	struct mxc_vout_output *vout = file_to_vout(file);
+	struct mxc_vout_output *pre_vout;
 	struct v4l2_rect *b = &vout->crop_bounds;
 	struct v4l2_selection fix_up_selection;
 	int ret = 0;
@@ -1524,52 +1537,83 @@ done:
 	return ret;
 }
 
-static int mxc_vidioc_queryctrl(struct file *file, void *fh,
-		struct v4l2_queryctrl *ctrl)
-{
-	int ret = 0;
+struct v4l2_query_ext_ctrl mxc_vout_controls[] = {
+	{
+		.id 		= V4L2_CID_HFLIP,
+		.type 		= V4L2_CTRL_TYPE_BOOLEAN,
+		.name 		= "Horizontal Flip",
+		.minimum 	= 0,
+		.maximum 	= 1,
+		.step 		= 1,
+		.default_value	= 0,
+		.flags		= 0,
+	}, {
+		.id		= V4L2_CID_VFLIP,
+		.type		= V4L2_CTRL_TYPE_BOOLEAN,
+		.name		= "Vertical Flip",
+		.minimum	= 0,
+		.maximum	= 1,
+		.step		= 1,
+		.default_value	= 0,
+		.flags		= 0,
+	}, {
+		.id		= V4L2_CID_ROTATE,
+		.type		= V4L2_CTRL_TYPE_INTEGER,
+		.name		= "Rotate",
+		.minimum	= 0,
+		.maximum	= 270,
+		.step		= 90,
+		.default_value	= 0,
+		.flags		= V4L2_CTRL_FLAG_MODIFY_LAYOUT,
+	}, {
+		.id		= V4L2_CID_MXC_MOTION,
+		.type		= V4L2_CTRL_TYPE_INTEGER,
+		.name		= "MXC Motion",
+		.minimum	= 0,
+		.maximum	= 2,
+		.step		= 1,
+		.default_value	= 0,
+		.flags		= 0,
+	},
+};
 
-	switch (ctrl->id) {
-	case V4L2_CID_ROTATE:
-		ret = v4l2_ctrl_query_fill(ctrl, 0, 270, 90, 0);
-		break;
-	case V4L2_CID_VFLIP:
-		ret = v4l2_ctrl_query_fill(ctrl, 0, 1, 1, 0);
-		break;
-	case V4L2_CID_HFLIP:
-		ret = v4l2_ctrl_query_fill(ctrl, 0, 1, 1, 0);
-		break;
-	case V4L2_CID_MXC_MOTION:
-		ret = v4l2_ctrl_query_fill(ctrl, 0, 2, 1, 0);
-		break;
-	default:
-		ctrl->name[0] = '\0';
-		ret = -EINVAL;
+static int mxc_vidioc_query_ext_ctrl(struct file *file, void *priv,
+				     struct v4l2_query_ext_ctrl *ctrl)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(mxc_vout_controls); i++) {
+		if (ctrl->id != mxc_vout_controls[i].id)
+			continue;
+
+		memcpy(ctrl, &mxc_vout_controls[i], sizeof(*ctrl));
+		return 0;
 	}
-	return ret;
+
+	return -EINVAL;
 }
 
-static int mxc_vidioc_g_ctrl(struct file *file, void *fh,
-				struct v4l2_control *ctrl)
+static int mxc_vidioc_g_ext_ctrl(struct file *file, void *priv,
+				struct v4l2_ext_controls *ctrl)
 {
 	int ret = 0;
-	struct mxc_vout_output *vout = fh;
+	struct mxc_vout_output *vout = file_to_vout(file);
 
-	switch (ctrl->id) {
+	switch (ctrl->controls[0].id) {
 	case V4L2_CID_ROTATE:
-		ctrl->value = vout->ctrl_rotate;
+		ctrl->controls[0].value = vout->ctrl_rotate;
 		break;
 	case V4L2_CID_VFLIP:
-		ctrl->value = vout->ctrl_vflip;
+		ctrl->controls[0].value = vout->ctrl_vflip;
 		break;
 	case V4L2_CID_HFLIP:
-		ctrl->value = vout->ctrl_hflip;
+		ctrl->controls[0].value = vout->ctrl_hflip;
 		break;
 	case V4L2_CID_MXC_MOTION:
 		if (vout->task.input.deinterlace.enable)
-			ctrl->value = vout->task.input.deinterlace.motion;
+			ctrl->controls[0].value = vout->task.input.deinterlace.motion;
 		else
-			ctrl->value = 0;
+			ctrl->controls[0].value = 0;
 		break;
 	default:
 		ret = -EINVAL;
@@ -1618,11 +1662,12 @@ static void setup_task_rotation(struct mxc_vout_output *vout)
 	}
 }
 
-static int mxc_vidioc_s_ctrl(struct file *file, void *fh,
-				struct v4l2_control *ctrl)
+static int mxc_vidioc_s_ext_ctrl(struct file *file, void *priv,
+				struct v4l2_ext_controls *ctrl)
 {
 	int ret = 0;
-	struct mxc_vout_output *vout = fh, *pre_vout;
+	struct mxc_vout_output *vout = file_to_vout(file);
+	struct mxc_vout_output *pre_vout;
 
 	pre_vout = vmalloc(sizeof(*pre_vout));
 	if (!pre_vout)
@@ -1636,10 +1681,10 @@ static int mxc_vidioc_s_ctrl(struct file *file, void *fh,
 
 	memcpy(pre_vout, vout, sizeof(*vout));
 
-	switch (ctrl->id) {
+	switch (ctrl->controls[0].id) {
 	case V4L2_CID_ROTATE:
 	{
-		vout->ctrl_rotate = (ctrl->value/90) * 90;
+		vout->ctrl_rotate = (ctrl->controls[0].value/90) * 90;
 		if (vout->ctrl_rotate > 270)
 			vout->ctrl_rotate = 270;
 		setup_task_rotation(vout);
@@ -1647,19 +1692,19 @@ static int mxc_vidioc_s_ctrl(struct file *file, void *fh,
 	}
 	case V4L2_CID_VFLIP:
 	{
-		vout->ctrl_vflip = ctrl->value;
+		vout->ctrl_vflip = ctrl->controls[0].value;
 		setup_task_rotation(vout);
 		break;
 	}
 	case V4L2_CID_HFLIP:
 	{
-		vout->ctrl_hflip = ctrl->value;
+		vout->ctrl_hflip = ctrl->controls[0].value;
 		setup_task_rotation(vout);
 		break;
 	}
 	case V4L2_CID_MXC_MOTION:
 	{
-		vout->task.input.deinterlace.motion = ctrl->value;
+		vout->task.input.deinterlace.motion = ctrl->controls[0].value;
 		break;
 	}
 	default:
@@ -1693,11 +1738,11 @@ done:
 	return ret;
 }
 
-static int mxc_vidioc_reqbufs(struct file *file, void *fh,
+static int mxc_vidioc_reqbufs(struct file *file, void *priv,
 			struct v4l2_requestbuffers *req)
 {
 	int ret = 0;
-	struct mxc_vout_output *vout = fh;
+	struct mxc_vout_output *vout = file_to_vout(file);
 	struct videobuf_queue *q = &vout->vbq;
 
 	if (req->type != V4L2_BUF_TYPE_VIDEO_OUTPUT)
@@ -1712,11 +1757,11 @@ static int mxc_vidioc_reqbufs(struct file *file, void *fh,
 	return ret;
 }
 
-static int mxc_vidioc_querybuf(struct file *file, void *fh,
+static int mxc_vidioc_querybuf(struct file *file, void *priv,
 			struct v4l2_buffer *b)
 {
 	int ret;
-	struct mxc_vout_output *vout = fh;
+	struct mxc_vout_output *vout = file_to_vout(file);
 
 	ret = videobuf_querybuf(&vout->vbq, b);
 	if (!ret) {
@@ -1729,17 +1774,17 @@ static int mxc_vidioc_querybuf(struct file *file, void *fh,
 	return ret;
 }
 
-static int mxc_vidioc_qbuf(struct file *file, void *fh,
+static int mxc_vidioc_qbuf(struct file *file, void *priv,
 			struct v4l2_buffer *buffer)
 {
-	struct mxc_vout_output *vout = fh;
+	struct mxc_vout_output *vout = file_to_vout(file);
 
 	return videobuf_qbuf(&vout->vbq, buffer);
 }
 
-static int mxc_vidioc_dqbuf(struct file *file, void *fh, struct v4l2_buffer *b)
+static int mxc_vidioc_dqbuf(struct file *file, void *priv, struct v4l2_buffer *b)
 {
-	struct mxc_vout_output *vout = fh;
+	struct mxc_vout_output *vout = file_to_vout(file);
 
 	if (!vout->vbq.streaming)
 		return -EINVAL;
@@ -1984,10 +2029,10 @@ static void release_disp_output(struct mxc_vout_output *vout)
 	vout->release = true;
 }
 
-static int mxc_vidioc_streamon(struct file *file, void *fh,
+static int mxc_vidioc_streamon(struct file *file, void *priv,
 				enum v4l2_buf_type i)
 {
-	struct mxc_vout_output *vout = fh;
+	struct mxc_vout_output *vout = file_to_vout(file);
 	struct videobuf_queue *q = &vout->vbq;
 	int ret;
 
@@ -2012,7 +2057,8 @@ static int mxc_vidioc_streamon(struct file *file, void *fh,
 		goto done;
 	}
 
-	hrtimer_init(&vout->timer, CLOCK_REALTIME, HRTIMER_MODE_ABS);
+	hrtimer_setup(&vout->timer, mxc_vout_timer_handler,
+		      CLOCK_REALTIME, HRTIMER_MODE_ABS);
 	vout->timer.function = mxc_vout_timer_handler;
 	vout->timer_stop = true;
 	vout->frame_count = 0;
@@ -2028,10 +2074,10 @@ done:
 	return ret;
 }
 
-static int mxc_vidioc_streamoff(struct file *file, void *fh,
+static int mxc_vidioc_streamoff(struct file *file, void *priv,
 				enum v4l2_buf_type i)
 {
-	struct mxc_vout_output *vout = fh;
+	struct mxc_vout_output *vout = file_to_vout(file);
 	struct videobuf_queue *q = &vout->vbq;
 	int ret = 0;
 
@@ -2065,9 +2111,9 @@ static const struct v4l2_ioctl_ops mxc_vout_ioctl_ops = {
 	.vidioc_s_fmt_vid_out			= mxc_vidioc_s_fmt_vid_out,
 	.vidioc_g_selection			= mxc_vidioc_g_selection,
 	.vidioc_s_selection			= mxc_vidioc_s_selection,
-	.vidioc_queryctrl			= mxc_vidioc_queryctrl,
-	.vidioc_g_ctrl				= mxc_vidioc_g_ctrl,
-	.vidioc_s_ctrl				= mxc_vidioc_s_ctrl,
+	.vidioc_query_ext_ctrl			= mxc_vidioc_query_ext_ctrl,
+	.vidioc_g_ext_ctrls			= mxc_vidioc_g_ext_ctrl,
+	.vidioc_s_ext_ctrls			= mxc_vidioc_s_ext_ctrl,
 	.vidioc_reqbufs				= mxc_vidioc_reqbufs,
 	.vidioc_querybuf			= mxc_vidioc_querybuf,
 	.vidioc_qbuf				= mxc_vidioc_qbuf,

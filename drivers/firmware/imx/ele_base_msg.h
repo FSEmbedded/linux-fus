@@ -103,6 +103,7 @@ struct ele_dev_info {
 #define ELE_READ_FUSE_REQ		0x97
 #define ELE_READ_FUSE_REQ_MSG_SZ	0x08
 #define ELE_READ_FUSE_RSP_MSG_SZ	0x0C
+#define ELE_READ_FUSE_RSP_MSG_SZ_CRC	0x10
 #define ELE_READ_FUSE_OTP_UNQ_ID_RSP_MSG_SZ \
 					0x1C
 
@@ -124,6 +125,10 @@ struct ele_dev_info {
 #define ELE_GET_FW_VERSION_REQ_SZ	0x04
 #define ELE_GET_FW_VERSION_RSP_SZ	0x10
 
+#define ELE_FW_VERSION_MASK		0xFFFFFF
+#define ELE_FW_VERSION_2_0_6		0x020006
+u32 get_ele_fw_vers_word(void);
+
 int ele_get_info(struct se_if_priv *priv, struct ele_dev_info *s_info);
 int ele_fetch_soc_info(struct se_if_priv *priv, void *data);
 int ele_ping(struct se_if_priv *priv);
@@ -131,15 +136,15 @@ int ele_service_swap(struct se_if_priv *priv,
 		     phys_addr_t addr,
 		     u32 addr_size, u16 flag);
 int ele_fw_authenticate(struct se_if_priv *priv, phys_addr_t addr);
+int ele_debug_dump(struct se_if_priv *priv);
 int ele_start_rng(struct se_if_priv *priv);
 int ele_write_fuse(struct se_if_priv *priv, uint16_t fuse_index,
 		   u32 value, bool block);
-int ele_voltage_change_req(struct se_if_priv *priv, bool start);
+int ele_voltage_change_req(struct se_if_priv *priv, bool start, bool enforce_fl_ctrl);
 int read_common_fuse(struct se_if_priv *priv,
 		     uint16_t fuse_id, u32 *value);
 int ele_get_v2x_fw_state(struct se_if_priv *priv, uint32_t *state);
 int ele_v2x_fw_authenticate(struct se_if_priv *priv, phys_addr_t addr);
-int ele_debug_dump(struct se_if_priv *priv);
 int ele_get_fw_version(struct se_if_priv *priv, u32 *fw_ver_word,
 		       u32 *commit_sha1);
 #endif

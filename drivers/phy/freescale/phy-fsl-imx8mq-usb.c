@@ -79,10 +79,6 @@
 #define PHY_STS0_FSVPLUS		BIT(3)
 #define PHY_STS0_FSVMINUS		BIT(2)
 
-/*
- *  ##############  TCA Block ################
- */
-
 #define TCA_CLK_RST			0x00
 #define TCA_CLK_RST_SW			BIT(9)
 #define TCA_CLK_RST_REF_CLK_EN		BIT(1)
@@ -128,7 +124,7 @@
 #define TCA_VBUS_CTRL			0x40
 #define TCA_VBUS_STATUS			0x44
 
-#define TCA_INFO			0xFC
+#define TCA_INFO			0xfc
 
 struct tca_blk {
 	struct typec_switch_dev *sw;
@@ -159,10 +155,9 @@ struct imx8mq_usb_phy {
 	u16	cr_read_count;
 };
 
+
 static void tca_blk_orientation_set(struct tca_blk *tca,
 				enum typec_orientation orientation);
-
-#ifdef CONFIG_TYPEC
 
 static int tca_blk_typec_switch_set(struct typec_switch_dev *sw,
 				enum typec_orientation orientation)
@@ -211,18 +206,6 @@ static void tca_blk_put_typec_switch(struct typec_switch_dev *sw)
 	typec_switch_unregister(sw);
 }
 
-#else
-
-static struct typec_switch_dev *tca_blk_get_typec_switch(struct platform_device *pdev,
-			struct imx8mq_usb_phy *imx_phy)
-{
-	return NULL;
-}
-
-static void tca_blk_put_typec_switch(struct typec_switch_dev *sw) {}
-
-#endif /* CONFIG_TYPEC */
-
 static void tca_blk_orientation_set(struct tca_blk *tca,
 				enum typec_orientation orientation)
 {
@@ -235,11 +218,9 @@ static void tca_blk_orientation_set(struct tca_blk *tca,
 		 * use Controller Synced Mode for TCA low power enable and
 		 * put PHY to USB safe state.
 		 */
-		val = readl(tca->base + TCA_GCFG);
 		val = FIELD_PREP(TCA_GCFG_OP_MODE, TCA_GCFG_OP_MODE_SYNCMODE);
 		writel(val, tca->base + TCA_GCFG);
 
-		val = readl(tca->base + TCA_TCPC);
 		val = TCA_TCPC_VALID | TCA_TCPC_LOW_POWER_EN;
 		writel(val, tca->base + TCA_TCPC);
 
@@ -247,7 +228,6 @@ static void tca_blk_orientation_set(struct tca_blk *tca,
 	}
 
 	/* use System Configuration Mode for TCA mux control. */
-	val = readl(tca->base + TCA_GCFG);
 	val = FIELD_PREP(TCA_GCFG_OP_MODE, TCA_GCFG_OP_MODE_SYSMODE);
 	writel(val, tca->base + TCA_GCFG);
 
@@ -290,27 +270,31 @@ static void tca_blk_init(struct tca_blk *tca)
 	tca_blk_orientation_set(tca, tca->orientation);
 }
 
-static int imx95_usb_phy_get_tca(struct platform_device *pdev,
+static struct tca_blk *imx95_usb_phy_get_tca(struct platform_device *pdev,
 				struct imx8mq_usb_phy *imx_phy)
 {
 	struct device *dev = &pdev->dev;
+	struct resource *res;
 	struct tca_blk *tca;
+
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+	if (!res)
+		return NULL;
 
 	tca = devm_kzalloc(dev, sizeof(*tca), GFP_KERNEL);
 	if (!tca)
-		return -ENOMEM;
+		return ERR_PTR(-ENOMEM);
 
-	tca->base = devm_platform_ioremap_resource(pdev, 1);
+	tca->base = devm_ioremap_resource(&pdev->dev, res);
 	if (IS_ERR(tca->base))
-		return PTR_ERR(tca->base);
+		return ERR_CAST(tca->base);
 
 	mutex_init(&tca->mutex);
 
 	tca->orientation = TYPEC_ORIENTATION_NORMAL;
 	tca->sw = tca_blk_get_typec_switch(pdev, imx_phy);
-	imx_phy->tca = tca;
 
-	return 0;
+	return tca;
 }
 
 static void imx95_usb_phy_put_tca(struct imx8mq_usb_phy *imx_phy)
@@ -740,6 +724,7 @@ static void imx8m_phy_tune(struct imx8mq_usb_phy *imx_phy)
 
 	if (imx_phy->pcs_tx_swing_full != PHY_TUNE_DEFAULT) {
 		value = readl(imx_phy->base + PHY_CTRL5);
+		value &= ~PHY_CTRL5_PCS_TX_SWING_FULL_MASK;
 		value |= FIELD_PREP(PHY_CTRL5_PCS_TX_SWING_FULL_MASK,
 				   imx_phy->pcs_tx_swing_full);
 		writel(value, imx_phy->base + PHY_CTRL5);
@@ -1029,16 +1014,16 @@ static void imx8mq_phy_disable_chg_det(struct imx8mq_usb_phy *imx_phy)
 static int imx8mq_phy_charger_detect(struct imx8mq_usb_phy *imx_phy)
 {
 	struct device *dev = &imx_phy->phy->dev;
-	struct device_node *np = dev->parent->of_node;
 	union power_supply_propval propval;
 	u32 value;
 	int ret = 0;
 
-	if (!np)
+	if (!dev_fwnode(dev->parent))
 		return 0;
 
-	imx_phy->vbus_power_supply = power_supply_get_by_phandle(np,
-						"vbus-power-supply");
+	imx_phy->vbus_power_supply =
+			power_supply_get_by_reference(dev_fwnode(dev->parent),
+						      "vbus-power-supply");
 	if (IS_ERR_OR_NULL(imx_phy->vbus_power_supply))
 		return 0;
 
@@ -1093,16 +1078,16 @@ static int imx8mq_phy_usb_vbus_notify(struct notifier_block *nb,
 	struct imx8mq_usb_phy *imx_phy = container_of(nb, struct imx8mq_usb_phy,
 						      chg_det_nb);
 	struct device *dev = &imx_phy->phy->dev;
-	struct device_node *np = dev->parent->of_node;
 	union power_supply_propval propval;
 	struct power_supply *psy = v;
 	int ret;
 
-	if (!np)
+	if (!dev_fwnode(dev->parent))
 		return NOTIFY_DONE;
 
-	imx_phy->vbus_power_supply = power_supply_get_by_phandle(np,
-						"vbus-power-supply");
+	imx_phy->vbus_power_supply =
+			power_supply_get_by_reference(dev_fwnode(dev->parent),
+						      "vbus-power-supply");
 	if (IS_ERR_OR_NULL(imx_phy->vbus_power_supply)) {
 		dev_err(dev, "failed to get power supply\n");
 		return NOTIFY_DONE;
@@ -1175,6 +1160,8 @@ static int imx8mq_usb_phy_probe(struct platform_device *pdev)
 	if (!imx_phy)
 		return -ENOMEM;
 
+	platform_set_drvdata(pdev, imx_phy);
+
 	imx_phy->clk = devm_clk_get(dev, "phy");
 	if (IS_ERR(imx_phy->clk)) {
 		dev_err(dev, "failed to get imx8mq usb phy clock\n");
@@ -1210,11 +1197,10 @@ static int imx8mq_usb_phy_probe(struct platform_device *pdev)
 		power_supply_reg_notifier(&imx_phy->chg_det_nb);
 	}
 
-	if (device_is_compatible(dev, "fsl,imx95-usb-phy") &&
-		imx95_usb_phy_get_tca(pdev, imx_phy) < 0) {
-		dev_err(dev, "failed to get tca\n");
-		return -ENODEV;
-	}
+	imx_phy->tca = imx95_usb_phy_get_tca(pdev, imx_phy);
+	if (IS_ERR(imx_phy->tca))
+		return dev_err_probe(dev, PTR_ERR(imx_phy->tca),
+					"failed to get tca\n");
 
 	imx8m_get_phy_tuning_data(imx_phy);
 
@@ -1245,6 +1231,7 @@ static struct platform_driver imx8mq_usb_phy_driver = {
 	.driver = {
 		.name	= "imx8mq-usb-phy",
 		.of_match_table	= imx8mq_usb_phy_of_match,
+		.suppress_bind_attrs = true,
 	}
 };
 module_platform_driver(imx8mq_usb_phy_driver);

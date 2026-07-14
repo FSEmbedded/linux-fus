@@ -8,6 +8,7 @@
 
 #define NETC_IPFT_KEYS	(BIT_ULL(FLOW_DISSECTOR_KEY_VLAN) | \
 			 BIT_ULL(FLOW_DISSECTOR_KEY_CVLAN) | \
+			 BIT_ULL(FLOW_DISSECTOR_KEY_ETH_ADDRS) | \
 			 BIT_ULL(FLOW_DISSECTOR_KEY_BASIC) | \
 			 BIT_ULL(FLOW_DISSECTOR_KEY_IPV4_ADDRS) | \
 			 BIT_ULL(FLOW_DISSECTOR_KEY_IPV6_ADDRS) | \
@@ -39,6 +40,12 @@ static const struct netc_flower netc_flow_filter[] = {
 		0,
 		NETC_IPFT_KEYS,
 		FLOWER_TYPE_POLICE
+	},
+	{
+		BIT_ULL(FLOW_ACTION_DROP),
+		0,
+		NETC_IPFT_KEYS,
+		FLOWER_TYPE_DROP
 	},
 };
 
@@ -277,7 +284,7 @@ static int netc_port_setup_taprio(struct netc_port *port,
 	if (!tge)
 		netc_port_enable_time_gating(port, true);
 
-	err = netc_setup_taprio(&priv->ntmp, entry_id, taprio);
+	err = netc_setup_taprio(&priv->user, entry_id, taprio);
 	if (err)
 		goto disable_time_gating;
 
@@ -391,7 +398,7 @@ static const struct netc_flower *netc_parse_tc_flower(u64 actions, u64 keys)
 	return NULL;
 }
 
-static int netc_add_trap_redirect_key_tbl(struct ntmp_priv *ntmp,
+static int netc_add_trap_redirect_key_tbl(struct ntmp_user *user,
 					  struct netc_flower_key_tbl **key_tbl,
 					  struct ipft_keye_data *ipft_key,
 					  u64 actions, int redirect_port,
@@ -427,8 +434,8 @@ static int netc_add_trap_redirect_key_tbl(struct ntmp_priv *ntmp,
 		if (!ist_entry)
 			return -ENOMEM;
 
-		ist_entry->entry_id = ntmp_lookup_free_eid(ntmp->ist_eid_bitmap,
-							   ntmp->caps.ist_num_entries);
+		ist_entry->entry_id = ntmp_lookup_free_eid(user->ist_eid_bitmap,
+							   user->caps.ist_num_entries);
 		if (ist_entry->entry_id == NTMP_NULL_ENTRY_ID) {
 			NL_SET_ERR_MSG_MOD(extack, "No available IST entry is found");
 			return -ENOSPC;
@@ -442,7 +449,7 @@ static int netc_add_trap_redirect_key_tbl(struct ntmp_priv *ntmp,
 			ist_cfg |= IST_TIMERCAPE;
 		}
 
-		switch (ntmp->cbdrs.tbl.ist_ver) {
+		switch (user->tbl.ist_ver) {
 		case NTMP_TBL_VER1:
 			ist_cfg |= FIELD_PREP(IST_V1_FA, fa);
 			ist_cfg |= FIELD_PREP(IST_V1_SDU_TYPE, SDU_TYPE_MPDU);
@@ -453,7 +460,7 @@ static int netc_add_trap_redirect_key_tbl(struct ntmp_priv *ntmp,
 			break;
 		default:
 			NL_SET_ERR_MSG_MOD(extack, "Unknown IST version");
-			ntmp_clear_eid_bitmap(ntmp->ist_eid_bitmap,
+			ntmp_clear_eid_bitmap(user->ist_eid_bitmap,
 					      ist_entry->entry_id);
 
 			return -EINVAL;
@@ -467,7 +474,7 @@ static int netc_add_trap_redirect_key_tbl(struct ntmp_priv *ntmp,
 		ist_cfge->cfg = cpu_to_le32(ist_cfg);
 		ist_cfge->bitmap_evmeid = cpu_to_le32(BIT(redirect_port) & 0xffffff);
 
-		netc_init_ist_entry_eids(ntmp, ist_entry);
+		netc_init_ist_entry_eids(user, ist_entry);
 	} else {
 		ipft_cfg |= FIELD_PREP(IPFT_FLTFA, IPFT_FLTFA_REDIRECT);
 		ipft_cfg |= FIELD_PREP(IPFT_HR, NETC_HR_TRAP);
@@ -485,35 +492,34 @@ static int netc_add_trap_redirect_key_tbl(struct ntmp_priv *ntmp,
 	return 0;
 }
 
-static int netc_set_trap_redirect_tables(struct ntmp_priv *ntmp,
+static int netc_set_trap_redirect_tables(struct ntmp_user *user,
 					 struct ntmp_ipft_entry *ipft_entry,
 					 struct ntmp_ist_entry *ist_entry,
 					 struct ntmp_isct_entry *isct_entry,
 					 struct ntmp_rpt_entry *rpt_entry)
 {
-	struct netc_cbdrs *cbdrs = &ntmp->cbdrs;
 	int err;
 
 	if (rpt_entry) {
-		err = ntmp_rpt_add_or_update_entry(cbdrs, rpt_entry);
+		err = ntmp_rpt_add_entry(user, rpt_entry);
 		if (err)
 			return err;
 	}
 
 	if (isct_entry) {
-		err = ntmp_isct_operate_entry(cbdrs, isct_entry->entry_id,
-					      NTMP_CMD_ADD, NULL);
+		err = ntmp_isct_set_entry(user, isct_entry->entry_id,
+					  NTMP_CMD_ADD, NULL);
 		if (err)
 			goto delete_rpt_entry;
 	}
 
 	if (ist_entry) {
-		err = ntmp_ist_add_or_update_entry(cbdrs, ist_entry);
+		err = ntmp_ist_add_entry(user, ist_entry);
 		if (err)
 			goto delete_isct_entry;
 	}
 
-	err = ntmp_ipft_add_entry(cbdrs, &ipft_entry->entry_id, ipft_entry);
+	err = ntmp_ipft_add_entry(user, ipft_entry);
 	if (err)
 		goto delete_ist_entry;
 
@@ -521,19 +527,19 @@ static int netc_set_trap_redirect_tables(struct ntmp_priv *ntmp,
 
 delete_ist_entry:
 	if (ist_entry)
-		ntmp_ist_delete_entry(cbdrs, ist_entry->entry_id);
+		ntmp_ist_delete_entry(user, ist_entry->entry_id);
 delete_isct_entry:
 	if (isct_entry)
-		ntmp_isct_operate_entry(cbdrs, isct_entry->entry_id,
-					NTMP_CMD_DELETE, NULL);
+		ntmp_isct_set_entry(user, isct_entry->entry_id,
+				    NTMP_CMD_DELETE, NULL);
 delete_rpt_entry:
 	if (rpt_entry)
-		ntmp_rpt_delete_entry(cbdrs, rpt_entry->entry_id);
+		ntmp_rpt_delete_entry(user, rpt_entry->entry_id);
 
 	return err;
 }
 
-static int netc_setup_trap_redirect(struct ntmp_priv *ntmp, int port_id,
+static int netc_setup_trap_redirect(struct ntmp_user *user, int port_id,
 				    struct flow_cls_offload *f)
 {
 	struct flow_rule *cls_rule = flow_cls_offload_flow_rule(f);
@@ -560,8 +566,8 @@ static int netc_setup_trap_redirect(struct ntmp_priv *ntmp, int port_id,
 	u64 actions = 0;
 	int i, err;
 
-	guard(mutex)(&ntmp->flower_lock);
-	if (netc_find_flower_rule_by_cookie(ntmp, port_id, cookie)) {
+	guard(mutex)(&user->flower_lock);
+	if (netc_find_flower_rule_by_cookie(user, port_id, cookie)) {
 		NL_SET_ERR_MSG_MOD(extack,
 				   "Cannot add new rule with same cookie");
 		return -EINVAL;
@@ -604,7 +610,7 @@ static int netc_setup_trap_redirect(struct ntmp_priv *ntmp, int port_id,
 	if (err)
 		return err;
 
-	old_rule = netc_find_flower_rule_by_key(ntmp, FLOWER_KEY_TBL_IPFT,
+	old_rule = netc_find_flower_rule_by_key(user, FLOWER_KEY_TBL_IPFT,
 						ipft_keye);
 	if (old_rule) {
 		NL_SET_ERR_MSG_MOD(extack,
@@ -624,7 +630,7 @@ static int netc_setup_trap_redirect(struct ntmp_priv *ntmp, int port_id,
 	}
 
 	if (police_act) {
-		err = netc_police_entry_validate(ntmp, &cls_rule->action,
+		err = netc_police_entry_validate(user, &cls_rule->action,
 						 police_act, &reused_police_tbl,
 						 extack);
 		if (err)
@@ -647,7 +653,7 @@ static int netc_setup_trap_redirect(struct ntmp_priv *ntmp, int port_id,
 		}
 	}
 
-	err = netc_add_trap_redirect_key_tbl(ntmp, &key_tbl, ipft_keye, actions,
+	err = netc_add_trap_redirect_key_tbl(user, &key_tbl, ipft_keye, actions,
 					     redirect_port, extack);
 	if (err)
 		goto clear_rpt_eid_bit;
@@ -656,8 +662,8 @@ static int netc_setup_trap_redirect(struct ntmp_priv *ntmp, int port_id,
 	ist_entry = key_tbl->ist_entry;
 
 	if (ist_entry) {
-		isct_eid = ntmp_lookup_free_eid(ntmp->isct_eid_bitmap,
-						ntmp->caps.isct_num_entries);
+		isct_eid = ntmp_lookup_free_eid(user->isct_eid_bitmap,
+						user->caps.isct_num_entries);
 		if (isct_eid == NTMP_NULL_ENTRY_ID) {
 			NL_SET_ERR_MSG_MOD(extack, "No available ISCT entry is found");
 			err = -ENOSPC;
@@ -689,7 +695,7 @@ static int netc_setup_trap_redirect(struct ntmp_priv *ntmp, int port_id,
 		ipft_entry->cfge.flta_tgt = cpu_to_le32(police_act->hw_index);
 	}
 
-	err = netc_set_trap_redirect_tables(ntmp, ipft_entry, ist_entry,
+	err = netc_set_trap_redirect_tables(user, ipft_entry, ist_entry,
 					    isct_entry, rpt_entry);
 	if (err) {
 		NL_SET_ERR_MSG_MOD(extack, "Failed to add new table entries");
@@ -711,18 +717,18 @@ static int netc_setup_trap_redirect(struct ntmp_priv *ntmp, int port_id,
 		}
 	}
 
-	hlist_add_head(&no_free_ptr(rule)->node, &ntmp->flower_list);
+	hlist_add_head(&no_free_ptr(rule)->node, &user->flower_list);
 
 	return 0;
 
 clear_isct_eid_bit:
 	if (isct_eid != NTMP_NULL_ENTRY_ID)
-		ntmp_clear_eid_bitmap(ntmp->isct_eid_bitmap, isct_eid);
+		ntmp_clear_eid_bitmap(user->isct_eid_bitmap, isct_eid);
 free_key_tbl:
-	netc_free_flower_key_tbl(ntmp, key_tbl);
+	netc_free_flower_key_tbl(user, key_tbl);
 clear_rpt_eid_bit:
 	if (police_act && !reused_police_tbl)
-		ntmp_clear_eid_bitmap(ntmp->rpt_eid_bitmap,
+		ntmp_clear_eid_bitmap(user->rpt_eid_bitmap,
 				      police_act->hw_index);
 
 	return err;
@@ -735,6 +741,7 @@ int netc_port_flow_cls_replace(struct netc_port *port,
 	struct netlink_ext_ack *extack = f->common.extack;
 	struct netc_switch *priv = port->switch_priv;
 	struct flow_action *action = &rule->action;
+	struct ntmp_user *user = &priv->user;
 	struct flow_dissector *dissector;
 	const struct netc_flower *flower;
 	struct flow_action_entry *entry;
@@ -762,61 +769,64 @@ int netc_port_flow_cls_replace(struct netc_port *port,
 
 	switch (flower->type) {
 	case FLOWER_TYPE_PSFP:
-		return netc_setup_psfp(&priv->ntmp, port->index, f);
+		return netc_setup_psfp(user, port->index, f);
 	case FLOWER_TYPE_TRAP:
 	case FLOWER_TYPE_REDIRECT:
-		return netc_setup_trap_redirect(&priv->ntmp, port->index, f);
+		return netc_setup_trap_redirect(user, port->index, f);
 	case FLOWER_TYPE_POLICE:
-		return netc_setup_police(&priv->ntmp, port->index, f);
+		return netc_setup_police(user, port->index, f);
+	case FLOWER_TYPE_DROP:
+		return netc_setup_drop(user, port->index, f);
 	default:
 		NL_SET_ERR_MSG_MOD(extack, "Unsupported flower type");
 		return -EOPNOTSUPP;
 	}
 }
 
-static void netc_delete_trap_redirect_flower_rule(struct ntmp_priv *ntmp,
+static void netc_delete_trap_redirect_flower_rule(struct ntmp_user *user,
 						  struct netc_flower_rule *rule)
 {
 	struct netc_police_tbl *police_tbl = rule->police_tbl;
 	struct netc_flower_key_tbl *key_tbl = rule->key_tbl;
-	struct netc_cbdrs *cbdrs = &ntmp->cbdrs;
 	struct ntmp_ipft_entry *ipft_entry;
 	struct ntmp_ist_entry *ist_entry;
 
 	ipft_entry = key_tbl->ipft_entry;
 	ist_entry = key_tbl->ist_entry;
 
-	ntmp_ipft_delete_entry(cbdrs, ipft_entry->entry_id);
+	ntmp_ipft_delete_entry(user, ipft_entry->entry_id);
 
 	if (ist_entry)
-		ntmp_ist_delete_entry(cbdrs, ist_entry->entry_id);
+		ntmp_ist_delete_entry(user, ist_entry->entry_id);
 
 	if (rule->isct_eid != NTMP_NULL_ENTRY_ID) {
-		ntmp_isct_operate_entry(cbdrs, rule->isct_eid,
-					NTMP_CMD_DELETE, NULL);
-		ntmp_clear_eid_bitmap(ntmp->isct_eid_bitmap, rule->isct_eid);
+		ntmp_isct_set_entry(user, rule->isct_eid, NTMP_CMD_DELETE, NULL);
+		ntmp_clear_eid_bitmap(user->isct_eid_bitmap, rule->isct_eid);
 	}
 
-	netc_free_flower_police_tbl(ntmp, police_tbl);
-	netc_free_flower_key_tbl(ntmp, key_tbl);
+	netc_free_flower_police_tbl(user, police_tbl);
+	netc_free_flower_key_tbl(user, key_tbl);
 
 	hlist_del(&rule->node);
 	kfree(rule);
 }
 
-static void netc_delete_flower_rule(struct ntmp_priv *ntmp,
+static void netc_delete_flower_rule(struct ntmp_user *user,
 				    struct netc_flower_rule *rule)
 {
 	switch (rule->flower_type) {
 	case FLOWER_TYPE_PSFP:
-		netc_delete_psfp_flower_rule(ntmp, rule);
+		netc_delete_psfp_flower_rule(user, rule);
 		break;
 	case FLOWER_TYPE_TRAP:
 	case FLOWER_TYPE_REDIRECT:
-		netc_delete_trap_redirect_flower_rule(ntmp, rule);
+		netc_delete_trap_redirect_flower_rule(user, rule);
 		break;
 	case FLOWER_TYPE_POLICE:
-		netc_delete_police_flower_rule(ntmp, rule);
+		netc_delete_police_flower_rule(user, rule);
+		break;
+	case FLOWER_TYPE_DROP:
+		netc_delete_drop_flower_rule(user, rule);
 		break;
 	default:
 		break;
@@ -828,35 +838,33 @@ int netc_port_flow_cls_destroy(struct netc_port *port,
 {
 	struct netlink_ext_ack *extack = f->common.extack;
 	struct netc_switch *priv = port->switch_priv;
-	struct ntmp_priv *ntmp = &priv->ntmp;
+	struct ntmp_user *user = &priv->user;
 	unsigned long cookie = f->cookie;
 	struct netc_flower_rule *rule;
 
-	guard(mutex)(&ntmp->flower_lock);
-	rule = netc_find_flower_rule_by_cookie(ntmp, port->index, cookie);
+	guard(mutex)(&user->flower_lock);
+	rule = netc_find_flower_rule_by_cookie(user, port->index, cookie);
 	if (!rule) {
 		NL_SET_ERR_MSG_MOD(extack, "Cannot find the rule");
 		return -EINVAL;
 	}
 
-	netc_delete_flower_rule(ntmp, rule);
+	netc_delete_flower_rule(user, rule);
 
 	return 0;
 }
 
-static int netc_trap_redirect_flower_stat(struct ntmp_priv *ntmp,
+static int netc_trap_redirect_flower_stat(struct ntmp_user *user,
 					  struct netc_flower_rule *rule,
 					  u64 *byte_cnt, u64 *pkt_cnt,
 					  u64 *drop_cnt)
 {
-	struct ntmp_ipft_entry *ipft_entry = rule->key_tbl->ipft_entry;
-	struct ntmp_ipft_entry *ipft_query __free(kfree) = NULL;
-	struct isct_stse_data stse = {0};
+	struct isct_stse_data stse = { };
 	int err;
 
 	if (rule->isct_eid != NTMP_NULL_ENTRY_ID) {
-		err = ntmp_isct_operate_entry(&ntmp->cbdrs, rule->isct_eid,
-					      NTMP_CMD_QU, &stse);
+		err = ntmp_isct_set_entry(user, rule->isct_eid,
+					  NTMP_CMD_QU, &stse);
 		if (err)
 			return err;
 
@@ -865,16 +873,9 @@ static int netc_trap_redirect_flower_stat(struct ntmp_priv *ntmp,
 			    le32_to_cpu(stse.sg_drop_count) +
 			    le32_to_cpu(stse.policer_drop_count);
 	} else {
-		ipft_query = kzalloc(sizeof(*ipft_query), GFP_KERNEL);
-		if (!ipft_query)
-			return -ENOMEM;
-
-		err = ntmp_ipft_query_entry(&ntmp->cbdrs, ipft_entry->entry_id,
-					    true, ipft_query);
+		err = netc_ipft_flower_stat(user, rule, pkt_cnt);
 		if (err)
 			return err;
-
-		*pkt_cnt = le64_to_cpu(ipft_query->match_count);
 	}
 
 	return 0;
@@ -886,13 +887,13 @@ int netc_port_flow_cls_stats(struct netc_port *port,
 	struct netlink_ext_ack *extack = f->common.extack;
 	struct netc_switch *priv = port->switch_priv;
 	u64 pkt_cnt = 0, drop_cnt = 0, byte_cnt = 0;
-	struct ntmp_priv *ntmp = &priv->ntmp;
+	struct ntmp_user *user = &priv->user;
 	unsigned long cookie = f->cookie;
 	struct netc_flower_rule *rule;
 	int err;
 
-	guard(mutex)(&ntmp->flower_lock);
-	rule = netc_find_flower_rule_by_cookie(ntmp, port->index, cookie);
+	guard(mutex)(&user->flower_lock);
+	rule = netc_find_flower_rule_by_cookie(user, port->index, cookie);
 	if (!rule) {
 		NL_SET_ERR_MSG_MOD(extack, "Cannot find the rule");
 		return -EINVAL;
@@ -900,20 +901,21 @@ int netc_port_flow_cls_stats(struct netc_port *port,
 
 	switch (rule->flower_type) {
 	case FLOWER_TYPE_PSFP:
-		err = netc_psfp_flower_stat(ntmp, rule, &byte_cnt,
+		err = netc_psfp_flower_stat(user, rule, &byte_cnt,
 					    &pkt_cnt, &drop_cnt);
 		if (err)
 			goto err_out;
 		break;
 	case FLOWER_TYPE_TRAP:
 	case FLOWER_TYPE_REDIRECT:
-		err = netc_trap_redirect_flower_stat(ntmp, rule, &byte_cnt,
+		err = netc_trap_redirect_flower_stat(user, rule, &byte_cnt,
 						     &pkt_cnt, &drop_cnt);
 		if (err)
 			goto err_out;
 		break;
 	case FLOWER_TYPE_POLICE:
-		err = netc_police_flower_stat(ntmp, rule, &pkt_cnt);
+	case FLOWER_TYPE_DROP:
+		err = netc_ipft_flower_stat(user, rule, &pkt_cnt);
 		if (err)
 			goto err_out;
 		break;
@@ -936,11 +938,11 @@ err_out:
 
 void netc_destroy_flower_list(struct netc_switch *priv)
 {
-	struct ntmp_priv *ntmp = &priv->ntmp;
+	struct ntmp_user *user = &priv->user;
 	struct netc_flower_rule *rule;
 	struct hlist_node *tmp;
 
-	guard(mutex)(&ntmp->flower_lock);
-	hlist_for_each_entry_safe(rule, tmp, &ntmp->flower_list, node)
-		netc_delete_flower_rule(ntmp, rule);
+	guard(mutex)(&user->flower_lock);
+	hlist_for_each_entry_safe(rule, tmp, &user->flower_list, node)
+		netc_delete_flower_rule(user, rule);
 }

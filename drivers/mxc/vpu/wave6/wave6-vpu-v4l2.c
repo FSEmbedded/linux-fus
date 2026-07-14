@@ -37,7 +37,10 @@ void wave6_update_pix_fmt(struct v4l2_pix_format_mplane *pix_mp,
 	stride_y = width * fmt_info->bpp[0];
 	if (pix_mp->plane_fmt[0].bytesperline <= W6_MAX_PIC_STRIDE)
 		stride_y = max(stride_y, pix_mp->plane_fmt[0].bytesperline);
-	stride_y = round_up(stride_y, W6_PIC_STRIDE_ALIGNMENT);
+	if (pix_mp->pixelformat == V4L2_PIX_FMT_YUV24)
+		stride_y = round_up(stride_y, W6_PIC_STRIDE_ALIGNMENT_16);
+	else
+		stride_y = round_up(stride_y, W6_PIC_STRIDE_ALIGNMENT);
 	pix_mp->plane_fmt[0].bytesperline = stride_y;
 	pix_mp->plane_fmt[0].sizeimage = stride_y * height;
 
@@ -118,6 +121,8 @@ void wave6_vpu_set_instance_state(struct vpu_instance *inst, u32 state)
 		wave6_vpu_instance_state_name(state));
 
 	inst->state = state;
+	if (state == VPU_INST_STATE_PIC_RUN && !inst->performance.ts_first)
+		inst->performance.ts_first = ktime_get_raw();
 }
 
 u64 wave6_vpu_cycle_to_ns(struct vpu_device *vpu_dev, u64 cycle)
@@ -159,12 +164,12 @@ int wave6_vpu_wait_interrupt(struct vpu_instance *inst, unsigned int timeout)
 {
 	int ret;
 
-	ret = wait_for_completion_timeout(&inst->dev->irq_done,
+	ret = wait_for_completion_timeout(&inst->irq_done,
 					  msecs_to_jiffies(timeout));
 	if (!ret)
 		return -ETIMEDOUT;
 
-	reinit_completion(&inst->dev->irq_done);
+	reinit_completion(&inst->irq_done);
 
 	return 0;
 }
@@ -249,12 +254,6 @@ static bool wave6_vpu_check_fb_available(struct vpu_instance *inst)
 	struct v4l2_m2m_buffer *v4l2_m2m_buf;
 	struct vpu_buffer *vpu_buf;
 
-	if (inst->type == VPU_INST_TYPE_DEC) {
-		if (inst->fbc_buf_registered < inst->fbc_buf_required &&
-		    inst->fbc_buf_acquired <= inst->fbc_buf_used)
-			return false;
-	}
-
 	v4l2_m2m_for_each_dst_buf(inst->v4l2_fh.m2m_ctx, v4l2_m2m_buf) {
 		vb2_v4l2_buf = &v4l2_m2m_buf->vb;
 		vpu_buf = wave6_to_vpu_buf(vb2_v4l2_buf);
@@ -273,7 +272,7 @@ static int wave6_vpu_job_ready(void *priv)
 	dev_dbg(inst->dev->dev, "[%d]%s: state %d\n",
 		inst->id, __func__, inst->state);
 
-	if (inst->state == VPU_INST_STATE_OPEN)
+	if (inst->type == VPU_INST_TYPE_DEC && inst->state == VPU_INST_STATE_OPEN)
 		return 1;
 	if (inst->state < VPU_INST_STATE_PIC_RUN)
 		return 0;
@@ -322,13 +321,6 @@ static void wave6_vpu_device_run(void *priv)
 
 	dev_dbg(inst->dev->dev, "[%d]%s: state %d\n",
 		inst->id, __func__, inst->state);
-
-	if (inst->state < VPU_INST_STATE_PIC_RUN && inst->ops->prepare_process) {
-		ret = inst->ops->prepare_process(inst);
-
-		v4l2_m2m_job_finish(inst->dev->m2m_dev, inst->v4l2_fh.m2m_ctx);
-		return;
-	}
 
 	ret = inst->ops->start_process(inst);
 	if (!ret)

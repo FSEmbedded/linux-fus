@@ -28,6 +28,7 @@
 
 #define W6_MAX_PIC_STRIDE               (4096U * 4)
 #define W6_PIC_STRIDE_ALIGNMENT         32
+#define W6_PIC_STRIDE_ALIGNMENT_16      16
 #define W6_FBC_BUF_ALIGNMENT            32
 #define W6_DEC_BUF_ALIGNMENT            32
 

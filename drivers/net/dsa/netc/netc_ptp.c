@@ -5,30 +5,44 @@
  */
 
 #include <linux/ptp_classify.h>
+#include <linux/ptp_clock_kernel.h>
+
 #include "netc_switch.h"
 
 #define NETC_TS_REQ_ID_NUM		(NETC_MAX_TS_REQ_ID + 1)
 #define NETC_PTP_TX_TSTAMP_TIMEOUT	(5 * HZ)
 
+static int netc_get_phc_index(struct netc_switch *priv)
+{
+	struct pci_dev *tmr_pdev;
+	int phc_index;
+
+	tmr_pdev = netc_get_ptp_timer(priv);
+	if (!tmr_pdev)
+		return -1;
+
+	phc_index = ptp_clock_index_by_dev(&tmr_pdev->dev);
+	pci_dev_put(tmr_pdev);
+
+	return phc_index;
+}
+
 int netc_get_ts_info(struct dsa_switch *ds, int port_id,
 		     struct kernel_ethtool_ts_info *info)
 {
 	struct netc_switch *priv = NETC_PRIV(ds);
-	u32 devfn = priv->info->tmr_devfn;
-	u32 bus = priv->pdev->bus->number;
-	struct pci_dev *tmr_pdev;
-	int domain;
 
-	domain = pci_domain_nr(priv->pdev->bus);
-	tmr_pdev = pci_get_domain_bus_and_slot(domain, bus, devfn);
-	info->phc_index = netc_timer_get_phc_index(tmr_pdev);
+	info->so_timestamping = SOF_TIMESTAMPING_TX_SOFTWARE |
+				SOF_TIMESTAMPING_RX_SOFTWARE |
+				SOF_TIMESTAMPING_SOFTWARE;
 
-	info->so_timestamping |= SOF_TIMESTAMPING_TX_SOFTWARE |
-				 SOF_TIMESTAMPING_RX_SOFTWARE |
-				 SOF_TIMESTAMPING_SOFTWARE |
-				 SOF_TIMESTAMPING_TX_HARDWARE |
-				 SOF_TIMESTAMPING_RX_HARDWARE |
-				 SOF_TIMESTAMPING_RAW_HARDWARE;
+	info->phc_index = netc_get_phc_index(priv);
+	if (info->phc_index < 0)
+		return 0;
+
+	info->so_timestamping |= SOF_TIMESTAMPING_TX_HARDWARE |
+				SOF_TIMESTAMPING_RX_HARDWARE |
+				SOF_TIMESTAMPING_RAW_HARDWARE;
 
 	info->tx_types = BIT(HWTSTAMP_TX_OFF) | BIT(HWTSTAMP_TX_ON) |
 			 BIT(HWTSTAMP_TX_ONESTEP_SYNC);
@@ -44,14 +58,13 @@ int netc_get_ts_info(struct dsa_switch *ds, int port_id,
 static void netc_port_del_ptp_filter(struct netc_port *port)
 {
 	struct netc_switch *priv = port->switch_priv;
-	struct netc_cbdrs *cbdrs = &priv->ntmp.cbdrs;
 	u32 entry_id;
 	int i;
 
 	for (i = 0; i < NETC_PTP_MAX; i++) {
 		entry_id = port->ptp_ipft_eid[i];
 		if (entry_id != NTMP_NULL_ENTRY_ID) {
-			ntmp_ipft_delete_entry(cbdrs, entry_id);
+			ntmp_ipft_delete_entry(&priv->user, entry_id);
 			port->ptp_ipft_eid[i] = NTMP_NULL_ENTRY_ID;
 		}
 	}
@@ -106,7 +119,6 @@ static int netc_port_add_ipft_ptp_entry(struct netc_port *port,
 {
 	struct ntmp_ipft_entry *ipft_entry __free(kfree);
 	struct netc_switch *priv = port->switch_priv;
-	struct netc_cbdrs *cbdrs = &priv->ntmp.cbdrs;
 	struct ipft_keye_data *ipft_keye;
 	u32 cfg;
 	int err;
@@ -122,11 +134,10 @@ static int netc_port_add_ipft_ptp_entry(struct netc_port *port,
 
 	cfg = FIELD_PREP(IPFT_FLTFA, IPFT_FLTFA_REDIRECT);
 	cfg |= FIELD_PREP(IPFT_HR, NETC_HR_TRAP);
-	cfg |= IPFT_TIMECAPE;
-	cfg |= IPFT_RRT;
+	cfg |= IPFT_TIMECAPE | IPFT_RRT;
 	ipft_entry->cfge.cfg = cpu_to_le32(cfg);
 
-	err = ntmp_ipft_add_entry(cbdrs, &ipft_entry->entry_id, ipft_entry);
+	err = ntmp_ipft_add_entry(&priv->user, ipft_entry);
 	if (err)
 		return err;
 
@@ -222,16 +233,13 @@ int netc_port_set_ptp_filter(struct netc_port *port, int ptp_filter)
 }
 
 int netc_port_hwtstamp_set(struct dsa_switch *ds, int port_id,
-			   struct ifreq *ifr)
+			   struct kernel_hwtstamp_config *config,
+			   struct netlink_ext_ack *extack)
 {
 	struct netc_port *port = NETC_PORT(NETC_PRIV(ds), port_id);
-	struct hwtstamp_config config;
 	int ptp_filter, err;
 
-	if (copy_from_user(&config, ifr->ifr_data, sizeof(config)))
-		return -EFAULT;
-
-	switch (config.tx_type) {
+	switch (config->tx_type) {
 	case HWTSTAMP_TX_ON:
 		port->offloads |= NETC_FLAG_TX_TSTAMP;
 		break;
@@ -246,7 +254,7 @@ int netc_port_hwtstamp_set(struct dsa_switch *ds, int port_id,
 		return -ERANGE;
 	}
 
-	switch (config.rx_filter) {
+	switch (config->rx_filter) {
 	case HWTSTAMP_FILTER_NONE:
 		ptp_filter = HWTSTAMP_FILTER_NONE;
 		break;
@@ -270,32 +278,31 @@ int netc_port_hwtstamp_set(struct dsa_switch *ds, int port_id,
 	}
 
 	err = netc_port_set_ptp_filter(port, ptp_filter);
-	if (err)
+	if (err) {
+		NL_SET_ERR_MSG_MOD(extack, "Failed to set PTP filter");
 		return err;
+	}
 
-	config.rx_filter = ptp_filter;
+	config->rx_filter = ptp_filter;
 
-	return copy_to_user(ifr->ifr_data, &config, sizeof(config)) ? -EFAULT : 0;
+	return 0;
 }
 
 int netc_port_hwtstamp_get(struct dsa_switch *ds, int port_id,
-			   struct ifreq *ifr)
+			   struct kernel_hwtstamp_config *config)
 {
 	struct netc_port *port = NETC_PORT(NETC_PRIV(ds), port_id);
-	struct hwtstamp_config config;
-
-	config.flags = 0;
 
 	if (port->offloads & NETC_FLAG_TX_ONESTEP_SYNC)
-		config.tx_type = HWTSTAMP_TX_ONESTEP_SYNC;
+		config->tx_type = HWTSTAMP_TX_ONESTEP_SYNC;
 	else if (port->offloads & NETC_FLAG_TX_TSTAMP)
-		config.tx_type = HWTSTAMP_TX_ON;
+		config->tx_type = HWTSTAMP_TX_ON;
 	else
-		config.tx_type = HWTSTAMP_TX_OFF;
+		config->tx_type = HWTSTAMP_TX_OFF;
 
-	config.rx_filter = port->ptp_filter;
+	config->rx_filter = port->ptp_filter;
 
-	return copy_to_user(ifr->ifr_data, &config, sizeof(config)) ? -EFAULT : 0;
+	return 0;
 }
 
 static void netc_port_set_onestep_control(struct netc_port *port,
@@ -344,8 +351,12 @@ static int netc_port_txtstamp_onestep_sync(struct dsa_switch *ds, int port_id,
 	correction_offset = (u8 *)&ptp_hdr->correction - pkt_hdr;
 	timestamp_offset = (u8 *)ptp_hdr + sizeof(*ptp_hdr) - pkt_hdr;
 
-	tmr_dev = netc_switch_get_timer(priv);
+	tmr_dev = netc_get_ptp_timer(priv);
+	if (!tmr_dev)
+		return -ENODEV;
+
 	ts = netc_timer_get_current_time(tmr_dev);
+	pci_dev_put(tmr_dev);
 	if (!ts)
 		return -EINVAL;
 

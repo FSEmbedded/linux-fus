@@ -63,7 +63,7 @@ examples:
     #include <dt-bindings/interrupt-controller/arm-gic.h>
     #include <dt-bindings/power/fsl,imx93-power.h>
 
-    epxp: epxp@4ae20000 {
+    epxp@4ae20000 {
         compatible = "fsl,imx93-pxp-dma";
         reg = <0x4ae20000 0x10000>;
         interrupts = <GIC_SPI 173 IRQ_TYPE_LEVEL_HIGH>,

@@ -1093,6 +1093,7 @@ static int it6161_connector_init(struct drm_bridge *bridge, struct it6161 *it616
 }
 
 static int it6161_bridge_attach(struct drm_bridge *bridge,
+				struct drm_encoder *encoder,
 				enum drm_bridge_attach_flags flags)
 {
 	struct it6161 *it6161 = bridge_to_it6161(bridge);
@@ -1194,7 +1195,8 @@ static void it6161_bridge_disable(struct drm_bridge *bridge)
 	it6161->bridge_enable = false;
 }
 
-static enum drm_connector_status it6161_bridge_detect(struct drm_bridge *bridge)
+static enum drm_connector_status
+it6161_bridge_detect(struct drm_bridge *bridge, struct drm_connector *connector)
 {
 	struct it6161 *it6161 = bridge_to_it6161(bridge);
 	enum drm_connector_status status = connector_status_disconnected;
@@ -2301,9 +2303,10 @@ static int it6161_i2c_probe(struct i2c_client *i2c_mipi_rx)
 	struct device *dev = &i2c_mipi_rx->dev;
 	int err, intp_irq;
 
-	it6161 = devm_kzalloc(dev, sizeof(*it6161), GFP_KERNEL);
-	if (!it6161)
-		return -ENOMEM;
+	it6161 = devm_drm_bridge_alloc(dev, struct it6161, bridge,
+				       &it6161_bridge_funcs);
+	if (IS_ERR(it6161))
+		return PTR_ERR(it6161);
 
 	it6161->i2c_mipi_rx = i2c_mipi_rx;
 	mutex_init(&it6161->mode_lock);
@@ -2355,7 +2358,7 @@ static int it6161_i2c_probe(struct i2c_client *i2c_mipi_rx)
 	}
 
 	i2c_set_clientdata(i2c_mipi_rx, it6161);
-	it6161->bridge.funcs = &it6161_bridge_funcs;
+
 	it6161->bridge.of_node = i2c_mipi_rx->dev.of_node;
 	it6161->bridge.ops = DRM_BRIDGE_OP_DETECT | DRM_BRIDGE_OP_EDID |
 	    DRM_BRIDGE_OP_HPD | DRM_BRIDGE_OP_MODES;

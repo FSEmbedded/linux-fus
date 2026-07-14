@@ -16,6 +16,35 @@
 	model = "NXP i.MX91 9x9 Quick Start Board";
 	compatible = "fsl,imx91-9x9-qsb", "fsl,imx91";
 
+	aliases {
+		ethernet0 = &fec;
+		ethernet1 = &eqos;
+		gpio0 = &gpio1;
+		gpio1 = &gpio2;
+		gpio2 = &gpio3;
+		gpio3 = &gpio4;
+		i2c0 = &lpi2c1;
+		i2c1 = &lpi2c2;
+		i2c2 = &lpi2c3;
+		i2c3 = &lpi2c4;
+		i2c4 = &lpi2c5;
+		i2c5 = &lpi2c6;
+		i2c6 = &lpi2c7;
+		i2c7 = &lpi2c8;
+		mmc0 = &usdhc1;
+		mmc1 = &usdhc2;
+		mmc2 = &usdhc3;
+		rtc0 = &bbnsm_rtc;
+		serial0 = &lpuart1;
+		serial1 = &lpuart2;
+		serial2 = &lpuart3;
+		serial3 = &lpuart4;
+		serial4 = &lpuart5;
+		serial5 = &lpuart6;
+		serial6 = &lpuart7;
+		serial7 = &lpuart8;
+	};
+
 	chosen {
 		stdout-path = &lpuart1;
 	};
@@ -114,7 +143,7 @@
 		#sound-dai-cells = <0>;
 		compatible = "wlf,wm8524";
 		wlf,mute-gpios = <&pcal6524 2 GPIO_ACTIVE_LOW>;
-		clocks = <&clk IMX91_CLK_SAI1>;
+		clocks = <&clk IMX93_CLK_SAI1>;
 		clock-names = "mclk";
 	};
 
@@ -325,8 +354,8 @@
 				regulator-always-on;
 			};
 
-			ldo_snvs: LDO_SNVS {
-				regulator-name = "LDO_SNVS";
+			ldo_snvs: LDO-SNVS {
+				regulator-name = "LDO-SNVS";
 				regulator-min-microvolt = <1200000>;
 				regulator-max-microvolt = <3400000>;
 				regulator-boot-on;
@@ -362,17 +391,9 @@
 	#sound-dai-cells = <0>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pdm>;
-	assigned-clocks = <&clk IMX91_CLK_PDM>;
-	assigned-clock-parents = <&clk IMX91_CLK_AUDIO_PLL>;
+	assigned-clocks = <&clk IMX93_CLK_PDM>;
+	assigned-clock-parents = <&clk IMX93_CLK_AUDIO_PLL>;
 	assigned-clock-rates = <49152000>;
-	status = "okay";
-};
-
-&mu1 {
-	status = "okay";
-};
-
-&mu2 {
 	status = "okay";
 };
 
@@ -380,13 +401,13 @@
 	#sound-dai-cells = <0>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_sai1>;
-	assigned-clocks = <&clk IMX91_CLK_SAI1>;
-	assigned-clock-parents = <&clk IMX91_CLK_AUDIO_PLL>;
+	assigned-clocks = <&clk IMX93_CLK_SAI1>;
+	assigned-clock-parents = <&clk IMX93_CLK_AUDIO_PLL>;
 	assigned-clock-rates = <24576000>;
 	fsl,sai-mclk-direction-output;
-	clocks = <&clk IMX91_CLK_SAI1_IPG>, <&clk IMX91_CLK_DUMMY>,
-		 <&clk IMX91_CLK_SAI1_GATE>, <&clk IMX91_CLK_DUMMY>,
-		 <&clk IMX91_CLK_DUMMY>, <&clk IMX91_CLK_AUDIO_PLL>;
+	clocks = <&clk IMX93_CLK_SAI1_IPG>, <&clk IMX93_CLK_DUMMY>,
+		 <&clk IMX93_CLK_SAI1_GATE>, <&clk IMX93_CLK_DUMMY>,
+		 <&clk IMX93_CLK_DUMMY>, <&clk IMX93_CLK_AUDIO_PLL>;
 	clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3", "pll8k";
 	status = "okay";
 };

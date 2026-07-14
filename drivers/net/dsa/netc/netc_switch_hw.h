@@ -154,10 +154,21 @@
 #define NETC_PBPMCR0			0x0400
 #define NETC_PBPMCR1			0x0404
 
+#define NETC_PGCR			0x410
+#define  PGCR_PGID			GENMASK(2, 0)
+
 #define NETC_PISIDCR			0x460
 #define  PISIDCR_KCPAIR			BIT(0)
 #define  PISIDCR_KC0EN			BIT(1)
 #define  PISIDCR_KC1EN			BIT(2)
+
+#define NETC_PSRCR			0x4c0
+#define  PSRCR_SR_PORT			BIT(0)
+#define  PSRCR_SDFA			BIT(1)
+#define  PSRCR_SRC_PORT_FLT		BIT(2)
+#define  PSRCR_TX_SQTA			BIT(4)
+#define  PSRCR_PATHID			GENMASK(11, 8)
+#define  PSRCR_ISQG_EID			GENMASK(31, 16)
 
 #define NETC_BPCR			0x500
 #define  BPCR_DYN_LIMIT			GENMASK(15, 0)
@@ -217,7 +228,6 @@
 #define  PM_CMD_CFG_TS_PNT		BIT(14)
 #define  PM_CMD_CFG_TXP			BIT(15)
 #define  PM_CMD_CFG_SEND_IDLE		BIT(16)
-#define  PM_CMD_CFG_HD_FCEN		BIT(18)
 #define  PM_CMD_CFG_SFD			BIT(21)
 #define  PM_CMD_CFG_TX_FLUSH		BIT(22)
 #define  PM_CMD_CFG_LOWP_EN		BIT(23)

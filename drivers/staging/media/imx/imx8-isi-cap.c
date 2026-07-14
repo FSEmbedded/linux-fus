@@ -663,10 +663,6 @@ static int isi_cap_fmt_init(struct mxc_isi_cap_dev *isi_cap)
 	struct v4l2_subdev *src_sd;
 	int i, ret;
 
-	if (dst_f->fmt != NULL && src_f->fmt != NULL) {
-		return 0;
-	}
-
 	src_sd = mxc_get_remote_subdev(&isi_cap->sd, __func__);
 	if (!src_sd) {
 		v4l2_err(&isi_cap->sd, "get remote subdev fail!\n");
@@ -683,7 +679,6 @@ static int isi_cap_fmt_init(struct mxc_isi_cap_dev *isi_cap)
 
 	if (dst_f->width == 0 || dst_f->height == 0)
 		set_frame_bounds(dst_f, src_fmt.format.width, src_fmt.format.height);
-	dst_f->fmt = mxc_isi_find_format(NULL, &src_fmt.format.code, 0);
 
 	if (!dst_f->fmt)
 		dst_f->fmt = &mxc_isi_out_formats[0];
@@ -712,7 +707,7 @@ static int mxc_isi_capture_open(struct file *file)
 	isi_cap->is_link_setup = is_entity_link_setup(isi_cap);
 	if (!isi_cap->is_link_setup) {
 		mutex_unlock(&isi_cap->lock);
-		return 0;
+		return -EPIPE;
 	}
 	mutex_unlock(&isi_cap->lock);
 
@@ -963,11 +958,7 @@ static int mxc_isi_source_fmt_init(struct mxc_isi_cap_dev *isi_cap)
 	/* This driver only supports one single stream */
 	src_fmt.stream = 0;
 	src_fmt.which = V4L2_SUBDEV_FORMAT_ACTIVE;
-	if (dst_f->fmt->color < MXC_ISI_OUT_FMT_RAW8 ||
-		dst_f->fmt->color > MXC_ISI_OUT_FMT_RAW16)
-			src_fmt.format.code = MEDIA_BUS_FMT_UYVY8_1X16;
-	else
-		src_fmt.format.code = dst_f->fmt->mbus_code;
+	src_fmt.format.code = MEDIA_BUS_FMT_UYVY8_1X16;
 	src_fmt.format.width = dst_f->width;
 	src_fmt.format.height = dst_f->height;
 	ret = v4l2_subdev_call(src_sd, pad, set_fmt, NULL, &src_fmt);

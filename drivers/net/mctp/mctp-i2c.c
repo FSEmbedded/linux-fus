@@ -177,8 +177,7 @@ static struct mctp_i2c_client *mctp_i2c_new_client(struct i2c_client *client)
 	return mcli;
 err:
 	if (mcli) {
-		if (mcli->client)
-			i2c_unregister_device(mcli->client);
+		i2c_unregister_device(mcli->client);
 		kfree(mcli);
 	}
 	return ERR_PTR(rc);
@@ -243,6 +242,12 @@ static int mctp_i2c_slave_cb(struct i2c_client *client,
 		return 0;
 
 	switch (event) {
+	case I2C_SLAVE_READ_REQUESTED:
+	case I2C_SLAVE_READ_PROCESSED:
+		/* MCTP I2C transport only uses writes */
+		midev->rx_pos = 0;
+		*val = 0xff;
+		break;
 	case I2C_SLAVE_WRITE_RECEIVED:
 		if (midev->rx_pos < MCTP_I2C_BUFSZ) {
 			midev->rx_buffer[midev->rx_pos] = *val;
@@ -279,6 +284,9 @@ static int mctp_i2c_recv(struct mctp_i2c_dev *midev)
 	u8 pec, calc_pec;
 	size_t recvlen;
 	int status;
+
+	if (midev->rx_pos == 0)
+		return 0;
 
 	/* + 1 for the PEC */
 	if (midev->rx_pos < MCTP_I2C_MINLEN + 1) {
@@ -335,6 +343,7 @@ static int mctp_i2c_recv(struct mctp_i2c_dev *midev)
 	} else {
 		status = NET_RX_DROP;
 		spin_unlock_irqrestore(&midev->lock, flags);
+		kfree_skb(skb);
 	}
 
 	if (status == NET_RX_SUCCESS) {
@@ -885,7 +894,8 @@ static int mctp_i2c_add_netdev(struct mctp_i2c_client *mcli,
 		goto err;
 	}
 
-	rc = mctp_register_netdev(ndev, &mctp_i2c_mctp_ops);
+	rc = mctp_register_netdev(ndev, &mctp_i2c_mctp_ops,
+				  MCTP_PHYS_BINDING_SMBUS);
 	if (rc < 0) {
 		dev_err(&mcli->client->dev,
 			"register netdev \"%s\" failed %d\n",

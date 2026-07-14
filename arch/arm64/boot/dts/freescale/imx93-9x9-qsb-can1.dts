@@ -16,12 +16,18 @@
 	};
 };
 
+&pcal6524 {
+	/* config the MIC/CAN_SEL to high, chose B port */
+	mic-can-sel-hog {
+		/delete-property/ output-low;
+		output-high;
+	};
+};
+
 &flexcan1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_flexcan1>;
 	xceiver-supply = <&reg_can1_stby>;
-	/* config the MIC/CAN_SEL to high, chose B port */
-	pinctrl-assert-gpios = <&pcal6524 17 GPIO_ACTIVE_HIGH>;
 	status = "okay";
 };
 

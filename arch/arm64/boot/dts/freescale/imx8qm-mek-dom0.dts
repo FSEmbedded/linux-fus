@@ -409,14 +409,9 @@
 	xen,passthrough;
 };
 
-&gpu_3d1{
-	status = "okay";
-};
-
 &imx8_gpu_ss {
 	cores = <&gpu_3d1>;
 	reg = <0xa8000000 0x58000000>, <0x0 0x10000000>;
-	status = "okay";
 };
 
 &lsio_mu1 {
@@ -615,7 +610,7 @@
 };
 */
 
-&dsp {
+&vpu_dsp {
 	xen,passthrough;
 };
 
@@ -679,7 +674,7 @@
 	status = "disabled";
 };
 
-&{/cbtl04gp} {
+&{/mux-controller} {
 	status = "disabled";
 };
 

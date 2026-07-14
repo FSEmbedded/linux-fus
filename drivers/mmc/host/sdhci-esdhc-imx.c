@@ -31,10 +31,10 @@
 #include "sdhci-esdhc.h"
 #include "cqhci.h"
 
-#define ESDHC_SYS_CTRL_RESET_TUNING	(1 << 28)
-#define ESDHC_SYS_CTRL_RST_FIFO		(1 << 22)
-#define ESDHC_SYS_CTRL_DTOCV_MASK	0x0f
-#define ESDHC_SYS_CTRL_DTOCV_SHIFT	16
+#define ESDHC_SYS_CTRL_DTOCV_MASK	GENMASK(19, 16)
+#define ESDHC_SYS_CTRL_RST_FIFO		BIT(22)
+#define ESDHC_SYS_CTRL_IPP_RST_N	BIT(23)
+#define ESDHC_SYS_CTRL_RESET_TUNING	BIT(28)
 #define	ESDHC_CTRL_D3CD			0x08
 #define ESDHC_BURST_LEN_EN_INCR		(1 << 27)
 /* VENDOR SPEC register */
@@ -84,13 +84,11 @@
 #define  ESDHC_TUNE_CTRL_STEP		1
 #define  ESDHC_TUNE_CTRL_MIN		0
 #define  ESDHC_TUNE_CTRL_MAX		((1 << 7) - 1)
-#define ESDHC_TUNE_CTRL_STATUS_TAP_SEL_MASK		0x7fff0000
-#define ESDHC_TUNE_CTRL_STATUS_TAP_SEL_PRE_MASK		0x7f000000
-#define ESDHC_TUNE_CTRL_STATUS_TAP_SEL_PRE_SHIFT	24
-#define ESDHC_TUNE_CTRL_STATUS_TAP_SEL_POST_SHIFT	16
-#define ESDHC_TUNE_CTRL_STATUS_DLY_CELL_SET_PRE_SHIFT	8
-#define ESDHC_TUNE_CTRL_STATUS_DLY_CELL_SET_OUT_SHIFT	4
-#define ESDHC_TUNE_CTRL_STATUS_DLY_CELL_SET_POST_SHIFT	0
+#define  ESDHC_TUNE_CTRL_STATUS_TAP_SEL_MASK		GENMASK(30, 16)
+#define  ESDHC_TUNE_CTRL_STATUS_TAP_SEL_PRE_MASK	GENMASK(30, 24)
+#define  ESDHC_TUNE_CTRL_STATUS_DLY_CELL_SET_PRE_MASK	GENMASK(14, 8)
+#define  ESDHC_TUNE_CTRL_STATUS_DLY_CELL_SET_OUT_MASK	GENMASK(7, 4)
+#define  ESDHC_TUNE_CTRL_STATUS_DLY_CELL_SET_POST_MASK	GENMASK(3, 0)
 
 /* strobe dll register */
 #define ESDHC_STROBE_DLL_CTRL		0x70
@@ -114,8 +112,7 @@
 
 #define ESDHC_TUNING_CTRL		0xcc
 #define ESDHC_STD_TUNING_EN		(1 << 24)
-#define ESDHC_TUNNING_WINDOW_MASK	0X00700000
-#define ESDHC_TUNNING_WINDOW_SHIFT	20
+#define ESDHC_TUNING_WINDOW_MASK	GENMASK(22, 20)
 /* NOTE: the minimum valid tuning start tap for mx6sl is 1 */
 #define ESDHC_TUNING_START_TAP_DEFAULT	0x1
 #define ESDHC_TUNING_START_TAP_MASK	0x7f
@@ -220,6 +217,9 @@
 #define ESDHC_FLAG_DUMMY_PAD		BIT(20)
 
 #define ESDHC_AUTO_TUNING_WINDOW	3
+/* 100ms timeout for data inhibit */
+#define ESDHC_DATA_INHIBIT_WAIT_US	100000
+
 enum wp_types {
 	ESDHC_WP_NONE,		/* no WP, neither controller nor gpio */
 	ESDHC_WP_CONTROLLER,	/* mmc controller internal WP */
@@ -379,6 +379,15 @@ static struct esdhc_soc_data usdhc_imx95_data = {
 			| ESDHC_FLAG_BUSFREQ | ESDHC_FLAG_DUMMY_PAD,
 	.quirks = SDHCI_QUIRK_NO_LED,
 };
+
+static struct esdhc_soc_data usdhc_imx952_data = {
+	.flags = ESDHC_FLAG_USDHC | ESDHC_FLAG_MAN_TUNING
+			| ESDHC_FLAG_HAVE_CAP1 | ESDHC_FLAG_HS200
+			| ESDHC_FLAG_HS400 | ESDHC_FLAG_HS400_ES
+			| ESDHC_FLAG_CQHCI | ESDHC_FLAG_STATE_LOST_IN_LPMODE
+			| ESDHC_FLAG_BUSFREQ | ESDHC_FLAG_DUMMY_PAD,
+	.quirks = SDHCI_QUIRK_NO_LED,
+};
 static struct esdhc_soc_data usdhc_s32v234_data = {
 	.flags = ESDHC_FLAG_USDHC,
 	.quirks = SDHCI_QUIRK_NO_LED,
@@ -433,6 +442,7 @@ static const struct of_device_id imx_esdhc_dt_ids[] = {
 	{ .compatible = "fsl,imx8mq-usdhc", .data = &usdhc_imx8mq_data, },
 	{ .compatible = "fsl,imx94-usdhc", .data = &usdhc_imx95_data, },
 	{ .compatible = "fsl,imx95-usdhc", .data = &usdhc_imx95_data, },
+	{ .compatible = "fsl,imx952-usdhc", .data = &usdhc_imx952_data, },
 	{ .compatible = "fsl,imxrt1050-usdhc", .data = &usdhc_imxrt1050_data, },
 	{ .compatible = "nxp,s32g2-usdhc", .data = &usdhc_s32g2_data, },
 	{ .compatible = "fsl,s32v234-usdhc", .data = &usdhc_s32v234_data, },
@@ -928,6 +938,11 @@ static void esdhc_writeb_le(struct sdhci_host *host, u8 val, int reg)
 
 		esdhc_clrset_le(host, mask, new_val, reg);
 		return;
+	case SDHCI_TIMEOUT_CONTROL:
+		esdhc_clrset_le(host, ESDHC_SYS_CTRL_DTOCV_MASK,
+				FIELD_PREP(ESDHC_SYS_CTRL_DTOCV_MASK, val),
+				ESDHC_SYSTEM_CONTROL);
+		return;
 	case SDHCI_SOFTWARE_RESET:
 		if (val & SDHCI_RESET_DATA)
 			new_val = readl(host->ioaddr + SDHCI_HOST_CONTROL);
@@ -1221,7 +1236,7 @@ static void esdhc_prepare_tuning(struct sdhci_host *host, u32 val)
 	reg = readl(host->ioaddr + ESDHC_MIX_CTRL);
 	reg |= ESDHC_MIX_CTRL_EXE_TUNE | ESDHC_MIX_CTRL_SMPCLK_SEL;
 	writel(reg, host->ioaddr + ESDHC_MIX_CTRL);
-	writel(val << ESDHC_TUNE_CTRL_STATUS_DLY_CELL_SET_PRE_SHIFT,
+	writel(FIELD_PREP(ESDHC_TUNE_CTRL_STATUS_DLY_CELL_SET_PRE_MASK, val),
 				host->ioaddr + ESDHC_TUNE_CTRL_STATUS);
 	dev_dbg(mmc_dev(host->mmc),
 		"tuning with delay 0x%x ESDHC_TUNE_CTRL_STATUS 0x%x\n",
@@ -1234,6 +1249,9 @@ static void esdhc_prepare_tuning(struct sdhci_host *host, u32 val)
 	ret = readl_poll_timeout(host->ioaddr + ESDHC_SYSTEM_CONTROL, sys_ctrl,
 				 !(sys_ctrl & ESDHC_SYS_CTRL_RST_FIFO), 10, 100);
 
+	if (ret == -ETIMEDOUT)
+		dev_warn(mmc_dev(host->mmc),
+			 "warning! RST_FIFO not clear in 100us\n");
 }
 
 static void esdhc_post_tuning(struct sdhci_host *host)
@@ -1255,8 +1273,8 @@ static int esdhc_executing_tuning(struct sdhci_host *host, u32 opcode)
 	int win_length, target_min, target_max, target_win_length;
 	u32 clk_tune_ctrl_status, temp;
 
-	min = ESDHC_TUNE_CTRL_MIN;
-	max = ESDHC_TUNE_CTRL_MIN;
+	min = target_min = ESDHC_TUNE_CTRL_MIN;
+	max = target_max = ESDHC_TUNE_CTRL_MIN;
 	target_win_length = 0;
 	while (max < ESDHC_TUNE_CTRL_MAX) {
 		/* find the mininum delay first which can pass tuning */
@@ -1295,23 +1313,23 @@ static int esdhc_executing_tuning(struct sdhci_host *host, u32 opcode)
 	esdhc_prepare_tuning(host, avg);
 
 	/*
-	 * adjust the delay accroding to tuning window, make preparation
+	 * adjust the delay according to tuning window, make preparation
 	 * for the auto-tuning logic. According to hardware suggest, need
 	 * to config the auto tuning window width to 3, to make the auto
 	 * tuning logic have enough space to handle the sample point shift
 	 * caused by temperature change.
 	 */
-	clk_tune_ctrl_status = (avg - ESDHC_AUTO_TUNING_WINDOW) <<
-					ESDHC_TUNE_CTRL_STATUS_DLY_CELL_SET_PRE_SHIFT |
-				ESDHC_AUTO_TUNING_WINDOW <<
-					ESDHC_TUNE_CTRL_STATUS_DLY_CELL_SET_OUT_SHIFT |
-				ESDHC_AUTO_TUNING_WINDOW <<
-					ESDHC_TUNE_CTRL_STATUS_DLY_CELL_SET_POST_SHIFT;
+	clk_tune_ctrl_status = FIELD_PREP(ESDHC_TUNE_CTRL_STATUS_DLY_CELL_SET_PRE_MASK,
+					  avg - ESDHC_AUTO_TUNING_WINDOW) |
+			       FIELD_PREP(ESDHC_TUNE_CTRL_STATUS_DLY_CELL_SET_OUT_MASK,
+					  ESDHC_AUTO_TUNING_WINDOW) |
+			       FIELD_PREP(ESDHC_TUNE_CTRL_STATUS_DLY_CELL_SET_POST_MASK,
+					  ESDHC_AUTO_TUNING_WINDOW);
 	writel(clk_tune_ctrl_status, host->ioaddr + ESDHC_TUNE_CTRL_STATUS);
 	ret = readl_poll_timeout(host->ioaddr + ESDHC_TUNE_CTRL_STATUS, temp,
 				 clk_tune_ctrl_status ==
-				 (temp & ESDHC_TUNE_CTRL_STATUS_TAP_SEL_MASK) >>
-				  ESDHC_TUNE_CTRL_STATUS_TAP_SEL_POST_SHIFT, 1, 10);
+				 FIELD_GET(ESDHC_TUNE_CTRL_STATUS_TAP_SEL_MASK, temp),
+				 1, 10);
 	if (ret == -ETIMEDOUT)
 		dev_warn(mmc_dev(host->mmc),
 			 "clock tuning control status not set in 10us\n");
@@ -1482,11 +1500,27 @@ static void esdhc_set_uhs_signaling(struct sdhci_host *host, unsigned timing)
 		m &= ~ESDHC_MIX_CTRL_FBCLK_SEL;
 
 	writel(m, host->ioaddr + ESDHC_MIX_CTRL);
+
 	esdhc_change_pinstate(host, timing);
 }
 
 static void esdhc_reset(struct sdhci_host *host, u8 mask)
 {
+	u32 present_state;
+	int ret;
+
+	/*
+	 * For data or full reset, ensure any active data transfer completes
+	 * before resetting to avoid system hang.
+	 */
+	if (mask & (SDHCI_RESET_DATA | SDHCI_RESET_ALL)) {
+		ret = readl_poll_timeout_atomic(host->ioaddr + ESDHC_PRSSTAT, present_state,
+						!(present_state & SDHCI_DATA_INHIBIT), 2,
+						ESDHC_DATA_INHIBIT_WAIT_US);
+		if (ret == -ETIMEDOUT)
+			dev_warn(mmc_dev(host->mmc),
+				 "timeout waiting for data transfer completion\n");
+	}
 	sdhci_and_cqhci_reset(host, mask);
 
 	sdhci_writel(host, host->ier, SDHCI_INT_ENABLE);
@@ -1502,19 +1536,6 @@ static unsigned int esdhc_get_max_timeout_count(struct sdhci_host *host)
 	return esdhc_is_usdhc(imx_data) ? 1 << 29 : 1 << 27;
 }
 
-static void esdhc_set_timeout(struct sdhci_host *host, struct mmc_command *cmd)
-{
-	bool too_big = false;
-	u8 count = sdhci_calc_timeout(host, cmd, &too_big);
-
-	/*
-	 * usdhc SDHCI_TIMEOUT_CONTROL register bit[7] used to control
-	 * hardware reset pin of the card. Write 0 to bit[7] will reset
-	 * the card. Only write bit[0] ~ bit[3] here.
-	 */
-	esdhc_clrset_le(host, ESDHC_SYS_CTRL_DTOCV_MASK, count,
-			SDHCI_TIMEOUT_CONTROL);
-}
 
 static u32 esdhc_cqhci_irq(struct sdhci_host *host, u32 intmask)
 {
@@ -1529,6 +1550,16 @@ static u32 esdhc_cqhci_irq(struct sdhci_host *host, u32 intmask)
 	return 0;
 }
 
+static void esdhc_hw_reset(struct sdhci_host *host)
+{
+	esdhc_clrset_le(host, ESDHC_SYS_CTRL_IPP_RST_N, 0, ESDHC_SYSTEM_CONTROL);
+	/* eMMC spec requires minimum 1us, here delay between 1-10us */
+	usleep_range(1, 10);
+	esdhc_clrset_le(host, ESDHC_SYS_CTRL_IPP_RST_N,
+			ESDHC_SYS_CTRL_IPP_RST_N, ESDHC_SYSTEM_CONTROL);
+	/* eMMC spec requires minimum 200us, here delay between 200-300us */
+	usleep_range(200, 300);
+}
 static struct sdhci_ops sdhci_esdhc_ops = {
 	.read_l = esdhc_readl_le,
 	.read_w = esdhc_readw_le,
@@ -1541,12 +1572,12 @@ static struct sdhci_ops sdhci_esdhc_ops = {
 	.get_min_clock = esdhc_pltfm_get_min_clock,
 	.get_max_timeout_count = esdhc_get_max_timeout_count,
 	.get_ro = esdhc_pltfm_get_ro,
-	.set_timeout = esdhc_set_timeout,
 	.set_bus_width = esdhc_pltfm_set_bus_width,
 	.set_uhs_signaling = esdhc_set_uhs_signaling,
 	.reset = esdhc_reset,
 	.irq = esdhc_cqhci_irq,
 	.dump_vendor_regs = esdhc_dump_debug_regs,
+	.hw_reset = esdhc_hw_reset,
 };
 
 static const struct sdhci_pltfm_data sdhci_esdhc_imx_pdata = {
@@ -1642,11 +1673,11 @@ static void sdhci_esdhc_imx_hwinit(struct sdhci_host *host)
 			 * Config the tuning window to the hardware suggested value 3.
 			 * This tuning window is used for auto tuning logic. The default
 			 * tuning window is 2, here change to 3 make the window a bit
-			 * widder, give auto tuning enough space to handle the sample
+			 * wider, give auto tuning enough space to handle the sample
 			 * point shift cause by temperature change.
 			 */
-			 tmp &= ~ESDHC_TUNNING_WINDOW_MASK;
-			 tmp |= ESDHC_AUTO_TUNING_WINDOW << ESDHC_TUNNING_WINDOW_SHIFT;
+			tmp &= ~ESDHC_TUNING_WINDOW_MASK;
+			tmp |= FIELD_PREP(ESDHC_TUNING_WINDOW_MASK, ESDHC_AUTO_TUNING_WINDOW);
 
 			/* Disable the CMD CRC check for tuning, if not, need to
 			 * add some delay after every tuning command, because
@@ -1662,7 +1693,7 @@ static void sdhci_esdhc_imx_hwinit(struct sdhci_host *host)
 			writel(tmp, host->ioaddr + ESDHC_TUNING_CTRL);
 		} else if (imx_data->socdata->flags & ESDHC_FLAG_MAN_TUNING) {
 			/*
-			 * ESDHC_STD_TUNING_EN may be configed in bootloader
+			 * ESDHC_STD_TUNING_EN may be configured in bootloader
 			 * or ROM code, so clear this bit here to make sure
 			 * the manual tuning can work.
 			 */
@@ -1699,14 +1730,13 @@ static void sdhc_esdhc_tuning_save(struct sdhci_host *host)
 	 * after system resume back.
 	 * Here save the tuning delay value for SDIO device since it may
 	 * keep power during system PM. And for usdhc, only SDR50 and
-	 * SDR104 mode for SDIO devide need to do tuning, and need to
+	 * SDR104 mode for SDIO device need to do tuning, and need to
 	 * save/restore.
 	 */
-	if ((host->timing == MMC_TIMING_UHS_SDR50) |
-			(host->timing == MMC_TIMING_UHS_SDR104)) {
+	if (host->timing == MMC_TIMING_UHS_SDR50 ||
+	    host->timing == MMC_TIMING_UHS_SDR104) {
 		reg = readl(host->ioaddr + ESDHC_TUNE_CTRL_STATUS);
-		reg = (reg & ESDHC_TUNE_CTRL_STATUS_TAP_SEL_PRE_MASK) >>
-				ESDHC_TUNE_CTRL_STATUS_TAP_SEL_PRE_SHIFT;
+		reg = FIELD_GET(ESDHC_TUNE_CTRL_STATUS_TAP_SEL_PRE_MASK, reg);
 		imx_data->boarddata.saved_tuning_delay_cell = reg;
 	}
 }
@@ -1717,8 +1747,8 @@ static void sdhc_esdhc_tuning_restore(struct sdhci_host *host)
 	struct pltfm_imx_data *imx_data = sdhci_pltfm_priv(pltfm_host);
 	u32 reg;
 
-	if ((host->timing == MMC_TIMING_UHS_SDR50) |
-			(host->timing == MMC_TIMING_UHS_SDR104)) {
+	if (host->timing == MMC_TIMING_UHS_SDR50 ||
+	    host->timing == MMC_TIMING_UHS_SDR104) {
 		/*
 		 * restore the tuning delay value actually is a
 		 * manual tuning method, so clear the standard
@@ -1736,12 +1766,12 @@ static void sdhc_esdhc_tuning_restore(struct sdhci_host *host)
 			reg |= ESDHC_MIX_CTRL_FBCLK_SEL;
 		writel(reg, host->ioaddr + ESDHC_MIX_CTRL);
 
-		writel(imx_data->boarddata.saved_tuning_delay_cell <<
-				ESDHC_TUNE_CTRL_STATUS_DLY_CELL_SET_PRE_SHIFT |
-				ESDHC_AUTO_TUNING_WINDOW <<
-				ESDHC_TUNE_CTRL_STATUS_DLY_CELL_SET_OUT_SHIFT |
-				ESDHC_AUTO_TUNING_WINDOW <<
-				ESDHC_TUNE_CTRL_STATUS_DLY_CELL_SET_POST_SHIFT,
+		writel(FIELD_PREP(ESDHC_TUNE_CTRL_STATUS_DLY_CELL_SET_PRE_MASK,
+				  imx_data->boarddata.saved_tuning_delay_cell) |
+		       FIELD_PREP(ESDHC_TUNE_CTRL_STATUS_DLY_CELL_SET_OUT_MASK,
+				  ESDHC_AUTO_TUNING_WINDOW) |
+		       FIELD_PREP(ESDHC_TUNE_CTRL_STATUS_DLY_CELL_SET_POST_MASK,
+				  ESDHC_AUTO_TUNING_WINDOW),
 				host->ioaddr + ESDHC_TUNE_CTRL_STATUS);
 	}
 }
@@ -1826,10 +1856,10 @@ sdhci_esdhc_imx_probe_dt(struct platform_device *pdev,
 		boarddata->cd_gpio_wakeup = true;
 	/*
 	 * If we have this property, then activate WP check.
-	 * Retrieveing and requesting the actual WP GPIO will happen
+	 * Retrieving and requesting the actual WP GPIO will happen
 	 * in the call to mmc_of_parse().
 	 */
-	if (of_property_read_bool(np, "wp-gpios"))
+	if (of_property_present(np, "wp-gpios"))
 		boarddata->wp_type = ESDHC_WP_GPIO;
 
 	of_property_read_u32(np, "fsl,tuning-step", &boarddata->tuning_step);
@@ -1888,11 +1918,11 @@ static int sdhci_esdhc_imx_probe(struct platform_device *pdev)
 
 	imx_data->uhs = MMC_TIMING_LEGACY;
 	imx_data->socdata = device_get_match_data(&pdev->dev);
+	if (imx_data->socdata->flags & ESDHC_FLAG_BUSFREQ)
+		request_bus_freq(BUS_FREQ_HIGH);
 
 	host->quirks |= imx_data->socdata->quirks;
 
-	if (imx_data->socdata->flags & ESDHC_FLAG_BUSFREQ)
-		request_bus_freq(BUS_FREQ_HIGH);
 
 	if (imx_data->socdata->flags & ESDHC_FLAG_PMQOS)
 		cpu_latency_qos_add_request(&imx_data->pm_qos_req, 0);
@@ -1938,6 +1968,7 @@ static int sdhci_esdhc_imx_probe(struct platform_device *pdev)
 		err = -EINVAL;
 		goto disable_ahb_clk;
 	}
+
 	imx_data->pinctrl = devm_pinctrl_get(&pdev->dev);
 	if (IS_ERR(imx_data->pinctrl))
 		dev_warn(mmc_dev(host->mmc), "could not get pinctrl\n");
@@ -1948,7 +1979,7 @@ static int sdhci_esdhc_imx_probe(struct platform_device *pdev)
 
 		/* GPIO CD can be set as a wakeup source */
 		if (!(imx_data->socdata->flags & ESDHC_FLAG_SKIP_CD_WAKE))
-		host->mmc->caps |= MMC_CAP_CD_WAKE;
+			host->mmc->caps |= MMC_CAP_CD_WAKE;
 
 		if (!(imx_data->socdata->flags & ESDHC_FLAG_HS200))
 			host->quirks2 |= SDHCI_QUIRK2_BROKEN_HS200;
@@ -1969,6 +2000,7 @@ static int sdhci_esdhc_imx_probe(struct platform_device *pdev)
 		 * to distinguish the card type.
 		 */
 		host->mmc_host_ops.init_card = usdhc_init_card;
+
 		host->max_timeout_count = 0xF;
 	}
 
@@ -2048,7 +2080,6 @@ free_sdhci:
 disable_extra_clk:
 	clk_disable_unprepare(imx_data->clk_extra);
 
-	sdhci_pltfm_free(pdev);
 	return err;
 }
 
@@ -2076,10 +2107,8 @@ static void sdhci_esdhc_imx_remove(struct platform_device *pdev)
 	if (imx_data->socdata->flags & ESDHC_FLAG_BUSFREQ)
 		release_bus_freq(BUS_FREQ_HIGH);
 
-	sdhci_pltfm_free(pdev);
 }
 
-#ifdef CONFIG_PM_SLEEP
 static int sdhci_esdhc_suspend(struct device *dev)
 {
 	struct sdhci_host *host = dev_get_drvdata(dev);
@@ -2087,13 +2116,15 @@ static int sdhci_esdhc_suspend(struct device *dev)
 	struct pltfm_imx_data *imx_data = sdhci_pltfm_priv(pltfm_host);
 	int ret;
 
+	/*
+	 * Switch to runtime resume for two reasons:
+	 * 1, there is register access (e.g., wakeup control register), so
+	 *    need to make sure gate on ipg clock.
+	 * 2, make sure the pm_runtime_force_resume() in sdhci_esdhc_resume() really
+	 *    invoke its ->runtime_resume callback (needs_force_resume = 1).
+	 */
 	pm_runtime_get_sync(dev);
 
-	if (host->mmc->caps2 & MMC_CAP2_CQE) {
-		ret = cqhci_suspend(host->mmc);
-		if (ret)
-			return ret;
-	}
 
 	if ((imx_data->socdata->flags & ESDHC_FLAG_STATE_LOST_IN_LPMODE) &&
 		(host->tuning_mode != SDHCI_TUNING_MODE_1)) {
@@ -2101,21 +2132,24 @@ static int sdhci_esdhc_suspend(struct device *dev)
 		mmc_retune_needed(host->mmc);
 	}
 
-	if (host->tuning_mode != SDHCI_TUNING_MODE_3)
-		mmc_retune_needed(host->mmc);
 
 	/*
 	 * For the device need to keep power during system PM, need
 	 * to save the tuning delay value just in case the usdhc
 	 * lost power during system PM.
 	 */
-	if (mmc_card_keep_power(host->mmc) &&
-			(esdhc_is_usdhc(imx_data)))
+	if (mmc_card_keep_power(host->mmc) && mmc_card_wake_sdio_irq(host->mmc) &&
+	    esdhc_is_usdhc(imx_data))
 		sdhc_esdhc_tuning_save(host);
 
-	ret = sdhci_suspend_host(host);
-	if (ret)
-		return ret;
+	/* The irqs of imx are not shared. It is safe to disable */
+	disable_irq(host->irq);
+
+	if (device_may_wakeup(dev)) {
+		ret = sdhci_enable_irq_wakeups(host);
+		if (!ret)
+			dev_warn(dev, "Failed to enable irq wakeup\n");
+	} else {
 	/*
 	 * For the device which works as wakeup source, no need
 	 * to change the pinctrl to sleep state.
@@ -2124,7 +2158,6 @@ static int sdhci_esdhc_suspend(struct device *dev)
 	 * other function like GPIO function to save power in PM,
 	 * which finally block the SDIO wakeup function.
 	 */
-	if (!device_may_wakeup(dev) || !host->irq_wake_enabled) {
 		ret = pinctrl_pm_select_sleep_state(dev);
 		if (ret)
 			return ret;
@@ -2133,8 +2166,11 @@ static int sdhci_esdhc_suspend(struct device *dev)
 	if (imx_data->boarddata.cd_gpio_wakeup)
 		ret = mmc_gpio_set_cd_wake(host->mmc, true);
 
-	pm_runtime_disable(dev);
-	pm_runtime_set_suspended(dev);
+	/*
+	 * Make sure invoke runtime_suspend to gate off clock.
+	 * uSDHC IP supports in-band SDIO wakeup even without clock.
+	 */
+	pm_runtime_force_suspend(dev);
 
 	return ret;
 }
@@ -2146,46 +2182,37 @@ static int sdhci_esdhc_resume(struct device *dev)
 	struct pltfm_imx_data *imx_data = sdhci_pltfm_priv(pltfm_host);
 	int ret;
 
-	pm_runtime_set_active(dev);
-	pm_runtime_enable(dev);
+	pm_runtime_force_resume(dev);
 
-	if (!device_may_wakeup(dev) || !host->irq_wake_enabled) {
-		ret = pinctrl_pm_select_default_state(dev);
+	ret = mmc_gpio_set_cd_wake(host->mmc, false);
 		if (ret)
 			return ret;
-	}
 
 	/* re-initialize hw state in case it's lost in low power mode */
 	sdhci_esdhc_imx_hwinit(host);
 
-	ret = sdhci_resume_host(host);
-	if (ret)
-		return ret;
+	if (host->irq_wake_enabled)
+		sdhci_disable_irq_wakeups(host);
+
+	enable_irq(host->irq);
 
 	/*
 	 * restore the saved tuning delay value for the device which keep
 	 * power during system PM.
 	 */
-	if (mmc_card_keep_power(host->mmc) &&
-			(esdhc_is_usdhc(imx_data)))
+	if (mmc_card_keep_power(host->mmc) && mmc_card_wake_sdio_irq(host->mmc) &&
+	    esdhc_is_usdhc(imx_data))
 		sdhc_esdhc_tuning_restore(host);
 
-	if (host->mmc->caps2 & MMC_CAP2_CQE)
-		ret = cqhci_resume(host->mmc);
-	if (ret)
-		return ret;
 
 	if (imx_data->boarddata.cd_gpio_wakeup)
 		ret = mmc_gpio_set_cd_wake(host->mmc, false);
 
-	pm_runtime_mark_last_busy(dev);
 	pm_runtime_put_autosuspend(dev);
 
 	return ret;
 }
-#endif
 
-#ifdef CONFIG_PM
 static int sdhci_esdhc_runtime_suspend(struct device *dev)
 {
 	struct sdhci_host *host = dev_get_drvdata(dev);
@@ -2199,9 +2226,7 @@ static int sdhci_esdhc_runtime_suspend(struct device *dev)
 			return ret;
 	}
 
-	ret = sdhci_runtime_suspend_host(host);
-	if (ret)
-		return ret;
+	sdhci_runtime_suspend_host(host);
 
 	if (host->tuning_mode != SDHCI_TUNING_MODE_3)
 		mmc_retune_needed(host->mmc);
@@ -2218,7 +2243,7 @@ static int sdhci_esdhc_runtime_suspend(struct device *dev)
 	if (imx_data->socdata->flags & ESDHC_FLAG_BUSFREQ)
 		release_bus_freq(BUS_FREQ_HIGH);
 
-	return ret;
+	return 0;
 }
 
 static int sdhci_esdhc_runtime_resume(struct device *dev)
@@ -2251,17 +2276,13 @@ static int sdhci_esdhc_runtime_resume(struct device *dev)
 
 	esdhc_pltfm_set_clock(host, imx_data->actual_clock);
 
-	err = sdhci_runtime_resume_host(host, 0);
-	if (err)
-		goto disable_ipg_clk;
+	sdhci_runtime_resume_host(host, 0);
 
 	if (host->mmc->caps2 & MMC_CAP2_CQE)
 		err = cqhci_resume(host->mmc);
 
 	return err;
 
-disable_ipg_clk:
-	clk_disable_unprepare(imx_data->clk_ipg);
 disable_per_clk:
 	clk_disable_unprepare(imx_data->clk_per);
 disable_ahb_clk:
@@ -2274,12 +2295,10 @@ remove_pm_qos_request:
 		release_bus_freq(BUS_FREQ_HIGH);
 	return err;
 }
-#endif
 
 static const struct dev_pm_ops sdhci_esdhc_pmops = {
-	SET_SYSTEM_SLEEP_PM_OPS(sdhci_esdhc_suspend, sdhci_esdhc_resume)
-	SET_RUNTIME_PM_OPS(sdhci_esdhc_runtime_suspend,
-				sdhci_esdhc_runtime_resume, NULL)
+	SYSTEM_SLEEP_PM_OPS(sdhci_esdhc_suspend, sdhci_esdhc_resume)
+	RUNTIME_PM_OPS(sdhci_esdhc_runtime_suspend, sdhci_esdhc_runtime_resume, NULL)
 };
 
 static struct platform_driver sdhci_esdhc_imx_driver = {
@@ -2287,10 +2306,10 @@ static struct platform_driver sdhci_esdhc_imx_driver = {
 		.name	= "sdhci-esdhc-imx",
 		.probe_type = PROBE_PREFER_ASYNCHRONOUS,
 		.of_match_table = imx_esdhc_dt_ids,
-		.pm	= &sdhci_esdhc_pmops,
+		.pm	= pm_ptr(&sdhci_esdhc_pmops),
 	},
 	.probe		= sdhci_esdhc_imx_probe,
-	.remove_new	= sdhci_esdhc_imx_remove,
+	.remove		= sdhci_esdhc_imx_remove,
 };
 
 module_platform_driver(sdhci_esdhc_imx_driver);

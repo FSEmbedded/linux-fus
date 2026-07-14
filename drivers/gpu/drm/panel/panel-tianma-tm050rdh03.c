@@ -171,7 +171,7 @@ MODULE_DEVICE_TABLE(of, tm050rdh03_of_match);
 
 static struct platform_driver tm050rdh03_driver = {
 	.probe		= tm050rdh03_probe,
-	.remove_new	= tm050rdh03_remove,
+	.remove = tm050rdh03_remove,
 	.driver		= {
 		.name = "panel-tianma-tm050rdh03",
 		.of_match_table = tm050rdh03_of_match,

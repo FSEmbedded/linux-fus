@@ -22,11 +22,13 @@
 
 #include <linux/bits.h>
 #include <linux/dmi.h>
+#include <linux/errno.h>
 #include <linux/init.h>
 #include <linux/io.h>
-#include <linux/kernel.h>
+#include <linux/ioport.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
+#include <linux/printk.h>
 #include <linux/types.h>
 #include <linux/watchdog.h>
 
@@ -184,6 +186,12 @@ static void _wdt_update_timeout(unsigned int t)
 	superio_outb(t, WDTVALLSB);
 	if (max_units > 255)
 		superio_outb(t >> 8, WDTVALMSB);
+}
+
+/* Internal function, should be called after superio_select(GPIO) */
+static bool _wdt_running(void)
+{
+	return superio_inb(WDTVALLSB) || (max_units > 255 && superio_inb(WDTVALMSB));
 }
 
 static int wdt_update_timeout(unsigned int t)
@@ -372,6 +380,12 @@ static int __init it87_wdt_init(void)
 		}
 	}
 
+	/* wdt already left running by firmware? */
+	if (_wdt_running()) {
+		pr_info("Left running by firmware.\n");
+		set_bit(WDOG_HW_RUNNING, &wdt_dev.status);
+	}
+
 	superio_exit();
 
 	if (timeout < 1 || timeout > max_units * 60) {
@@ -388,10 +402,8 @@ static int __init it87_wdt_init(void)
 
 	watchdog_stop_on_reboot(&wdt_dev);
 	rc = watchdog_register_device(&wdt_dev);
-	if (rc) {
-		pr_err("Cannot register watchdog device (err=%d)\n", rc);
+	if (rc)
 		return rc;
-	}
 
 	pr_info("Chip IT%04x revision %d initialized. timeout=%d sec (nowayout=%d testmode=%d)\n",
 		chip_type, chip_rev, timeout, nowayout, testmode);

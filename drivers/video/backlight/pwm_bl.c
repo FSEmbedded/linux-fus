@@ -11,7 +11,6 @@
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/platform_device.h>
-#include <linux/fb.h>
 #include <linux/backlight.h>
 #include <linux/err.h>
 #include <linux/pwm.h>
@@ -34,7 +33,6 @@ struct pwm_bl_data {
 					  int brightness);
 	void			(*notify_after)(struct device *,
 					int brightness);
-	int			(*check_fb)(struct device *, struct fb_info *);
 	void			(*exit)(struct device *);
 #ifdef CONFIG_OF
 	struct property		*fb_names_prop;
@@ -132,17 +130,21 @@ static int pwm_backlight_update_status(struct backlight_device *bl)
 	return 0;
 }
 
-static int pwm_backlight_check_fb(struct backlight_device *bl,
-				  struct fb_info *info)
+static bool pwm_backlight_controls_device(struct backlight_device *bd,
+					  struct device *display_dev)
 {
-	struct pwm_bl_data *pb = bl_get_data(bl);
+	struct backlight_device *bd_display;
 
-	return !pb->check_fb || pb->check_fb(pb->dev, info);
+	bd_display = devm_of_find_backlight(display_dev);
+	if (IS_ERR(bd_display))
+		return false;
+
+	return !bd_display || bd_display == bd;
 }
 
 static const struct backlight_ops pwm_backlight_ops = {
 	.update_status	= pwm_backlight_update_status,
-	.check_fb	= pwm_backlight_check_fb,
+	.controls_device = pwm_backlight_controls_device,
 };
 
 #ifdef CONFIG_OF
@@ -260,6 +262,7 @@ static int pwm_backlight_parse_dt(struct device *dev,
 		return -ENODEV;
 
 	memset(data, 0, sizeof(*data));
+
 
 	/*
 	 * These values are optional and set as 0 by default, the out values
@@ -481,7 +484,6 @@ static int pwm_backlight_probe(struct platform_device *pdev)
 	pb = devm_kzalloc(&pdev->dev, sizeof(*pb), GFP_KERNEL);
 	if (!pb)
 		return -ENOMEM;
-
 	if (!data) {
 		ret = pwm_backlight_parse_dt(&pdev->dev, &defdata);
 		if (ret < 0)
@@ -496,16 +498,16 @@ static int pwm_backlight_probe(struct platform_device *pdev)
 			data->check_fb = &pwm_backlight_check_fb_name;
 #endif
 	} else {
-		if (data->init) {
-			ret = data->init(&pdev->dev);
-			if (ret < 0)
-				return ret;
-		}
+	if (data->init) {
+		ret = data->init(&pdev->dev);
+		if (ret < 0)
+			return ret;
+	}
+
 	}
 
 	pb->notify = data->notify;
 	pb->notify_after = data->notify_after;
-	pb->check_fb = data->check_fb;
 	pb->exit = data->exit;
 	pb->dev = &pdev->dev;
 	pb->enabled = false;
@@ -732,7 +734,7 @@ static struct platform_driver pwm_backlight_driver = {
 		.of_match_table	= of_match_ptr(pwm_backlight_of_match),
 	},
 	.probe		= pwm_backlight_probe,
-	.remove_new	= pwm_backlight_remove,
+	.remove		= pwm_backlight_remove,
 	.shutdown	= pwm_backlight_shutdown,
 };
 

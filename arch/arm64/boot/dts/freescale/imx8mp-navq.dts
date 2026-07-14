@@ -9,6 +9,8 @@
 
 #include <dt-bindings/usb/pd.h>
 #include "imx8mp.dtsi"
+#include "imx8mp-nxp-display.dtsi"
+#include "imx8mp-nxp-capture.dtsi"
 
 / {
 	model = "NXP i.MX8MPlus NAVQ+ board";
@@ -1095,38 +1097,6 @@
 			MX8MP_IOMUXC_GPIO1_IO15__CCM_CLKO2	0x50
 		>;
 	};
-};
-
-&vpu_g1 {
-	status = "okay";
-};
-
-&vpu_g2 {
-	status = "okay";
-};
-
-&vpu_vc8000e {
-	status = "okay";
-};
-
-&vpu_v4l2 {
-	status = "okay";
-};
-
-&gpu_3d {
-	status = "okay";
-};
-
-&gpu_2d {
-	status = "okay";
-};
-
-&ml_vipsi {
-	status = "okay";
-};
-
-&mix_gpu_ml {
-	status = "okay";
 };
 
 &mipi_csi_0 {

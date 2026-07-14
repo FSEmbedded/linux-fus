@@ -30,6 +30,7 @@
 #include <linux/dma/imx-dma.h>
 
 #include <media/v4l2-dev.h>
+#include <media/v4l2-fh.h>
 #include "v4l2-int-device.h"
 
 
@@ -219,6 +220,8 @@ typedef struct _cam_data {
 	void *ipu;
 	void *csi_soc;
 	enum imx_v4l2_devtype devtype;
+
+	struct v4l2_fh fh;
 
 	/* v4l2 buf elements related to PxP DMA */
 	struct completion pxp_tx_cmpl;

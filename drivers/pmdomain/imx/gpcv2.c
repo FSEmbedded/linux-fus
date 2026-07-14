@@ -168,12 +168,12 @@
 #define IMX8M_DISP_HSK_PWRDNREQN		BIT(4)
 
 #define IMX8MM_GPUMIX_HSK_PWRDNACKN		BIT(29)
-#define IMX8MM_GPU_HSK_PWRDNACKN		(BIT(27) | BIT(28))
+#define IMX8MM_GPU_HSK_PWRDNACKN		GENMASK(29, 27)
 #define IMX8MM_VPUMIX_HSK_PWRDNACKN		BIT(26)
 #define IMX8MM_DISPMIX_HSK_PWRDNACKN		BIT(25)
 #define IMX8MM_HSIO_HSK_PWRDNACKN		(BIT(23) | BIT(24))
 #define IMX8MM_GPUMIX_HSK_PWRDNREQN		BIT(11)
-#define IMX8MM_GPU_HSK_PWRDNREQN		(BIT(9) | BIT(10))
+#define IMX8MM_GPU_HSK_PWRDNREQN		GENMASK(11, 9)
 #define IMX8MM_VPUMIX_HSK_PWRDNREQN		BIT(8)
 #define IMX8MM_DISPMIX_HSK_PWRDNREQN		BIT(7)
 #define IMX8MM_HSIO_HSK_PWRDNREQN		(BIT(5) | BIT(6))
@@ -319,6 +319,7 @@ struct imx_pgc_domain {
 	unsigned int pgc_sw_pup_reg;
 	unsigned int pgc_sw_pdn_reg;
 	const struct imx_pgc_noc_data *noc_data[DOMAIN_MAX_NOC];
+	void (*update_voltage)(struct imx_pgc_domain *domain);
 };
 
 struct imx_pgc_domain_data {
@@ -700,6 +701,29 @@ static const struct imx_pgc_domain_data imx7_pgc_domain_data = {
 	.pgc_regs = &imx7_pgc_regs,
 };
 
+#define IMX8MQ_VPU_OVERDRIVE_FREQUENCY		600000000
+#define IMX8MQ_VPU_OVERDRIVE_VOLTAGE		1000000
+
+static void imx_8m_vpu_update_voltage(struct imx_pgc_domain *domain)
+{
+	struct clk *clk;
+	unsigned long frequency;
+
+	if (!domain || !domain->dev || !domain->regulator)
+		return;
+
+	clk = clk_get(domain->dev, "g2");
+	if (IS_ERR_OR_NULL(clk))
+		return;
+
+	frequency = clk_get_rate(clk);
+	if (frequency >= IMX8MQ_VPU_OVERDRIVE_FREQUENCY)
+		regulator_set_voltage(domain->regulator,
+				      IMX8MQ_VPU_OVERDRIVE_VOLTAGE, IMX8MQ_VPU_OVERDRIVE_VOLTAGE);
+
+	clk_put(clk);
+}
+
 static const struct imx_pgc_domain imx8m_pgc_domains[] = {
 	[IMX8M_POWER_DOMAIN_MIPI] = {
 		.genpd = {
@@ -781,6 +805,7 @@ static const struct imx_pgc_domain imx8m_pgc_domains[] = {
 		},
 		.pgc   = BIT(IMX8M_PGC_VPU),
 		.keep_clocks = true,
+		.update_voltage = imx_8m_vpu_update_voltage,
 	},
 
 	[IMX8M_POWER_DOMAIN_DISP] = {
@@ -1530,6 +1555,8 @@ static int imx_pgc_domain_probe(struct platform_device *pdev)
 	} else if (domain->voltage) {
 		regulator_set_voltage(domain->regulator,
 				      domain->voltage, domain->voltage);
+	} else if (domain->update_voltage) {
+		domain->update_voltage(domain);
 	}
 
 	domain->num_clks = devm_clk_bulk_get_all(domain->dev, &domain->clks);
@@ -1554,7 +1581,7 @@ static int imx_pgc_domain_probe(struct platform_device *pdev)
 
 	ret = pm_genpd_init(&domain->genpd, NULL, true);
 	if (ret) {
-		dev_err(domain->dev, "Failed to init power domain\n");
+		dev_err_probe(domain->dev, ret, "Failed to init power domain\n");
 		goto out_domain_unmap;
 	}
 
@@ -1565,7 +1592,7 @@ static int imx_pgc_domain_probe(struct platform_device *pdev)
 	ret = of_genpd_add_provider_simple(domain->dev->of_node,
 					   &domain->genpd);
 	if (ret) {
-		dev_err(domain->dev, "Failed to add genpd provider\n");
+		dev_err_probe(domain->dev, ret, "Failed to add genpd provider\n");
 		goto out_genpd_remove;
 	}
 
@@ -1635,9 +1662,10 @@ static struct platform_driver imx_pgc_domain_driver = {
 	.driver = {
 		.name = "imx-pgc",
 		.pm = &imx_pgc_domain_pm_ops,
+		.suppress_bind_attrs = true,
 	},
 	.probe    = imx_pgc_domain_probe,
-	.remove_new = imx_pgc_domain_remove,
+	.remove = imx_pgc_domain_remove,
 	.id_table = imx_pgc_domain_id,
 };
 builtin_platform_driver(imx_pgc_domain_driver)
@@ -1757,6 +1785,7 @@ static struct platform_driver imx_gpc_driver = {
 	.driver = {
 		.name = "imx-gpcv2",
 		.of_match_table = imx_gpcv2_dt_ids,
+		.suppress_bind_attrs = true,
 	},
 	.probe = imx_gpcv2_probe,
 };

@@ -30,7 +30,7 @@
 			reg = <0x56243000 0x4>;
 			#clock-cells = <1>;
 			clocks = <&lvds0_ipg_clk>;
-			bit-offset = <16>;
+			clock-indices = <IMX_LPCG_CLK_4>;
 			clock-output-names = "lvds0_lis_lpcg_ipg_clk";
 			power-domains = <&pd IMX_SC_R_LVDS_0>;
 		};
@@ -41,7 +41,7 @@
 			#clock-cells = <1>;
 			clocks = <&clk IMX_SC_R_LVDS_0_PWM_0 IMX_SC_PM_CLK_PER>,
 				 <&lvds0_ipg_clk>;
-			bit-offset = <0 16>;
+			clock-indices = <IMX_LPCG_CLK_0>, <IMX_LPCG_CLK_4>;
 			clock-output-names = "lvds0_pwm_lpcg_clk",
 					     "lvds0_pwm_lpcg_ipg_clk";
 			power-domains = <&pd IMX_SC_R_LVDS_0_PWM_0>;
@@ -53,7 +53,7 @@
 			#clock-cells = <1>;
 			clocks = <&clk IMX_SC_R_LVDS_0_I2C_0 IMX_SC_PM_CLK_PER>,
 				 <&lvds0_ipg_clk>;
-			bit-offset = <0 16>;
+			clock-indices = <IMX_LPCG_CLK_0>, <IMX_LPCG_CLK_4>;
 			clock-output-names = "lvds0_i2c0_lpcg_clk",
 					     "lvds0_i2c0_lpcg_ipg_clk";
 			power-domains = <&pd IMX_SC_R_LVDS_0_I2C_0>;
@@ -65,7 +65,7 @@
 			#clock-cells = <1>;
 			clocks = <&clk IMX_SC_R_LVDS_0_I2C_0 IMX_SC_PM_CLK_PER>,
 				 <&lvds0_ipg_clk>;
-			bit-offset = <0 16>;
+			clock-indices = <IMX_LPCG_CLK_0>, <IMX_LPCG_CLK_4>;
 			clock-output-names = "lvds0_i2c1_lpcg_clk",
 					     "lvds0_i2c1_lpcg_ipg_clk";
 			power-domains = <&pd IMX_SC_R_LVDS_0_I2C_0>;
@@ -80,7 +80,7 @@
 			#interrupt-cells = <1>;
 			fsl,channel = <0>;
 			fsl,num-irqs = <32>;
-			clocks = <&lvds0_lis_lpcg 0>;
+			clocks = <&lvds0_lis_lpcg IMX_LPCG_CLK_4>;
 			clock-names = "ipg";
 			power-domains = <&pd IMX_SC_R_LVDS_0>;
 		};
@@ -116,8 +116,8 @@
 		pwm_lvds0: pwm@56244000 {
 			compatible = "fsl,imx8qm-pwm", "fsl,imx27-pwm";
 			reg = <0x56244000 0x1000>;
-			clocks = <&lvds0_pwm_lpcg 0>,
-				 <&lvds0_pwm_lpcg 1>;
+			clocks = <&lvds0_pwm_lpcg IMX_LPCG_CLK_0>,
+				 <&lvds0_pwm_lpcg IMX_LPCG_CLK_4>;
 			clock-names = "per", "ipg";
 			assigned-clocks = <&clk IMX_SC_R_LVDS_0_PWM_0 IMX_SC_PM_CLK_PER>;
 			assigned-clock-rates = <24000000>;
@@ -131,8 +131,8 @@
 			reg = <0x56246000 0x1000>;
 			interrupts = <8>;
 			interrupt-parent = <&irqsteer_lvds0>;
-			clocks = <&lvds0_i2c0_lpcg 0>,
-				 <&lvds0_i2c0_lpcg 1>;
+			clocks = <&lvds0_i2c0_lpcg IMX_LPCG_CLK_0>,
+				 <&lvds0_i2c0_lpcg IMX_LPCG_CLK_4>;
 			clock-names = "per", "ipg";
 			assigned-clocks = <&clk IMX_SC_R_LVDS_0_I2C_0 IMX_SC_PM_CLK_PER>;
 			assigned-clock-rates = <24000000>;
@@ -145,8 +145,8 @@
 			reg = <0x56247000 0x1000>;
 			interrupts = <9>;
 			interrupt-parent = <&irqsteer_lvds0>;
-			clocks = <&lvds0_i2c0_lpcg 0>,
-				 <&lvds0_i2c0_lpcg 1>;
+			clocks = <&lvds0_i2c0_lpcg IMX_LPCG_CLK_0>,
+				 <&lvds0_i2c0_lpcg IMX_LPCG_CLK_4>;
 			clock-names = "per", "ipg";
 			assigned-clocks = <&clk IMX_SC_R_LVDS_0_I2C_0 IMX_SC_PM_CLK_PER>;
 			assigned-clock-rates = <24000000>;
@@ -158,7 +158,7 @@
 	ldb1: ldb1-display-controller {
 		#address-cells = <1>;
 		#size-cells = <0>;
-		compatible = "fsl,imx8qm-ldb";
+		compatible = "fsl,imx8qm-ldb-nxp";
 		clocks = <&clk IMX_SC_R_LVDS_0 IMX_SC_PM_CLK_MISC2>,
 			 <&clk IMX_SC_R_LVDS_0 IMX_SC_PM_CLK_BYPASS>;
 		clock-names = "pixel", "bypass";
@@ -221,7 +221,7 @@
 			reg = <0x57243000 0x4>;
 			#clock-cells = <1>;
 			clocks = <&lvds1_ipg_clk>;
-			bit-offset = <16>;
+			clock-indices = <IMX_LPCG_CLK_4>;
 			clock-output-names = "lvds1_lis_lpcg_ipg_clk";
 			power-domains = <&pd IMX_SC_R_LVDS_1>;
 		};
@@ -232,7 +232,7 @@
 			#clock-cells = <1>;
 			clocks = <&clk IMX_SC_R_LVDS_1_PWM_0 IMX_SC_PM_CLK_PER>,
 				 <&lvds1_ipg_clk>;
-			bit-offset = <0 16>;
+			clock-indices = <IMX_LPCG_CLK_0>, <IMX_LPCG_CLK_4>;
 			clock-output-names = "lvds1_pwm_lpcg_clk",
 					     "lvds1_pwm_lpcg_ipg_clk";
 			power-domains = <&pd IMX_SC_R_LVDS_1_PWM_0>;
@@ -244,7 +244,7 @@
 			#clock-cells = <1>;
 			clocks = <&clk IMX_SC_R_LVDS_1_I2C_0 IMX_SC_PM_CLK_PER>,
 				 <&lvds1_ipg_clk>;
-			bit-offset = <0 16>;
+			clock-indices = <IMX_LPCG_CLK_0>, <IMX_LPCG_CLK_4>;
 			clock-output-names = "lvds1_i2c0_lpcg_clk",
 					     "lvds1_i2c0_lpcg_ipg_clk";
 			power-domains = <&pd IMX_SC_R_LVDS_1_I2C_0>;
@@ -256,7 +256,7 @@
 			#clock-cells = <1>;
 			clocks = <&clk IMX_SC_R_LVDS_1_I2C_0 IMX_SC_PM_CLK_PER>,
 				 <&lvds1_ipg_clk>;
-			bit-offset = <0 16>;
+			clock-indices = <IMX_LPCG_CLK_0>, <IMX_LPCG_CLK_4>;
 			clock-output-names = "lvds1_i2c1_lpcg_clk",
 					     "lvds1_i2c1_lpcg_ipg_clk";
 			power-domains = <&pd IMX_SC_R_LVDS_1_I2C_0>;
@@ -271,7 +271,7 @@
 			#interrupt-cells = <1>;
 			fsl,channel = <0>;
 			fsl,num-irqs = <32>;
-			clocks = <&lvds1_lis_lpcg 0>;
+			clocks = <&lvds1_lis_lpcg IMX_LPCG_CLK_4>;
 			clock-names = "ipg";
 			power-domains = <&pd IMX_SC_R_LVDS_1>;
 		};
@@ -307,8 +307,8 @@
 		pwm_lvds1: pwm@57244000 {
 			compatible = "fsl,imx8qm-pwm", "fsl,imx27-pwm";
 			reg = <0x57244000 0x1000>;
-			clocks = <&lvds1_pwm_lpcg 0>,
-				 <&lvds1_pwm_lpcg 1>;
+			clocks = <&lvds1_pwm_lpcg IMX_LPCG_CLK_0>,
+				 <&lvds1_pwm_lpcg IMX_LPCG_CLK_4>;
 			clock-names = "per", "ipg";
 			assigned-clocks = <&clk IMX_SC_R_LVDS_1_PWM_0 IMX_SC_PM_CLK_PER>;
 			assigned-clock-rates = <24000000>;
@@ -322,8 +322,8 @@
 			reg = <0x57246000 0x1000>;
 			interrupts = <8>;
 			interrupt-parent = <&irqsteer_lvds1>;
-			clocks = <&lvds1_i2c0_lpcg 0>,
-				 <&lvds1_i2c0_lpcg 1>;
+			clocks = <&lvds1_i2c0_lpcg IMX_LPCG_CLK_0>,
+				 <&lvds1_i2c0_lpcg IMX_LPCG_CLK_4>;
 			clock-names = "per", "ipg";
 			assigned-clocks = <&clk IMX_SC_R_LVDS_1_I2C_0 IMX_SC_PM_CLK_PER>;
 			assigned-clock-rates = <24000000>;
@@ -336,8 +336,8 @@
 			reg = <0x57247000 0x1000>;
 			interrupts = <9>;
 			interrupt-parent = <&irqsteer_lvds1>;
-			clocks = <&lvds1_i2c0_lpcg 0>,
-				 <&lvds1_i2c0_lpcg 1>;
+			clocks = <&lvds1_i2c0_lpcg IMX_LPCG_CLK_0>,
+				 <&lvds1_i2c0_lpcg IMX_LPCG_CLK_4>;
 			clock-names = "per", "ipg";
 			assigned-clocks = <&clk IMX_SC_R_LVDS_1_I2C_0 IMX_SC_PM_CLK_PER>;
 			assigned-clock-rates = <24000000>;
@@ -349,7 +349,7 @@
 	ldb2: ldb2-display-controller {
 		#address-cells = <1>;
 		#size-cells = <0>;
-		compatible = "fsl,imx8qm-ldb";
+		compatible = "fsl,imx8qm-ldb-nxp";
 		clocks = <&clk IMX_SC_R_LVDS_1 IMX_SC_PM_CLK_MISC2>,
 			 <&clk IMX_SC_R_LVDS_1 IMX_SC_PM_CLK_BYPASS>;
 		clock-names = "pixel", "bypass";

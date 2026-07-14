@@ -303,6 +303,11 @@ static int hp_populate_password_elements_from_package(union acpi_object *passwor
 				     MAX_PREREQUISITES_SIZE);
 
 			for (reqs = 0; reqs < size; reqs++) {
+				if (elem + reqs >= password_obj_count) {
+					pr_err("Error elem-objects package is too small\n");
+					return -EINVAL;
+				}
+
 				ret = hp_convert_hexstr_to_str(password_obj[elem + reqs].string.pointer,
 							       password_obj[elem + reqs].string.length,
 							       &str_value, &value_len);
@@ -531,14 +536,9 @@ void hp_exit_password_attributes(void)
 		struct kobject *attr_name_kobj =
 			bioscfg_drv.password_data[instance_id].attr_name_kobj;
 
-		if (attr_name_kobj) {
-			if (!strcmp(attr_name_kobj->name, SETUP_PASSWD))
-				sysfs_remove_group(attr_name_kobj,
-						   &password_attr_group);
-			else
-				sysfs_remove_group(attr_name_kobj,
-						   &password_attr_group);
-		}
+		if (attr_name_kobj)
+			sysfs_remove_group(attr_name_kobj,
+					   &password_attr_group);
 	}
 	bioscfg_drv.password_instances_count = 0;
 	kfree(bioscfg_drv.password_data);

@@ -1,4 +1,3 @@
-
 // SPDX-License-Identifier: (GPL-2.0+ OR MIT)
 /*
  * Copyright 2024-2025 NXP
@@ -74,16 +73,6 @@
 		clock-output-names = "clk_ext1";
 	};
 
-	mqs1: mqs1 {
-		compatible = "fsl,imx943-aonmix-mqs";
-		status = "disabled";
-	};
-
-	mqs2: mqs2 {
-		compatible = "fsl,imx943-wakeupmix-mqs";
-		status = "disabled";
-	};
-
 	sai1_mclk: clock-sai1-mclk1 {
 		compatible = "fixed-clock";
 		#clock-cells = <0>;
@@ -113,7 +102,6 @@
 	};
 
 	firmware {
-
 		scmi {
 			compatible = "arm,scmi";
 			#address-cells = <1>;
@@ -166,6 +154,16 @@
 				reg = <0x84>;
 			};
 		};
+	};
+
+	mqs1: mqs1 {
+		compatible = "fsl,imx943-aonmix-mqs";
+		status = "disabled";
+	};
+
+	mqs2: mqs2 {
+		compatible = "fsl,imx943-wakeupmix-mqs";
+		status = "disabled";
 	};
 
 	pmu {
@@ -236,34 +234,45 @@
 			#size-cells = <1>;
 
 			edma2: dma-controller@42000000 {
-				compatible = "fsl,imx95-edma5";
+				compatible = "fsl,imx94-edma5", "fsl,imx95-edma5";
 				reg = <0x42000000 0x210000>;
 				clocks = <&scmi_clk IMX94_CLK_BUSWAKEUP>;
 				clock-names = "dma";
 				#dma-cells = <3>;
 				dma-channels = <64>;
-				interrupts-extended = <&a55_irqsteer 0>, <&a55_irqsteer 1>, <&a55_irqsteer 2>,
-					<&a55_irqsteer 3>, <&a55_irqsteer 4>, <&a55_irqsteer 5>,
-					<&a55_irqsteer 6>, <&a55_irqsteer 7>, <&a55_irqsteer 8>,
-					<&a55_irqsteer 9>, <&a55_irqsteer 10>, <&a55_irqsteer 11>,
-					<&a55_irqsteer 12>, <&a55_irqsteer 13>, <&a55_irqsteer 14>,
-					<&a55_irqsteer 15>, <&a55_irqsteer 16>, <&a55_irqsteer 17>,
-					<&a55_irqsteer 18>, <&a55_irqsteer 19>, <&a55_irqsteer 20>,
-					<&a55_irqsteer 21>, <&a55_irqsteer 22>, <&a55_irqsteer 23>,
-					<&a55_irqsteer 24>, <&a55_irqsteer 25>, <&a55_irqsteer 26>,
-					<&a55_irqsteer 27>, <&a55_irqsteer 28>, <&a55_irqsteer 29>,
-					<&a55_irqsteer 30>, <&a55_irqsteer 31>, <&a55_irqsteer 64>,
-					<&a55_irqsteer 65>, <&a55_irqsteer 66>, <&a55_irqsteer 67>,
-					<&a55_irqsteer 68>, <&a55_irqsteer 69>, <&a55_irqsteer 70>,
-					<&a55_irqsteer 71>, <&a55_irqsteer 72>, <&a55_irqsteer 73>,
-					<&a55_irqsteer 74>, <&a55_irqsteer 75>, <&a55_irqsteer 76>,
-					<&a55_irqsteer 77>, <&a55_irqsteer 78>, <&a55_irqsteer 79>,
-					<&a55_irqsteer 80>, <&a55_irqsteer 81>, <&a55_irqsteer 82>,
-					<&a55_irqsteer 83>, <&a55_irqsteer 84>, <&a55_irqsteer 85>,
-					<&a55_irqsteer 86>, <&a55_irqsteer 87>, <&a55_irqsteer 88>,
-					<&a55_irqsteer 89>, <&a55_irqsteer 90>, <&a55_irqsteer 91>,
-					<&a55_irqsteer 92>, <&a55_irqsteer 93>, <&a55_irqsteer 94>,
-					<&a55_irqsteer 95>, <&gic GIC_SPI 98 IRQ_TYPE_LEVEL_HIGH>;
+				interrupts-extended = <&a55_irqsteer 0>, <&a55_irqsteer 1>,
+						      <&a55_irqsteer 2>, <&a55_irqsteer 3>,
+						      <&a55_irqsteer 4>, <&a55_irqsteer 5>,
+						      <&a55_irqsteer 6>, <&a55_irqsteer 7>,
+						      <&a55_irqsteer 8>, <&a55_irqsteer 9>,
+						      <&a55_irqsteer 10>, <&a55_irqsteer 11>,
+						      <&a55_irqsteer 12>, <&a55_irqsteer 13>,
+						      <&a55_irqsteer 14>, <&a55_irqsteer 15>,
+						      <&a55_irqsteer 16>, <&a55_irqsteer 17>,
+						      <&a55_irqsteer 18>, <&a55_irqsteer 19>,
+						      <&a55_irqsteer 20>, <&a55_irqsteer 21>,
+						      <&a55_irqsteer 22>, <&a55_irqsteer 23>,
+						      <&a55_irqsteer 24>, <&a55_irqsteer 25>,
+						      <&a55_irqsteer 26>, <&a55_irqsteer 27>,
+						      <&a55_irqsteer 28>, <&a55_irqsteer 29>,
+						      <&a55_irqsteer 30>, <&a55_irqsteer 31>,
+						      <&a55_irqsteer 64>, <&a55_irqsteer 65>,
+						      <&a55_irqsteer 66>, <&a55_irqsteer 67>,
+						      <&a55_irqsteer 68>, <&a55_irqsteer 69>,
+						      <&a55_irqsteer 70>, <&a55_irqsteer 71>,
+						      <&a55_irqsteer 72>, <&a55_irqsteer 73>,
+						      <&a55_irqsteer 74>, <&a55_irqsteer 75>,
+						      <&a55_irqsteer 76>, <&a55_irqsteer 77>,
+						      <&a55_irqsteer 78>, <&a55_irqsteer 79>,
+						      <&a55_irqsteer 80>, <&a55_irqsteer 81>,
+						      <&a55_irqsteer 82>, <&a55_irqsteer 83>,
+						      <&a55_irqsteer 84>, <&a55_irqsteer 85>,
+						      <&a55_irqsteer 86>, <&a55_irqsteer 87>,
+						      <&a55_irqsteer 88>, <&a55_irqsteer 89>,
+						      <&a55_irqsteer 90>, <&a55_irqsteer 91>,
+						      <&a55_irqsteer 92>, <&a55_irqsteer 93>,
+						      <&a55_irqsteer 94>, <&a55_irqsteer 95>,
+						      <&gic GIC_SPI 98 IRQ_TYPE_LEVEL_HIGH>;
 			};
 
 			edma3: dma-controller@42210000 {
@@ -310,7 +319,7 @@
 			};
 
 			mu10: mailbox@42430000 {
-				compatible = "fsl,imx95-mu";
+				compatible = "fsl,imx94-mu", "fsl,imx95-mu";
 				reg = <0x42430000 0x10000>;
 				interrupts = <GIC_SPI 277 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&scmi_clk IMX94_CLK_BUSWAKEUP>;
@@ -332,7 +341,7 @@
 			};
 
 			lpi2c3: i2c@42530000 {
-				compatible = "fsl,imx95-lpi2c", "fsl,imx7ulp-lpi2c";
+				compatible = "fsl,imx94-lpi2c", "fsl,imx7ulp-lpi2c";
 				reg = <0x42530000 0x10000>;
 				interrupts = <GIC_SPI 67 IRQ_TYPE_LEVEL_HIGH>;
 				#address-cells = <1>;
@@ -346,7 +355,7 @@
 			};
 
 			lpi2c4: i2c@42540000 {
-				compatible = "fsl,imx95-lpi2c", "fsl,imx7ulp-lpi2c";
+				compatible = "fsl,imx94-lpi2c", "fsl,imx7ulp-lpi2c";
 				reg = <0x42540000 0x10000>;
 				interrupts = <GIC_SPI 68 IRQ_TYPE_LEVEL_HIGH>;
 				#address-cells = <1>;
@@ -360,7 +369,7 @@
 			};
 
 			lpspi3: spi@42550000 {
-				compatible = "fsl,imx95-spi", "fsl,imx7ulp-spi";
+				compatible = "fsl,imx94-spi", "fsl,imx7ulp-spi";
 				reg = <0x42550000 0x10000>;
 				interrupts = <GIC_SPI 71 IRQ_TYPE_LEVEL_HIGH>;
 				#address-cells = <1>;
@@ -374,7 +383,7 @@
 			};
 
 			lpspi4: spi@42560000 {
-				compatible = "fsl,imx95-spi", "fsl,imx7ulp-spi";
+				compatible = "fsl,imx94-spi", "fsl,imx7ulp-spi";
 				reg = <0x42560000 0x10000>;
 				interrupts = <GIC_SPI 72 IRQ_TYPE_LEVEL_HIGH>;
 				#address-cells = <1>;
@@ -388,7 +397,7 @@
 			};
 
 			lpuart3: serial@42570000 {
-				compatible = "fsl,imx95-lpuart", "fsl,imx8ulp-lpuart",
+				compatible = "fsl,imx94-lpuart", "fsl,imx8ulp-lpuart",
 					     "fsl,imx7ulp-lpuart";
 				reg = <0x42570000 0x1000>;
 				interrupts = <GIC_SPI 74 IRQ_TYPE_LEVEL_HIGH>;
@@ -400,7 +409,7 @@
 			};
 
 			lpuart4: serial@42580000 {
-				compatible = "fsl,imx95-lpuart", "fsl,imx8ulp-lpuart",
+				compatible = "fsl,imx94-lpuart", "fsl,imx8ulp-lpuart",
 					     "fsl,imx7ulp-lpuart";
 				reg = <0x42580000 0x1000>;
 				interrupts = <GIC_SPI 75 IRQ_TYPE_LEVEL_HIGH>;
@@ -412,7 +421,7 @@
 			};
 
 			lpuart5: serial@42590000 {
-				compatible = "fsl,imx95-lpuart", "fsl,imx8ulp-lpuart",
+				compatible = "fsl,imx94-lpuart", "fsl,imx8ulp-lpuart",
 					     "fsl,imx7ulp-lpuart";
 				reg = <0x42590000 0x1000>;
 				interrupts = <GIC_SPI 76 IRQ_TYPE_LEVEL_HIGH>;
@@ -424,7 +433,7 @@
 			};
 
 			lpuart6: serial@425a0000 {
-				compatible = "fsl,imx95-lpuart", "fsl,imx8ulp-lpuart",
+				compatible = "fsl,imx94-lpuart", "fsl,imx8ulp-lpuart",
 					     "fsl,imx7ulp-lpuart";
 				reg = <0x425a0000 0x1000>;
 				interrupts = <GIC_SPI 77 IRQ_TYPE_LEVEL_HIGH>;
@@ -436,7 +445,7 @@
 			};
 
 			flexcan2: can@425b0000 {
-				compatible = "fsl,imx95-flexcan";
+				compatible = "fsl,imx94-flexcan", "fsl,imx95-flexcan";
 				reg = <0x425b0000 0x10000>;
 				interrupts = <GIC_SPI 40 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&scmi_clk IMX94_CLK_BUSWAKEUP>,
@@ -450,7 +459,7 @@
 			};
 
 			flexcan3: can@425e0000 {
-				compatible = "fsl,imx95-flexcan";
+				compatible = "fsl,imx94-flexcan", "fsl,imx95-flexcan";
 				reg = <0x425e0000 0x10000>;
 				interrupts = <GIC_SPI 42 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&scmi_clk IMX94_CLK_BUSWAKEUP>,
@@ -464,7 +473,7 @@
 			};
 
 			flexcan4: can@425f0000 {
-				compatible = "fsl,imx95-flexcan";
+				compatible = "fsl,imx94-flexcan", "fsl,imx95-flexcan";
 				reg = <0x425f0000 0x10000>;
 				interrupts = <GIC_SPI 44 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&scmi_clk IMX94_CLK_BUSWAKEUP>,
@@ -478,7 +487,7 @@
 			};
 
 			flexcan5: can@42600000 {
-				compatible = "fsl,imx95-flexcan";
+				compatible = "fsl,imx94-flexcan", "fsl,imx95-flexcan";
 				reg = <0x42600000 0x10000>;
 				interrupts = <GIC_SPI 46 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&scmi_clk IMX94_CLK_BUSWAKEUP>,
@@ -492,7 +501,7 @@
 			};
 
 			sai2: sai@42650000 {
-				compatible = "fsl,imx95-sai";
+				compatible = "fsl,imx94-sai", "fsl,imx95-sai";
 				reg = <0x42650000 0x10000>;
 				interrupts = <GIC_SPI 101 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&scmi_clk IMX94_CLK_BUSWAKEUP>, <&dummy>,
@@ -505,7 +514,7 @@
 			};
 
 			sai3: sai@42660000 {
-				compatible = "fsl,imx95-sai";
+				compatible = "fsl,imx94-sai", "fsl,imx95-sai";
 				reg = <0x42660000 0x10000>;
 				interrupts = <GIC_SPI 102 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&scmi_clk IMX94_CLK_BUSWAKEUP>, <&dummy>,
@@ -518,7 +527,7 @@
 			};
 
 			sai4: sai@42670000 {
-				compatible = "fsl,imx95-sai";
+				compatible = "fsl,imx94-sai", "fsl,imx95-sai";
 				reg = <0x42670000 0x10000>;
 				interrupts = <GIC_SPI 103 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&scmi_clk IMX94_CLK_BUSWAKEUP>, <&dummy>,
@@ -531,7 +540,7 @@
 			};
 
 			lpuart7: serial@42690000 {
-				compatible = "fsl,imx95-lpuart", "fsl,imx8ulp-lpuart",
+				compatible = "fsl,imx94-lpuart", "fsl,imx8ulp-lpuart",
 					     "fsl,imx7ulp-lpuart";
 				reg = <0x42690000 0x1000>;
 				interrupts = <GIC_SPI 78 IRQ_TYPE_LEVEL_HIGH>;
@@ -543,7 +552,7 @@
 			};
 
 			lpuart8: serial@426a0000 {
-				compatible = "fsl,imx95-lpuart", "fsl,imx8ulp-lpuart",
+				compatible = "fsl,imx94-lpuart", "fsl,imx8ulp-lpuart",
 					     "fsl,imx7ulp-lpuart";
 				reg = <0x426a0000 0x1000>;
 				interrupts = <GIC_SPI 79 IRQ_TYPE_LEVEL_HIGH>;
@@ -555,7 +564,7 @@
 			};
 
 			lpi2c5: i2c@426b0000 {
-				compatible = "fsl,imx95-lpi2c", "fsl,imx7ulp-lpi2c";
+				compatible = "fsl,imx94-lpi2c", "fsl,imx7ulp-lpi2c";
 				reg = <0x426b0000 0x10000>;
 				interrupts = <GIC_SPI 108 IRQ_TYPE_LEVEL_HIGH>;
 				#address-cells = <1>;
@@ -569,7 +578,7 @@
 			};
 
 			lpi2c6: i2c@426c0000 {
-				compatible = "fsl,imx95-lpi2c", "fsl,imx7ulp-lpi2c";
+				compatible = "fsl,imx94-lpi2c", "fsl,imx7ulp-lpi2c";
 				reg = <0x426c0000 0x10000>;
 				interrupts = <GIC_SPI 109 IRQ_TYPE_LEVEL_HIGH>;
 				#address-cells = <1>;
@@ -583,7 +592,7 @@
 			};
 
 			lpi2c7: i2c@426d0000 {
-				compatible = "fsl,imx95-lpi2c", "fsl,imx7ulp-lpi2c";
+				compatible = "fsl,imx94-lpi2c", "fsl,imx7ulp-lpi2c";
 				reg = <0x426d0000 0x10000>;
 				interrupts = <GIC_SPI 110 IRQ_TYPE_LEVEL_HIGH>;
 				#address-cells = <1>;
@@ -597,7 +606,7 @@
 			};
 
 			lpi2c8: i2c@426e0000 {
-				compatible = "fsl,imx95-lpi2c", "fsl,imx7ulp-lpi2c";
+				compatible = "fsl,imx94-lpi2c", "fsl,imx7ulp-lpi2c";
 				reg = <0x426e0000 0x10000>;
 				interrupts = <GIC_SPI 111 IRQ_TYPE_LEVEL_HIGH>;
 				#address-cells = <1>;
@@ -611,7 +620,7 @@
 			};
 
 			lpspi5: spi@426f0000 {
-				compatible = "fsl,imx95-spi", "fsl,imx7ulp-spi";
+				compatible = "fsl,imx94-spi", "fsl,imx7ulp-spi";
 				reg = <0x426f0000 0x10000>;
 				interrupts = <GIC_SPI 104 IRQ_TYPE_LEVEL_HIGH>;
 				#address-cells = <1>;
@@ -625,7 +634,7 @@
 			};
 
 			lpspi6: spi@42700000 {
-				compatible = "fsl,imx95-spi", "fsl,imx7ulp-spi";
+				compatible = "fsl,imx94-spi", "fsl,imx7ulp-spi";
 				reg = <0x42700000 0x10000>;
 				interrupts = <GIC_SPI 105 IRQ_TYPE_LEVEL_HIGH>;
 				#address-cells = <1>;
@@ -639,7 +648,7 @@
 			};
 
 			lpspi7: spi@42710000 {
-				compatible = "fsl,imx95-spi", "fsl,imx7ulp-spi";
+				compatible = "fsl,imx94-spi", "fsl,imx7ulp-spi";
 				reg = <0x42710000 0x10000>;
 				interrupts = <GIC_SPI 106 IRQ_TYPE_LEVEL_HIGH>;
 				#address-cells = <1>;
@@ -653,7 +662,7 @@
 			};
 
 			lpspi8: spi@42720000 {
-				compatible = "fsl,imx95-spi", "fsl,imx7ulp-spi";
+				compatible = "fsl,imx94-spi", "fsl,imx7ulp-spi";
 				reg = <0x42720000 0x10000>;
 				interrupts = <GIC_SPI 107 IRQ_TYPE_LEVEL_HIGH>;
 				#address-cells = <1>;
@@ -667,7 +676,7 @@
 			};
 
 			mu11: mailbox@42730000 {
-				compatible = "fsl,imx95-mu";
+				compatible = "fsl,imx94-mu", "fsl,imx95-mu";
 				reg = <0x42730000 0x10000>;
 				interrupts = <GIC_SPI 278 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&scmi_clk IMX94_CLK_BUSWAKEUP>;
@@ -676,45 +685,45 @@
 			};
 
 			edma4: dma-controller@42df0000 {
-				compatible = "fsl,imx95-edma5";
+				compatible = "fsl,imx94-edma5", "fsl,imx95-edma5";
 				reg = <0x42df0000 0x210000>;
 				clocks = <&scmi_clk IMX94_CLK_BUSWAKEUP>;
 				clock-names = "dma";
 				#dma-cells = <3>;
 				dma-channels = <64>;
 				interrupts-extended = <&a55_irqsteer 128>, <&a55_irqsteer 129>,
-					<&a55_irqsteer 130>, <&a55_irqsteer 131>,
-					<&a55_irqsteer 132>, <&a55_irqsteer 133>,
-					<&a55_irqsteer 134>, <&a55_irqsteer 135>,
-					<&a55_irqsteer 136>, <&a55_irqsteer 137>,
-					<&a55_irqsteer 138>, <&a55_irqsteer 139>,
-					<&a55_irqsteer 140>, <&a55_irqsteer 141>,
-					<&a55_irqsteer 142>, <&a55_irqsteer 143>,
-					<&a55_irqsteer 144>, <&a55_irqsteer 145>,
-					<&a55_irqsteer 146>, <&a55_irqsteer 147>,
-					<&a55_irqsteer 148>, <&a55_irqsteer 149>,
-					<&a55_irqsteer 150>, <&a55_irqsteer 151>,
-					<&a55_irqsteer 152>, <&a55_irqsteer 153>,
-					<&a55_irqsteer 154>, <&a55_irqsteer 155>,
-					<&a55_irqsteer 156>, <&a55_irqsteer 157>,
-					<&a55_irqsteer 158>, <&a55_irqsteer 159>,
-					<&a55_irqsteer 192>, <&a55_irqsteer 193>,
-					<&a55_irqsteer 194>, <&a55_irqsteer 195>,
-					<&a55_irqsteer 196>, <&a55_irqsteer 197>,
-					<&a55_irqsteer 198>, <&a55_irqsteer 199>,
-					<&a55_irqsteer 200>, <&a55_irqsteer 201>,
-					<&a55_irqsteer 202>, <&a55_irqsteer 203>,
-					<&a55_irqsteer 204>, <&a55_irqsteer 205>,
-					<&a55_irqsteer 206>, <&a55_irqsteer 207>,
-					<&a55_irqsteer 208>, <&a55_irqsteer 209>,
-					<&a55_irqsteer 210>, <&a55_irqsteer 211>,
-					<&a55_irqsteer 212>, <&a55_irqsteer 213>,
-					<&a55_irqsteer 214>, <&a55_irqsteer 215>,
-					<&a55_irqsteer 216>, <&a55_irqsteer 217>,
-					<&a55_irqsteer 218>, <&a55_irqsteer 219>,
-					<&a55_irqsteer 220>, <&a55_irqsteer 221>,
-					<&a55_irqsteer 222>, <&a55_irqsteer 223>,
-					<&gic GIC_SPI 206 IRQ_TYPE_LEVEL_HIGH>;
+						      <&a55_irqsteer 130>, <&a55_irqsteer 131>,
+						      <&a55_irqsteer 132>, <&a55_irqsteer 133>,
+						      <&a55_irqsteer 134>, <&a55_irqsteer 135>,
+						      <&a55_irqsteer 136>, <&a55_irqsteer 137>,
+						      <&a55_irqsteer 138>, <&a55_irqsteer 139>,
+						      <&a55_irqsteer 140>, <&a55_irqsteer 141>,
+						      <&a55_irqsteer 142>, <&a55_irqsteer 143>,
+						      <&a55_irqsteer 144>, <&a55_irqsteer 145>,
+						      <&a55_irqsteer 146>, <&a55_irqsteer 147>,
+						      <&a55_irqsteer 148>, <&a55_irqsteer 149>,
+						      <&a55_irqsteer 150>, <&a55_irqsteer 151>,
+						      <&a55_irqsteer 152>, <&a55_irqsteer 153>,
+						      <&a55_irqsteer 154>, <&a55_irqsteer 155>,
+						      <&a55_irqsteer 156>, <&a55_irqsteer 157>,
+						      <&a55_irqsteer 158>, <&a55_irqsteer 159>,
+						      <&a55_irqsteer 192>, <&a55_irqsteer 193>,
+						      <&a55_irqsteer 194>, <&a55_irqsteer 195>,
+						      <&a55_irqsteer 196>, <&a55_irqsteer 197>,
+						      <&a55_irqsteer 198>, <&a55_irqsteer 199>,
+						      <&a55_irqsteer 200>, <&a55_irqsteer 201>,
+						      <&a55_irqsteer 202>, <&a55_irqsteer 203>,
+						      <&a55_irqsteer 204>, <&a55_irqsteer 205>,
+						      <&a55_irqsteer 206>, <&a55_irqsteer 207>,
+						      <&a55_irqsteer 208>, <&a55_irqsteer 209>,
+						      <&a55_irqsteer 210>, <&a55_irqsteer 211>,
+						      <&a55_irqsteer 212>, <&a55_irqsteer 213>,
+						      <&a55_irqsteer 214>, <&a55_irqsteer 215>,
+						      <&a55_irqsteer 216>, <&a55_irqsteer 217>,
+						      <&a55_irqsteer 218>, <&a55_irqsteer 219>,
+						      <&a55_irqsteer 220>, <&a55_irqsteer 221>,
+						      <&a55_irqsteer 222>, <&a55_irqsteer 223>,
+						      <&gic GIC_SPI 206 IRQ_TYPE_LEVEL_HIGH>;
 			};
 		};
 
@@ -727,7 +736,7 @@
 			#size-cells = <1>;
 
 			usdhc1: mmc@42850000 {
-				compatible = "fsl,imx95-usdhc", "fsl,imx8mm-usdhc";
+				compatible = "fsl,imx94-usdhc", "fsl,imx8mm-usdhc";
 				reg = <0x42850000 0x10000>;
 				interrupts = <GIC_SPI 96 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&scmi_clk IMX94_CLK_BUSWAKEUP>,
@@ -744,7 +753,7 @@
 			};
 
 			usdhc2: mmc@42860000 {
-				compatible = "fsl,imx95-usdhc", "fsl,imx8mm-usdhc";
+				compatible = "fsl,imx94-usdhc", "fsl,imx8mm-usdhc";
 				reg = <0x42860000 0x10000>;
 				interrupts = <GIC_SPI 97 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&scmi_clk IMX94_CLK_BUSWAKEUP>,
@@ -761,7 +770,7 @@
 			};
 
 			usdhc3: mmc@42880000 {
-				compatible = "fsl,imx95-usdhc", "fsl,imx8mm-usdhc";
+				compatible = "fsl,imx94-usdhc", "fsl,imx8mm-usdhc";
 				reg = <0x42880000 0x10000>;
 				interrupts = <GIC_SPI 116 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&scmi_clk IMX94_CLK_BUSWAKEUP>,
@@ -778,7 +787,7 @@
 			};
 
 			lpuart9: serial@42a50000 {
-				compatible = "fsl,imx95-lpuart", "fsl,imx8ulp-lpuart",
+				compatible = "fsl,imx94-lpuart", "fsl,imx8ulp-lpuart",
 					     "fsl,imx7ulp-lpuart";
 				reg = <0x42a50000 0x1000>;
 				interrupts = <GIC_SPI 80 IRQ_TYPE_LEVEL_HIGH>;
@@ -790,7 +799,7 @@
 			};
 
 			lpuart10: serial@42a60000 {
-				compatible = "fsl,imx95-lpuart", "fsl,imx8ulp-lpuart",
+				compatible = "fsl,imx94-lpuart", "fsl,imx8ulp-lpuart",
 					     "fsl,imx7ulp-lpuart";
 				reg = <0x42a60000 0x1000>;
 				interrupts = <GIC_SPI 81 IRQ_TYPE_LEVEL_HIGH>;
@@ -802,7 +811,7 @@
 			};
 
 			lpuart11: serial@42a70000 {
-				compatible = "fsl,imx95-lpuart", "fsl,imx8ulp-lpuart",
+				compatible = "fsl,imx94-lpuart", "fsl,imx8ulp-lpuart",
 					     "fsl,imx7ulp-lpuart";
 				reg = <0x42a70000 0x1000>;
 				interrupts = <GIC_SPI 82 IRQ_TYPE_LEVEL_HIGH>;
@@ -814,7 +823,7 @@
 			};
 
 			lpuart12: serial@42a80000 {
-				compatible = "fsl,imx95-lpuart", "fsl,imx8ulp-lpuart",
+				compatible = "fsl,imx94-lpuart", "fsl,imx8ulp-lpuart",
 					     "fsl,imx7ulp-lpuart";
 				reg = <0x42a80000 0x1000>;
 				interrupts = <GIC_SPI 83 IRQ_TYPE_LEVEL_HIGH>;
@@ -826,7 +835,7 @@
 			};
 
 			mu12: mailbox@42ac0000 {
-				compatible = "fsl,imx95-mu";
+				compatible = "fsl,imx94-mu", "fsl,imx95-mu";
 				reg = <0x42ac0000 0x10000>;
 				interrupts = <GIC_SPI 279 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&scmi_clk IMX94_CLK_BUSWAKEUP>;
@@ -835,7 +844,7 @@
 			};
 
 			mu13: mailbox@42ae0000 {
-				compatible = "fsl,imx95-mu";
+				compatible = "fsl,imx94-mu", "fsl,imx95-mu";
 				reg = <0x42ae0000 0x10000>;
 				interrupts = <GIC_SPI 280 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&scmi_clk IMX94_CLK_BUSWAKEUP>;
@@ -844,7 +853,7 @@
 			};
 
 			mu14: mailbox@42b00000 {
-				compatible = "fsl,imx95-mu";
+				compatible = "fsl,imx94-mu", "fsl,imx95-mu";
 				reg = <0x42b00000 0x10000>;
 				interrupts = <GIC_SPI 282 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&scmi_clk IMX94_CLK_BUSWAKEUP>;
@@ -853,7 +862,7 @@
 			};
 
 			mu15: mailbox@42b20000 {
-				compatible = "fsl,imx95-mu";
+				compatible = "fsl,imx94-mu", "fsl,imx95-mu";
 				reg = <0x42b20000 0x10000>;
 				interrupts = <GIC_SPI 284 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&scmi_clk IMX94_CLK_BUSWAKEUP>;
@@ -862,7 +871,7 @@
 			};
 
 			mu16: mailbox@42b40000 {
-				compatible = "fsl,imx95-mu";
+				compatible = "fsl,imx94-mu", "fsl,imx95-mu";
 				reg = <0x42b40000 0x10000>;
 				interrupts = <GIC_SPI 286 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&scmi_clk IMX94_CLK_BUSWAKEUP>;
@@ -871,7 +880,7 @@
 			};
 
 			mu17: mailbox@42b60000 {
-				compatible = "fsl,imx95-mu";
+				compatible = "fsl,imx94-mu", "fsl,imx95-mu";
 				reg = <0x42b60000 0x10000>;
 				interrupts = <GIC_SPI 288 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&scmi_clk IMX94_CLK_BUSWAKEUP>;
@@ -892,6 +901,8 @@
 				#size-cells = <0>;
 				clocks = <&scmi_clk IMX94_CLK_XSPI1>;
 				clock-names = "per";
+				dmas = <&edma2 27 0 0>, <&edma2 28 0 FSL_EDMA_RX>;
+				dma-names = "tx", "rx";
 				status = "disabled";
 			};
 
@@ -913,7 +924,7 @@
 		};
 
 		gpio2: gpio@43810000 {
-			compatible = "fsl,imx95-gpio", "fsl,imx8ulp-gpio";
+			compatible = "fsl,imx94-gpio", "fsl,imx8ulp-gpio";
 			reg = <0x0 0x43810000 0x0 0x1000>;
 			#interrupt-cells = <2>;
 			interrupt-controller;
@@ -922,10 +933,11 @@
 			#gpio-cells = <2>;
 			gpio-controller;
 			gpio-ranges = <&scmi_iomuxc 0 4 32>;
+			ngpios = <32>;
 		};
 
 		gpio3: gpio@43820000 {
-			compatible = "fsl,imx95-gpio", "fsl,imx8ulp-gpio";
+			compatible = "fsl,imx94-gpio", "fsl,imx8ulp-gpio";
 			reg = <0x0 0x43820000 0x0 0x1000>;
 			#interrupt-cells = <2>;
 			interrupt-controller;
@@ -934,10 +946,11 @@
 			#gpio-cells = <2>;
 			gpio-controller;
 			gpio-ranges = <&scmi_iomuxc 0 36 26>;
+			ngpios = <26>;
 		};
 
 		gpio4: gpio@43840000 {
-			compatible = "fsl,imx95-gpio", "fsl,imx8ulp-gpio";
+			compatible = "fsl,imx94-gpio", "fsl,imx8ulp-gpio";
 			reg = <0x0 0x43840000 0x0 0x1000>;
 			#interrupt-cells = <2>;
 			interrupt-controller;
@@ -947,10 +960,11 @@
 			gpio-controller;
 			gpio-ranges = <&scmi_iomuxc 0 62 4>, <&scmi_iomuxc 4 0 4>,
 				      <&scmi_iomuxc 8 140 12>, <&scmi_iomuxc 20 164 12>;
+			ngpios = <32>;
 		};
 
 		gpio5: gpio@43850000 {
-			compatible = "fsl,imx95-gpio", "fsl,imx8ulp-gpio";
+			compatible = "fsl,imx94-gpio", "fsl,imx8ulp-gpio";
 			reg = <0x0 0x43850000 0x0 0x1000>;
 			#interrupt-cells = <2>;
 			interrupt-controller;
@@ -959,10 +973,11 @@
 			#gpio-cells = <2>;
 			gpio-controller;
 			gpio-ranges = <&scmi_iomuxc 0 108 32>;
+			ngpios = <32>;
 		};
 
 		gpio6: gpio@43860000 {
-			compatible = "fsl,imx95-gpio", "fsl,imx8ulp-gpio";
+			compatible = "fsl,imx94-gpio", "fsl,imx8ulp-gpio";
 			reg = <0x0 0x43860000 0x0 0x1000>;
 			#interrupt-cells = <2>;
 			interrupt-controller;
@@ -971,10 +986,11 @@
 			#gpio-cells = <2>;
 			gpio-controller;
 			gpio-ranges = <&scmi_iomuxc 0 66 32>;
+			ngpios = <32>;
 		};
 
 		gpio7: gpio@43870000 {
-			compatible = "fsl,imx95-gpio", "fsl,imx8ulp-gpio";
+			compatible = "fsl,imx94-gpio", "fsl,imx8ulp-gpio";
 			reg = <0x0 0x43870000 0x0 0x1000>;
 			#interrupt-cells = <2>;
 			interrupt-controller;
@@ -983,6 +999,8 @@
 			#gpio-cells = <2>;
 			gpio-controller;
 			gpio-ranges = <&scmi_iomuxc 0 98 10>, <&scmi_iomuxc 16 152 12>;
+			gpio-reserved-ranges = <10 6>;
+			ngpios = <28>;
 		};
 
 		aips1: bus@44000000 {
@@ -993,7 +1011,7 @@
 			#size-cells = <1>;
 
 			edma1: dma-controller@44000000 {
-				compatible = "fsl,imx93-edma3";
+				compatible = "fsl,imx94-edma3", "fsl,imx93-edma3";
 				reg = <0x44000000 0x210000>;
 				interrupts = <GIC_SPI 230 IRQ_TYPE_LEVEL_HIGH>,
 					     <GIC_SPI 231 IRQ_TYPE_LEVEL_HIGH>,
@@ -1032,11 +1050,10 @@
 				clock-names = "dma";
 				#dma-cells = <3>;
 				dma-channels = <32>;
-				status = "okay";
 			};
 
 			mu1: mailbox@44220000 {
-				compatible = "fsl,imx95-mu";
+				compatible = "fsl,imx94-mu", "fsl,imx95-mu";
 				reg = <0x44220000 0x10000>;
 				interrupts = <GIC_SPI 262 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&scmi_clk IMX94_CLK_BUSAON>;
@@ -1045,7 +1062,7 @@
 			};
 
 			system_counter: timer@44290000 {
-				compatible = "nxp,imx95-sysctr-timer", "nxp,sysctr-timer";
+				compatible = "nxp,imx94-sysctr-timer", "nxp,imx95-sysctr-timer";
 				reg = <0x44290000 0x30000>;
 				interrupts = <GIC_SPI 85 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&osc_24m>;
@@ -1054,7 +1071,7 @@
 			};
 
 			tpm1: pwm@44310000 {
-				compatible = "fsl,imx7ulp-pwm";
+				compatible = "fsl,imx94-pwm", "fsl,imx7ulp-pwm";
 				reg = <0x44310000 0x1000>;
 				clocks = <&scmi_clk IMX94_CLK_BUSAON>;
 				#pwm-cells = <3>;
@@ -1062,7 +1079,7 @@
 			};
 
 			tpm2: pwm@44320000 {
-				compatible = "fsl,imx7ulp-pwm";
+				compatible = "fsl,imx94-pwm", "fsl,imx7ulp-pwm";
 				reg = <0x44320000 0x1000>;
 				clocks = <&scmi_clk IMX94_CLK_TPM2>;
 				#pwm-cells = <3>;
@@ -1083,7 +1100,7 @@
 			};
 
 			lpi2c1: i2c@44340000 {
-				compatible = "fsl,imx95-lpi2c", "fsl,imx7ulp-lpi2c";
+				compatible = "fsl,imx94-lpi2c", "fsl,imx7ulp-lpi2c";
 				reg = <0x44340000 0x10000>;
 				interrupts = <GIC_SPI 15 IRQ_TYPE_LEVEL_HIGH>;
 				#address-cells = <1>;
@@ -1097,7 +1114,7 @@
 			};
 
 			lpi2c2: i2c@44350000 {
-				compatible = "fsl,imx95-lpi2c", "fsl,imx7ulp-lpi2c";
+				compatible = "fsl,imx94-lpi2c", "fsl,imx7ulp-lpi2c";
 				reg = <0x44350000 0x10000>;
 				interrupts = <GIC_SPI 16 IRQ_TYPE_LEVEL_HIGH>;
 				#address-cells = <1>;
@@ -1111,7 +1128,7 @@
 			};
 
 			lpspi1: spi@44360000 {
-				compatible = "fsl,imx95-spi", "fsl,imx7ulp-spi";
+				compatible = "fsl,imx94-spi", "fsl,imx7ulp-spi";
 				reg = <0x44360000 0x10000>;
 				interrupts = <GIC_SPI 18 IRQ_TYPE_LEVEL_HIGH>;
 				#address-cells = <1>;
@@ -1125,7 +1142,7 @@
 			};
 
 			lpspi2: spi@44370000 {
-				compatible = "fsl,imx95-spi", "fsl,imx7ulp-spi";
+				compatible = "fsl,imx94-spi", "fsl,imx7ulp-spi";
 				reg = <0x44370000 0x10000>;
 				interrupts = <GIC_SPI 19 IRQ_TYPE_LEVEL_HIGH>;
 				#address-cells = <1>;
@@ -1139,7 +1156,7 @@
 			};
 
 			lpuart1: serial@44380000 {
-				compatible = "fsl,imx95-lpuart", "fsl,imx8ulp-lpuart",
+				compatible = "fsl,imx94-lpuart", "fsl,imx8ulp-lpuart",
 					     "fsl,imx7ulp-lpuart";
 				reg = <0x44380000 0x1000>;
 				interrupts = <GIC_SPI 21 IRQ_TYPE_LEVEL_HIGH>;
@@ -1151,7 +1168,7 @@
 			};
 
 			lpuart2: serial@44390000 {
-				compatible = "fsl,imx95-lpuart", "fsl,imx8ulp-lpuart",
+				compatible = "fsl,imx94-lpuart", "fsl,imx8ulp-lpuart",
 					     "fsl,imx7ulp-lpuart";
 				reg = <0x44390000 0x1000>;
 				interrupts = <GIC_SPI 22 IRQ_TYPE_LEVEL_HIGH>;
@@ -1163,7 +1180,7 @@
 			};
 
 			flexcan1: can@443a0000 {
-				compatible = "fsl,imx95-flexcan";
+				compatible = "fsl,imx94-flexcan", "fsl,imx95-flexcan";
 				reg = <0x443a0000 0x10000>;
 				interrupts = <GIC_SPI 10 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&scmi_clk IMX94_CLK_BUSAON>,
@@ -1177,7 +1194,7 @@
 			};
 
 			sai1: sai@443b0000 {
-				compatible = "fsl,imx95-sai";
+				compatible = "fsl,imx94-sai", "fsl,imx95-sai";
 				reg = <0x443b0000 0x10000>;
 				interrupts = <GIC_SPI 38 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&scmi_clk IMX94_CLK_BUSAON>, <&dummy>,
@@ -1204,14 +1221,14 @@
 					 <&dummy>;
 				clock-names = "ipg_clk", "ipg_clk_app",
 					      "pll8k", "pll11k", "clkext3";
-				dmas = <&edma1 6 0 5>;
+				dmas = <&edma1 6 0 (FSL_EDMA_MULTI_FIFO | FSL_EDMA_RX)>;
 				dma-names = "rx";
 				#sound-dai-cells = <0>;
 				status = "disabled";
 			};
 
 			adc1: adc@44530000 {
-				compatible = "nxp,imx93-adc";
+				compatible = "nxp,imx94-adc", "nxp,imx93-adc";
 				reg = <0x44530000 0x10000>;
 				interrupts = <GIC_SPI 117 IRQ_TYPE_LEVEL_HIGH>,
 					     <GIC_SPI 118 IRQ_TYPE_LEVEL_HIGH>,
@@ -1223,7 +1240,7 @@
 			};
 
 			mu2: mailbox@445b0000 {
-				compatible = "fsl,imx95-mu";
+				compatible = "fsl,imx94-mu", "fsl,imx95-mu";
 				reg = <0x445b0000 0x1000>;
 				ranges;
 				interrupts = <GIC_SPI 264 IRQ_TYPE_LEVEL_HIGH>;
@@ -1251,7 +1268,7 @@
 			};
 
 			mu3: mailbox@445d0000 {
-				compatible = "fsl,imx95-mu";
+				compatible = "fsl,imx94-mu", "fsl,imx95-mu";
 				reg = <0x445d0000 0x10000>;
 				interrupts = <GIC_SPI 266 IRQ_TYPE_LEVEL_HIGH>;
 				#mbox-cells = <2>;
@@ -1259,7 +1276,7 @@
 			};
 
 			mu4: mailbox@445f0000 {
-				compatible = "fsl,imx95-mu";
+				compatible = "fsl,imx94-mu", "fsl,imx95-mu";
 				reg = <0x445f0000 0x10000>;
 				interrupts = <GIC_SPI 268 IRQ_TYPE_LEVEL_HIGH>;
 				#mbox-cells = <2>;
@@ -1267,7 +1284,7 @@
 			};
 
 			mu6: mailbox@44630000 {
-				compatible = "fsl,imx95-mu";
+				compatible = "fsl,imx94-mu", "fsl,imx95-mu";
 				reg = <0x44630000 0x10000>;
 				interrupts = <GIC_SPI 123 IRQ_TYPE_LEVEL_HIGH>;
 				#mbox-cells = <2>;
@@ -1275,7 +1292,7 @@
 			};
 
 			a55_irqsteer: interrupt-controller@446a0000 {
-				compatible = "fsl,imx-irqsteer";
+				compatible = "fsl,imx94-irqsteer", "fsl,imx-irqsteer";
 				reg = <0x446a0000 0x1000>;
 				#interrupt-cells = <1>;
 				interrupt-controller;
@@ -1289,6 +1306,29 @@
 				clock-names = "ipg";
 				fsl,channel = <0>;
 				fsl,num-irqs = <960>;
+			};
+		};
+
+		ocotp: efuse@47510000 {
+			compatible = "fsl,imx94-ocotp";
+			reg = <0x0 0x47510000 0x0 0x10000>;
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			eth_mac0: mac-address@0 {
+				reg = <0x0854 0x6>;
+			};
+
+			eth_mac1: mac-address@1 {
+				reg = <0x1854 0x6>;
+			};
+
+			eth_mac2: mac-address@2 {
+				reg = <0x2854 0x6>;
+			};
+
+			eth_mac3: mac-address@3 {
+				reg = <0x3854 0x6>;
 			};
 		};
 
@@ -1309,8 +1349,10 @@
 		};
 
 		v2x_mu2: mailbox@47320000 {
-			compatible = "fsl,imx94-mu-v2x-fce";
-			reg = <0x0 0x47320000 0x0 0x10000>;
+			compatible = "fsl,imx94-mu-prime";
+			reg = <0x0 0x47320000 0x0 0x10000>,
+			      <0x0 0x42680000 0x0 0x200>;
+			reg-names = "prime", "atu";
 			interrupts = <GIC_SPI 384 IRQ_TYPE_LEVEL_HIGH>;
 			interrupt-names = "tx", "rx";
 			#mbox-cells = <2>;
@@ -1340,29 +1382,6 @@
 			#mbox-cells = <2>;
 		};
 
-		ocotp: efuse@47510000 {
-			compatible = "fsl,imx94-ocotp";
-			reg = <0x0 0x47510000 0x0 0x10000>;
-			#address-cells = <1>;
-			#size-cells = <1>;
-
-			eth_mac0: mac-address@0 {
-				reg = <0x0854 0x6>;
-			};
-
-			eth_mac1: mac-address@1 {
-				reg = <0x1854 0x6>;
-			};
-
-			eth_mac2: mac-address@2 {
-				reg = <0x2854 0x6>;
-			};
-
-			eth_mac3: mac-address@3 {
-				reg = <0x3854 0x6>;
-			};
-		};
-
 		elemu3: mailbox@47550000 {
 			compatible = "fsl,imx94-mu-ele";
 			reg = <0x0 0x47550000 0x0 0x10000>;
@@ -1377,8 +1396,8 @@
 			#address-cells = <1>;
 			#size-cells = <1>;
 
-			wdog3: wdog@49220000 {
-				compatible = "fsl,imx94-wdt";
+			wdog3: watchdog@49220000 {
+				compatible = "fsl,imx94-wdt", "fsl,imx93-wdt";
 				reg = <0x49220000 0x10000>;
 				interrupts = <GIC_SPI 90 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&scmi_clk IMX94_CLK_BUSWAKEUP>;
@@ -1650,7 +1669,7 @@
 			      <0 0x4c340000 0 0x4000>;
 			reg-names = "dbi", "config", "atu", "app";
 			ranges = <0x81000000 0x0 0x00000000 0x0 0x6ff00000 0 0x00100000>,
-				 <0x82000000 0x0 0x10000000 0x9 0x10000000 0 0x10000000>;
+				 <0x82000000 0x0 0x10000000 0x9 0x10000000 0 0x80000000>;
 			#address-cells = <3>;
 			#size-cells = <2>;
 			device_type = "pci";
@@ -1662,9 +1681,11 @@
 			num-lanes = <1>;
 			num-viewport = <8>;
 			interrupts = <GIC_SPI 364 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 365 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 364 IRQ_TYPE_LEVEL_HIGH>,
 				     <GIC_SPI 364 IRQ_TYPE_LEVEL_HIGH>,
 				     <GIC_SPI 364 IRQ_TYPE_LEVEL_HIGH>;
-			interrupt-names = "msi", "pme", "intr";
+			interrupt-names = "msi", "dma", "aer", "intr", "pme";
 			#interrupt-cells = <1>;
 			interrupt-map-mask = <0 0 0 0x7>;
 			interrupt-map = <0 0 0 1 &gic 0 0 GIC_SPI 360 IRQ_TYPE_LEVEL_HIGH>,

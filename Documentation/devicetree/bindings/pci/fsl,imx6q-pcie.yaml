@@ -47,12 +47,24 @@ properties:
     maxItems: 5
 
   interrupts:
+    minItems: 1
     items:
       - description: builtin MSI controller.
+      - description: builtin DMA controller.
+      - description: builtin AER SPI standalone interrupter line.
+      - description: Application-specific IRQ raised depending on the
+          vendor-specific events basis.
+      - description: builtin PME SPI standalone interrupter line.
+
 
   interrupt-names:
+    minItems: 1
     items:
       - const: msi
+      - const: dma
+      - const: aer
+      - const: intr
+      - const: pme
 
   reset-gpio:
     description: Should specify the GPIO for controlling the PCI bus device
@@ -132,7 +144,7 @@ allOf:
     then:
       properties:
         clocks:
-          minItems: 4
+          maxItems: 4
         clock-names:
           items:
             - const: pcie
@@ -148,7 +160,7 @@ allOf:
     then:
       properties:
         clocks:
-          minItems: 4
+          maxItems: 4
         clock-names:
           items:
             - const: pcie

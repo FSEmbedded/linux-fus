@@ -205,7 +205,7 @@ start:
 	spin_unlock_bh(&rose_list_lock);
 
 	for (i = 0; i < cnt; i++) {
-		sk = array[cnt];
+		sk = array[i];
 		rose = rose_sk(sk);
 		lock_sock(sk);
 		spin_lock_bh(&rose_list_lock);
@@ -345,7 +345,7 @@ void rose_destroy_socket(struct sock *);
  */
 static void rose_destroy_timer(struct timer_list *t)
 {
-	struct sock *sk = from_timer(sk, t, sk_timer);
+	struct sock *sk = timer_container_of(sk, t, sk_timer);
 
 	rose_destroy_socket(sk);
 }
@@ -807,6 +807,11 @@ static int rose_connect(struct socket *sock, struct sockaddr *uaddr, int addr_le
 	if (sk->sk_state == TCP_ESTABLISHED) {
 		/* No reconnect on a seqpacket socket */
 		err = -EISCONN;
+		goto out_release;
+	}
+
+	if (sk->sk_state == TCP_SYN_SENT) {
+		err = -EALREADY;
 		goto out_release;
 	}
 

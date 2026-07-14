@@ -399,7 +399,6 @@ static const struct hdmi_codec_ops audio_codec_ops = {
 	.mute_stream = audio_mute_stream,
 	.get_eld = audio_get_eld,
 	.hook_plugged_cb = audio_hook_plugged_cb,
-	.no_capture_mute = 1,
 };
 
 int cdns_mhdp_register_audio_driver(struct device *dev)
@@ -410,6 +409,7 @@ int cdns_mhdp_register_audio_driver(struct device *dev)
 		.spdif = 1,
 		.ops = &audio_codec_ops,
 		.max_i2s_channels = 8,
+		.no_capture_mute = 1,
 	};
 
 	mhdp->audio_pdev = platform_device_register_data(

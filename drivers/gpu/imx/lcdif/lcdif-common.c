@@ -680,7 +680,7 @@ static int lcdif_of_parse_resets(struct lcdif_soc *lcdif)
 		if (!compat)
 			continue;
 
-		rstc = of_reset_control_array_get(child, false, false, true);
+		rstc = of_reset_control_array_get(child, RESET_CONTROL_EXCLUSIVE);
 		if (IS_ERR(rstc))
 			continue;
 

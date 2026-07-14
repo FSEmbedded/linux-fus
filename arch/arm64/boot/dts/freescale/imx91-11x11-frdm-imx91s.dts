@@ -16,6 +16,35 @@
 	model = "NXP FRDM-IMX91S";
 	compatible = "fsl,frdm-imx91s", "fsl,imx91";
 
+	aliases {
+		ethernet0 = &fec;
+		ethernet1 = &eqos;
+		gpio0 = &gpio1;
+		gpio1 = &gpio2;
+		gpio2 = &gpio3;
+		gpio3 = &gpio4;
+		i2c0 = &lpi2c1;
+		i2c1 = &lpi2c2;
+		i2c2 = &lpi2c3;
+		i2c3 = &lpi2c4;
+		i2c4 = &lpi2c5;
+		i2c5 = &lpi2c6;
+		i2c6 = &lpi2c7;
+		i2c7 = &lpi2c8;
+		mmc0 = &usdhc1;
+		mmc1 = &usdhc2;
+		mmc2 = &usdhc3;
+		rtc0 = &bbnsm_rtc;
+		serial0 = &lpuart1;
+		serial1 = &lpuart2;
+		serial2 = &lpuart3;
+		serial3 = &lpuart4;
+		serial4 = &lpuart5;
+		serial5 = &lpuart6;
+		serial6 = &lpuart7;
+		serial7 = &lpuart8;
+	};
+
 	chosen {
 		stdout-path = &lpuart1;
 	};
@@ -373,6 +402,7 @@
 		reg = <0x22>;
 		gpio-controller;
 		#gpio-cells = <2>;
+		gpio-line-names = "", "", "IWxxx_NB_IND_RST_15_4";
 		interrupt-controller;
 		#interrupt-cells = <2>;
 		interrupt-parent = <&gpio3>;
@@ -388,6 +418,12 @@
 			gpio-hog;
 			gpios = <5 GPIO_ACTIVE_HIGH>;
 			output-high;
+		};
+
+		config-lpspi-hog {
+			gpio-hog;
+			gpios = <20 GPIO_ACTIVE_HIGH>;
+			output-low;
 		};
 	};
 };
@@ -411,6 +447,24 @@
 
 	bluetooth {
 		compatible = "nxp,88w8987-bt";
+		fw-init-baudrate = <3000000>;
+	};
+};
+
+&lpspi1 {
+	fsl,spi-num-chipselects = <1>;
+	pinctrl-names = "default", "sleep";
+	pinctrl-0 = <&pinctrl_lpspi1>;
+	pinctrl-1 = <&pinctrl_lpspi1>;
+	cs-gpios = <&gpio1 11 GPIO_ACTIVE_LOW>;
+	status = "okay";
+
+	spidev0: spi@0 {
+		reg = <0>;
+		compatible = "lwn,bk4";
+		spi-max-frequency = <1000000>;
+		spi-cs-inactive-delay-ns = <50000>;
+		label="IWxxx_SPIDEV";
 	};
 };
 
@@ -421,27 +475,19 @@
 &mqs1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_mqs1>;
-	clocks = <&clk IMX91_CLK_MQS1_GATE>;
+	clocks = <&clk IMX93_CLK_MQS1_GATE>;
 	clock-names = "mclk";
-	status = "okay";
-};
-
-&mu1 {
-	status = "okay";
-};
-
-&mu2 {
 	status = "okay";
 };
 
 &sai1 {
 	#sound-dai-cells = <0>;
-	clocks = <&clk IMX91_CLK_SAI1_IPG>, <&clk IMX91_CLK_DUMMY>,
-		 <&clk IMX91_CLK_SAI1_GATE>, <&clk IMX91_CLK_DUMMY>,
-		 <&clk IMX91_CLK_DUMMY>, <&clk IMX91_CLK_AUDIO_PLL>;
+	clocks = <&clk IMX93_CLK_SAI1_IPG>, <&clk IMX93_CLK_DUMMY>,
+		 <&clk IMX93_CLK_SAI1_GATE>, <&clk IMX93_CLK_DUMMY>,
+		 <&clk IMX93_CLK_DUMMY>, <&clk IMX93_CLK_AUDIO_PLL>;
 	clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3", "pll8k";
-	assigned-clocks = <&clk IMX91_CLK_SAI1>;
-	assigned-clock-parents = <&clk IMX91_CLK_AUDIO_PLL>;
+	assigned-clocks = <&clk IMX93_CLK_SAI1>;
+	assigned-clock-parents = <&clk IMX93_CLK_AUDIO_PLL>;
 	assigned-clock-rates = <24576000>;
 	fsl,sai-mclk-direction-output;
 	status = "okay";
@@ -617,6 +663,15 @@
 		fsl,pins = <
 			MX91_PAD_I2C2_SCL__LPI2C2_SCL			0x40000b9e
 			MX91_PAD_I2C2_SDA__LPI2C2_SDA			0x40000b9e
+		>;
+	};
+
+	pinctrl_lpspi1: lpspi1grp {
+		fsl,pins = <
+			MX91_PAD_SAI1_TXFS__GPIO1_IO11      0x3fe
+			MX91_PAD_SAI1_TXC__LPSPI1_SIN       0x3fe
+			MX91_PAD_SAI1_RXD0__LPSPI1_SOUT     0x3fe
+			MX91_PAD_SAI1_TXD0__LPSPI1_SCK      0x3fe
 		>;
 	};
 

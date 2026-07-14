@@ -235,6 +235,13 @@ F: drivers/media/platform/nxp/imx-csi-formatter.c
 capture/hdp
 M: Sandor Yu <sandor.yu@nxp.com>
 
+capture/imx519
+M: Mirela Rabulea <mirela.rabulea@nxp.com>
+R: Laurentiu Palcu <laurentiu.palcu@oss.nxp.com>
+R: Julien Vuillaumier <julien.vuillaumier@nxp.com>
+F: drivers/media/i2c/imx519.c
+F: Documentation/devicetree/bindings/media/i2c/sony,imx519.yaml
+
 capture/isi
 M: G.n. Zhou <guoniu.zhou@nxp.com>
 F: Documentation/devicetree/bindings/media/imx8-isi.txt
@@ -317,12 +324,14 @@ F: drivers/media/i2c/ds90*
 F: include/media/i2c/ds90*
 
 capture/neoisp
-M: Aymen SGHAIER <aymen.sghaier@nxp.com>
+M: Antoine Bouyer <antoine.bouyer@nxp.com>
 M: Julien Vuillaumier <julien.vuillaumier@nxp.com>
 F: arch/arm64/boot/dts/freescale/imx95-19x19-evk-neoisp.dtso
-F: Documentation/userspace-api/media/v4l/neo-isp-hw-mapping.rst
+F: Documentation/admin-guide/media/nxp-neoisp*
+F: Documentation/devicetree/bindings/media/nxp,imx95-neoisp.yaml
+F: Documentation/userspace-api/media/v4l/metafmt-nxp-neoisp.rst
 F: drivers/media/platform/nxp/neoisp/neoisp*
-F: include/uapi/linux/nxp_neoisp.h
+F: include/uapi/linux/media/nxp/nxp_neoisp.h
 
 clock/imx
 M: Jacky Bai <jacky.bai@nxp.com>
@@ -398,6 +407,12 @@ M: Robert Chiras <robert.chiras@nxp.com>
 F: Documentation/devicetree/bindings/display/bridge/
 F: drivers/gpu/drm/bridge/
 F: include/drm/bridge/
+
+display/dcif
+M: Laurentiu Palcu <laurentiu.palcu@nxp.com>
+M: Ying Liu <victor.liu@nxp.com>
+F: Documentation/devicetree/bindings/display/imx/nxp,imx94-dcif.yaml
+F: drivers/gpu/drm/imx/dcif/
 
 display/dcnano
 M: Ying Liu <victor.liu@nxp.com>
@@ -614,7 +629,7 @@ M: Jacky Bai <ping.bai@nxp.com>
 F: arch/arm64/boot/dts/freescale/imx8ulp*
 
 dts/imx8
-M: Viorel Suman <viorel.suman@nxp.com>
+M: Frank Li <frank.li@nxp.com>
 F: arch/arm64/boot/dts/freescale/imx8-ss-*
 F: arch/arm64/boot/dts/freescale/imx8d*
 F: arch/arm64/boot/dts/freescale/imx8q*
@@ -883,6 +898,15 @@ net/ls1028-switch
 M: Vladimir Oltean <vladimir.oltean@nxp.com>
 F: drivers/net/ethernet/mscc/ocelot.c
 
+net/netc-switch
+M: Wei Fang <wei.fang@nxp.com>
+R: Vladimir Oltean <vladimir.oltean@nxp.com>
+R: Claudiu Manoil <claudiu.manoil@nxp.com>
+R: Clark Wang <xiaoning.wang@nxp.com>
+F: drivers/net/dsa/netc/
+F: include/linux/dsa/tag_netc.h
+F: net/dsa/tag_netc.c
+
 net/pfe
 M: Chaitanya Sakinam <Chaitanya.sakinam@nxp.com>
 R: Wei Fang <wei.fang@nxp.com>
@@ -1032,7 +1056,6 @@ M: Richard Zhu <hongxing.zhu@nxp.com>
 F: drivers/ata/
 
 script
-M: Ting Liu <ting.liu@nxp.com>
 M: Aisheng Dong <aisheng.dong@nxp.com>
 M: Frank Li <frank.li@nxp.com>
 F: MAINTAINERS.NXP
@@ -1088,6 +1111,12 @@ M: Han Xu <han.xu@nxp.com>
 F: Documentation/devicetree/bindings/spi/spi-fsl-qspi.txt
 F: drivers/spi/spi-fsl-qspi.c
 F: drivers/mtd/spi-nor/spansion.c
+
+spi/xspi
+M: Han Xu <han.xu@nxp.com>
+M: Haibo Chen <haibo.chen@nxp.com>
+F: Documentation/devicetree/bindings/spi/spi-nxp-xspi.yaml
+F: drivers/spi/spi-nxp-xspi.c
 
 thermal
 M: Jacky Bai <ping.bai@nxp.com>

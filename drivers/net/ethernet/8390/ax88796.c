@@ -1085,7 +1085,7 @@ static struct platform_driver axdrv = {
 		.of_match_table = of_match_ptr(ax88796_of_match),
 	},
 	.probe		= ax_probe,
-	.remove_new	= ax_remove,
+	.remove		= ax_remove,
 	.suspend	= ax_suspend,
 	.resume		= ax_resume,
 };

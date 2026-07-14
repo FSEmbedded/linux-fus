@@ -348,7 +348,7 @@ void kbase_csf_tl_reader_init(struct kbase_csf_tl_reader *self, struct kbase_tls
 
 void kbase_csf_tl_reader_term(struct kbase_csf_tl_reader *self)
 {
-	del_timer_sync(&self->read_timer);
+	timer_delete_sync(&self->read_timer);
 }
 
 int kbase_csf_tl_reader_start(struct kbase_csf_tl_reader *self, struct kbase_device *kbdev)
@@ -406,7 +406,7 @@ void kbase_csf_tl_reader_stop(struct kbase_csf_tl_reader *self)
 	/* Disable the tracebuffer on the CSFFW side. */
 	tl_reader_update_enable_bit(self, false);
 
-	del_timer_sync(&self->read_timer);
+	timer_delete_sync(&self->read_timer);
 
 	spin_lock_irqsave(&self->read_lock, flags);
 

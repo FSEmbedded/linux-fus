@@ -48,6 +48,7 @@ enum sysc_soc {
 	SOC_UNKNOWN,
 	SOC_2420,
 	SOC_2430,
+	SOC_AM33,
 	SOC_3430,
 	SOC_AM35,
 	SOC_3630,
@@ -1987,6 +1988,21 @@ static void sysc_module_disable_quirk_pruss(struct sysc *ddata)
 	sysc_write(ddata, ddata->offsets[SYSC_SYSCONFIG], reg);
 }
 
+static void sysc_module_enable_quirk_pruss(struct sysc *ddata)
+{
+	u32 reg;
+
+	reg = sysc_read(ddata, ddata->offsets[SYSC_SYSCONFIG]);
+
+	/*
+	 * Clearing the SYSC_PRUSS_STANDBY_INIT bit - Updates OCP master
+	 * port configuration to enable memory access outside of the
+	 * PRU-ICSS subsystem.
+	 */
+	reg &= (~SYSC_PRUSS_STANDBY_INIT);
+	sysc_write(ddata, ddata->offsets[SYSC_SYSCONFIG], reg);
+}
+
 static void sysc_init_module_quirks(struct sysc *ddata)
 {
 	if (ddata->legacy_mode || !ddata->name)
@@ -2039,8 +2055,10 @@ static void sysc_init_module_quirks(struct sysc *ddata)
 		ddata->module_disable_quirk = sysc_reset_done_quirk_wdt;
 	}
 
-	if (ddata->cfg.quirks & SYSC_MODULE_QUIRK_PRUSS)
+	if (ddata->cfg.quirks & SYSC_MODULE_QUIRK_PRUSS) {
+		ddata->module_enable_quirk = sysc_module_enable_quirk_pruss;
 		ddata->module_disable_quirk = sysc_module_disable_quirk_pruss;
+	}
 }
 
 static int sysc_clockdomain_init(struct sysc *ddata)
@@ -2153,9 +2171,8 @@ static int sysc_reset(struct sysc *ddata)
 static int sysc_init_module(struct sysc *ddata)
 {
 	bool rstctrl_deasserted = false;
-	int error = 0;
+	int error = sysc_clockdomain_init(ddata);
 
-	error = sysc_clockdomain_init(ddata);
 	if (error)
 		return error;
 
@@ -2896,6 +2913,7 @@ static void ti_sysc_idle(struct work_struct *work)
 static const struct soc_device_attribute sysc_soc_match[] = {
 	SOC_FLAG("OMAP242*", SOC_2420),
 	SOC_FLAG("OMAP243*", SOC_2430),
+	SOC_FLAG("AM33*", SOC_AM33),
 	SOC_FLAG("AM35*", SOC_AM35),
 	SOC_FLAG("OMAP3[45]*", SOC_3430),
 	SOC_FLAG("OMAP3[67]*", SOC_3630),
@@ -3101,10 +3119,15 @@ static int sysc_check_active_timer(struct sysc *ddata)
 	 * can be dropped if we stop supporting old beagleboard revisions
 	 * A to B4 at some point.
 	 */
-	if (sysc_soc->soc == SOC_3430 || sysc_soc->soc == SOC_AM35)
+	switch (sysc_soc->soc) {
+	case SOC_AM33:
+	case SOC_3430:
+	case SOC_AM35:
 		error = -ENXIO;
-	else
+		break;
+	default:
 		error = -EBUSY;
+	}
 
 	if ((ddata->cfg.quirks & SYSC_QUIRK_NO_RESET_ON_INIT) &&
 	    (ddata->cfg.quirks & SYSC_QUIRK_NO_IDLE))
@@ -3296,7 +3319,7 @@ MODULE_DEVICE_TABLE(of, sysc_match);
 
 static struct platform_driver sysc_driver = {
 	.probe		= sysc_probe,
-	.remove_new	= sysc_remove,
+	.remove		= sysc_remove,
 	.driver         = {
 		.name   = "ti-sysc",
 		.of_match_table	= sysc_match,

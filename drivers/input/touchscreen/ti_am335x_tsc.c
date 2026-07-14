@@ -85,7 +85,7 @@ static int titsc_config_wires(struct titsc *ts_dev)
 		wire_order[i] = ts_dev->config_inp[i] & 0x0F;
 		if (WARN_ON(analog_line[i] > 7))
 			return -EINVAL;
-		if (WARN_ON(wire_order[i] > ARRAY_SIZE(config_pins)))
+		if (WARN_ON(wire_order[i] >= ARRAY_SIZE(config_pins)))
 			return -EINVAL;
 	}
 
@@ -550,9 +550,9 @@ MODULE_DEVICE_TABLE(of, ti_tsc_dt_ids);
 
 static struct platform_driver ti_tsc_driver = {
 	.probe	= titsc_probe,
-	.remove_new = titsc_remove,
+	.remove	= titsc_remove,
 	.driver	= {
-		.name   = "TI-am335x-tsc",
+		.name	= "TI-am335x-tsc",
 		.pm	= pm_sleep_ptr(&titsc_pm_ops),
 		.of_match_table = ti_tsc_dt_ids,
 	},

@@ -18,6 +18,7 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
+#include <linux/lcd.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/device.h>
@@ -196,7 +197,7 @@ static struct regulator *hdmi_regulator;
 extern const struct fb_videomode mxc_cea_mode[64];
 extern void mxc_hdmi_cec_handle(u16 cec_stat);
 
-static void mxc_hdmi_setup(struct mxc_hdmi *hdmi, unsigned long event);
+static void mxc_hdmi_setup(struct mxc_hdmi *hdmi);
 static void mxc_hdmi_phy_disable(struct mxc_hdmi *hdmi);
 static void hdmi_enable_overflow_interrupts(void);
 static void hdmi_disable_overflow_interrupts(void);
@@ -311,7 +312,7 @@ static ssize_t mxc_hdmi_store_rgb_out_enable(struct device *dev,
 	hdmi->hdmi_data.rgb_out_enable = value;
 
 	/* Reconfig HDMI for output color space change */
-	mxc_hdmi_setup(hdmi, 0);
+	mxc_hdmi_setup(hdmi);
 
 	return count;
 }
@@ -358,7 +359,7 @@ static ssize_t mxc_hdmi_store_hdcp_enable(struct device *dev,
 	hdmi_disable_overflow_interrupts();
 
 	/* Reconfig HDMI for HDCP */
-	mxc_hdmi_setup(hdmi, 0);
+	mxc_hdmi_setup(hdmi);
 
 	if (hdmi->hdmi_data.hdcp_enable == false) {
 		sprintf(event_string, "EVENT=hdcpdisable");
@@ -1267,7 +1268,7 @@ static void mxc_hdmi_phy_init(struct mxc_hdmi *hdmi)
 	 * interrupt that can't be cleared or detected by accessing the
 	 * status register. */
 	if (!hdmi->fb_reg || !hdmi->cable_plugin
-			|| (hdmi->blank != FB_BLANK_UNBLANK))
+			|| (hdmi->blank != LCD_POWER_ON))
 		return;
 
 	if (!hdmi->hdmi_data.video_mode.mDVI)
@@ -1920,7 +1921,7 @@ static void mxc_hdmi_set_mode(struct mxc_hdmi *hdmi)
 		hdmi->fbi->mode = (struct fb_videomode *)mode;
 		fb_videomode_to_var(&hdmi->fbi->var, mode);
 		/* update hdmi setting in case EDID data updated  */
-		mxc_hdmi_setup(hdmi, 0);
+		mxc_hdmi_setup(hdmi);
 	} else {
 		dev_dbg(&hdmi->pdev->dev, "%s: New video mode\n", __func__);
 		mxc_hdmi_set_mode_to_vga_dvi(hdmi);
@@ -2162,7 +2163,7 @@ static irqreturn_t mxc_hdmi_hotplug(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
-static void mxc_hdmi_setup(struct mxc_hdmi *hdmi, unsigned long event)
+static void mxc_hdmi_setup(struct mxc_hdmi *hdmi)
 {
 	struct fb_videomode m;
 	const struct fb_videomode *edid_mode;
@@ -2332,44 +2333,11 @@ static int mxc_hdmi_fb_event(struct notifier_block *nb,
 		hdmi_set_registered(0);
 		break;
 
-	case FB_EVENT_MODE_CHANGE:
-		dev_dbg(&hdmi->pdev->dev, "event=FB_EVENT_MODE_CHANGE\n");
-		if (hdmi->fb_reg)
-			mxc_hdmi_setup(hdmi, val);
-		break;
-
-	case FB_EVENT_BLANK:
-		if ((*((int *)event->data) == FB_BLANK_UNBLANK) &&
-			(*((int *)event->data) != hdmi->blank)) {
-			dev_dbg(&hdmi->pdev->dev,
-				"event=FB_EVENT_BLANK - UNBLANK\n");
-
-			hdmi->blank = *((int *)event->data);
-
-			if (hdmi->fb_reg && hdmi->cable_plugin)
-				mxc_hdmi_setup(hdmi, val);
-			hdmi_set_blank_state(1);
-
-		} else if (*((int *)event->data) != hdmi->blank) {
-			dev_dbg(&hdmi->pdev->dev,
-				"event=FB_EVENT_BLANK - BLANK\n");
-			hdmi_set_blank_state(0);
-			mxc_hdmi_abort_stream();
-
-			mxc_hdmi_phy_disable(hdmi);
-
-			hdmi->blank = *((int *)event->data);
-		} else
-			dev_dbg(&hdmi->pdev->dev,
-				"FB BLANK state no changed!\n");
-
-		break;
-
 	case FB_EVENT_SUSPEND:
 		dev_dbg(&hdmi->pdev->dev,
 			"event=FB_EVENT_SUSPEND\n");
 
-		if (hdmi->blank == FB_BLANK_UNBLANK) {
+		if (hdmi->blank == LCD_POWER_ON) {
 			mxc_hdmi_phy_disable(hdmi);
 			clk_disable(hdmi->hdmi_iahb_clk);
 			clk_disable(hdmi->hdmi_isfr_clk);
@@ -2381,7 +2349,7 @@ static int mxc_hdmi_fb_event(struct notifier_block *nb,
 		dev_dbg(&hdmi->pdev->dev,
 			"event=FB_EVENT_RESUME\n");
 
-		if (hdmi->blank == FB_BLANK_UNBLANK) {
+		if (hdmi->blank == LCD_POWER_ON) {
 			clk_enable(hdmi->mipi_core_clk);
 			clk_enable(hdmi->hdmi_iahb_clk);
 			clk_enable(hdmi->hdmi_isfr_clk);
@@ -2505,7 +2473,7 @@ static int mxc_hdmi_disp_init(struct mxc_dispdrv_handle *disp,
 		return -ENODEV;
 
 	/* Setting HDMI default to blank state */
-	hdmi->blank = FB_BLANK_POWERDOWN;
+	hdmi->blank = LCD_POWER_OFF;
 
 	ret = ipu_di_to_crtc(&hdmi->pdev->dev, mxc_hdmi_ipu_id,
 			     mxc_hdmi_disp_id, &setting->crtc);
@@ -2787,12 +2755,66 @@ static const struct file_operations mxc_hdmi_fops = {
 	.unlocked_ioctl = mxc_hdmi_ioctl,
 };
 
+static int mxc_hdmi_lcd_set_power(struct lcd_device *lcd, int power)
+{
+	struct mxc_hdmi *hdmi = lcd_get_data(lcd);
+
+	if (power == LCD_POWER_ON && power != hdmi->blank) {
+		dev_dbg(&hdmi->pdev->dev, "power on\n");
+
+		hdmi->blank = power;
+
+		if (hdmi->fb_reg && hdmi->cable_plugin)
+			mxc_hdmi_setup(hdmi);
+		hdmi_set_blank_state(1);
+	} else if (power != hdmi->blank) {
+		dev_dbg(&hdmi->pdev->dev, "power off\n");
+		hdmi_set_blank_state(0);
+		mxc_hdmi_abort_stream();
+
+		mxc_hdmi_phy_disable(hdmi);
+
+		hdmi->blank = power;
+	} else {
+		dev_dbg(&hdmi->pdev->dev, "power no change\n");
+	}
+
+	return 0;
+}
+
+static int mxc_hdmi_lcd_set_mode(struct lcd_device *lcd, u32 xres, u32 yres)
+{
+	struct mxc_hdmi *hdmi = lcd_get_data(lcd);
+
+	dev_dbg(&hdmi->pdev->dev, "set mode\n");
+
+	if (hdmi->fb_reg)
+		mxc_hdmi_setup(hdmi);
+
+	return 0;
+}
+
+static bool mxc_hdmi_lcd_controls_device(struct lcd_device *lcd,
+					 struct device *display_device,
+					 struct fb_info *fbi)
+{
+	struct mxc_hdmi *hdmi = lcd_get_data(lcd);
+
+	return hdmi->fbi == fbi;
+}
+
+static const struct lcd_ops mxc_hdmi_lcd_ops = {
+	.set_power = mxc_hdmi_lcd_set_power,
+	.set_mode = mxc_hdmi_lcd_set_mode,
+	.controls_device = mxc_hdmi_lcd_controls_device,
+};
 
 static int mxc_hdmi_probe(struct platform_device *pdev)
 {
 	struct mxc_hdmi *hdmi;
 	struct device *temp_class;
 	struct resource *res;
+	struct lcd_device *lcd;
 	int ret = 0;
 
 	/* Check I2C driver is loaded and available
@@ -2878,6 +2900,14 @@ static int mxc_hdmi_probe(struct platform_device *pdev)
 	} else {
 		hdmi_regulator = NULL;
 		dev_warn(&pdev->dev, "No hdmi 5v supply\n");
+	}
+
+	lcd = devm_lcd_device_register(&pdev->dev, "mxc-hdmi-lcd", &pdev->dev,
+				       hdmi, &mxc_hdmi_lcd_ops);
+	if (IS_ERR(lcd)) {
+		ret = PTR_ERR(lcd);
+		dev_err(&pdev->dev, "failed to register lcd device: %d", ret);
+		goto edispdrv;
 	}
 
 	return 0;

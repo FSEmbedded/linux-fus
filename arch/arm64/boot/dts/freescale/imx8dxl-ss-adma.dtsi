@@ -9,6 +9,7 @@
 /delete-node/ &adc1_lpcg;
 /delete-node/ &amix;
 /delete-node/ &amix_lpcg;
+/delete-node/ &dsp;
 /delete-node/ &dsp_lpcg;
 /delete-node/ &dsp_ram_lpcg;
 /delete-node/ &edma1;
@@ -20,8 +21,6 @@
 /delete-node/ &sai4_lpcg;
 /delete-node/ &sai5;
 /delete-node/ &sai5_lpcg;
-/delete-node/ &spdif1;
-/delete-node/ &spdif1_lpcg;
 
 &acm {
 	compatible = "fsl,imx8dxl-acm";
@@ -38,6 +37,32 @@
 			<&pd IMX_SC_R_SAI_3>,
 			<&pd IMX_SC_R_SPDIF_0>,
 			<&pd IMX_SC_R_MQS_0>;
+	clocks = <&aud_rec0_lpcg IMX_LPCG_CLK_0>,
+		 <&aud_rec1_lpcg IMX_LPCG_CLK_0>,
+		 <&aud_pll_div0_lpcg IMX_LPCG_CLK_0>,
+		 <&aud_pll_div1_lpcg IMX_LPCG_CLK_0>,
+		 <&clk_ext_aud_mclk0>,
+		 <&clk_ext_aud_mclk1>,
+		 <&clk_spdif0_rx>,
+		 <&clk_sai0_rx_bclk>,
+		 <&clk_sai0_tx_bclk>,
+		 <&clk_sai1_rx_bclk>,
+		 <&clk_sai1_tx_bclk>,
+		 <&clk_sai2_rx_bclk>,
+		 <&clk_sai3_rx_bclk>;
+	clock-names = "aud_rec_clk0_lpcg_clk",
+		      "aud_rec_clk1_lpcg_clk",
+		      "aud_pll_div_clk0_lpcg_clk",
+		      "aud_pll_div_clk1_lpcg_clk",
+		      "ext_aud_mclk0",
+		      "ext_aud_mclk1",
+		      "spdif0_rx",
+		      "sai0_rx_bclk",
+		      "sai0_tx_bclk",
+		      "sai1_rx_bclk",
+		      "sai1_tx_bclk",
+		      "sai2_rx_bclk",
+		      "sai3_rx_bclk";
 };
 
 &audio_ipg_clk {
@@ -143,17 +168,14 @@
 };
 
 &flexcan1 {
-	compatible = "fsl,imx8dxl-flexcan", "fsl,imx8qxp-flexcan", "fsl,imx8qm-flexcan";
 	interrupts = <GIC_SPI 238 IRQ_TYPE_LEVEL_HIGH>;
 };
 
 &flexcan2 {
-	compatible = "fsl,imx8dxl-flexcan", "fsl,imx8qxp-flexcan", "fsl,imx8qm-flexcan";
 	interrupts = <GIC_SPI 239 IRQ_TYPE_LEVEL_HIGH>;
 };
 
 &flexcan3 {
-	compatible = "fsl,imx8dxl-flexcan", "fsl,imx8qxp-flexcan", "fsl,imx8qm-flexcan";
 	interrupts = <GIC_SPI 240 IRQ_TYPE_LEVEL_HIGH>;
 };
 
@@ -161,47 +183,47 @@
 	compatible = "fsl,imx8dxl-lpi2c", "fsl,imx7ulp-lpi2c";
 	interrupts = <GIC_SPI 222 IRQ_TYPE_LEVEL_HIGH>;
 	dma-names = "tx","rx";
-	dmas = <&edma3 1 0 0>, <&edma3 0 0 1>;
+	dmas = <&edma3 1 0 0>, <&edma3 0 0 FSL_EDMA_RX>;
 };
 
 &i2c1 {
 	compatible = "fsl,imx8dxl-lpi2c", "fsl,imx7ulp-lpi2c";
 	interrupts = <GIC_SPI 223 IRQ_TYPE_LEVEL_HIGH>;
 	dma-names = "tx","rx";
-	dmas = <&edma3 3 0 0>, <&edma3 2 0 1>;
+	dmas = <&edma3 3 0 0>, <&edma3 2 0 FSL_EDMA_RX>;
 };
 
 &i2c2 {
 	compatible = "fsl,imx8dxl-lpi2c", "fsl,imx7ulp-lpi2c";
 	interrupts = <GIC_SPI 224 IRQ_TYPE_LEVEL_HIGH>;
 	dma-names = "tx","rx";
-	dmas = <&edma3 5 0 0>, <&edma3 4 0 1>;
+	dmas = <&edma3 5 0 0>, <&edma3 4 0 FSL_EDMA_RX>;
 };
 
 &i2c3 {
 	compatible = "fsl,imx8dxl-lpi2c", "fsl,imx7ulp-lpi2c";
 	interrupts = <GIC_SPI 225 IRQ_TYPE_LEVEL_HIGH>;
 	dma-names = "tx","rx";
-	dmas = <&edma3 7 0 0>, <&edma3 6 0 1>;
+	dmas = <&edma3 7 0 0>, <&edma3 6 0 FSL_EDMA_RX>;
 };
 
 &lpuart0 {
-	compatible = "fsl,imx8dxl-lpuart", "fsl,imx8qxp-lpuart", "fsl,imx7ulp-lpuart";
+	compatible = "fsl,imx8dxl-lpuart", "fsl,imx8qxp-lpuart";
 	interrupts = <GIC_SPI 228 IRQ_TYPE_LEVEL_HIGH>;
 };
 
 &lpuart1 {
-	compatible = "fsl,imx8dxl-lpuart", "fsl,imx8qxp-lpuart", "fsl,imx7ulp-lpuart";
+	compatible = "fsl,imx8dxl-lpuart", "fsl,imx8qxp-lpuart";
 	interrupts = <GIC_SPI 229 IRQ_TYPE_LEVEL_HIGH>;
 };
 
 &lpuart2 {
-	compatible = "fsl,imx8dxl-lpuart", "fsl,imx8qxp-lpuart", "fsl,imx7ulp-lpuart";
+	compatible = "fsl,imx8dxl-lpuart", "fsl,imx8qxp-lpuart";
 	interrupts = <GIC_SPI 230 IRQ_TYPE_LEVEL_HIGH>;
 };
 
 &lpuart3 {
-	compatible = "fsl,imx8dxl-lpuart", "fsl,imx8qxp-lpuart", "fsl,imx7ulp-lpuart";
+	compatible = "fsl,imx8dxl-lpuart", "fsl,imx8qxp-lpuart";
 	interrupts = <GIC_SPI 231 IRQ_TYPE_LEVEL_HIGH>;
 };
 

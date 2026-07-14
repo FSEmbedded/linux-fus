@@ -396,7 +396,7 @@ static int lcdif_crtc_bind(struct device *dev, struct device *master,
 
 	/* limit the max width and height */
 	drm->mode_config.max_width  = 1920;
-	drm->mode_config.max_height = 1920;
+	drm->mode_config.max_height = 2340;
 
 	dev_dbg(dev, "%s: lcdif crtc bind end\n", __func__);
 

@@ -57,17 +57,19 @@ TRACE_EVENT(send_command,
 );
 
 TRACE_EVENT(irq,
-	TP_PROTO(struct vpu_device *vpu_dev, u32 irq),
-	TP_ARGS(vpu_dev, irq),
+	TP_PROTO(struct vpu_device *vpu_dev, u32 irq, u32 idc),
+	TP_ARGS(vpu_dev, irq, idc),
 	TP_STRUCT__entry(
 		__string(name, dev_name(vpu_dev->dev))
 		__field(u32, irq)
+		__field(u32, idc)
 	),
 	TP_fast_assign(
 		__assign_str(name);
 		__entry->irq = irq;
+		__entry->idc = idc;
 	),
-	TP_printk("%s: irq 0x%x", __get_str(name), __entry->irq)
+	TP_printk("%s: irq 0x%x, idc 0x%x", __get_str(name), __entry->irq, __entry->idc)
 );
 
 TRACE_EVENT(set_state,
@@ -108,8 +110,8 @@ DECLARE_EVENT_CLASS(inst_internal,
 		__assign_str(name);
 		__entry->id = inst->id;
 		__assign_str(type);
-		__entry->pixelformat  = V4L2_TYPE_IS_OUTPUT(type) ? inst->src_fmt.pixelformat :
-								    inst->dst_fmt.pixelformat;
+		__entry->pixelformat = V4L2_TYPE_IS_OUTPUT(type) ? inst->src_fmt.pixelformat :
+								   inst->dst_fmt.pixelformat;
 		__entry->width = V4L2_TYPE_IS_OUTPUT(type) ? inst->src_fmt.width :
 							     inst->dst_fmt.width;
 		__entry->height = V4L2_TYPE_IS_OUTPUT(type) ? inst->src_fmt.height :
@@ -199,31 +201,6 @@ TRACE_EVENT(source_change,
 		  __entry->min_fb_cnt, __entry->disp_delay,
 		  __entry->quantization,
 		  __entry->colorspace, __entry->xfer_func, __entry->ycbcr_enc)
-);
-
-TRACE_EVENT(set_fb,
-	TP_PROTO(struct vpu_instance *inst, int offset, int count, int fbc_num, int mv_num),
-	TP_ARGS(inst, offset, count, fbc_num, mv_num),
-	TP_STRUCT__entry(
-		__string(name, dev_name(inst->dev->dev))
-		__field(u32, id)
-		__field(u32, offset)
-		__field(u32, count)
-		__field(u32, fbc_num)
-		__field(u32, mv_num)
-	),
-	TP_fast_assign(
-		__assign_str(name);
-		__entry->id = inst->id;
-		__entry->offset = offset;
-		__entry->count = count;
-		__entry->fbc_num = fbc_num;
-		__entry->mv_num = mv_num;
-	),
-	TP_printk("%s: inst[%d] set_fb offset %d, count %d, required %d, %d",
-		  __get_str(name), __entry->id,
-		  __entry->offset, __entry->count,
-		  __entry->fbc_num, __entry->mv_num)
 );
 
 TRACE_EVENT(dec_done,

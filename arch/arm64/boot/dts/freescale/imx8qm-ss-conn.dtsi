@@ -7,7 +7,7 @@
 / {
 	usbphynop2: usbphynop2 {
 		compatible = "usb-nop-xceiv";
-		clocks = <&usb2_lpcg 1>;
+		clocks = <&usb2_lpcg IMX_LPCG_CLK_7>;
 		clock-names = "main_clk";
 		power-domains = <&pd IMX_SC_R_USB_0_PHY>;
 		status = "disabled";
@@ -25,7 +25,7 @@
 		dr_mode = "host";
 		fsl,usbphy = <&usbphynop2>;
 		fsl,usbmisc = <&usbmisc2 0>;
-		clocks = <&usb2_lpcg 0>;
+		clocks = <&usb2_lpcg IMX_LPCG_CLK_6>;
 		ahb-burst-config = <0x0>;
 		tx-burst-size-dword = <0x10>;
 		rx-burst-size-dword = <0x10>;
@@ -39,6 +39,10 @@
 		compatible = "fsl,imx7ulp-usbmisc", "fsl,imx6q-usbmisc";
 		reg = <0x5b0e0200 0x200>;
 	};
+};
+
+&usbphy1 {
+	compatible = "fsl,imx8qm-usbphy", "fsl,imx7ulp-usbphy";
 };
 
 &fec1 {
@@ -57,7 +61,7 @@
 };
 
 &usdhc2 {
-	compatible = "fsl,imx8qm-usdhc", "fsl,imx8qxp-usdhc";
+	compatible = "fsl,imx8qm-usdhc", "fsl,imx8qxp-usdhc", "fsl,imx7d-usdhc";
 	iommus = <&smmu 0x11 0x7f80>;
 };
 

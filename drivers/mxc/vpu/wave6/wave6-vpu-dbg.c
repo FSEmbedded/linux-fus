@@ -81,11 +81,9 @@ static int wave6_vpu_dbg_instance(struct seq_file *s, void *data)
 		return 0;
 
 	num = scnprintf(str, sizeof(str),
-			"fbc(required/acquired/registered/used) : %d, %d, %d, %d\n",
-			inst->fbc_buf_required,
-			inst->fbc_buf_acquired,
-			inst->fbc_buf_registered,
-			inst->fbc_buf_used);
+			"fbc(allocated/registered) : %d, %d\n",
+			inst->allocated_fb_num,
+			inst->registered_fb_num);
 	if (seq_write(s, str, num))
 		return 0;
 

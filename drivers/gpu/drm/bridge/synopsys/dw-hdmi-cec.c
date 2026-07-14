@@ -363,7 +363,7 @@ static void dw_hdmi_cec_remove(struct platform_device *pdev)
 	device_remove_file(&pdev->dev, &dev_attr_eom_delay);
 }
 
-static int __maybe_unused dw_hdmi_cec_resume(struct device *dev)
+static int dw_hdmi_cec_resume(struct device *dev)
 {
 	struct dw_hdmi_cec *cec = dev_get_drvdata(dev);
 
@@ -379,7 +379,7 @@ static int __maybe_unused dw_hdmi_cec_resume(struct device *dev)
 	return 0;
 }
 
-static int __maybe_unused dw_hdmi_cec_suspend(struct device *dev)
+static int dw_hdmi_cec_suspend(struct device *dev)
 {
 	struct dw_hdmi_cec *cec = dev_get_drvdata(dev);
 
@@ -392,15 +392,15 @@ static int __maybe_unused dw_hdmi_cec_suspend(struct device *dev)
 }
 
 static const struct dev_pm_ops dw_hdmi_cec_pm = {
-	SET_SYSTEM_SLEEP_PM_OPS(dw_hdmi_cec_suspend, dw_hdmi_cec_resume)
+	SYSTEM_SLEEP_PM_OPS(dw_hdmi_cec_suspend, dw_hdmi_cec_resume)
 };
 
 static struct platform_driver dw_hdmi_cec_driver = {
 	.probe	= dw_hdmi_cec_probe,
-	.remove_new = dw_hdmi_cec_remove,
+	.remove = dw_hdmi_cec_remove,
 	.driver = {
 		.name = "dw-hdmi-cec",
-		.pm = &dw_hdmi_cec_pm,
+		.pm = pm_ptr(&dw_hdmi_cec_pm),
 	},
 };
 module_platform_driver(dw_hdmi_cec_driver);

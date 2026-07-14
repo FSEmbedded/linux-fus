@@ -630,9 +630,9 @@ void cfg80211_pmsr_free_wk(struct work_struct *work)
 	struct wireless_dev *wdev = container_of(work, struct wireless_dev,
 						 pmsr_free_wk);
 
-	wiphy_lock(wdev->wiphy);
+	guard(wiphy)(wdev->wiphy);
+
 	cfg80211_pmsr_process_abort(wdev);
-	wiphy_unlock(wdev->wiphy);
 }
 
 void cfg80211_pmsr_wdev_down(struct wireless_dev *wdev)
@@ -647,6 +647,7 @@ void cfg80211_pmsr_wdev_down(struct wireless_dev *wdev)
 	}
 	spin_unlock_bh(&wdev->pmsr_lock);
 
+	cancel_work_sync(&wdev->pmsr_free_wk);
 	if (found)
 		cfg80211_pmsr_process_abort(wdev);
 

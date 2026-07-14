@@ -43,9 +43,9 @@
 	/delete-node/ regulator-audio-pwr;
 	/delete-node/ regulator-audio-slot;
 	/delete-node/ sound-wm8962;
+	/delete-node/ pwm-fan;
 	/delete-node/ pca9632;
 	/delete-node/ i2c3_gpio_expander_20;
-	/delete-node/ pwm-fan;
 
 	sound-wm8904 {
 		compatible = "fsl,imx-audio-wm8904";
@@ -60,20 +60,14 @@
 	};
 };
 
-&reg_can1_stby {
-	gpio = <&i2c7_pcal6524_23 0 GPIO_ACTIVE_HIGH>;
+&flexcan1_phy {
+	enable-gpios = <&i2c7_pcal6524_23 2 GPIO_ACTIVE_HIGH>;
+	standby-gpios = <&i2c7_pcal6524_23 0 GPIO_ACTIVE_LOW>;
 };
 
-&reg_can1_en {
-	gpio = <&i2c7_pcal6524_23 2 GPIO_ACTIVE_HIGH>;
-};
-
-&reg_can2_stby {
-	gpio = <&i2c7_pcal6524_23 3 GPIO_ACTIVE_HIGH>;
-};
-
-&reg_can2_en {
-	gpio = <&i2c7_pcal6524_23 5 GPIO_ACTIVE_HIGH>;
+&flexcan2_phy {
+	enable-gpios = <&i2c7_pcal6524_23 5 GPIO_ACTIVE_HIGH>;
+	standby-gpios = <&i2c7_pcal6524_23 3 GPIO_ACTIVE_LOW>;
 };
 
 &reg_usb_vbus {
@@ -134,7 +128,7 @@
 	status = "okay";
 };
 
-&i2c6_gpio_expander_21 {
+&i2c6_pcal6416 {
 	status = "disabled";
 };
 
@@ -193,18 +187,12 @@
 	};
 
 	ptn5110: tcpc@52 {
-		compatible = "nxp,ptn5110";
+		compatible = "nxp,ptn5110", "tcpci";
 		reg = <0x52>;
 		interrupt-parent = <&gpio5>;
 		interrupts = <14 IRQ_TYPE_LEVEL_LOW>;
 		pinctrl-names = "default";
-		pinctrl-0 = <&pinctrl_ptn5110>;
-
-		port {
-			typec_dr_sw: endpoint {
-				remote-endpoint = <&usb3_drd_sw>;
-			};
-		};
+		pinctrl-0 = <&pinctrl_typec>;
 
 		typec_con: connector {
 			compatible = "usb-c-connector";
@@ -221,6 +209,14 @@
 			ports {
 				#address-cells = <1>;
 				#size-cells = <0>;
+
+				port@0 {
+					reg = <0>;
+
+					typec_con_hs: endpoint {
+						remote-endpoint = <&usb3_data_hs>;
+					};
+				};
 
 				port@1 {
 					reg = <1>;
@@ -265,7 +261,7 @@
 
 	pinctrl_hog: hoggrp {
 		fsl,pins = <
-			IMX95_PAD_GPIO_IO04__GPIO2_IO_BIT4	0x3fe
+			IMX95_PAD_GPIO_IO04__GPIO2_IO_BIT4	0x39e
 		>;
 	};
 

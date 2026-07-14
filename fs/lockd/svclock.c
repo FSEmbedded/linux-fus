@@ -30,7 +30,6 @@
 #include <linux/sunrpc/svc_xprt.h>
 #include <linux/lockd/nlm.h>
 #include <linux/lockd/lockd.h>
-#include <linux/exportfs.h>
 
 #define NLMDBG_FACILITY		NLMDBG_SVCLOCK
 
@@ -481,7 +480,7 @@ nlmsvc_lock(struct svc_rqst *rqstp, struct nlm_file *file,
 	    struct nlm_host *host, struct nlm_lock *lock, int wait,
 	    struct nlm_cookie *cookie, int reclaim)
 {
-	struct inode		*inode = nlmsvc_file_inode(file);
+	struct inode		*inode __maybe_unused = nlmsvc_file_inode(file);
 	struct nlm_block	*block = NULL;
 	int			error;
 	int			mode;
@@ -496,7 +495,7 @@ nlmsvc_lock(struct svc_rqst *rqstp, struct nlm_file *file,
 				(long long)lock->fl.fl_end,
 				wait);
 
-	if (!exportfs_lock_op_is_async(inode->i_sb->s_export_op)) {
+	if (!locks_can_async_lock(nlmsvc_file_file(file)->f_op)) {
 		async_block = wait;
 		wait = 0;
 	}
@@ -550,7 +549,7 @@ nlmsvc_lock(struct svc_rqst *rqstp, struct nlm_file *file,
 	 * requests on the underlaying ->lock() implementation but
 	 * only one nlm_block to being granted by lm_grant().
 	 */
-	if (exportfs_lock_op_is_async(inode->i_sb->s_export_op) &&
+	if (locks_can_async_lock(nlmsvc_file_file(file)->f_op) &&
 	    !list_empty(&block->b_list)) {
 		spin_unlock(&nlm_blocked_lock);
 		ret = nlm_lck_blocked;
@@ -609,7 +608,7 @@ out:
 __be32
 nlmsvc_testlock(struct svc_rqst *rqstp, struct nlm_file *file,
 		struct nlm_host *host, struct nlm_lock *lock,
-		struct nlm_lock *conflock, struct nlm_cookie *cookie)
+		struct nlm_lock *conflock)
 {
 	int			error;
 	int			mode;
@@ -628,7 +627,13 @@ nlmsvc_testlock(struct svc_rqst *rqstp, struct nlm_file *file,
 	}
 
 	mode = lock_to_openmode(&lock->fl);
-	error = vfs_test_lock(file->f_file[mode], &lock->fl);
+	locks_init_lock(&conflock->fl);
+	/* vfs_test_lock only uses start, end, and owner, but tests flc_file */
+	conflock->fl.c.flc_file = lock->fl.c.flc_file;
+	conflock->fl.fl_start = lock->fl.fl_start;
+	conflock->fl.fl_end = lock->fl.fl_end;
+	conflock->fl.c.flc_owner = lock->fl.c.flc_owner;
+	error = vfs_test_lock(file->f_file[mode], &conflock->fl);
 	if (error) {
 		/* We can't currently deal with deferred test requests */
 		if (error == FILE_LOCK_DEFERRED)
@@ -638,22 +643,19 @@ nlmsvc_testlock(struct svc_rqst *rqstp, struct nlm_file *file,
 		goto out;
 	}
 
-	if (lock->fl.c.flc_type == F_UNLCK) {
+	if (conflock->fl.c.flc_type == F_UNLCK) {
 		ret = nlm_granted;
 		goto out;
 	}
 
 	dprintk("lockd: conflicting lock(ty=%d, %Ld-%Ld)\n",
-		lock->fl.c.flc_type, (long long)lock->fl.fl_start,
-		(long long)lock->fl.fl_end);
+		conflock->fl.c.flc_type, (long long)conflock->fl.fl_start,
+		(long long)conflock->fl.fl_end);
 	conflock->caller = "somehost";	/* FIXME */
 	conflock->len = strlen(conflock->caller);
 	conflock->oh.len = 0;		/* don't return OH info */
-	conflock->svid = lock->fl.c.flc_pid;
-	conflock->fl.c.flc_type = lock->fl.c.flc_type;
-	conflock->fl.fl_start = lock->fl.fl_start;
-	conflock->fl.fl_end = lock->fl.fl_end;
-	locks_release_private(&lock->fl);
+	conflock->svid = conflock->fl.c.flc_pid;
+	locks_release_private(&conflock->fl);
 
 	ret = nlm_lck_denied;
 out:
@@ -981,7 +983,7 @@ nlmsvc_grant_reply(struct nlm_cookie *cookie, __be32 status)
 	struct file_lock	*fl;
 	int			error;
 
-	dprintk("grant_reply: looking for cookie %x, s=%d \n",
+	dprintk("grant_reply: looking for cookie %x, s=%d\n",
 		*(unsigned int *)(cookie->data), status);
 	if (!(block = nlmsvc_find_block(cookie)))
 		return;

@@ -27,8 +27,8 @@
 		};
 
 		cpu0: cpu@0 {
-			device_type = "cpu";
 			compatible = "arm,cortex-a55";
+			device_type = "cpu";
 			reg = <0x0>;
 			enable-method = "psci";
 			#cooling-cells = <2>;
@@ -45,8 +45,8 @@
 		};
 
 		cpu1: cpu@100 {
-			device_type = "cpu";
 			compatible = "arm,cortex-a55";
+			device_type = "cpu";
 			reg = <0x100>;
 			enable-method = "psci";
 			#cooling-cells = <2>;
@@ -63,8 +63,8 @@
 		};
 
 		cpu2: cpu@200 {
-			device_type = "cpu";
 			compatible = "arm,cortex-a55";
+			device_type = "cpu";
 			reg = <0x200>;
 			enable-method = "psci";
 			#cooling-cells = <2>;
@@ -81,8 +81,8 @@
 		};
 
 		cpu3: cpu@300 {
-			device_type = "cpu";
 			compatible = "arm,cortex-a55";
+			device_type = "cpu";
 			reg = <0x300>;
 			enable-method = "psci";
 			#cooling-cells = <2>;
@@ -158,18 +158,6 @@
 	};
 
 	soc {
-		epxp: epxp@4b110000 {
-			compatible = "fsl,imx94-pxp-dma";
-			reg = <0x0 0x4b110000 0x0 0x10000>;
-			interrupts = <GIC_SPI 382 IRQ_TYPE_LEVEL_HIGH>,
-				     <GIC_SPI 383 IRQ_TYPE_LEVEL_HIGH>;
-			clocks = <&scmi_clk IMX94_CLK_DISPAPB>,
-				 <&scmi_clk IMX94_CLK_DISPAXI>;
-			clock-names = "pxp_ipg", "pxp_axi";
-			power-domains = <&scmi_devpd IMX94_PD_DISPLAY>;
-			status = "disabled";
-		};
-
 		neutron_core: neutron-remoteproc@4ab00000 {
 			compatible = "fsl,imx95-neutron-rproc";
 			reg = <0x0 0x4ab00000 0x0 0x4>;
@@ -241,6 +229,18 @@
 			};
 		};
 
+		epxp: epxp@4b110000 {
+			compatible = "fsl,imx94-pxp-dma";
+			reg = <0x0 0x4b110000 0x0 0x10000>;
+			interrupts = <GIC_SPI 382 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 383 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&scmi_clk IMX94_CLK_DISPAPB>,
+				 <&scmi_clk IMX94_CLK_DISPAXI>;
+			clock-names = "pxp_ipg", "pxp_axi";
+			power-domains = <&scmi_devpd IMX94_PD_DISPLAY>;
+			status = "disabled";
+		};
+
 		dcif: display-controller@4b120000 {
 			compatible = "nxp,imx94-dcif";
 			reg = <0x0 0x4b120000 0x0 0x300000>;
@@ -273,7 +273,7 @@
 			      <0 0x4c3c0000 0 0x4000>;
 			reg-names = "dbi", "config", "atu", "app";
 			ranges = <0x81000000 0 0x00000000 0x8 0x8ff00000 0 0x00100000>,
-				 <0x82000000 0 0x10000000 0xa 0x10000000 0 0x10000000>;
+				 <0x82000000 0 0x10000000 0xa 0x10000000 0 0x80000000>;
 			#address-cells = <3>;
 			#size-cells = <2>;
 			device_type = "pci";
@@ -286,9 +286,11 @@
 			num-lanes = <1>;
 			num-viewport = <8>;
 			interrupts = <GIC_SPI 370 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 371 IRQ_TYPE_LEVEL_HIGH>,
+				     <GIC_SPI 370 IRQ_TYPE_LEVEL_HIGH>,
 				     <GIC_SPI 370 IRQ_TYPE_LEVEL_HIGH>,
 				     <GIC_SPI 370 IRQ_TYPE_LEVEL_HIGH>;
-			interrupt-names = "msi", "pme", "intr";
+			interrupt-names = "msi", "dma", "aer", "intr", "pme";
 			#interrupt-cells = <1>;
 			interrupt-map-mask = <0 0 0 0x7>;
 			interrupt-map = <0 0 0 1 &gic 0 0 GIC_SPI 366 IRQ_TYPE_LEVEL_HIGH>,

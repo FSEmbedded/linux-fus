@@ -2087,10 +2087,9 @@ static void pfe_eth_fast_tx_timeout_init(struct pfe_eth_priv_s *priv)
 
 	for (i = 0; i < emac_txq_cnt; i++) {
 		priv->fast_tx_timeout[i].queuenum = i;
-		hrtimer_init(&priv->fast_tx_timeout[i].timer, CLOCK_MONOTONIC,
-			     HRTIMER_MODE_REL);
-		priv->fast_tx_timeout[i].timer.function =
-				pfe_eth_fast_tx_timeout;
+		hrtimer_setup(&priv->fast_tx_timeout[i].timer,
+			      pfe_eth_fast_tx_timeout, CLOCK_MONOTONIC,
+			      HRTIMER_MODE_REL);
 		priv->fast_tx_timeout[i].base = priv->fast_tx_timeout;
 	}
 }

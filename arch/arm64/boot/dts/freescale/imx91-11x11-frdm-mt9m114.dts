@@ -6,9 +6,6 @@
 #include <dt-bindings/media/video-interfaces.h>
 #include "imx91-11x11-frdm.dts"
 
-/* Disable lpspi3 node since pin conflict. */
-/delete-node/ &lpspi3;
-
 / {
 	reg_vexp_3v3: regulator-vexp-3v3 {
 		compatible = "regulator-fixed";
@@ -198,4 +195,8 @@
 			};
 		};
 	};
+};
+
+&lpspi3 {
+	status = "disabled";
 };

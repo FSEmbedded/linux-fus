@@ -23,18 +23,18 @@ static const struct file_operations name##_fops = {			\
 static int netc_bpt_show(struct seq_file *s, void *data)
 {
 	struct netc_switch *priv = s->private;
-	struct bpt_query_data qdata;
+	struct bpt_entry_data entry_data;
 	struct bpt_bpse_data *bpse;
 	struct bpt_cfge_data *cfge;
 	int i, err;
 
-	bpse = &qdata.bpse;
-	cfge = &qdata.cfge;
+	bpse = &entry_data.bpse;
+	cfge = &entry_data.cfge;
 
 	for (i = 0; i < priv->caps.num_bp; i++) {
-		memset(&qdata, 0, sizeof(qdata));
+		memset(&entry_data, 0, sizeof(entry_data));
 
-		err = ntmp_bpt_query_entry(&priv->ntmp.cbdrs, i, &qdata);
+		err = ntmp_bpt_query_entry(&priv->user, i, &entry_data);
 		if (err)
 			return err;
 
@@ -78,18 +78,18 @@ DEFINE_SHOW_ATTRIBUTE(netc_bpt);
 static int netc_sbpt_show(struct seq_file *s, void *data)
 {
 	struct netc_switch *priv = s->private;
+	struct sbpt_entry_data entry_data;
 	struct sbpt_sbpse_data *sbpse;
-	struct sbpt_query_data qdata;
 	struct sbpt_cfge_data *cfge;
 	int i, err;
 
-	sbpse = &qdata.sbpse;
-	cfge = &qdata.cfge;
+	sbpse = &entry_data.sbpse;
+	cfge = &entry_data.cfge;
 
 	for (i = 0; i < priv->caps.num_sbp; i++) {
-		memset(&qdata, 0, sizeof(qdata));
+		memset(&entry_data, 0, sizeof(entry_data));
 
-		err = ntmp_sbpt_query_entry(&priv->ntmp.cbdrs, i, &qdata);
+		err = ntmp_sbpt_query_entry(&priv->user, i, &entry_data);
 		if (err)
 			return err;
 
@@ -141,9 +141,9 @@ DEFINE_NETC_DEBUGFS(netc_port, dbg_port);
 
 static int netc_fdbt_show(struct seq_file *s, void *data)
 {
-	struct fdbt_query_data *qdata __free(kfree);
 	struct netc_switch *priv = s->private;
 	u32 resume_eid = NTMP_NULL_ENTRY_ID;
+	struct fdbt_entry_data entry_data;
 	struct fdbt_keye_data *keye;
 	struct fdbt_cfge_data *cfge;
 	struct fdbt_acte_data *acte;
@@ -157,21 +157,17 @@ static int netc_fdbt_show(struct seq_file *s, void *data)
 		return -EINVAL;
 	}
 
-	qdata = kzalloc(sizeof(*qdata), GFP_KERNEL);
-	if (!qdata)
-		return -ENOMEM;
-
-	keye = &qdata->keye;
-	cfge = &qdata->cfge;
-	acte = &qdata->acte;
+	keye = &entry_data.keye;
+	cfge = &entry_data.cfge;
+	acte = &entry_data.acte;
 
 	seq_printf(s, "Show Port %u FDB table\n", port);
 
 	guard(mutex)(&priv->fdbt_lock);
 	do {
-		memset(qdata, 0, sizeof(*qdata));
-		err = ntmp_fdbt_search_port_entry(&priv->ntmp.cbdrs, port,
-						  &resume_eid, &entry_id, qdata);
+		memset(&entry_data, 0, sizeof(entry_data));
+		err = ntmp_fdbt_search_port_entry(&priv->user, port, &resume_eid,
+						  &entry_id, &entry_data);
 		if (err) {
 			seq_puts(s, "FDB table search failed\n");
 			break;
@@ -257,7 +253,7 @@ static int netc_vft_show(struct seq_file *s, void *data)
 	guard(mutex)(&priv->vft_lock);
 	do {
 		memset(&cfge, 0, sizeof(cfge));
-		err = ntmp_vft_search_entry(&priv->ntmp.cbdrs, &resume_eid,
+		err = ntmp_vft_search_entry(&priv->user, &resume_eid,
 					    &entry_id, &vid, &cfge);
 		if (err) {
 			seq_puts(s, "VLAN filter table search failed\n");
@@ -321,7 +317,7 @@ static int netc_vft_entry_show(struct seq_file *s, void *data)
 	}
 
 	scoped_guard(mutex, &priv->vft_lock) {
-		err = ntmp_vft_query_entry_by_vid(&priv->ntmp.cbdrs, vid,
+		err = ntmp_vft_query_entry_by_vid(&priv->user, vid,
 						  &entry_id, &cfge);
 		if (err) {
 			seq_puts(s, "Query VLAN filter table failed\n");
@@ -354,18 +350,19 @@ static ssize_t netc_ett_eid_write(struct file *filp, const char __user *buffer,
 static int netc_ett_entry_show(struct seq_file *s, void *data)
 {
 	struct netc_switch *priv = s->private;
+	struct ntmp_user *user = &priv->user;
 	struct ett_cfge_data cfge = {0};
 	u32 entry_id;
 	u16 efm_cfg;
 	int err;
 
 	entry_id = priv->dbg_params.ett_eid;
-	if (entry_id >= priv->ntmp.caps.ett_num_entries) {
+	if (entry_id >= user->caps.ett_num_entries) {
 		seq_printf(s, "Wrong ETT entry ID: 0x%x\n", entry_id);
 		return -EINVAL;
 	}
 
-	err = ntmp_ett_query_entry(&priv->ntmp.cbdrs, entry_id, &cfge);
+	err = ntmp_ett_query_entry(user, entry_id, &cfge);
 	if (err) {
 		seq_puts(s, "Query Egress Treatment table failed\n");
 		return err;
@@ -408,17 +405,18 @@ static ssize_t netc_ect_eid_write(struct file *filp, const char __user *buffer,
 static int netc_ect_entry_show(struct seq_file *s, void *data)
 {
 	struct netc_switch *priv = s->private;
+	struct ntmp_user *user = &priv->user;
 	struct ect_stse_data stse = {0};
 	u32 entry_id;
 	int err;
 
 	entry_id = priv->dbg_params.ect_eid;
-	if (entry_id >= priv->ntmp.caps.ect_num_entries) {
+	if (entry_id >= user->caps.ect_num_entries) {
 		seq_printf(s, "Wrong ECT entry ID: 0x%x\n", entry_id);
 		return -EINVAL;
 	}
 
-	err = ntmp_ect_query_entry(&priv->ntmp.cbdrs, entry_id, &stse, false);
+	err = ntmp_ect_query_entry(user, entry_id, &stse, false);
 	if (err) {
 		seq_puts(s, "Query Egress Count table failed\n");
 		return err;
@@ -437,10 +435,11 @@ DEFINE_NETC_DEBUGFS(netc_ect_entry, ect_eid);
 static int netc_flower_list_show(struct seq_file *s, void *data)
 {
 	struct netc_switch *priv = s->private;
+	struct ntmp_user *user = &priv->user;
 	struct netc_flower_rule *rule;
 
-	guard(mutex)(&priv->ntmp.flower_lock);
-	hlist_for_each_entry(rule, &priv->ntmp.flower_list, node) {
+	guard(mutex)(&user->flower_lock);
+	hlist_for_each_entry(rule, &user->flower_list, node) {
 		seq_printf(s, "Port: %u, cookie:0x%lx\n", rule->port_id, rule->cookie);
 		seq_printf(s, "Flower type:%d\n", rule->flower_type);
 
@@ -451,6 +450,7 @@ static int netc_flower_list_show(struct seq_file *s, void *data)
 		case FLOWER_TYPE_TRAP:
 		case FLOWER_TYPE_REDIRECT:
 		case FLOWER_TYPE_POLICE:
+		case FLOWER_TYPE_DROP:
 			netc_show_ipft_flower(s, rule);
 			break;
 		default:
@@ -477,7 +477,7 @@ static int netc_isit_entry_show(struct seq_file *s, void *data)
 {
 	struct netc_switch *priv = s->private;
 
-	return netc_show_isit_entry(&priv->ntmp, s, priv->dbg_params.isit_eid);
+	return netc_show_isit_entry(&priv->user, s, priv->dbg_params.isit_eid);
 }
 
 DEFINE_NETC_DEBUGFS(netc_isit_entry, isit_eid);
@@ -495,7 +495,7 @@ static int netc_ist_entry_show(struct seq_file *s, void *data)
 {
 	struct netc_switch *priv = s->private;
 
-	return netc_show_ist_entry(&priv->ntmp, s, priv->dbg_params.ist_eid);
+	return netc_show_ist_entry(&priv->user, s, priv->dbg_params.ist_eid);
 }
 
 DEFINE_NETC_DEBUGFS(netc_ist_entry, ist_eid);
@@ -513,7 +513,7 @@ static int netc_isft_entry_show(struct seq_file *s, void *data)
 {
 	struct netc_switch *priv = s->private;
 
-	return netc_show_isft_entry(&priv->ntmp, s, priv->dbg_params.isft_eid);
+	return netc_show_isft_entry(&priv->user, s, priv->dbg_params.isft_eid);
 }
 
 DEFINE_NETC_DEBUGFS(netc_isft_entry, isft_eid);
@@ -531,7 +531,7 @@ static int netc_sgit_entry_show(struct seq_file *s, void *data)
 {
 	struct netc_switch *priv = s->private;
 
-	return netc_show_sgit_entry(&priv->ntmp, s, priv->dbg_params.sgit_eid);
+	return netc_show_sgit_entry(&priv->user, s, priv->dbg_params.sgit_eid);
 }
 
 DEFINE_NETC_DEBUGFS(netc_sgit_entry, sgit_eid);
@@ -549,7 +549,7 @@ static int netc_sgclt_entry_show(struct seq_file *s, void *data)
 {
 	struct netc_switch *priv = s->private;
 
-	return netc_show_sgclt_entry(&priv->ntmp, s, priv->dbg_params.sgclt_eid);
+	return netc_show_sgclt_entry(&priv->user, s, priv->dbg_params.sgclt_eid);
 }
 
 DEFINE_NETC_DEBUGFS(netc_sgclt_entry, sgclt_eid);
@@ -567,7 +567,7 @@ static int netc_isct_entry_show(struct seq_file *s, void *data)
 {
 	struct netc_switch *priv = s->private;
 
-	return netc_show_isct_entry(&priv->ntmp, s, priv->dbg_params.isct_eid);
+	return netc_show_isct_entry(&priv->user, s, priv->dbg_params.isct_eid);
 }
 
 DEFINE_NETC_DEBUGFS(netc_isct_entry, isct_eid);
@@ -585,7 +585,7 @@ static int netc_rpt_entry_show(struct seq_file *s, void *data)
 {
 	struct netc_switch *priv = s->private;
 
-	return netc_show_rpt_entry(&priv->ntmp, s, priv->dbg_params.rpt_eid);
+	return netc_show_rpt_entry(&priv->user, s, priv->dbg_params.rpt_eid);
 }
 
 DEFINE_NETC_DEBUGFS(netc_rpt_entry, rpt_eid);
@@ -603,7 +603,7 @@ static int netc_ipft_entry_show(struct seq_file *s, void *data)
 {
 	struct netc_switch *priv = s->private;
 
-	return netc_show_ipft_entry(&priv->ntmp, s, priv->dbg_params.ipft_eid);
+	return netc_show_ipft_entry(&priv->user, s, priv->dbg_params.ipft_eid);
 }
 
 DEFINE_NETC_DEBUGFS(netc_ipft_entry, ipft_eid);
@@ -627,7 +627,7 @@ static int netc_tgst_show(struct seq_file *s, void *data)
 		return 0;
 	}
 
-	return netc_show_tgst_entry(&priv->ntmp, s, port_id);
+	return netc_show_tgst_entry(&priv->user, s, port_id);
 }
 DEFINE_SHOW_ATTRIBUTE(netc_tgst);
 

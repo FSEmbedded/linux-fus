@@ -10,6 +10,7 @@
  * based on TSC2301 driver by Klaus K. Pedersen <klaus.k.pedersen@nokia.com>
  */
 
+#include <linux/export.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/input.h>
@@ -106,9 +107,9 @@ struct tsc200x {
 
 	bool			pen_down;
 
-
 	struct gpio_desc	*reset_gpio;
 	int			(*tsc200x_cmd)(struct device *dev, u8 cmd);
+
 	int			irq;
 	bool			wake_irq_enabled;
 };
@@ -184,11 +185,9 @@ static irqreturn_t tsc200x_irq_thread(int irq, void *_ts)
 		goto out;
 
 	scoped_guard(spinlock_irqsave, &ts->lock) {
-
-	tsc200x_update_pen_state(ts, tsdata.x, tsdata.y, pressure);
-	mod_timer(&ts->penup_timer,
-		  jiffies + msecs_to_jiffies(TSC200X_PENUP_TIME_MS));
-
+		tsc200x_update_pen_state(ts, tsdata.x, tsdata.y, pressure);
+		mod_timer(&ts->penup_timer,
+			  jiffies + msecs_to_jiffies(TSC200X_PENUP_TIME_MS));
 	}
 
 	ts->last_valid_interrupt = jiffies;
@@ -198,7 +197,7 @@ out:
 
 static void tsc200x_penup_timer(struct timer_list *t)
 {
-	struct tsc200x *ts = from_timer(ts, t, penup_timer);
+	struct tsc200x *ts = timer_container_of(ts, t, penup_timer);
 
 	guard(spinlock_irqsave)(&ts->lock);
 	tsc200x_update_pen_state(ts, 0, 0, 0);
@@ -245,10 +244,9 @@ static void __tsc200x_disable(struct tsc200x *ts)
 	tsc200x_stop_scan(ts);
 
 	guard(disable_irq)(&ts->irq);
-	del_timer_sync(&ts->penup_timer);
 
+	timer_delete_sync(&ts->penup_timer);
 	cancel_delayed_work_sync(&ts->esd_work);
-
 }
 
 /* must be called with ts->mutex held */
@@ -274,7 +272,6 @@ static int tsc200x_do_selftest(struct tsc200x *ts)
 	unsigned int temp_high;
 	int error;
 
-
 	error = regmap_read(ts->regmap, TSC200X_REG_TEMP_HIGH, &temp_high_orig);
 	if (error) {
 		dev_warn(ts->dev, "selftest failed: read error %d\n", error);
@@ -298,12 +295,12 @@ static int tsc200x_do_selftest(struct tsc200x *ts)
 
 	/* hardware reset */
 	tsc200x_reset(ts);
+
 	if (temp_high != temp_high_test) {
 		dev_warn(ts->dev, "selftest failed: %d != %d\n",
 			 temp_high, temp_high_test);
 		return -EINVAL;
 	}
-
 
 	/* test that the reset really happened */
 	error = regmap_read(ts->regmap, TSC200X_REG_TEMP_HIGH, &temp_high);
@@ -333,7 +330,8 @@ static ssize_t tsc200x_selftest_show(struct device *dev,
 		__tsc200x_disable(ts);
 
 		error = tsc200x_do_selftest(ts);
-	__tsc200x_enable(ts);
+
+		__tsc200x_enable(ts);
 	}
 
 	return sprintf(buf, "%d\n", !error);
@@ -371,6 +369,7 @@ const struct attribute_group *tsc200x_groups[] = {
 	NULL
 };
 EXPORT_SYMBOL_GPL(tsc200x_groups);
+
 static void tsc200x_esd_work(struct work_struct *work)
 {
 	struct tsc200x *ts = container_of(work, struct tsc200x, esd_work.work);
@@ -378,15 +377,14 @@ static void tsc200x_esd_work(struct work_struct *work)
 	unsigned int r;
 	u_int16_t cfr0_init_val;
 
-		/*
-		 * If the mutex is taken, it means that disable or enable is in
-		 * progress. In that case just reschedule the work. If the work
-		 * is not needed, it will be canceled by disable.
-		 */
+	/*
+	 * If the mutex is taken, it means that disable or enable is in
+	 * progress. In that case just reschedule the work. If the work
+	 * is not needed, it will be canceled by disable.
+	 */
 	scoped_guard(mutex_try, &ts->mutex) {
-
-	if (time_is_after_jiffies(ts->last_valid_interrupt +
-				  msecs_to_jiffies(ts->esd_timeout)))
+		if (time_is_after_jiffies(ts->last_valid_interrupt +
+					  msecs_to_jiffies(ts->esd_timeout)))
 			break;
 
 	cfr0_init_val = check_config_reg(ts);
@@ -394,28 +392,26 @@ static void tsc200x_esd_work(struct work_struct *work)
 		 * We should be able to read register without disabling
 		 * interrupts.
 		 */
-	error = regmap_read(ts->regmap, TSC200X_REG_CFR0, &r);
-	if (!error &&
+		error = regmap_read(ts->regmap, TSC200X_REG_CFR0, &r);
+		if (!error &&
 	    !((r ^ cfr0_init_val) & TSC200X_CFR0_RW_MASK)) {
 			break;
-	}
+		}
 
-	/*
+		/*
 		 * If we could not read our known value from configuration
 		 * register 0 then we should reset the controller as if from
 		 * power-up and start scanning again.
-	 */
-	dev_info(ts->dev, "TSC200X not responding - resetting\n");
+		 */
+		dev_info(ts->dev, "TSC200X not responding - resetting\n");
 
 		scoped_guard(disable_irq, &ts->irq) {
-	del_timer_sync(&ts->penup_timer);
-
-	tsc200x_update_pen_state(ts, 0, 0, 0);
-
-	tsc200x_reset(ts);
+			timer_delete_sync(&ts->penup_timer);
+			tsc200x_update_pen_state(ts, 0, 0, 0);
+			tsc200x_reset(ts);
 		}
 
-	tsc200x_start_scan(ts);
+		tsc200x_start_scan(ts);
 	}
 
 	/* re-arm the watchdog */
@@ -435,7 +431,6 @@ static int tsc200x_open(struct input_dev *input)
 
 	ts->opened = true;
 
-
 	return 0;
 }
 
@@ -449,7 +444,6 @@ static void tsc200x_close(struct input_dev *input)
 		__tsc200x_disable(ts);
 
 	ts->opened = false;
-
 }
 
 int tsc200x_probe(struct device *dev, int irq, const struct input_id *tsc_id,
@@ -507,7 +501,6 @@ int tsc200x_probe(struct device *dev, int irq, const struct input_id *tsc_id,
 				"ti,sense-time-sel", &sense_time_sel);
 	ts->sense_time_sel = (error ? (TSC200X_CFR0_SNS_32US >>
 			TSC200X_CFR0_SNS_OFFSET) : sense_time_sel) & 0x7;
-
 	mutex_init(&ts->mutex);
 
 	spin_lock_init(&ts->lock);
@@ -563,6 +556,7 @@ int tsc200x_probe(struct device *dev, int irq, const struct input_id *tsc_id,
 	}
 
 	tsc200x_reset(ts);
+
 	/* Ensure the touchscreen is off */
 	tsc200x_stop_scan(ts);
 
@@ -572,7 +566,6 @@ int tsc200x_probe(struct device *dev, int irq, const struct input_id *tsc_id,
 		dev_err(dev, "Failed to request irq, err: %d\n", error);
 		return error;
 	}
-
 
 	dev_set_drvdata(dev, ts);
 
@@ -589,7 +582,6 @@ int tsc200x_probe(struct device *dev, int irq, const struct input_id *tsc_id,
 
 }
 EXPORT_SYMBOL_GPL(tsc200x_probe);
-
 
 static int tsc200x_suspend(struct device *dev)
 {
@@ -623,7 +615,6 @@ static int tsc200x_resume(struct device *dev)
 		__tsc200x_enable(ts);
 
 	ts->suspended = false;
-
 
 	return 0;
 }

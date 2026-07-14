@@ -925,7 +925,7 @@ static void xhci_del_comp_mod_timer(struct xhci_hcd *xhci, u32 status,
 	if ((xhci->port_status_u0 != all_ports_seen_u0) && port_in_u0) {
 		xhci->port_status_u0 |= 1 << wIndex;
 		if (xhci->port_status_u0 == all_ports_seen_u0) {
-			del_timer_sync(&xhci->comp_mode_recovery_timer);
+			timer_delete_sync(&xhci->comp_mode_recovery_timer);
 			xhci_dbg_trace(xhci, trace_xhci_dbg_quirks,
 				"All USB3 ports have entered U0 already!");
 			xhci_dbg_trace(xhci, trace_xhci_dbg_quirks,
@@ -953,9 +953,9 @@ static int xhci_handle_usb2_port_link_resume(struct xhci_port *port,
 	}
 	/* did port event handler already start resume timing? */
 	if (!port->resume_timestamp) {
-		/* If not, maybe we are in a host initated resume? */
+		/* If not, maybe we are in a host initiated resume? */
 		if (test_bit(wIndex, &bus_state->resuming_ports)) {
-			/* Host initated resume doesn't time the resume
+			/* Host initiated resume doesn't time the resume
 			 * signalling using resume_done[].
 			 * It manually sets RESUME state, sleeps 20ms
 			 * and sets U0 state. This should probably be
@@ -1681,7 +1681,7 @@ int xhci_hub_status_data(struct usb_hcd *hcd, char *buf)
 	 * SS devices are only visible to roothub after link training completes.
 	 * Keep polling roothubs for a grace period after xHC start
 	 */
-	if (xhci->run_graceperiod) {
+	if (hcd->speed >= HCD_USB3 && xhci->run_graceperiod) {
 		if (time_before(jiffies, xhci->run_graceperiod))
 			status = 1;
 		else
@@ -1916,7 +1916,7 @@ int xhci_bus_resume(struct usb_hcd *hcd)
 			 * prevent port event interrupts from interfering
 			 * with usb2 port resume process
 			 */
-			xhci_disable_interrupter(xhci->interrupters[0]);
+			xhci_disable_interrupter(xhci, xhci->interrupters[0]);
 			disabled_irq = true;
 		}
 	}
@@ -1945,7 +1945,7 @@ int xhci_bus_resume(struct usb_hcd *hcd)
 				/* resume already initiated */
 				break;
 			default:
-				/* not in a resumeable state, ignore it */
+				/* not in a resumable state, ignore it */
 				clear_bit(port_index,
 					  &bus_state->bus_suspended);
 				break;

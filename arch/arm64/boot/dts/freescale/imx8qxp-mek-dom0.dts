@@ -43,7 +43,6 @@
 
 &imx8_gpu_ss {
 	reg = <0xa8000000 0x58000000>, <0x0 0x10000000>;
-	status = "okay";
 };
 
 &lsio_mu1 {

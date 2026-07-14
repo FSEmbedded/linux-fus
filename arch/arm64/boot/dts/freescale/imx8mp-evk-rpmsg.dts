@@ -7,11 +7,28 @@
 
 #include "imx8mp-evk.dts"
 
+/delete-node/ &pgc_audio;
+
 / {
 	aliases {
 		i2c0 = &i2c1;
 		i2c1 = &i2c2;
 		i2c2 = &i2c_rpbus_3;
+	};
+
+	audiomix_pd: audiomix-pd {
+		compatible = "fsl,imx8m-pm-domain";
+		#power-domain-cells = <0>;
+		domain-index = <5>;
+		domain-name = "audiomix";
+		clocks = <&clk IMX8MP_CLK_AUDIO_AHB_ROOT>,
+			 <&clk IMX8MP_CLK_AUDIO_AXI_ROOT>;
+		assigned-clocks = <&clk IMX8MP_CLK_AUDIO_AHB>,
+				  <&clk IMX8MP_CLK_AUDIO_AXI_SRC>;
+		assigned-clock-parents = <&clk IMX8MP_SYS_PLL1_800M>,
+					 <&clk IMX8MP_SYS_PLL1_800M>;
+		assigned-clock-rates = <400000000>,
+				       <800000000>;
 	};
 
 	reserved-memory {
@@ -86,13 +103,22 @@
 		audio-codec = <&wm8960>;
 		memory-region = <&audio_reserved>;
 		power-domains = <&audiomix_pd>;
+		pinctrl-0 = <&pinctrl_hpdet>;
+		pinctrl-names = "default";
+		hp-det-gpios = <&gpio4 28 GPIO_ACTIVE_HIGH>;
 		audio-routing =
-			"LINPUT1", "MICB",
-			"LINPUT3", "MICB";
+			"Headphone Jack", "HP_L",
+			"Headphone Jack", "HP_R",
+			"Ext Spk", "SPK_LP",
+			"Ext Spk", "SPK_LN",
+			"Ext Spk", "SPK_RP",
+			"Ext Spk", "SPK_RN",
+			"Main MIC", "MICB",
+			"LINPUT1", "Main MIC",
+			"LINPUT3", "Main MIC";
 		ignore-suspend-widgets =
-			"HP_L", "HP_R", "Playback",
-			"Capture", "MICB", "LINPUT1";
-		status = "okay";
+			"Headphone Jack", "Playback",
+			"Capture", "Main MIC";
 	};
 
 	rpmsg_micfil: rpmsg_micfil {
@@ -208,6 +234,10 @@
 	};
 };
 
+&aips5 {
+	power-domains = <&audiomix_pd>;
+};
+
 &pwm4{
 	status = "disabled";
 };
@@ -222,6 +252,14 @@
 
 &sdma3{
 	status = "disabled";
+};
+
+&audio_blk_ctrl {
+	power-domains = <&audiomix_pd>;
+};
+
+&dsp {
+	power-domains = <&audiomix_pd>;
 };
 
 &uart3 {

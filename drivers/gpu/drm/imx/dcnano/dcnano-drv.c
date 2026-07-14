@@ -10,6 +10,7 @@
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 
+#include <drm/clients/drm_client_setup.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_drv.h>
 #include <drm/drm_fb_helper.h>
@@ -32,10 +33,10 @@ DEFINE_DRM_GEM_DMA_FOPS(dcnano_driver_fops);
 static struct drm_driver dcnano_driver = {
 	.driver_features	= DRIVER_MODESET | DRIVER_GEM | DRIVER_ATOMIC,
 	DRM_GEM_DMA_DRIVER_OPS,
+	DRM_FBDEV_DMA_DRIVER_OPS,
 	.fops			= &dcnano_driver_fops,
 	.name			= "imx-dcnano",
 	.desc			= "i.MX DCNANO DRM graphics",
-	.date			= "20201221",
 	.major			= 1,
 	.minor			= 0,
 	.patchlevel		= 0,
@@ -237,7 +238,7 @@ static int dcnano_probe(struct platform_device *pdev)
 		legacyfb_depth = 32;
 	}
 
-	drm_fbdev_dma_setup(drm, legacyfb_depth);
+	drm_client_setup_with_color_mode(drm, legacyfb_depth);
 
 	return 0;
 

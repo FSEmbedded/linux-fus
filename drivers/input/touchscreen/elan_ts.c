@@ -259,9 +259,8 @@ static int elan_touch_register_interrupt(struct i2c_client *client)
 	}
 
 	if (!elan_touch_data.use_irq) {
-		hrtimer_init(&elan_touch_data.timer, CLOCK_MONOTONIC,
-			     HRTIMER_MODE_REL);
-		elan_touch_data.timer.function = elan_touch_timer_func;
+		hrtimer_setup(&elan_touch_data.timer, elan_touch_timer_func,
+			      CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 		hrtimer_start(&elan_touch_data.timer, ktime_set(1, 0),
 			      HRTIMER_MODE_REL);
 	}

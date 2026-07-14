@@ -455,7 +455,7 @@ static const struct snd_soc_dapm_widget cs35l45_dapm_widgets[] = {
 	SND_SOC_DAPM_AIF_OUT("ASP_TX2", NULL, 1, CS35L45_ASP_ENABLES1, CS35L45_ASP_TX2_EN_SHIFT, 0),
 	SND_SOC_DAPM_AIF_OUT("ASP_TX3", NULL, 2, CS35L45_ASP_ENABLES1, CS35L45_ASP_TX3_EN_SHIFT, 0),
 	SND_SOC_DAPM_AIF_OUT("ASP_TX4", NULL, 3, CS35L45_ASP_ENABLES1, CS35L45_ASP_TX4_EN_SHIFT, 0),
-	SND_SOC_DAPM_AIF_OUT("ASP_TX5", NULL, 3, CS35L45_ASP_ENABLES1, CS35L45_ASP_TX5_EN_SHIFT, 0),
+	SND_SOC_DAPM_AIF_OUT("ASP_TX5", NULL, 4, CS35L45_ASP_ENABLES1, CS35L45_ASP_TX5_EN_SHIFT, 0),
 
 	SND_SOC_DAPM_MUX("ASP_TX1 Source", SND_SOC_NOPM, 0, 0, &cs35l45_asp_muxes[0]),
 	SND_SOC_DAPM_MUX("ASP_TX2 Source", SND_SOC_NOPM, 0, 0, &cs35l45_asp_muxes[1]),
@@ -1427,7 +1427,6 @@ int cs35l45_probe(struct cs35l45_private *cs35l45)
 
 	pm_runtime_set_autosuspend_delay(cs35l45->dev, 3000);
 	pm_runtime_use_autosuspend(cs35l45->dev);
-	pm_runtime_mark_last_busy(cs35l45->dev);
 	pm_runtime_set_active(cs35l45->dev);
 	pm_runtime_get_noresume(cs35l45->dev);
 	pm_runtime_enable(cs35l45->dev);
@@ -1486,7 +1485,7 @@ err:
 
 	return ret;
 }
-EXPORT_SYMBOL_NS_GPL(cs35l45_probe, SND_SOC_CS35L45);
+EXPORT_SYMBOL_NS_GPL(cs35l45_probe, "SND_SOC_CS35L45");
 
 void cs35l45_remove(struct cs35l45_private *cs35l45)
 {
@@ -1501,7 +1500,7 @@ void cs35l45_remove(struct cs35l45_private *cs35l45)
 	/* VDD_BATT must be the last to power-off */
 	regulator_disable(cs35l45->vdd_batt);
 }
-EXPORT_SYMBOL_NS_GPL(cs35l45_remove, SND_SOC_CS35L45);
+EXPORT_SYMBOL_NS_GPL(cs35l45_remove, "SND_SOC_CS35L45");
 
 EXPORT_GPL_DEV_PM_OPS(cs35l45_pm_ops) = {
 	RUNTIME_PM_OPS(cs35l45_runtime_suspend, cs35l45_runtime_resume, NULL)

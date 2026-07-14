@@ -12,6 +12,7 @@
 #include <drm/bridge/cdns-mhdp.h>
 #include <drm/display/drm_hdcp_helper.h>
 #include <drm/drm_print.h>
+#include <linux/debugfs.h>
 #include <linux/firmware.h>
 
 #include "cdns-mhdp-hdcp.h"

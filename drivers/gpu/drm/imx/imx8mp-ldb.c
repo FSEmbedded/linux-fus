@@ -34,7 +34,7 @@
 struct imx8mp_ldb;
 
 struct imx8mp_ldb_channel {
-	struct ldb_channel base;
+	struct ldb_channel *base;
 	struct imx8mp_ldb *imx8mp_ldb;
 
 	struct drm_encoder encoder;
@@ -113,13 +113,11 @@ imx8mp_ldb_encoder_atomic_mode_set(struct drm_encoder *encoder,
 
 	serial_clk = mode->clock * (ldb->dual ? 3500UL : 7000UL);
 	clk_set_rate(imx8mp_ldb->clk_root, serial_clk);
-
 	ldb_clk_rate = clk_get_rate(imx8mp_ldb->clk_root);
 	if ( ldb_clk_rate % (serial_clk) != 0)
 		dev_warn(ldb->dev,
 			"%s: serial_clk (%li) is not equal to ldb root clock(%li)!\n",
 			 __func__, serial_clk ,ldb_clk_rate);
-
 }
 
 static void imx8mp_ldb_encoder_disable(struct drm_encoder *encoder)
@@ -152,7 +150,7 @@ imx8mp_ldb_encoder_atomic_check(struct drm_encoder *encoder,
 	struct imx_crtc_state *imx_crtc_state = to_imx_crtc_state(crtc_state);
 	struct imx8mp_ldb_channel *imx8mp_ldb_ch =
 						enc_to_imx8mp_ldb_ch(encoder);
-	struct ldb_channel *ldb_ch = &imx8mp_ldb_ch->base;
+	struct ldb_channel *ldb_ch = imx8mp_ldb_ch->base;
 #if 0
 	struct imx8mp_ldb *imx8mp_ldb = imx8mp_ldb_ch->imx8mp_ldb;
 	struct ldb *ldb = &imx8mp_ldb->base;
@@ -161,7 +159,6 @@ imx8mp_ldb_encoder_atomic_check(struct drm_encoder *encoder,
 #endif
 	struct drm_bridge_state *bridge_state = NULL;
 	struct drm_bridge *bridge;
-
 
 	bridge = drm_bridge_chain_get_first_bridge(encoder);
 	bridge_state = drm_atomic_get_new_bridge_state(crtc_state->state, bridge);
@@ -182,6 +179,7 @@ imx8mp_ldb_encoder_atomic_check(struct drm_encoder *encoder,
 	default:
 		return -EINVAL;
 	}
+
 	/* We want to be able to set diffenten pixel clocks, so remove
 	   the hard setting of the pixel clock speed here. The user has to
 	   make sure to set the pixel clock in the device tree, so that the
@@ -197,6 +195,7 @@ imx8mp_ldb_encoder_atomic_check(struct drm_encoder *encoder,
 	else
 		mode->clock = 37125;//74250;
 #endif
+
 	return 0;
 }
 
@@ -207,7 +206,7 @@ imx8mp_ldb_encoder_mode_valid(struct drm_encoder *encoder,
 #if 0
 	struct imx8mp_ldb_channel *imx8mp_ldb_ch =
 						enc_to_imx8mp_ldb_ch(encoder);
-	struct ldb_channel *ldb_ch = &imx8mp_ldb_ch->base;
+	struct ldb_channel *ldb_ch = imx8mp_ldb_ch->base;
 	struct imx8mp_ldb *imx8mp_ldb = imx8mp_ldb_ch->imx8mp_ldb;
 	struct ldb *ldb = &imx8mp_ldb->base;
 
@@ -224,6 +223,7 @@ imx8mp_ldb_encoder_mode_valid(struct drm_encoder *encoder,
 
 	if (!ldb->dual && mode->clock != 74250)
 		return MODE_NOCLOCK;
+
 #endif
 	return MODE_OK;
 }
@@ -237,7 +237,7 @@ static const struct drm_encoder_helper_funcs imx8mp_ldb_encoder_helper_funcs = {
 };
 
 static const struct of_device_id imx8mp_ldb_dt_ids[] = {
-	{ .compatible = "fsl,imx8mp-ldb", },
+	{ .compatible = "fsl,imx8mp-ldb-nxp", },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, imx8mp_ldb_dt_ids);
@@ -262,7 +262,7 @@ imx8mp_ldb_bind(struct device *dev, struct device *master, void *data)
 
 	for (i = 0; i < LDB_CH_NUM; i++) {
 		imx8mp_ldb->channel[i].imx8mp_ldb = imx8mp_ldb;
-		ldb->channel[i] = &imx8mp_ldb->channel[i].base;
+		ldb->channel[i] = imx8mp_ldb->channel[i].base;
 	}
 
 	imx8mp_ldb->clk_root = devm_clk_get(dev, "ldb");
@@ -332,7 +332,7 @@ get_phy:
 	}
 
 	for (i = 0; i < LDB_CH_NUM; i++) {
-		ldb_ch = &imx8mp_ldb->channel[i].base;
+		ldb_ch = imx8mp_ldb->channel[i].base;
 
 		if (!ldb_ch->is_valid)
 			continue;
@@ -378,12 +378,21 @@ static const struct component_ops imx8mp_ldb_ops = {
 
 static int imx8mp_ldb_probe(struct platform_device *pdev)
 {
+	struct imx8mp_ldb_channel *imx8mp_ldb_ch;
 	struct device *dev = &pdev->dev;
 	struct imx8mp_ldb *imx8mp_ldb;
+	int i;
 
 	imx8mp_ldb = devm_kzalloc(dev, sizeof(*imx8mp_ldb), GFP_KERNEL);
 	if (!imx8mp_ldb)
 		return -ENOMEM;
+	for (i = 0; i < LDB_CH_NUM; i++) {
+		imx8mp_ldb_ch = &imx8mp_ldb->channel[i];
+
+		imx8mp_ldb_ch->base = devm_ldb_channel_alloc(dev);
+		if (IS_ERR(imx8mp_ldb_ch->base))
+			return PTR_ERR(imx8mp_ldb_ch->base);
+	}
 
 	dev_set_drvdata(dev, imx8mp_ldb);
 

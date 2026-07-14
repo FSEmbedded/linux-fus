@@ -39,8 +39,8 @@
 #define FSL_MC_CAPTURE_EXT_ADDRESS	0x0e54
 #define FSL_MC_ERR_SBE		0x0e58
 
-#define IMX9_MC_ERR_EN                  0x1000
-#define IMX9_MC_DATA_ERR_INJECT_HI	0x1100
+#define IMX9_MC_ERR_EN			0x1000
+#define IMX9_MC_DATA_ERR_INJECT_OFF	0x100
 
 #define DSC_MEM_EN	0x80000000
 #define DSC_ECC_EN	0x20000000
@@ -77,7 +77,11 @@ struct fsl_mc_pdata {
 	char *name;
 	int edac_idx;
 	void __iomem *mc_vbase;
+	void __iomem *inject_vbase;
 	int irq;
+	u32 orig_ddr_err_disable;
+	u32 orig_ddr_err_sbe;
+	bool little_endian;
 	unsigned long flag;
 };
 int fsl_mc_err_probe(struct platform_device *op);

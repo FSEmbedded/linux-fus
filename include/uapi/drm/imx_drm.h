@@ -18,7 +18,7 @@
 #ifndef _UAPI_IMX_DRM_H_
 #define _UAPI_IMX_DRM_H_
 
-#include "drm.h"
+#include <drm/drm.h>
 
 #if defined(__cplusplus)
 extern "C" {
@@ -107,6 +107,7 @@ struct drm_imx_dpu_sync_dmabuf {
 enum drm_imx_dpu_param {
 	DRM_IMX_MAX_DPUS,
 	DRM_IMX_GET_FENCE,
+	DRM_IMX_DPU_VERSION,
 };
 
 #if defined(__cplusplus)

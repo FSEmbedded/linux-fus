@@ -47,6 +47,7 @@
 	EM(netfs_trace_tcon_ref_get_cached_laundromat,	"GET Ch-Lau") \
 	EM(netfs_trace_tcon_ref_get_cached_lease_break,	"GET Ch-Lea") \
 	EM(netfs_trace_tcon_ref_get_cancelled_close,	"GET Cn-Cls") \
+	EM(netfs_trace_tcon_ref_get_close_defer_files,	"GET Cl-Def") \
 	EM(netfs_trace_tcon_ref_get_dfs_refer,		"GET DfsRef") \
 	EM(netfs_trace_tcon_ref_get_find,		"GET Find  ") \
 	EM(netfs_trace_tcon_ref_get_find_sess_tcon,	"GET FndSes") \
@@ -58,7 +59,9 @@
 	EM(netfs_trace_tcon_ref_put_cancelled_close,	"PUT Cn-Cls") \
 	EM(netfs_trace_tcon_ref_put_cancelled_close_fid, "PUT Cn-Fid") \
 	EM(netfs_trace_tcon_ref_put_cancelled_mid,	"PUT Cn-Mid") \
+	EM(netfs_trace_tcon_ref_put_close_defer_files,	"PUT Cl-Def") \
 	EM(netfs_trace_tcon_ref_put_mnt_ctx,		"PUT MntCtx") \
+	EM(netfs_trace_tcon_ref_put_dfs_refer,		"PUT DfsRfr") \
 	EM(netfs_trace_tcon_ref_put_reconnect_server,	"PUT Reconn") \
 	EM(netfs_trace_tcon_ref_put_tlink,		"PUT Tlink ") \
 	EM(netfs_trace_tcon_ref_see_cancelled_close,	"SEE Cn-Cls") \
@@ -266,7 +269,7 @@ DEFINE_EVENT(smb3_copy_range_err_class, smb3_##name, \
 	TP_ARGS(xid, src_fid, target_fid, tid, sesid, src_offset, target_offset, len, rc))
 
 DEFINE_SMB3_COPY_RANGE_ERR_EVENT(clone_err);
-/* TODO: Add SMB3_COPY_RANGE_ERR_EVENT(copychunk_err) */
+DEFINE_SMB3_COPY_RANGE_ERR_EVENT(copychunk_err);
 
 DECLARE_EVENT_CLASS(smb3_copy_range_done_class,
 	TP_PROTO(unsigned int xid,
@@ -669,12 +672,12 @@ DEFINE_SMB3_INF_COMPOUND_ENTER_EVENT(query_info_compound_enter);
 DEFINE_SMB3_INF_COMPOUND_ENTER_EVENT(posix_query_info_compound_enter);
 DEFINE_SMB3_INF_COMPOUND_ENTER_EVENT(hardlink_enter);
 DEFINE_SMB3_INF_COMPOUND_ENTER_EVENT(rename_enter);
-DEFINE_SMB3_INF_COMPOUND_ENTER_EVENT(rmdir_enter);
+DEFINE_SMB3_INF_COMPOUND_ENTER_EVENT(unlink_enter);
 DEFINE_SMB3_INF_COMPOUND_ENTER_EVENT(set_eof_enter);
 DEFINE_SMB3_INF_COMPOUND_ENTER_EVENT(set_info_compound_enter);
 DEFINE_SMB3_INF_COMPOUND_ENTER_EVENT(set_reparse_compound_enter);
 DEFINE_SMB3_INF_COMPOUND_ENTER_EVENT(get_reparse_compound_enter);
-DEFINE_SMB3_INF_COMPOUND_ENTER_EVENT(delete_enter);
+DEFINE_SMB3_INF_COMPOUND_ENTER_EVENT(query_wsl_ea_compound_enter);
 DEFINE_SMB3_INF_COMPOUND_ENTER_EVENT(mkdir_enter);
 DEFINE_SMB3_INF_COMPOUND_ENTER_EVENT(tdis_enter);
 DEFINE_SMB3_INF_COMPOUND_ENTER_EVENT(mknod_enter);
@@ -709,13 +712,12 @@ DEFINE_SMB3_INF_COMPOUND_DONE_EVENT(query_info_compound_done);
 DEFINE_SMB3_INF_COMPOUND_DONE_EVENT(posix_query_info_compound_done);
 DEFINE_SMB3_INF_COMPOUND_DONE_EVENT(hardlink_done);
 DEFINE_SMB3_INF_COMPOUND_DONE_EVENT(rename_done);
-DEFINE_SMB3_INF_COMPOUND_DONE_EVENT(rmdir_done);
+DEFINE_SMB3_INF_COMPOUND_DONE_EVENT(unlink_done);
 DEFINE_SMB3_INF_COMPOUND_DONE_EVENT(set_eof_done);
 DEFINE_SMB3_INF_COMPOUND_DONE_EVENT(set_info_compound_done);
 DEFINE_SMB3_INF_COMPOUND_DONE_EVENT(set_reparse_compound_done);
 DEFINE_SMB3_INF_COMPOUND_DONE_EVENT(get_reparse_compound_done);
 DEFINE_SMB3_INF_COMPOUND_DONE_EVENT(query_wsl_ea_compound_done);
-DEFINE_SMB3_INF_COMPOUND_DONE_EVENT(delete_done);
 DEFINE_SMB3_INF_COMPOUND_DONE_EVENT(mkdir_done);
 DEFINE_SMB3_INF_COMPOUND_DONE_EVENT(tdis_done);
 DEFINE_SMB3_INF_COMPOUND_DONE_EVENT(mknod_done);
@@ -755,14 +757,13 @@ DEFINE_SMB3_INF_COMPOUND_ERR_EVENT(query_info_compound_err);
 DEFINE_SMB3_INF_COMPOUND_ERR_EVENT(posix_query_info_compound_err);
 DEFINE_SMB3_INF_COMPOUND_ERR_EVENT(hardlink_err);
 DEFINE_SMB3_INF_COMPOUND_ERR_EVENT(rename_err);
-DEFINE_SMB3_INF_COMPOUND_ERR_EVENT(rmdir_err);
+DEFINE_SMB3_INF_COMPOUND_ERR_EVENT(unlink_err);
 DEFINE_SMB3_INF_COMPOUND_ERR_EVENT(set_eof_err);
 DEFINE_SMB3_INF_COMPOUND_ERR_EVENT(set_info_compound_err);
 DEFINE_SMB3_INF_COMPOUND_ERR_EVENT(set_reparse_compound_err);
 DEFINE_SMB3_INF_COMPOUND_ERR_EVENT(get_reparse_compound_err);
 DEFINE_SMB3_INF_COMPOUND_ERR_EVENT(query_wsl_ea_compound_err);
 DEFINE_SMB3_INF_COMPOUND_ERR_EVENT(mkdir_err);
-DEFINE_SMB3_INF_COMPOUND_ERR_EVENT(delete_err);
 DEFINE_SMB3_INF_COMPOUND_ERR_EVENT(tdis_err);
 DEFINE_SMB3_INF_COMPOUND_ERR_EVENT(mknod_err);
 
@@ -1170,8 +1171,54 @@ DEFINE_EVENT(smb3_lease_done_class, smb3_##name,  \
 		__u64	lease_key_high),	\
 	TP_ARGS(lease_state, tid, sesid, lease_key_low, lease_key_high))
 
-DEFINE_SMB3_LEASE_DONE_EVENT(lease_done);
-DEFINE_SMB3_LEASE_DONE_EVENT(lease_not_found);
+DEFINE_SMB3_LEASE_DONE_EVENT(lease_ack_done);
+/* Tracepoint when a lease break request is received/entered (includes epoch and flags) */
+DECLARE_EVENT_CLASS(smb3_lease_enter_class,
+	TP_PROTO(__u32 lease_state,
+		__u32 flags,
+		__u16 epoch,
+		__u32 tid,
+		__u64 sesid,
+		__u64 lease_key_low,
+		__u64 lease_key_high),
+	TP_ARGS(lease_state, flags, epoch, tid, sesid, lease_key_low, lease_key_high),
+	TP_STRUCT__entry(
+		__field(__u32, lease_state)
+		__field(__u32, flags)
+		__field(__u16, epoch)
+		__field(__u32, tid)
+		__field(__u64, sesid)
+		__field(__u64, lease_key_low)
+		__field(__u64, lease_key_high)
+	),
+	TP_fast_assign(
+		__entry->lease_state = lease_state;
+		__entry->flags = flags;
+		__entry->epoch = epoch;
+		__entry->tid = tid;
+		__entry->sesid = sesid;
+		__entry->lease_key_low = lease_key_low;
+		__entry->lease_key_high = lease_key_high;
+	),
+	TP_printk("sid=0x%llx tid=0x%x lease_key=0x%llx%llx lease_state=0x%x flags=0x%x epoch=%u",
+		__entry->sesid, __entry->tid, __entry->lease_key_high,
+		__entry->lease_key_low, __entry->lease_state, __entry->flags, __entry->epoch)
+)
+
+#define DEFINE_SMB3_LEASE_ENTER_EVENT(name)        \
+DEFINE_EVENT(smb3_lease_enter_class, smb3_##name,  \
+	TP_PROTO(__u32 lease_state,            \
+		__u32 flags,               \
+		__u16 epoch,               \
+		__u32 tid,                 \
+		__u64 sesid,               \
+		__u64 lease_key_low,       \
+		__u64 lease_key_high),     \
+	TP_ARGS(lease_state, flags, epoch, tid, sesid, lease_key_low, lease_key_high))
+
+DEFINE_SMB3_LEASE_ENTER_EVENT(lease_break_enter);
+/* Lease not found: reuse lease_enter payload (includes epoch and flags) */
+DEFINE_SMB3_LEASE_ENTER_EVENT(lease_not_found);
 
 DECLARE_EVENT_CLASS(smb3_lease_err_class,
 	TP_PROTO(__u32	lease_state,
@@ -1212,7 +1259,7 @@ DEFINE_EVENT(smb3_lease_err_class, smb3_##name,  \
 		int	rc),			\
 	TP_ARGS(lease_state, tid, sesid, lease_key_low, lease_key_high, rc))
 
-DEFINE_SMB3_LEASE_ERR_EVENT(lease_err);
+DEFINE_SMB3_LEASE_ERR_EVENT(lease_ack_err);
 
 DECLARE_EVENT_CLASS(smb3_connect_class,
 	TP_PROTO(char *hostname,

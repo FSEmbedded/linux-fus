@@ -55,11 +55,11 @@ properties:
     maxItems: 1
 
   interrupts:
-    description:
-      One interrupt for USB controller and wake-up interrupt combined case
-      or two interrupts for individual USB controller, wake-up interrupt
     minItems: 1
-    maxItems: 2
+    items:
+      - description: USB controller interrupt or combine USB controller
+                     and wakeup interrupts.
+      - description: Wakeup interrupt
 
   clocks:
     minItems: 1

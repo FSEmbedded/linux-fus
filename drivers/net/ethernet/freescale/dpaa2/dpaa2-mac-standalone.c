@@ -259,7 +259,7 @@ static void dpaa2_mac_ethtool_get_strings(struct net_device *net_dev,
 	if (stringset != ETH_SS_STATS)
 		return;
 
-	dpaa2_mac_get_strings(data);
+	dpaa2_mac_get_strings(&data);
 }
 
 static void dpaa2_mac_ethtool_get_stats(struct net_device *net_dev,

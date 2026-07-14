@@ -10,14 +10,13 @@ maintainers:
   - Marek Vasut <marex@denx.de>
   - Woojung Huh <Woojung.Huh@microchip.com>
 
-allOf:
-  - $ref: /schemas/spi/spi-peripheral-props.yaml#
 
 properties:
   # See Documentation/devicetree/bindings/net/dsa/dsa.yaml for a list of additional
   # required and optional properties.
   compatible:
     enum:
+      - microchip,ksz8463
       - microchip,ksz8765
       - microchip,ksz8794
       - microchip,ksz8795
@@ -34,6 +33,14 @@ properties:
       - microchip,ksz9563
       - microchip,ksz8563
       - microchip,ksz8567
+      - microchip,lan9646
+
+  pinctrl-names:
+    items:
+      - const: default
+      - const: reset
+        description:
+          Used during reset for strap configuration.
 
   reset-gpios:
     description:
@@ -81,30 +88,14 @@ properties:
   interrupts:
     maxItems: 1
 
-  xmii-mac-mode:
-   description: |
-     Set XMII-MAC-MODE (only verified for KSZ9893).
-     MII interface:   0 = MII interfaces operates as PHY device
-               		  1 = MII interfaces operates as MAC device
-     RMII interface:  0 = A 50 MHz RMII REFCLK is generated
-               		     rom the RXC pin
-               		  1 = The 50 MHz RMII REFCLK is received
-               		                      at the RXC pin
-     RGMII interface: 0 = In-Band status disabled
-               		  1 = In-Band Status enabled
-
-  led-gpio-phy-link:
-   description: |
-     Set if LEDX_Y should act as a GPIO and gets triggered if
-     phy link state changes (only verified for KSZ9893).
-     0 = LEDX_0 is setup as phy-link
-     1 = LEDX_1 is setup as phy-link
-
 required:
   - compatible
   - reg
 
-if:
+allOf:
+  - $ref: /schemas/spi/spi-peripheral-props.yaml#
+
+  - if:
   not:
     properties:
       compatible:
@@ -136,6 +127,18 @@ else:
                 should be provided externally.
           dependencies:
             microchip,rmii-clk-internal: [ethernet]
+  - if:
+      properties:
+        compatible:
+          contains:
+            const: microchip,ksz8463
+    then:
+      properties:
+        straps-rxd-gpios:
+          description:
+            RXD0 and RXD1 pins, used to select SPI as bus interface.
+          minItems: 2
+          maxItems: 2
 
 unevaluatedProperties: false
 
@@ -157,7 +160,6 @@ examples:
 
         pinctrl-0 = <&pinctrl_spi_ksz>;
         cs-gpios = <&pioC 25 0>;
-        id = <1>;
 
         ksz9477: switch@0 {
             compatible = "microchip,ksz9477";

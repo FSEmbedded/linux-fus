@@ -187,7 +187,7 @@ static const struct mtd_ooblayout_ops pl35x_ecc_ooblayout16_ops = {
 	.free = pl35x_ecc_ooblayout16_free,
 };
 
-/* Generic flash bbt decriptors */
+/* Generic flash bbt descriptors */
 static u8 bbt_pattern[] = { 'B', 'b', 't', '0' };
 static u8 mirror_pattern[] = { '1', 't', 'b', 'B' };
 
@@ -862,6 +862,9 @@ static int pl35x_nfc_setup_interface(struct nand_chip *chip, int cs,
 			  PL35X_SMC_NAND_TAR_CYCLES(tmgs.t_ar) |
 			  PL35X_SMC_NAND_TRR_CYCLES(tmgs.t_rr);
 
+	writel(plnand->timings, nfc->conf_regs + PL35X_SMC_CYCLES);
+	pl35x_smc_update_regs(nfc);
+
 	return 0;
 }
 
@@ -976,6 +979,7 @@ static int pl35x_nand_attach_chip(struct nand_chip *chip)
 		fallthrough;
 	case NAND_ECC_ENGINE_TYPE_NONE:
 	case NAND_ECC_ENGINE_TYPE_SOFT:
+		chip->ecc.write_page_raw = nand_monolithic_write_page_raw;
 		break;
 	case NAND_ECC_ENGINE_TYPE_ON_HOST:
 		ret = pl35x_nand_init_hw_ecc_controller(nfc, chip);
@@ -1137,7 +1141,7 @@ static int pl35x_nand_probe(struct platform_device *pdev)
 	struct device *smc_dev = pdev->dev.parent;
 	struct amba_device *smc_amba = to_amba_device(smc_dev);
 	struct pl35x_nandc *nfc;
-	u32 ret;
+	int ret;
 
 	nfc = devm_kzalloc(&pdev->dev, sizeof(*nfc), GFP_KERNEL);
 	if (!nfc)
@@ -1184,7 +1188,7 @@ MODULE_DEVICE_TABLE(of, pl35x_nand_of_match);
 
 static struct platform_driver pl35x_nandc_driver = {
 	.probe = pl35x_nand_probe,
-	.remove_new = pl35x_nand_remove,
+	.remove = pl35x_nand_remove,
 	.driver = {
 		.name = PL35X_NANDC_DRIVER_NAME,
 		.of_match_table = pl35x_nand_of_match,
@@ -1193,6 +1197,5 @@ static struct platform_driver pl35x_nandc_driver = {
 module_platform_driver(pl35x_nandc_driver);
 
 MODULE_AUTHOR("Xilinx, Inc.");
-MODULE_ALIAS("platform:" PL35X_NANDC_DRIVER_NAME);
 MODULE_DESCRIPTION("ARM PL35X NAND controller driver");
 MODULE_LICENSE("GPL");

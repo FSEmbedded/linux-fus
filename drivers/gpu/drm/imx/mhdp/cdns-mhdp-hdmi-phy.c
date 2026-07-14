@@ -15,7 +15,6 @@
 #include <drm/drm_crtc_helper.h>
 #include <linux/io.h>
 #include <drm/drm_edid.h>
-#include <drm/drm_encoder_slave.h>
 #include <drm/drm_atomic.h>
 #include <linux/io.h>
 

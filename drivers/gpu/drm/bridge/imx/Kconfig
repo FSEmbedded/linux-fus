@@ -1,5 +1,18 @@
 if ARCH_MXC || COMPILE_TEST
 
+config DRM_IMX_LDB_HELPER
+	tristate
+
+config DRM_IMX_LEGACY_BRIDGE
+	tristate
+	depends on DRM_IMX
+	help
+	  This is a DRM bridge implementation for the DRM i.MX IPUv3 driver,
+	  that uses of_get_drm_display_mode to acquire display mode.
+
+	  Newer designs should not use this bridge and should use proper panel
+	  driver instead.
+
 config DRM_IMX8MP_DW_HDMI_BRIDGE
 	tristate "Freescale i.MX8MP HDMI-TX bridge support"
 	depends on OF
@@ -18,8 +31,25 @@ config DRM_IMX8MP_HDMI_PVI
 	  Choose this to enable support for the internal HDMI TX Parallel
 	  Video Interface found on the Freescale i.MX8MP SoC.
 
-config DRM_IMX_LDB_HELPER
-	tristate
+config DRM_IMX8QM_LDB
+	tristate "Freescale i.MX8QM LVDS display bridge"
+	depends on OF
+	depends on COMMON_CLK
+	select DRM_IMX_LDB_HELPER
+	select DRM_KMS_HELPER
+	help
+	  Choose this to enable the internal LVDS Display Bridge(LDB) found in
+	  Freescale i.MX8qm processor.  Official name of LDB is pixel mapper.
+
+config DRM_IMX8QXP_LDB
+	tristate "Freescale i.MX8QXP LVDS display bridge"
+	depends on OF
+	depends on COMMON_CLK
+	select DRM_IMX_LDB_HELPER
+	select DRM_KMS_HELPER
+	help
+	  Choose this to enable the internal LVDS Display Bridge(LDB) found in
+	  Freescale i.MX8qxp processor.  Official name of LDB is pixel mapper.
 
 config DRM_IMX8QXP_PIXEL_COMBINER
 	tristate "Freescale i.MX8QM/QXP pixel combiner"
@@ -96,5 +126,15 @@ config DRM_IMX95_PIXEL_LINK
 	help
 	  Choose this to enable display pixel link found in NXP i.MX95
 	  processors.
+
+config DRM_IMX952_MIPI_DSI2
+	tristate "NXP i.MX952 specific extensions for Synopsys DW MIPI DSI2"
+	depends on OF && MFD_SYSCON && COMMON_CLK
+	select DRM_DW_MIPI_DSI2
+	select DRM_KMS_HELPER
+	select MULTIPLEXER
+	help
+	  Choose this to enable Synopsys DesignWare MIPI DSI2 found in NXP
+	  i.MX952 processor.
 
 endif # ARCH_MXC || COMPILE_TEST

@@ -155,6 +155,7 @@
 
 		cpudai: simple-audio-card,cpu {
 			sound-dai = <&sai2>;
+			system-clock-direction-out;
 			dai-tdm-slot-num = <2>;
 			dai-tdm-slot-width = <32>;
 		};
@@ -300,9 +301,6 @@
 };
 
 &gpio3 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_bt_reset>;
-
 	/* enable the on-board BT */
 	bt-reg-on-hog {
 		gpio-hog;
@@ -330,9 +328,6 @@
 };
 
 &gpio5 {
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_wifi_reset>;
-
 	wl-reg-on-hog {
 		gpio-hog;
 		gpios = <29 GPIO_ACTIVE_HIGH>;
@@ -610,6 +605,10 @@
 	};
 };
 
+&noc {
+	status = "disabled";
+};
+
 &csi1 {
 	status = "okay";
 };
@@ -631,6 +630,16 @@
 	status = "okay";
 };
 
+&pcie0_ep {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pcie0>;
+	clocks = <&clk IMX8MQ_CLK_PCIE1_ROOT>,
+		 <&pcie0_refclk>,
+		 <&clk IMX8MQ_CLK_PCIE1_PHY>,
+		 <&clk IMX8MQ_CLK_PCIE1_AUX>;
+	status = "disabled";
+};
+
 &pcie1 {
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_pcie1>;
@@ -644,6 +653,16 @@
 	vph-supply = <&vgen5_reg>;
 	supports-clkreq;
 	status = "okay";
+};
+
+&pcie1_ep {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pcie1>;
+	clocks = <&clk IMX8MQ_CLK_PCIE2_ROOT>,
+		 <&pcie0_refclk>,
+		 <&clk IMX8MQ_CLK_PCIE2_PHY>,
+		 <&clk IMX8MQ_CLK_PCIE2_AUX>;
+	status = "disabled";
 };
 
 &pgc_gpu {
@@ -790,7 +809,7 @@
 	status = "okay";
 
 	bluetooth {
-		compatible = "nxp,88w8997-bt";
+		compatible = "nxp,88w8987-bt";
 	};
 };
 
@@ -870,6 +889,8 @@
 			MX8MQ_IOMUXC_NAND_WP_B_GPIO3_IO18		0x19
 			MX8MQ_IOMUXC_GPIO1_IO08_GPIO1_IO8		0xd6
 			MX8MQ_IOMUXC_GPIO1_IO00_ANAMIX_REF_CLK_32K	0x16
+			MX8MQ_IOMUXC_NAND_CLE_GPIO3_IO5			0x16
+			MX8MQ_IOMUXC_UART4_TXD_GPIO5_IO29		0x16
 		>;
 	};
 
@@ -1214,30 +1235,9 @@
 			MX8MQ_IOMUXC_GPIO1_IO02_WDOG1_WDOG_B		0xc6
 		>;
 	};
-
-	pinctrl_bt_reset: btresetgrp {
-		fsl,pins = <
-			MX8MQ_IOMUXC_NAND_CLE_GPIO3_IO5			0x16
-		>;
-	};
-
-	pinctrl_wifi_reset: wifiresetgrp {
-		fsl,pins = <
-			MX8MQ_IOMUXC_UART4_TXD_GPIO5_IO29		0x16
-		>;
-	};
-};
-
-&vpu {
-	vpu-supply = <&sw1c_reg>;
-	status = "okay";
 };
 
 &vpu_v4l2 {
-	status = "okay";
-};
-
-&gpu3d {
 	status = "okay";
 };
 

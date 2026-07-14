@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note
 /*
  *
- * (C) COPYRIGHT 2010-2025 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2010-2026 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -647,7 +647,6 @@ static bool kbase_mmu_handle_isolated_pgd_page(struct kbase_device *kbdev,
 		if (IS_PAGE_ISOLATED(page_md->status)) {
 			page_md->status =
 				PAGE_STATUS_SET(page_md->status, FREE_PT_ISOLATED_IN_PROGRESS);
-			page_md->data.free_pt_isolated.kbdev = kbdev;
 			page_is_isolated = true;
 		} else {
 			page_md->status = PAGE_STATUS_SET(page_md->status, FREE_IN_PROGRESS);
@@ -2302,7 +2301,6 @@ static void kbase_mmu_progress_migration_on_teardown(struct kbase_device *kbdev,
 				if (IS_PAGE_ISOLATED(page_md->status)) {
 					page_md->status = PAGE_STATUS_SET(
 						page_md->status, (u8)FREE_ISOLATED_IN_PROGRESS);
-					page_md->data.free_isolated.kbdev = kbdev;
 					/* At this point, we still have a reference
 					 * to the page via its page migration metadata,
 					 * and any page with the FREE_ISOLATED_IN_PROGRESS
@@ -3383,7 +3381,6 @@ static void mmu_undo_migrate_pgd_sub_page(struct kbase_mmu_table *mmut, phys_add
 
 	kbdev = mmut->kctx->kbdev;
 
-	lockdep_assert_held(&mmut->kctx->reg_lock);
 	lockdep_assert_held(&mmut->mmu_lock);
 
 	if (mmu_get_pgd_at_level(kbdev, mmut, vpfn, level, &parent_pgd)) {
@@ -3444,7 +3441,6 @@ static int mmu_migrate_pgd_sub_page(struct kbase_mmu_table *mmut, phys_addr_t ol
 
 	kbdev = mmut->kctx->kbdev;
 
-	lockdep_assert_held(&mmut->kctx->reg_lock);
 	lockdep_assert_held(&mmut->mmu_lock);
 
 	/* Create all mappings before copying content.
@@ -3523,7 +3519,7 @@ static int mmu_migrate_pgd_sub_page(struct kbase_mmu_table *mmut, phys_addr_t ol
 		/* Defer the migration as L2 is in a transitional phase */
 		spin_unlock_irqrestore(&kbdev->hwaccess_lock, hwaccess_flags);
 		mutex_unlock(&kbdev->mmu_hw_mutex);
-		dev_dbg(kbdev->dev, "%s: L2 in transtion, abort PGD page migration", __func__);
+		dev_dbg(kbdev->dev, "%s: L2 in transition, abort PGD page migration", __func__);
 		ret = -EAGAIN;
 		goto l2_state_defer_out;
 	}
@@ -3666,6 +3662,11 @@ int kbase_mmu_migrate_pgd_page(struct tagged_addr old_pgd_phys, struct tagged_ad
 
 	check_state = PAGE_STATUS_GET(page_md->status);
 
+	if (check_state == FREE_PT_ISOLATED_IN_PROGRESS) {
+		ret = -EAGAIN;
+		goto early_exit;
+	}
+
 	if (WARN_ONCE(check_state != PT_MAPPED,
 		      "Page metadata status %d doesn't match expected value %d", check_state,
 		      PT_MAPPED)) {
@@ -3690,8 +3691,6 @@ int kbase_mmu_migrate_pgd_page(struct tagged_addr old_pgd_phys, struct tagged_ad
 
 	if (WARN_ON_ONCE(new_pgd_phys_addr & ~PAGE_MASK))
 		return -EINVAL;
-
-	lockdep_assert_held(&mmut->kctx->reg_lock);
 
 	/* The state was evaluated before entering this function, but it could
 	 * have changed before the mmu_lock was taken. However, the state
@@ -3830,6 +3829,12 @@ int kbase_mmu_migrate_data_page(struct tagged_addr old_phys, struct tagged_addr 
 
 	check_state = PAGE_STATUS_GET(page_md->status);
 
+	if (check_state == FREE_ISOLATED_IN_PROGRESS) {
+		/* tear down in progress, abort for progressing to release the page  */
+		ret = -EAGAIN;
+		goto early_exit;
+	}
+
 	if (WARN_ONCE(check_state != ALLOCATED_MAPPED,
 		      "Page metadata status %d doesn't match expected value %d", check_state,
 		      ALLOCATED_MAPPED)) {
@@ -3847,8 +3852,6 @@ int kbase_mmu_migrate_data_page(struct tagged_addr old_phys, struct tagged_addr 
 	 */
 	if (WARN_ONCE(!mmut->kctx, "Migration failed as kctx is null"))
 		return -EINVAL;
-
-	lockdep_assert_held(&mmut->kctx->reg_lock);
 
 	kbdev = mmut->kctx->kbdev;
 	index = vpfn & 0x1FFU;
@@ -4175,11 +4178,10 @@ static void mmu_teardown_level(struct kbase_device *kbdev, struct kbase_mmu_tabl
 
 static void kbase_mmu_mark_non_movable(struct kbase_device *const kbdev, struct page *page)
 {
-	struct kbase_page_metadata *page_md;
-
 	if (!kbase_is_page_migration_enabled())
 		return;
 
+#if MALI_PAGE_MIGRATE
 	lock_page(page);
 
 	/* Composite large-page is excluded from migration, trigger a warn if a development
@@ -4189,6 +4191,8 @@ static void kbase_mmu_mark_non_movable(struct kbase_device *const kbdev, struct 
 	    is_partial(as_tagged(page_to_phys(page))))
 		dev_WARN(kbdev->dev, "%s: migration on large-page attempted.", __func__);
 
+	struct kbase_page_metadata *page_md;
+
 	page_md = kbase_page_private(page);
 
 	spin_lock(&page_md->migrate_lock);
@@ -4197,9 +4201,10 @@ static void kbase_mmu_mark_non_movable(struct kbase_device *const kbdev, struct 
 	if (IS_PAGE_MOVABLE(page_md->status))
 		page_md->status = PAGE_MOVABLE_CLEAR(page_md->status);
 
-	__ClearPageMovable(page);
+	kbase_clear_page_movable(page);
 	spin_unlock(&page_md->migrate_lock);
 	unlock_page(page);
+#endif
 }
 
 int kbase_mmu_init(struct kbase_device *const kbdev, struct kbase_mmu_table *const mmut,

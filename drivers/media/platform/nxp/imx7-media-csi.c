@@ -1121,7 +1121,7 @@ static int imx7_csi_video_enum_framesizes(struct file *file, void *fh,
 	 */
 	walign = 8 * 8 / cc->bpp;
 
-	fsize->type = V4L2_FRMSIZE_TYPE_CONTINUOUS;
+	fsize->type = V4L2_FRMSIZE_TYPE_STEPWISE;
 	fsize->stepwise.min_width = walign;
 	fsize->stepwise.max_width = round_down(65535U, walign);
 	fsize->stepwise.min_height = 1;
@@ -1275,26 +1275,13 @@ static int imx7_csi_video_queue_setup(struct vb2_queue *vq,
 				      struct device *alloc_devs[])
 {
 	struct imx7_csi *csi = vb2_get_drv_priv(vq);
-	unsigned int q_num_bufs = vb2_get_num_buffers(vq);
 	struct v4l2_pix_format *pix = &csi->vdev_fmt;
-	unsigned int count = *nbuffers;
 
 	if (vq->type != V4L2_BUF_TYPE_VIDEO_CAPTURE)
 		return -EINVAL;
 
-	if (*nplanes) {
-		if (*nplanes != 1 || sizes[0] < pix->sizeimage)
-			return -EINVAL;
-		count += q_num_bufs;
-	}
-
-	count = min_t(__u32, IMX7_CSI_VIDEO_MEM_LIMIT / pix->sizeimage, count);
-
 	if (*nplanes)
-		*nbuffers = (count < q_num_bufs) ? 0 :
-			count - q_num_bufs;
-	else
-		*nbuffers = count;
+		return sizes[0] < pix->sizeimage ? -EINVAL : 0;
 
 	*nplanes = 1;
 	sizes[0] = pix->sizeimage;
@@ -1522,8 +1509,6 @@ static const struct vb2_ops imx7_csi_video_qops = {
 	.buf_init        = imx7_csi_video_buf_init,
 	.buf_prepare	 = imx7_csi_video_buf_prepare,
 	.buf_queue	 = imx7_csi_video_buf_queue,
-	.wait_prepare	 = vb2_ops_wait_prepare,
-	.wait_finish	 = vb2_ops_wait_finish,
 	.start_streaming = imx7_csi_video_start_streaming,
 	.stop_streaming  = imx7_csi_video_stop_streaming,
 };
@@ -2296,7 +2281,7 @@ MODULE_DEVICE_TABLE(of, imx7_csi_of_match);
 
 static struct platform_driver imx7_csi_driver = {
 	.probe = imx7_csi_probe,
-	.remove_new = imx7_csi_remove,
+	.remove = imx7_csi_remove,
 	.driver = {
 		.of_match_table = imx7_csi_of_match,
 		.name = "imx7-csi",

@@ -9,6 +9,7 @@
 #include <linux/dma-mapping.h>
 #include <linux/genalloc.h>
 #include <linux/firmware/imx/se_api.h>
+#include <linux/regulator/consumer.h>
 
 #include "ele_base_msg.h"
 #include "ele_common.h"
@@ -276,6 +277,138 @@ exit:
 	return ret;
 }
 
+int ele_debug_dump(struct se_if_priv *priv)
+{
+	struct se_api_msg *tx_msg __free(kfree) = NULL;
+	struct se_api_msg *rx_msg __free(kfree) = NULL;
+	bool keep_logging;
+	u8 dump_data[408];
+	u8 fmt_str[256];
+	int fmt_str_idx;
+	int rcv_dbg_wd_ct;
+	int msg_ex_cnt;
+	int ret = 0;
+	int w_ct;
+
+	if (!priv) {
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	tx_msg = kzalloc(ELE_DEBUG_DUMP_REQ_SZ, GFP_KERNEL);
+	if (!tx_msg) {
+		ret = -ENOMEM;
+		goto exit;
+	}
+
+	rx_msg = kzalloc(ELE_DEBUG_DUMP_RSP_SZ, GFP_KERNEL);
+	if (!rx_msg) {
+		ret = -ENOMEM;
+		goto exit;
+	}
+
+	ret = se_fill_cmd_msg_hdr(priv,
+				  &tx_msg->header,
+				  ELE_DEBUG_DUMP_REQ,
+				  ELE_DEBUG_DUMP_REQ_SZ,
+				  true);
+	if (ret)
+		goto exit;
+
+	msg_ex_cnt = 0;
+	do {
+		w_ct = 0;
+		fmt_str_idx = 0;
+		memset(rx_msg, 0xCC, ELE_DEBUG_DUMP_RSP_SZ);
+
+		ret = ele_msg_send_rcv(priv->priv_dev_ctx,
+				       tx_msg,
+				       ELE_DEBUG_DUMP_REQ_SZ,
+				       rx_msg,
+				       ELE_DEBUG_DUMP_RSP_SZ);
+		if (ret < 0)
+			goto exit;
+
+		ret = se_val_rsp_hdr_n_status(priv,
+					      rx_msg,
+					      ELE_DEBUG_DUMP_REQ,
+					      ELE_DEBUG_DUMP_RSP_SZ,
+					      true);
+		if (!ret) {
+			rcv_dbg_wd_ct = rx_msg->header.size - ELE_NON_DUMP_BUFFER_SZ;
+			memcpy(fmt_str, FW_DBG_DUMP_FIXED_STR, strlen(FW_DBG_DUMP_FIXED_STR));
+			fmt_str_idx += strlen(FW_DBG_DUMP_FIXED_STR);
+			for (w_ct = 0; w_ct < rcv_dbg_wd_ct; w_ct++) {
+				fmt_str[fmt_str_idx] = '0';
+				fmt_str_idx++;
+				fmt_str[fmt_str_idx] = 'x';
+				fmt_str_idx++;
+				fmt_str[fmt_str_idx] = '%';
+				fmt_str_idx++;
+				fmt_str[fmt_str_idx] = '0';
+				fmt_str_idx++;
+				fmt_str[fmt_str_idx] = '8';
+				fmt_str_idx++;
+				fmt_str[fmt_str_idx] = 'x';
+				fmt_str_idx++;
+				fmt_str[fmt_str_idx] = ' ';
+				fmt_str_idx++;
+				if (w_ct % 2) {
+					memcpy(fmt_str + fmt_str_idx,
+					       FW_DBG_DUMP_FIXED_STR,
+					       strlen(FW_DBG_DUMP_FIXED_STR));
+					fmt_str_idx += strlen(FW_DBG_DUMP_FIXED_STR);
+				}
+			}
+			keep_logging = (rx_msg->header.size < (ELE_DEBUG_DUMP_RSP_SZ >> 2)) ?
+					false : true;
+			keep_logging = keep_logging ?
+						(msg_ex_cnt > ELE_MAX_DBG_DMP_PKT ? false : true) :
+						false;
+			/*
+			 * Number of spaces = rcv_dbg_wd_ct
+			 * DBG dump length in bytes = rcv_dbg_wd_ct * 4
+			 *
+			 * Since, one byte is represented as 2 character,
+			 * DBG Dump string-length = rcv_dbg_wd_ct * 8
+			 * Fixed string's string-length =
+			 *                      strlen(FW_DBG_DUMP_FIXED_STR) * rcv_dbg_wd_ct
+			 *
+			 * Total dump_data length = Number of spaces +
+			 *                          DBG Dump string' string-length +
+			 *                          Fixed string's string-length
+			 *
+			 * Total dump_data length = rcv_dbg_wd_ct + (rcv_dbg_wd_ct * 8) +
+			 *                          strlen(FW_DBG_DUMP_FIXED_STR) * rcv_dbg_wd_ct
+			 */
+
+			snprintf(dump_data,
+				 ((rcv_dbg_wd_ct * 9) +
+				  (strlen(FW_DBG_DUMP_FIXED_STR) * rcv_dbg_wd_ct)),
+				  fmt_str,
+				  rx_msg->data[1], rx_msg->data[2],
+				  rx_msg->data[3], rx_msg->data[4],
+				  rx_msg->data[5], rx_msg->data[6],
+				  rx_msg->data[7], rx_msg->data[8],
+				  rx_msg->data[9], rx_msg->data[10],
+				  rx_msg->data[11], rx_msg->data[12],
+				  rx_msg->data[13], rx_msg->data[14],
+				  rx_msg->data[15], rx_msg->data[16],
+				  rx_msg->data[17], rx_msg->data[18],
+				  rx_msg->data[19], rx_msg->data[20]);
+
+			dev_err(priv->dev, "%s", dump_data);
+		} else {
+			dev_err(priv->dev, "Dump_Debug_Buffer Error: %x.", ret);
+			break;
+		}
+		msg_ex_cnt++;
+	} while (keep_logging);
+
+exit:
+	return ret;
+}
+
 /*
  * ele_start_rng() - prepare and send the command to start
  *                   initialization of the ELE RNG context
@@ -415,8 +548,9 @@ int read_common_fuse(struct se_if_priv *priv,
 {
 	struct se_api_msg *tx_msg __free(kfree) = NULL;
 	struct se_api_msg *rx_msg __free(kfree) = NULL;
-	int rx_msg_sz = ELE_READ_FUSE_RSP_MSG_SZ;
+	int rx_msg_sz = ELE_READ_FUSE_RSP_MSG_SZ_CRC;
 	int ret = 0;
+	u32 soc_id;
 
 	if (!priv) {
 		ret = -EINVAL;
@@ -429,8 +563,23 @@ int read_common_fuse(struct se_if_priv *priv,
 		goto exit;
 	}
 
-	if (fuse_id == OTP_UNIQ_ID)
+	if ((get_ele_fw_vers_word() & ELE_FW_VERSION_MASK) < ELE_FW_VERSION_2_0_6) {
+		rx_msg_sz = ELE_READ_FUSE_RSP_MSG_SZ;
+	/* Firmware version >= 2.0.6 */
+	} else {
+		soc_id = get_se_soc_id(priv);
+
+		/* i.MX8ULP/93/91 platforms */
+		if (soc_id == SOC_ID_OF_IMX93 ||
+		    soc_id == SOC_ID_OF_IMX91 ||
+		    soc_id == SOC_ID_OF_IMX8ULP)
+			rx_msg_sz = ELE_READ_FUSE_RSP_MSG_SZ;
+	}
+
+	/* OTP_UNIQ_ID is only used on i.MX8ULP platform */
+	if (fuse_id == OTP_UNIQ_ID && soc_id == SOC_ID_OF_IMX8ULP) {
 		rx_msg_sz = ELE_READ_FUSE_OTP_UNQ_ID_RSP_MSG_SZ;
+	}
 
 	rx_msg = kzalloc(rx_msg_sz, GFP_KERNEL);
 	if (!rx_msg) {
@@ -503,7 +652,7 @@ int imx_se_read_fuse(void *se_if_data,
 }
 EXPORT_SYMBOL_GPL(imx_se_read_fuse);
 
-int ele_voltage_change_req(struct se_if_priv *priv, bool start)
+int ele_voltage_change_req(struct se_if_priv *priv, bool start, bool enforce_fl_ctrl)
 {
 	struct se_api_msg *tx_msg __free(kfree) = NULL;
 	struct se_api_msg *rx_msg __free(kfree) = NULL;
@@ -535,8 +684,9 @@ int ele_voltage_change_req(struct se_if_priv *priv, bool start)
 	if (ret)
 		goto exit;
 
-	se_continue_to_enforce_msg_seq_flow(&priv->se_msg_sq_ctl,
-					    tx_msg);
+	if (enforce_fl_ctrl)
+		se_continue_to_enforce_msg_seq_flow(&priv->se_msg_sq_ctl,
+						    tx_msg);
 
 	ret = ele_msg_send_rcv(priv->priv_dev_ctx,
 			       tx_msg,
@@ -571,18 +721,26 @@ exit:
  *   0,   means success.
  *   < 0, means failure.
  */
-int imx_se_voltage_change_req(void *se_if_data, bool start)
+int imx_se_voltage_change_req(void *se_if_data, void *regulator_soc_reg, int new_uV, int tol_uV)
 {
+	struct regulator *soc_reg = regulator_soc_reg;
 	struct se_if_priv *priv = se_if_data;
 	int ret;
 
-	if (start)
-		se_start_enforce_msg_seq_flow(&priv->se_msg_sq_ctl);
+	se_start_enforce_msg_seq_flow(&priv->se_msg_sq_ctl);
 
-	ret = ele_voltage_change_req(priv, start);
-
-	if (start == false)
+	ret = ele_voltage_change_req(priv, true, true);
+	if (ret) {
 		se_halt_to_enforce_msg_seq_flow(&priv->se_msg_sq_ctl);
+		return -EINVAL;
+	}
+
+	regulator_set_voltage_tol(soc_reg, new_uV, tol_uV);
+	ret = ele_voltage_change_req(priv, false, true);
+	if (ret)
+		ret = -EINVAL;
+
+	se_halt_to_enforce_msg_seq_flow(&priv->se_msg_sq_ctl);
 
 	return ret;
 }
@@ -686,138 +844,6 @@ int ele_v2x_fw_authenticate(struct se_if_priv *priv, phys_addr_t addr)
 				      ELE_V2X_FW_AUTH_REQ,
 				      ELE_V2X_FW_AUTH_RSP_MSG_SZ,
 				      true);
-exit:
-	return ret;
-}
-
-int ele_debug_dump(struct se_if_priv *priv)
-{
-	struct se_api_msg *tx_msg __free(kfree) = NULL;
-	struct se_api_msg *rx_msg __free(kfree) = NULL;
-	bool keep_logging;
-	u8 dump_data[408];
-	u8 fmt_str[256];
-	int fmt_str_idx;
-	int rcv_dbg_wd_ct;
-	int msg_ex_cnt;
-	int ret = 0;
-	int w_ct;
-
-	if (!priv) {
-		ret = -EINVAL;
-		goto exit;
-	}
-
-	tx_msg = kzalloc(ELE_DEBUG_DUMP_REQ_SZ, GFP_KERNEL);
-	if (!tx_msg) {
-		ret = -ENOMEM;
-		goto exit;
-	}
-
-	rx_msg = kzalloc(ELE_DEBUG_DUMP_RSP_SZ, GFP_KERNEL);
-	if (!rx_msg) {
-		ret = -ENOMEM;
-		goto exit;
-	}
-
-	ret = se_fill_cmd_msg_hdr(priv,
-				  &tx_msg->header,
-				  ELE_DEBUG_DUMP_REQ,
-				  ELE_DEBUG_DUMP_REQ_SZ,
-				  true);
-	if (ret)
-		goto exit;
-
-	msg_ex_cnt = 0;
-	do {
-		w_ct = 0;
-		fmt_str_idx = 0;
-		memset(rx_msg, 0xCC, ELE_DEBUG_DUMP_RSP_SZ);
-
-		ret = ele_msg_send_rcv(priv->priv_dev_ctx,
-				       tx_msg,
-				       ELE_DEBUG_DUMP_REQ_SZ,
-				       rx_msg,
-				       ELE_DEBUG_DUMP_RSP_SZ);
-		if (ret < 0)
-			goto exit;
-
-		ret = se_val_rsp_hdr_n_status(priv,
-					      rx_msg,
-					      ELE_DEBUG_DUMP_REQ,
-					      ELE_DEBUG_DUMP_RSP_SZ,
-					      true);
-		if (!ret) {
-			rcv_dbg_wd_ct = rx_msg->header.size - ELE_NON_DUMP_BUFFER_SZ;
-			memcpy(fmt_str, FW_DBG_DUMP_FIXED_STR, strlen(FW_DBG_DUMP_FIXED_STR));
-			fmt_str_idx += strlen(FW_DBG_DUMP_FIXED_STR);
-			for (w_ct = 0; w_ct < rcv_dbg_wd_ct; w_ct++) {
-				fmt_str[fmt_str_idx] = '0';
-				fmt_str_idx++;
-				fmt_str[fmt_str_idx] = 'x';
-				fmt_str_idx++;
-				fmt_str[fmt_str_idx] = '%';
-				fmt_str_idx++;
-				fmt_str[fmt_str_idx] = '0';
-				fmt_str_idx++;
-				fmt_str[fmt_str_idx] = '8';
-				fmt_str_idx++;
-				fmt_str[fmt_str_idx] = 'x';
-				fmt_str_idx++;
-				fmt_str[fmt_str_idx] = ' ';
-				fmt_str_idx++;
-				if (w_ct % 2) {
-					memcpy(fmt_str + fmt_str_idx,
-					       FW_DBG_DUMP_FIXED_STR,
-					       strlen(FW_DBG_DUMP_FIXED_STR));
-					fmt_str_idx += strlen(FW_DBG_DUMP_FIXED_STR);
-				}
-			}
-			keep_logging = (rx_msg->header.size < (ELE_DEBUG_DUMP_RSP_SZ >> 2)) ?
-					false : true;
-			keep_logging = keep_logging ?
-						(msg_ex_cnt > ELE_MAX_DBG_DMP_PKT ? false : true) :
-						false;
-			/*
-			 * Number of spaces = rcv_dbg_wd_ct
-			 * DBG dump length in bytes = rcv_dbg_wd_ct * 4
-			 *
-			 * Since, one byte is represented as 2 character,
-			 * DBG Dump string-length = rcv_dbg_wd_ct * 8
-			 * Fixed string's string-length =
-			 *                      strlen(FW_DBG_DUMP_FIXED_STR) * rcv_dbg_wd_ct
-			 *
-			 * Total dump_data length = Number of spaces +
-			 *                          DBG Dump string' string-length +
-			 *                          Fixed string's string-length
-			 *
-			 * Total dump_data length = rcv_dbg_wd_ct + (rcv_dbg_wd_ct * 8) +
-			 *                          strlen(FW_DBG_DUMP_FIXED_STR) * rcv_dbg_wd_ct
-			 */
-
-			snprintf(dump_data,
-				 ((rcv_dbg_wd_ct * 9) +
-				  (strlen(FW_DBG_DUMP_FIXED_STR) * rcv_dbg_wd_ct)),
-				  fmt_str,
-				  rx_msg->data[1], rx_msg->data[2],
-				  rx_msg->data[3], rx_msg->data[4],
-				  rx_msg->data[5], rx_msg->data[6],
-				  rx_msg->data[7], rx_msg->data[8],
-				  rx_msg->data[9], rx_msg->data[10],
-				  rx_msg->data[11], rx_msg->data[12],
-				  rx_msg->data[13], rx_msg->data[14],
-				  rx_msg->data[15], rx_msg->data[16],
-				  rx_msg->data[17], rx_msg->data[18],
-				  rx_msg->data[19], rx_msg->data[20]);
-
-			dev_err(priv->dev, "%s", dump_data);
-		} else {
-			dev_err(priv->dev, "Dump_Debug_Buffer Error: %x.", ret);
-			break;
-		}
-		msg_ex_cnt++;
-	} while (keep_logging);
-
 exit:
 	return ret;
 }

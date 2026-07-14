@@ -2,9 +2,19 @@
 /*
  * NXP NETC Blocks Control Driver
  *
- * Copyright 2024-2025 NXP
+ * Copyright 2024 NXP
+ *
+ * This driver is used for pre-initialization of NETC, such as PCS and MII
+ * protocols, LDID, warm reset, etc. Therefore, all NETC device drivers can
+ * only be probed after the netc-blk-crtl driver has completed initialization.
+ * In addition, when the system enters suspend mode, IERB, PRB, and NETCMIX
+ * will be powered off, except for WOL. Therefore, when the system resumes,
+ * these blocks need to be reinitialized.
  */
+
+#include <linux/bits.h>
 #include <linux/clk.h>
+#include <linux/clk-provider.h>
 #include <linux/debugfs.h>
 #include <linux/delay.h>
 #include <linux/fsl/netc_global.h>
@@ -14,7 +24,9 @@
 #include <linux/of_net.h>
 #include <linux/of_platform.h>
 #include <linux/phy.h>
+#include <linux/platform_device.h>
 #include <linux/seq_file.h>
+#include <linux/string.h>
 
 /* NETCMIX registers */
 #define IMX95_CFG_LINK_IO_VAR		0x0
@@ -44,6 +56,7 @@
 
 #define IMX94_EXT_PIN_CONTROL		0x10
 #define  MAC2_MAC3_SEL			BIT(1)
+#define  RMII_REF_CLK_EN(x)		BIT((x) + 2)
 
 #define IMX94_NETC_LINK_CFG(a)		(0x4c + (a) * 4)
 #define  NETC_LINK_CFG_MII_PROT		GENMASK(3, 0)
@@ -62,6 +75,8 @@
 #define IERB_EMDIOFAUXR			0x344
 #define IERB_T0FAUXR			0x444
 #define IERB_ETBCR(a)			(0x300c + 0x100 * (a))
+#define IERB_ETXHPTBCR(a)		(0x3070 + 0x100 * (a))
+#define IERB_ETXLPTBCR(a)		(0x3074 + 0x100 * (a))
 #define IERB_LBCR(a)			(0x1010 + 0x40 * (a))
 #define IERB_MDIO_PHYAD_PRTAD(addr)	(((addr) & 0x1f) << 8)
 #define IERB_EFAUXR(a)			(0x3044 + 0x100 * (a))
@@ -72,7 +87,6 @@
 #define IMX95_ENETC0_BUS_DEVFN		0x0
 #define IMX95_ENETC1_BUS_DEVFN		0x40
 #define IMX95_ENETC2_BUS_DEVFN		0x80
-#define IMX95_LINK_NUM			3
 
 #define IMX94_ENETC3_BUS_DEVFN		0x0
 #define IMX94_TIMER0_BUS_DEVFN		0x1
@@ -94,6 +108,10 @@
 #define IMX94_TIMER1_ID			1
 #define IMX94_TIMER2_ID			2
 
+#define IMX952_ENETC0_BUS_DEVFN		0x0
+#define IMX952_ENETC1_BUS_DEVFN		0x100
+#define IMX952_BYTE_CREDIT		0xc35
+
 /* Flags for different platforms */
 #define NETC_HAS_NETCMIX		BIT(0)
 
@@ -101,17 +119,16 @@ struct netc_blk_ctrl {
 	void __iomem *prb;
 	void __iomem *ierb;
 	void __iomem *netcmix;
-	struct clk *ipg_clk;
 
 	const struct netc_devinfo *devinfo;
-	atomic_t wakeonlan_count;
 	struct platform_device *pdev;
 	struct dentry *debugfs_root;
+	struct clk *ipg_clk;
+	atomic_t wakeonlan_count;
 };
 
 struct netc_devinfo {
 	u32 flags;
-	int num_link; /* Internal links are not included */
 	int (*netcmix_init)(struct platform_device *pdev);
 	int (*ierb_init)(struct platform_device *pdev);
 	void (*xpcs_port_init)(struct netc_blk_ctrl *priv, int port);
@@ -121,12 +138,12 @@ static struct netc_blk_ctrl *netc_bc;
 
 static void netc_reg_write(void __iomem *base, u32 offset, u32 val)
 {
-	iowrite32(val, base + offset);
+	netc_write(base + offset, val);
 }
 
 static u32 netc_reg_read(void __iomem *base, u32 offset)
 {
-	return ioread32(base + offset);
+	return netc_read(base + offset);
 }
 
 static int netc_of_pci_get_bus_devfn(struct device_node *np)
@@ -168,27 +185,24 @@ static int imx95_netcmix_init(struct platform_device *pdev)
 {
 	struct netc_blk_ctrl *priv = platform_get_drvdata(pdev);
 	struct device_node *np = pdev->dev.of_node;
-	struct device_node *child, *gchild;
 	phy_interface_t interface;
 	int bus_devfn, mii_proto;
 	u32 val;
 	int err;
 
-	/* Default setting */
+	/* Default setting of MII protocol */
 	val = MII_PROT(0, MII_PROT_RGMII) | MII_PROT(1, MII_PROT_RGMII) |
 	      MII_PROT(2, MII_PROT_SERIAL);
 
 	/* Update the link MII protocol through parsing phy-mode */
-	for_each_available_child_of_node(np, child) {
-		for_each_available_child_of_node(child, gchild) {
-			if (!of_device_is_compatible(gchild, "fsl,imx95-enetc"))
+	for_each_available_child_of_node_scoped(np, child) {
+		for_each_available_child_of_node_scoped(child, gchild) {
+			if (!of_device_is_compatible(gchild, "pci1131,e101"))
 				continue;
 
 			bus_devfn = netc_of_pci_get_bus_devfn(gchild);
-			if (bus_devfn < 0) {
-				err = -EINVAL;
-				goto err_out;
-			}
+			if (bus_devfn < 0)
+				return -EINVAL;
 
 			if (bus_devfn == IMX95_ENETC2_BUS_DEVFN)
 				continue;
@@ -198,10 +212,8 @@ static int imx95_netcmix_init(struct platform_device *pdev)
 				continue;
 
 			mii_proto = netc_get_link_mii_protocol(interface);
-			if (mii_proto < 0) {
-				err = -EINVAL;
-				goto err_out;
-			}
+			if (mii_proto < 0)
+				return -EINVAL;
 
 			switch (bus_devfn) {
 			case IMX95_ENETC0_BUS_DEVFN:
@@ -213,8 +225,7 @@ static int imx95_netcmix_init(struct platform_device *pdev)
 						       CFG_LINK_MII_PORT_1);
 				break;
 			default:
-				err = -EINVAL;
-				goto err_out;
+				return -EINVAL;
 			}
 		}
 	}
@@ -228,12 +239,6 @@ static int imx95_netcmix_init(struct platform_device *pdev)
 	netc_reg_write(priv->netcmix, IMX95_CFG_LINK_MII_PROT, val);
 
 	return 0;
-
-err_out:
-	of_node_put(gchild);
-	of_node_put(child);
-
-	return err;
 }
 
 static int imx94_enetc_get_link_num(struct device_node *np)
@@ -257,10 +262,29 @@ static int imx94_enetc_get_link_num(struct device_node *np)
 	}
 }
 
+static bool imx94_rmii_refclk_is_from_ccm(struct clk *ref_clk)
+{
+	struct clk *parent = clk_get_parent(ref_clk);
+	const char *name;
+
+	if (!parent)
+		return false;
+
+	name = __clk_get_name(parent);
+	if (!name)
+		return false;
+
+	if (str_has_prefix(name, "syspll1"))
+		return true;
+
+	return false;
+}
+
 static int imx94_link_config(struct netc_blk_ctrl *priv,
 			     struct device_node *np, int link_id)
 {
 	phy_interface_t interface;
+	struct clk *ref_clk;
 	int mii_proto, err;
 	u32 val;
 
@@ -279,11 +303,19 @@ static int imx94_link_config(struct netc_blk_ctrl *priv,
 
 	netc_reg_write(priv->netcmix, IMX94_NETC_LINK_CFG(link_id), val);
 
-	if (link_id == IMX94_ENETC0_LINK) {
-		val = netc_reg_read(priv->netcmix, IMX94_EXT_PIN_CONTROL);
-		val |= MAC2_MAC3_SEL;
-		netc_reg_write(priv->netcmix, IMX94_EXT_PIN_CONTROL, val);
+	val = netc_reg_read(priv->netcmix, IMX94_EXT_PIN_CONTROL);
+	if (link_id == IMX94_ENETC0_LINK || link_id == IMX94_SWITCH_PORT2) {
+		val = u32_replace_bits(val, link_id == IMX94_ENETC0_LINK,
+				       MAC2_MAC3_SEL);
 	}
+
+	if (mii_proto == MII_PROT_RMII) {
+		ref_clk = of_clk_get_by_name(np, "ref");
+		if (!IS_ERR(ref_clk) && imx94_rmii_refclk_is_from_ccm(ref_clk))
+			val |= RMII_REF_CLK_EN(link_id);
+		clk_put(ref_clk);
+	}
+	netc_reg_write(priv->netcmix, IMX94_EXT_PIN_CONTROL, val);
 
 	return 0;
 }
@@ -368,6 +400,56 @@ static int imx94_netcmix_init(struct platform_device *pdev)
 	return 0;
 }
 
+static int imx952_netcmix_init(struct platform_device *pdev)
+{
+	struct netc_blk_ctrl *priv = platform_get_drvdata(pdev);
+	struct device_node *np = pdev->dev.of_node;
+	phy_interface_t interface;
+	int bus_devfn, mii_proto;
+	u32 val;
+	int err;
+
+	/* Default setting */
+	val = MII_PROT(0, MII_PROT_RGMII) | MII_PROT(1, MII_PROT_RGMII);
+
+	/* Update the link MII protocol through parsing phy-mode */
+	for_each_child_of_node_scoped(np, child) {
+		for_each_child_of_node_scoped(child, gchild) {
+			if (!of_device_is_compatible(gchild, "pci1131,e101"))
+				continue;
+
+			bus_devfn = netc_of_pci_get_bus_devfn(gchild);
+			if (bus_devfn < 0)
+				return bus_devfn;
+
+			err = of_get_phy_mode(gchild, &interface);
+			if (err)
+				continue;
+
+			mii_proto = netc_get_link_mii_protocol(interface);
+			if (mii_proto < 0)
+				return mii_proto;
+
+			switch (bus_devfn) {
+			case IMX952_ENETC0_BUS_DEVFN:
+				val = u32_replace_bits(val, mii_proto,
+						       CFG_LINK_MII_PORT_0);
+				break;
+			case IMX952_ENETC1_BUS_DEVFN:
+				val = u32_replace_bits(val, mii_proto,
+						       CFG_LINK_MII_PORT_1);
+				break;
+			default:
+				return -EINVAL;
+			}
+		}
+	}
+
+	netc_reg_write(priv->netcmix, IMX95_CFG_LINK_MII_PROT, val);
+
+	return 0;
+}
+
 static bool netc_ierb_is_locked(struct netc_blk_ctrl *priv)
 {
 	return !!(netc_reg_read(priv->prb, PRB_NETCRR) & NETCRR_LOCK);
@@ -407,7 +489,7 @@ static int imx95_ierb_mdio_link_configure(struct platform_device *pdev)
 	 */
 	for_each_child_of_node_scoped(np, child) {
 		for_each_child_of_node_scoped(child, gchild) {
-			if (!of_device_is_compatible(gchild, "fsl,imx95-enetc"))
+			if (!of_device_is_compatible(gchild, "pci1131,e101"))
 				continue;
 
 			bus_devfn = netc_of_pci_get_bus_devfn(gchild);
@@ -420,7 +502,6 @@ static int imx95_ierb_mdio_link_configure(struct platform_device *pdev)
 
 			ret = of_property_read_u32(phy_node, "reg", &addr);
 			of_node_put(phy_node);
-
 			if (ret)
 				return -EINVAL;
 
@@ -460,15 +541,15 @@ static int imx95_ierb_init(struct platform_device *pdev)
 	netc_reg_write(priv->ierb, IERB_VFAUXR(1), 2);
 	/* ENETC1 PF */
 	netc_reg_write(priv->ierb, IERB_EFAUXR(1), 3);
-	/* ENETC1 VF0 : Disabled on 19x19 board dts */
+	/* ENETC1 VF0 */
 	netc_reg_write(priv->ierb, IERB_VFAUXR(2), 5);
-	/* ENETC1 VF1 : Disabled on 19x19 board dts */
+	/* ENETC1 VF1 */
 	netc_reg_write(priv->ierb, IERB_VFAUXR(3), 6);
 	/* ENETC2 PF */
 	netc_reg_write(priv->ierb, IERB_EFAUXR(2), 4);
-	/* ENETC2 VF0 : Disabled on 15x15 board dts */
+	/* ENETC2 VF0 */
 	netc_reg_write(priv->ierb, IERB_VFAUXR(4), 5);
-	/* ENETC2 VF1 : Disabled on 15x15 board dts */
+	/* ENETC2 VF1 */
 	netc_reg_write(priv->ierb, IERB_VFAUXR(5), 6);
 	/* NETC TIMER */
 	netc_reg_write(priv->ierb, IERB_T0FAUXR, 7);
@@ -529,7 +610,7 @@ static int imx94_enetc_update_tid(struct netc_blk_ctrl *priv, struct device_node
 		return offset;
 	}
 
-	timer_np = of_parse_phandle(pf_np, "nxp,ptp-timer", 0);
+	timer_np = of_parse_phandle(pf_np, "ptp-timer", 0);
 	if (!timer_np) {
 		/*
 		 * If nxp,ptp-timer is not set, the first timer of the bus
@@ -567,6 +648,16 @@ static int imx94_ierb_init(struct platform_device *pdev)
 				ret = imx94_enetc_update_tid(priv, pf_np);
 
 	return ret;
+}
+
+static int imx952_ierb_init(struct platform_device *pdev)
+{
+	struct netc_blk_ctrl *priv = platform_get_drvdata(pdev);
+
+	netc_reg_write(priv->ierb, IERB_ETXHPTBCR(0), IMX952_BYTE_CREDIT);
+	netc_reg_write(priv->ierb, IERB_ETXLPTBCR(0), IMX952_BYTE_CREDIT);
+
+	return 0;
 }
 
 static int netc_ierb_init(struct platform_device *pdev)
@@ -715,10 +806,7 @@ static void netc_blk_ctrl_remove_debugfs(struct netc_blk_ctrl *priv)
 
 static int netc_prb_check_error(struct netc_blk_ctrl *priv)
 {
-	u32 val;
-
-	val = netc_reg_read(priv->prb, PRB_NETCSR);
-	if (val & NETCSR_ERROR)
+	if (netc_reg_read(priv->prb, PRB_NETCSR) & NETCSR_ERROR)
 		return -1;
 
 	return 0;
@@ -726,7 +814,6 @@ static int netc_prb_check_error(struct netc_blk_ctrl *priv)
 
 static const struct netc_devinfo imx95_devinfo = {
 	.flags = NETC_HAS_NETCMIX,
-	.num_link = IMX95_LINK_NUM,
 	.netcmix_init = imx95_netcmix_init,
 	.ierb_init = imx95_ierb_init,
 };
@@ -738,8 +825,15 @@ static const struct netc_devinfo imx94_devinfo = {
 	.xpcs_port_init = imx94_netc_xpcs_port_init,
 };
 
+static const struct netc_devinfo imx952_devinfo = {
+	.flags = NETC_HAS_NETCMIX,
+	.netcmix_init = imx952_netcmix_init,
+	.ierb_init = imx952_ierb_init,
+};
+
 static const struct of_device_id netc_blk_ctrl_match[] = {
 	{ .compatible = "nxp,imx95-netc-blk-ctrl", .data = &imx95_devinfo },
+	{ .compatible = "nxp,imx952-netc-blk-ctrl", .data = &imx952_devinfo },
 	{ .compatible = "nxp,imx94-netc-blk-ctrl", .data = &imx94_devinfo },
 	{},
 };
@@ -752,6 +846,7 @@ static int netc_blk_ctrl_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	const struct of_device_id *id;
 	struct netc_blk_ctrl *priv;
+	struct clk *ipg_clk;
 	void __iomem *regs;
 	int err;
 
@@ -760,107 +855,76 @@ static int netc_blk_ctrl_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	priv->pdev = pdev;
-	priv->ipg_clk = devm_clk_get_optional(dev, "ipg_clk");
-	if (IS_ERR(priv->ipg_clk)) {
-		dev_err(dev, "Get ipg_clk failed\n");
-		err = PTR_ERR(priv->ipg_clk);
-		return err;
-	}
+	ipg_clk = devm_clk_get_optional_enabled(dev, "ipg");
+	if (IS_ERR(ipg_clk))
+		return dev_err_probe(dev, PTR_ERR(ipg_clk),
+				     "Set ipg clock failed\n");
 
-	err = clk_prepare_enable(priv->ipg_clk);
-	if (err) {
-		dev_err(dev, "Enable ipg_clk failed\n");
-		goto disable_ipg_clk;
-	}
-
+	priv->ipg_clk = ipg_clk;
 	id = of_match_device(netc_blk_ctrl_match, dev);
-	if (!id) {
-		dev_err(dev, "Cannot match device\n");
-		err = -EINVAL;
-		goto disable_ipg_clk;
-	}
+	if (!id)
+		return dev_err_probe(dev, -EINVAL, "Cannot match device\n");
 
 	devinfo = (struct netc_devinfo *)id->data;
-	if (!devinfo) {
-		dev_err(dev, "No device information\n");
-		err = -EINVAL;
-		goto disable_ipg_clk;
-	}
+	if (!devinfo)
+		return dev_err_probe(dev, -EINVAL, "No device information\n");
+
 	priv->devinfo = devinfo;
-
 	regs = devm_platform_ioremap_resource_byname(pdev, "ierb");
-	if (IS_ERR(regs)) {
-		err = PTR_ERR(regs);
-		dev_err(dev, "Missing IERB resource\n");
-		goto disable_ipg_clk;
-	}
+	if (IS_ERR(regs))
+		return dev_err_probe(dev, PTR_ERR(regs),
+				     "Missing IERB resource\n");
+
 	priv->ierb = regs;
-
 	regs = devm_platform_ioremap_resource_byname(pdev, "prb");
-	if (IS_ERR(regs)) {
-		err = PTR_ERR(regs);
-		dev_err(dev, "Missing PRB resource\n");
-		goto disable_ipg_clk;
-	}
-	priv->prb = regs;
+	if (IS_ERR(regs))
+		return dev_err_probe(dev, PTR_ERR(regs),
+				     "Missing PRB resource\n");
 
+	priv->prb = regs;
 	if (devinfo->flags & NETC_HAS_NETCMIX) {
 		regs = devm_platform_ioremap_resource_byname(pdev, "netcmix");
-		if (IS_ERR(regs)) {
-			err = PTR_ERR(regs);
-			dev_err(dev, "Missing NETCMIX resource\n");
-			goto disable_ipg_clk;
-		}
+		if (IS_ERR(regs))
+			return dev_err_probe(dev, PTR_ERR(regs),
+					     "Missing NETCMIX resource\n");
 		priv->netcmix = regs;
 	}
 
 	platform_set_drvdata(pdev, priv);
-
 	if (devinfo->netcmix_init) {
 		err = devinfo->netcmix_init(pdev);
-		if (err) {
-			dev_err(dev, "Initializing NETCMIX failed\n");
-			goto disable_ipg_clk;
-		}
+		if (err)
+			return dev_err_probe(dev, err,
+					     "Initializing NETCMIX failed\n");
 	}
 
 	err = netc_ierb_init(pdev);
-	if (err) {
-		dev_err(dev, "Initializing IERB failed.\n");
-		goto disable_ipg_clk;
-	}
+	if (err)
+		return dev_err_probe(dev, err, "Initializing IERB failed\n");
 
 	if (netc_prb_check_error(priv) < 0)
-		dev_warn(dev, "The current IERB configuration is invalid.\n");
+		dev_warn(dev, "The current IERB configuration is invalid\n");
 
-	netc_bc = priv;
 	netc_blk_ctrl_create_debugfs(priv);
 
 	err = of_platform_populate(node, NULL, NULL, dev);
 	if (err) {
-		dev_err(dev, "of_platform_populate failed\n");
-		goto remove_debugfs;
+		netc_blk_ctrl_remove_debugfs(priv);
+		return dev_err_probe(dev, err, "of_platform_populate failed\n");
 	}
 
+	netc_bc = priv;
+
 	return 0;
-
-remove_debugfs:
-	netc_blk_ctrl_remove_debugfs(priv);
-	netc_bc = NULL;
-disable_ipg_clk:
-	clk_disable_unprepare(priv->ipg_clk);
-
-	return err;
 }
 
 static void netc_blk_ctrl_remove(struct platform_device *pdev)
 {
 	struct netc_blk_ctrl *priv = platform_get_drvdata(pdev);
 
+	netc_bc = NULL;
 	of_platform_depopulate(&pdev->dev);
 	netc_blk_ctrl_remove_debugfs(priv);
-	netc_bc = NULL;
-	clk_disable_unprepare(priv->ipg_clk);
 }
 
 static int netc_blk_ctrl_suspend_noirq(struct device *dev)
@@ -925,7 +989,7 @@ static struct platform_driver netc_blk_ctrl_driver = {
 	.driver = {
 		.name = "nxp-netc-blk-ctrl",
 		.of_match_table = netc_blk_ctrl_match,
-		.pm = pm_ptr(&netc_blk_ctrl_pm_ops),
+		.pm = &netc_blk_ctrl_pm_ops,
 	},
 	.probe = netc_blk_ctrl_probe,
 	.remove = netc_blk_ctrl_remove,

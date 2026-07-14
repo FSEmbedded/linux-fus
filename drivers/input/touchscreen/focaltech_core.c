@@ -859,7 +859,7 @@ static int fb_notifier_callback(struct notifier_block *self, unsigned long event
 	if (ts_data && v) {
 		blank_value = *((int *)(((struct fb_event *)v)->data));
 		dev_info(&ts_data->client->dev, "notifier,event:%lu,blank:%d", event, blank_value);
-		if ((blank_value == FB_BLANK_UNBLANK) && (event == FB_EVENT_BLANK))
+		if (blank_value == FB_BLANK_UNBLANK)
 			queue_work(ts_data->ts_workqueue, &ts_data->resume_work);
 	} else {
 		dev_err(&ts_data->client->dev, "ts_data/v is null");

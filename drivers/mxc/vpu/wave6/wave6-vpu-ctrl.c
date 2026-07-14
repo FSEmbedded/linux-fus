@@ -42,6 +42,15 @@ static bool wave6_cooling_disable;
 module_param(wave6_cooling_disable, bool, 0644);
 MODULE_PARM_DESC(wave6_cooling_disable, "enable or disable cooling");
 
+#define call_read_reg(entity, args...)					\
+	((entity)->read_reg ? (entity)->read_reg((entity)->dev, ##args) : 0)
+
+#define call_void_op(entity, op, args...)				\
+	do {								\
+		if ((entity) && (entity)->op)					\
+			(entity)->op((entity)->dev, ##args);		\
+	} while (0)
+
 #define dprintk(dev, fmt, arg...)					\
 	do {								\
 		if (debug)						\
@@ -111,7 +120,7 @@ struct vpu_ctrl {
 	const struct vpu_ctrl_resource *res;
 	struct gen_pool *sram_pool;
 	struct vpu_dma_buf sram_buf;
-	struct vpu_buf work_buf[WAVE6_MAX_INST_NUMBER];
+	struct vpu_buf buffers[WAVE6_MAX_INST_NUMBER];
 	u32 acquired_buffer_count;
 	u32 required_buffer_count;
 	bool support_follower;
@@ -164,12 +173,12 @@ static void wave6_vpu_ctrl_free_loger(struct vpu_ctrl *ctrl)
 static void wave6_vpu_ctrl_start_loger(struct vpu_ctrl *ctrl, struct wave6_vpu_entity *entity)
 {
 	if (enable_fwlog)
-		entity->write_reg(entity->dev, W6_NXP_SW_UART_LOGER, (u32)ctrl->loger_buf.daddr);
+		call_void_op(entity, write_reg, W6_NXP_SW_UART_LOGER, (u32)ctrl->loger_buf.daddr);
 }
 
 static void wave6_vpu_ctrl_stop_loger(struct vpu_ctrl *ctrl, struct wave6_vpu_entity *entity)
 {
-	entity->write_reg(entity->dev, W6_NXP_SW_UART_LOGER, 0);
+	call_void_op(entity, write_reg, W6_NXP_SW_UART_LOGER, 0);
 }
 
 static int wave6_vpu_loger_show(struct seq_file *s, void *data)
@@ -335,6 +344,9 @@ static int wave6_vpu_ctrl_wait_busy(struct wave6_vpu_entity *entity)
 {
 	u32 val;
 
+	if (!entity || !entity->read_reg)
+		return -EINVAL;
+
 	return read_poll_timeout(entity->read_reg, val, !val,
 				 W6_VPU_POLL_DELAY_US, W6_VPU_POLL_TIMEOUT,
 				 false, entity->dev, W6_VPU_BUSY_STATUS);
@@ -342,10 +354,13 @@ static int wave6_vpu_ctrl_wait_busy(struct wave6_vpu_entity *entity)
 
 static int wave6_vpu_ctrl_check_result(struct wave6_vpu_entity *entity)
 {
-	if (entity->read_reg(entity->dev, W6_RET_SUCCESS))
+	if (!entity)
+		return -EINVAL;
+
+	if (call_read_reg(entity, W6_RET_SUCCESS))
 		return 0;
 
-	return entity->read_reg(entity->dev, W6_RET_FAIL_REASON);
+	return call_read_reg(entity, W6_RET_FAIL_REASON);
 }
 
 static u32 wave6_vpu_ctrl_get_code_buf_size(struct vpu_ctrl *ctrl)
@@ -378,13 +393,15 @@ static int wave6_vpu_ctrl_init_vpu(struct vpu_ctrl *ctrl)
 	struct wave6_vpu_entity *entity = ctrl->current_entity;
 	int ret;
 
+	if (!entity)
+		return -EINVAL;
+
 	dprintk(ctrl->dev, "cold boot vpu\n");
 
-	entity->write_reg(entity->dev, W6_VPU_BUSY_STATUS, 1);
-	entity->write_reg(entity->dev, W6_CMD_INIT_VPU_SEC_AXI_BASE_CORE0,
-				       ctrl->sram_buf.dma_addr);
-	entity->write_reg(entity->dev, W6_CMD_INIT_VPU_SEC_AXI_SIZE_CORE0,
-				       ctrl->sram_buf.size);
+	call_void_op(entity, write_reg, W6_VPU_BUSY_STATUS, 1);
+	call_void_op(entity, write_reg, W6_CMD_INIT_VPU_SEC_AXI_BASE_CORE0,
+		     ctrl->sram_buf.dma_addr);
+	call_void_op(entity, write_reg, W6_CMD_INIT_VPU_SEC_AXI_SIZE_CORE0, ctrl->sram_buf.size);
 	wave6_vpu_ctrl_writel(ctrl->dev, W6_COMMAND_GB, W6_CMD_INIT_VPU);
 	wave6_vpu_ctrl_writel(ctrl->dev, W6_VPU_REMAP_CORE_START_GB, 1);
 
@@ -405,11 +422,8 @@ static int wave6_vpu_ctrl_init_vpu(struct vpu_ctrl *ctrl)
 
 static void wave6_vpu_ctrl_on_boot(struct wave6_vpu_entity *entity)
 {
-	if (!entity->on_boot)
-		return;
-
 	if (!entity->booted) {
-		entity->on_boot(entity->dev);
+		call_void_op(entity, on_boot);
 		entity->booted = true;
 	}
 }
@@ -421,9 +435,9 @@ static void wave6_vpu_ctrl_clear_firmware_buffers(struct vpu_ctrl *ctrl,
 
 	dprintk(ctrl->dev, "clear firmware work buffers\n");
 
-	entity->write_reg(entity->dev, W6_VPU_BUSY_STATUS, 1);
-	entity->write_reg(entity->dev, W6_COMMAND, W6_CMD_INIT_WORK_BUF);
-	entity->write_reg(entity->dev, W6_VPU_HOST_INT_REQ, 1);
+	call_void_op(entity, write_reg, W6_VPU_BUSY_STATUS, 1);
+	call_void_op(entity, write_reg, W6_COMMAND, W6_CMD_INIT_WORK_BUF);
+	call_void_op(entity, write_reg, W6_VPU_HOST_INT_REQ, 1);
 
 	ret = wave6_vpu_ctrl_wait_busy(entity);
 	if (ret) {
@@ -438,21 +452,21 @@ static void wave6_vpu_ctrl_clear_firmware_buffers(struct vpu_ctrl *ctrl,
 	}
 }
 
-static void wave6_vpu_ctrl_acquire_work_buffer(struct vpu_ctrl *ctrl)
+static void wave6_vpu_ctrl_acquire_buffers(struct vpu_ctrl *ctrl)
 {
 	struct vpu_buf *buf;
+	int i;
 
-	if (ctrl->acquired_buffer_count >= WAVE6_MAX_INST_NUMBER)
-		return;
+	for (i = 0; i < WAVE6_MAX_INST_NUMBER; i++) {
+		buf = &ctrl->buffers[i];
+		buf->size = WAVE6_WORKBUF_SIZE;
+		buf->recorder = ctrl->recorder;
+		buf->label = "work_buf";
+		if (wave6_alloc_dma(ctrl->dev, buf))
+			return;
 
-	buf = &ctrl->work_buf[ctrl->acquired_buffer_count];
-	buf->size = WAVE6_WORKBUF_SIZE;
-	buf->recorder = ctrl->recorder;
-	buf->label = "work_buf";
-	if (wave6_alloc_dma(ctrl->dev, buf))
-		return;
-
-	ctrl->acquired_buffer_count++;
+		ctrl->acquired_buffer_count++;
+	}
 }
 
 static void wave6_vpu_ctrl_free_buffers(struct vpu_ctrl *ctrl)
@@ -460,7 +474,7 @@ static void wave6_vpu_ctrl_free_buffers(struct vpu_ctrl *ctrl)
 	int i;
 
 	for (i = 0; i < ctrl->acquired_buffer_count; i++)
-		wave6_free_dma(&ctrl->work_buf[i]);
+		wave6_free_dma(&ctrl->buffers[i]);
 
 	ctrl->acquired_buffer_count = 0;
 }
@@ -468,39 +482,30 @@ static void wave6_vpu_ctrl_free_buffers(struct vpu_ctrl *ctrl)
 int wave6_vpu_ctrl_require_buffer(struct device *dev, struct wave6_vpu_entity *entity)
 {
 	struct vpu_ctrl *ctrl = dev_get_drvdata(dev);
-	struct vpu_buf *vb;
+	struct vpu_buf *pbuf;
 	u32 size;
-	int ret;
+	int ret = -ENOMEM;
 
 	if (!ctrl || !entity)
 		return -EINVAL;
 
-	ret = pm_runtime_resume_and_get(ctrl->dev);
-	if (ret) {
-		dev_err(ctrl->dev, "pm runtime resume fail, ret = %d\n", ret);
-		return ret;
-	}
-
-	ret = -ENOMEM;
-	size = entity->read_reg(entity->dev, W6_CMD_SET_CTRL_WORK_BUF_SIZE);
-	dprintk(dev, "require work buffer, size = 0x%x\n", size);
+	size = call_read_reg(entity, W6_CMD_SET_CTRL_WORK_BUF_SIZE);
 	if (!size)
-		goto exit;
+		return 0;
 
-	WARN_ON(size > WAVE6_WORKBUF_SIZE);
 	if (size > WAVE6_WORKBUF_SIZE)
 		goto exit;
 
-	if (WARN_ON(ctrl->required_buffer_count >= ctrl->acquired_buffer_count))
+	if (ctrl->required_buffer_count >= ctrl->acquired_buffer_count)
 		goto exit;
 
-	vb = &ctrl->work_buf[ctrl->required_buffer_count];
-	entity->write_reg(entity->dev, W6_CMD_SET_CTRL_WORK_BUF_ADDR, vb->daddr);
+	pbuf = &ctrl->buffers[ctrl->required_buffer_count];
+	call_void_op(entity, write_reg, W6_CMD_SET_CTRL_WORK_BUF_ADDR, pbuf->daddr);
 	ctrl->required_buffer_count++;
 	ret = 0;
 exit:
-	entity->write_reg(entity->dev, W6_CMD_SET_CTRL_WORK_BUF_SIZE, 0);
-	pm_runtime_put_sync(ctrl->dev);
+	call_void_op(entity, write_reg, W6_CMD_SET_CTRL_WORK_BUF_SIZE, 0);
+
 	return ret;
 }
 EXPORT_SYMBOL_GPL(wave6_vpu_ctrl_require_buffer);
@@ -556,6 +561,15 @@ static void wave6_vpu_ctrl_load_firmware(const struct firmware *fw, void *contex
 	u32 product_code;
 	int ret;
 
+	if (!entity) {
+		dev_err(ctrl->dev, "No vpu core.\n");
+		mutex_lock(&ctrl->ctrl_lock);
+		wave6_vpu_ctrl_set_state(ctrl, WAVE6_VPU_STATE_OFF);
+		mutex_unlock(&ctrl->ctrl_lock);
+		release_firmware(fw);
+		return;
+	}
+
 	ret = pm_runtime_resume_and_get(ctrl->dev);
 	if (ret) {
 		dev_err(ctrl->dev, "pm runtime resume fail, ret = %d\n", ret);
@@ -580,7 +594,7 @@ static void wave6_vpu_ctrl_load_firmware(const struct firmware *fw, void *contex
 		goto exit;
 	}
 
-	product_code = entity->read_reg(entity->dev, W6_VPU_RET_PRODUCT_VERSION);
+	product_code = call_read_reg(entity, W6_VPU_RET_PRODUCT_VERSION);
 	if (!PRODUCT_CODE_W_SERIES(product_code)) {
 		dev_err(ctrl->dev, "unknown product : %08x\n", product_code);
 		ret = -EINVAL;
@@ -619,10 +633,10 @@ static int wave6_vpu_ctrl_sleep(struct vpu_ctrl *ctrl, struct wave6_vpu_entity *
 
 	dprintk(ctrl->dev, "sleep firmware\n");
 
-	entity->write_reg(entity->dev, W6_VPU_BUSY_STATUS, 1);
-	entity->write_reg(entity->dev, W6_CMD_INSTANCE_INFO, 0);
-	entity->write_reg(entity->dev, W6_COMMAND, W6_CMD_SLEEP_VPU);
-	entity->write_reg(entity->dev, W6_VPU_HOST_INT_REQ, 1);
+	call_void_op(entity, write_reg, W6_VPU_BUSY_STATUS, 1);
+	call_void_op(entity, write_reg, W6_CMD_INSTANCE_INFO, 0);
+	call_void_op(entity, write_reg, W6_COMMAND, W6_CMD_SLEEP_VPU);
+	call_void_op(entity, write_reg, W6_VPU_HOST_INT_REQ, 1);
 
 	ret = wave6_vpu_ctrl_wait_busy(entity);
 	if (ret) {
@@ -651,11 +665,10 @@ static int wave6_vpu_ctrl_wakeup(struct vpu_ctrl *ctrl, struct wave6_vpu_entity 
 
 	wave6_vpu_ctrl_remap_code_buffer(ctrl);
 
-	entity->write_reg(entity->dev, W6_VPU_BUSY_STATUS, 1);
-	entity->write_reg(entity->dev, W6_CMD_INIT_VPU_SEC_AXI_BASE_CORE0,
-				       ctrl->sram_buf.dma_addr);
-	entity->write_reg(entity->dev, W6_CMD_INIT_VPU_SEC_AXI_SIZE_CORE0,
-				       ctrl->sram_buf.size);
+	call_void_op(entity, write_reg, W6_VPU_BUSY_STATUS, 1);
+	call_void_op(entity, write_reg, W6_CMD_INIT_VPU_SEC_AXI_BASE_CORE0,
+		     ctrl->sram_buf.dma_addr);
+	call_void_op(entity, write_reg, W6_CMD_INIT_VPU_SEC_AXI_SIZE_CORE0, ctrl->sram_buf.size);
 	wave6_vpu_ctrl_writel(ctrl->dev, W6_COMMAND_GB, W6_CMD_WAKEUP_VPU);
 	wave6_vpu_ctrl_writel(ctrl->dev, W6_VPU_REMAP_CORE_START_GB, 1);
 
@@ -686,7 +699,7 @@ static int wave6_vpu_ctrl_try_boot(struct vpu_ctrl *ctrl, struct wave6_vpu_entit
 	if (reload_firmware)
 		wave6_vpu_ctrl_set_state(ctrl, WAVE6_VPU_STATE_OFF);
 
-	if (entity->read_reg(entity->dev, W6_VPU_VCPU_CUR_PC)) {
+	if (call_read_reg(entity, W6_VPU_VCPU_CUR_PC)) {
 		dprintk(ctrl->dev, "try boot directly as firmware is running\n");
 		wave6_vpu_ctrl_boot_done(ctrl, ctrl->state == WAVE6_VPU_STATE_SLEEP);
 		return 0;
@@ -780,6 +793,9 @@ void wave6_vpu_ctrl_put_sync(struct device *dev, struct wave6_vpu_entity *entity
 	if (!ctrl)
 		return;
 
+	if (!entity || !entity->dev || !entity->read_reg || !entity->write_reg)
+		return;
+
 	if (entity == ctrl->current_entity)
 		wave6_vpu_ctrl_wait_done(dev);
 
@@ -790,7 +806,7 @@ void wave6_vpu_ctrl_put_sync(struct device *dev, struct wave6_vpu_entity *entity
 
 	list_del_init(&entity->list);
 	if (list_empty(&ctrl->entities)) {
-		if (!entity->read_reg(entity->dev, W6_VPU_VCPU_CUR_PC))
+		if (!call_read_reg(entity, W6_VPU_VCPU_CUR_PC))
 			wave6_vpu_ctrl_set_state(ctrl, WAVE6_VPU_STATE_OFF);
 		else
 			wave6_vpu_ctrl_sleep(ctrl, entity);
@@ -892,7 +908,7 @@ static int wave6_vpu_ctrl_thermal_update(struct device *dev, int state)
 {
 	struct vpu_ctrl *ctrl = dev_get_drvdata(dev);
 	unsigned long new_clock_rate;
-	int ret = 0;
+	int ret;
 
 	if (wave6_cooling_disable || !ctrl->dev_perf || state > ctrl->thermal_max || !ctrl->cooling)
 		return 0;
@@ -986,7 +1002,7 @@ static void wave6_cooling_init(struct vpu_ctrl *ctrl)
 
 	ctrl->clk_id = -1;
 	for (i = 0; i < ctrl->num_clks; i++) {
-		if (!strcmp("vpu", ctrl->clks[i].id)) {
+		if (ctrl->clks[i].id && !strcmp("vpu", ctrl->clks[i].id)) {
 			ctrl->clk_id = i;
 			break;
 		}
@@ -1136,9 +1152,7 @@ static int wave6_vpu_ctrl_probe(struct platform_device *pdev)
 	wave6_vpu_ctrl_create_debugfs(ctrl);
 #endif
 
-	for (int i = 0; i < WAVE6_PRE_INST_NUMBER; i++)
-		wave6_vpu_ctrl_acquire_work_buffer(ctrl);
-
+	wave6_vpu_ctrl_acquire_buffers(ctrl);
 	pm_runtime_enable(&pdev->dev);
 
 	return 0;
@@ -1195,20 +1209,9 @@ static int wave6_vpu_ctrl_runtime_resume(struct device *dev)
 }
 #endif
 
-#ifdef CONFIG_PM_SLEEP
-static int wave6_vpu_ctrl_suspend(struct device *dev)
-{
-	return 0;
-}
-
-static int wave6_vpu_ctrl_resume(struct device *dev)
-{
-	return 0;
-}
-#endif
 static const struct dev_pm_ops wave6_vpu_ctrl_pm_ops = {
 	SET_RUNTIME_PM_OPS(wave6_vpu_ctrl_runtime_suspend, wave6_vpu_ctrl_runtime_resume, NULL)
-	SET_SYSTEM_SLEEP_PM_OPS(wave6_vpu_ctrl_suspend, wave6_vpu_ctrl_resume)
+	SET_SYSTEM_SLEEP_PM_OPS(pm_runtime_force_suspend, pm_runtime_force_resume)
 };
 
 static const struct of_device_id wave6_ctrl_ids[] = {

@@ -2,7 +2,7 @@
 /*
  * Copyright (C) 2010-2016 Freescale Semiconductor, Inc.
  *
- * Copyright 2017-2019 NXP
+ * Copyright 2017-2025 NXP
  */
 /*
  * Based on STMP378X PxP driver
@@ -4186,7 +4186,7 @@ static inline void clkoff_callback(struct work_struct *w)
 
 static void pxp_clkoff_timer(struct timer_list *t)
 {
-	struct pxps *pxp = from_timer(pxp, t, clk_timer);
+	struct pxps *pxp = timer_container_of(pxp, t, clk_timer);
 
 	if ((pxp->pxp_ongoing == 0) && list_empty(&head))
 		schedule_work(&pxp->work);
@@ -8642,7 +8642,7 @@ static void pxp_remove(struct platform_device *pdev)
 	kmem_cache_destroy(edge_node_cache);
 	kthread_stop(pxp->dispatch);
 	cancel_work_sync(&pxp->work);
-	del_timer_sync(&pxp->clk_timer);
+	timer_delete_sync(&pxp->clk_timer);
 	clk_disable_unprepare(pxp->ipg_clk);
 	clk_disable_unprepare(pxp->axi_clk);
 	pxp_remove_attrs(pdev);

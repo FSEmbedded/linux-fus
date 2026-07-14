@@ -347,6 +347,7 @@ static int imx7ulp_wdt_probe(struct platform_device *pdev)
 	watchdog_stop_on_reboot(wdog);
 	watchdog_stop_on_unregister(wdog);
 	watchdog_set_drvdata(wdog, imx7ulp_wdt);
+	watchdog_set_nowayout(wdog, nowayout);
 
 	imx7ulp_wdt->hw = of_device_get_match_data(dev);
 	ret = imx7ulp_wdt_init(imx7ulp_wdt, wdog->timeout * imx7ulp_wdt->hw->wdog_clock_rate);
@@ -409,7 +410,7 @@ static const struct imx_wdt_hw_feature imx93_wdt_hw = {
 	.wdog_clock_rate = 125,
 };
 
-static const struct imx_wdt_hw_feature imx94_wdt_hw = {
+static const struct imx_wdt_hw_feature imx94x_wdt_hw = {
 	.prescaler_enable = true,
 	.wdog_clock_rate = 125,
 	.cpu_lpm_auto_cg = true,
@@ -419,7 +420,7 @@ static const struct of_device_id imx7ulp_wdt_dt_ids[] = {
 	{ .compatible = "fsl,imx7ulp-wdt", .data = &imx7ulp_wdt_hw, },
 	{ .compatible = "fsl,imx8ulp-wdt", .data = &imx8ulp_wdt_hw, },
 	{ .compatible = "fsl,imx93-wdt", .data = &imx93_wdt_hw, },
-	{ .compatible = "fsl,imx94-wdt", .data = &imx94_wdt_hw, },
+	{ .compatible = "fsl,imx94x-wdt", .data = &imx94x_wdt_hw, },
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, imx7ulp_wdt_dt_ids);

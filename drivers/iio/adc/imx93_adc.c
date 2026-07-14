@@ -32,13 +32,13 @@
 #define IMX93_ADC_PCDR0		0x100
 #define IMX93_ADC_PCDR1		0x104
 #define IMX93_ADC_PCDR2		0x108
-#define IMX93_ADC_PCDR3		0x10c
+#define IMX93_ADC_PCDR3		0x10C
 #define IMX93_ADC_PCDR4		0x110
 #define IMX93_ADC_PCDR5		0x114
 #define IMX93_ADC_PCDR6		0x118
-#define IMX93_ADC_PCDR7		0x11c
+#define IMX93_ADC_PCDR7		0x11C
 #define IMX93_ADC_CALSTAT	0x39C
-#define IMX93_ADC_CALCFG0	0X3A0
+#define IMX93_ADC_CALCFG0	0x3A0
 
 /* ADC bit shift */
 #define IMX93_ADC_MCR_MODE_MASK			BIT(29)
@@ -187,14 +187,15 @@ static int imx93_adc_calibration(struct imx93_adc *adc)
 
 	/* check whether calbration is success or not */
 	msr = readl(adc->regs + IMX93_ADC_MSR);
-	if (msr & IMX93_ADC_MSR_CALFAIL_MASK)
+	if (msr & IMX93_ADC_MSR_CALFAIL_MASK) {
 		/*
 		 * Only give warning here, this means the noise of the
 		 * reference voltage do not meet the requirement:
 		 *     ADC reference voltage Noise < 1.8V * 1/2^ENOB
-		 * And the reault of ADC is not that accurate.
+		 * And the resault of ADC is not that accurate.
 		 */
 		dev_warn(adc->dev, "ADC calibration failed!\n");
+	}
 
 	return 0;
 }
@@ -259,7 +260,6 @@ static int imx93_adc_read_raw(struct iio_dev *indio_dev,
 		mutex_lock(&adc->lock);
 		ret = imx93_adc_read_channel_conversion(adc, chan->channel, val);
 		mutex_unlock(&adc->lock);
-		pm_runtime_mark_last_busy(dev);
 		pm_runtime_put_sync_autosuspend(dev);
 		if (ret < 0)
 			return ret;
@@ -319,8 +319,7 @@ static int imx93_adc_probe(struct platform_device *pdev)
 
 	indio_dev = devm_iio_device_alloc(dev, sizeof(*adc));
 	if (!indio_dev)
-		return dev_err_probe(dev, -ENOMEM,
-				     "Failed allocating iio device\n");
+		return -ENOMEM;
 
 	adc = iio_priv(indio_dev);
 	adc->dev = dev;
@@ -475,13 +474,13 @@ static DEFINE_RUNTIME_DEV_PM_OPS(imx93_adc_pm_ops,
 
 static const struct of_device_id imx93_adc_match[] = {
 	{ .compatible = "nxp,imx93-adc", },
-	{ /* sentinel */ }
+	{ }
 };
 MODULE_DEVICE_TABLE(of, imx93_adc_match);
 
 static struct platform_driver imx93_adc_driver = {
 	.probe		= imx93_adc_probe,
-	.remove_new	= imx93_adc_remove,
+	.remove		= imx93_adc_remove,
 	.driver		= {
 		.name	= IMX93_ADC_DRIVER_NAME,
 		.of_match_table = imx93_adc_match,

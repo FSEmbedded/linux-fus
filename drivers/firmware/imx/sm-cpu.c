@@ -24,12 +24,15 @@ int scmi_imx_cpu_reset_vector_set(u32 cpuid, u64 vector, bool start, bool boot,
 }
 EXPORT_SYMBOL(scmi_imx_cpu_reset_vector_set);
 
-int scmi_imx_cpu_start(u32 cpuid)
+int scmi_imx_cpu_start(u32 cpuid, bool start)
 {
 	if (!ph)
 		return -EPROBE_DEFER;
 
-	return imx_cpu_ops->cpu_start(ph, cpuid);
+	if (start)
+		return imx_cpu_ops->cpu_start(ph, cpuid, true);
+
+	return imx_cpu_ops->cpu_start(ph, cpuid, false);
 };
 EXPORT_SYMBOL(scmi_imx_cpu_start);
 
@@ -44,15 +47,6 @@ int scmi_imx_cpu_started(u32 cpuid, bool *started)
 	return imx_cpu_ops->cpu_started(ph, cpuid, started);
 };
 EXPORT_SYMBOL(scmi_imx_cpu_started);
-
-int scmi_imx_cpu_stop(u32 cpuid)
-{
-	if (!ph)
-		return -EPROBE_DEFER;
-
-	return imx_cpu_ops->cpu_stop(ph, cpuid);
-};
-EXPORT_SYMBOL(scmi_imx_cpu_stop);
 
 static int scmi_imx_cpu_probe(struct scmi_device *sdev)
 {

@@ -33,6 +33,7 @@
 #define DP83848_MISR_LINK_INT_EN	BIT(5) /* Link status */
 #define DP83848_MISR_ED_INT_EN		BIT(6) /* Energy detect */
 #define DP83848_MISR_LQM_INT_EN		BIT(7) /* Link Quality Monitor */
+
 /* MISR Register Fields */
 #define DP83848_RMII_REV1_0		BIT(4)  /* Reduced MII Revision 1.0 */
 #define DP83848_RMII_MODE		BIT(5)  /* Reduced MII Mode */
@@ -41,8 +42,6 @@
 /* PHYCR Register Fields */
 #define DP83848_PHYCR_LED_CNFG		BIT(5) /* LED Configuration (0: Link+Activity, 1: Link) */
 #define DP83848_PHYCR_MDIX_EN		BIT(15) /* Auto-MDIX (0: Disabled, 1: Enabled) */
-
-
 #define DP83848_INT_EN_MASK		\
 	(DP83848_MISR_ANC_INT_EN |	\
 	 DP83848_MISR_DUP_INT_EN |	\
@@ -195,7 +194,8 @@ static int dp83848c_config_init(struct phy_device *phydev)
 
 	return ret;
 }
-static struct mdio_device_id __maybe_unused dp83848_tbl[] = {
+
+static const struct mdio_device_id __maybe_unused dp83848_tbl[] = {
 	{ TI_DP83848C_PHY_ID, 0xfffffff0 },
 	{ NS_DP83848C_PHY_ID, 0xfffffff0 },
 	{ TI_DP83620_PHY_ID, 0xfffffff0 },

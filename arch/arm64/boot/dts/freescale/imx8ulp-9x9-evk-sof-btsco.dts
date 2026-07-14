@@ -62,9 +62,10 @@
 
 &dsp {
 	compatible = "fsl,imx8ulp-dsp";
-	memory-reserved = <&dsp_reserved0>;
-	memory-region = <&dsp_reserved1>;
+	memory-region = <&dsp_reserved1>, <&dsp_reserved0>;
+	memory-region-names = "dma", "sram";
 	reg = <0x21170000 0x20000>;
+	reg-names = "iram";
 	pinctrl-names = "default", "sleep";
 	pinctrl-0 = <&pinctrl_sai6>;
 	pinctrl-1 = <&pinctrl_sai6>;

@@ -65,8 +65,8 @@
 #include "libata-transport.h"
 
 const struct ata_port_operations ata_base_port_ops = {
-	.prereset		= ata_std_prereset,
-	.postreset		= ata_std_postreset,
+	.reset.prereset		= ata_std_prereset,
+	.reset.postreset	= ata_std_postreset,
 	.error_handler		= ata_std_error_handler,
 	.sched_eh		= ata_std_sched_eh,
 	.end_eh			= ata_std_end_eh,
@@ -2154,14 +2154,43 @@ retry:
 	return err_mask;
 }
 
+static inline void ata_clear_log_directory(struct ata_device *dev)
+{
+	memset(dev->gp_log_dir, 0, ATA_SECT_SIZE);
+}
+
+static int ata_read_log_directory(struct ata_device *dev)
+{
+	u16 version;
+
+	/* If the log page is already cached, do nothing. */
+	version = get_unaligned_le16(&dev->gp_log_dir[0]);
+	if (version == 0x0001)
+		return 0;
+
+	if (ata_read_log_page(dev, ATA_LOG_DIRECTORY, 0, dev->gp_log_dir, 1)) {
+		ata_clear_log_directory(dev);
+		return -EIO;
+	}
+
+	version = get_unaligned_le16(&dev->gp_log_dir[0]);
+	if (version != 0x0001)
+		ata_dev_warn_once(dev,
+				  "Invalid log directory version 0x%04x\n",
+				  version);
+
+	return 0;
+}
+
 static int ata_log_supported(struct ata_device *dev, u8 log)
 {
 	if (dev->quirks & ATA_QUIRK_NO_LOG_DIR)
 		return 0;
 
-	if (ata_read_log_page(dev, ATA_LOG_DIRECTORY, 0, dev->sector_buf, 1))
+	if (ata_read_log_directory(dev))
 		return 0;
-	return get_unaligned_le16(&dev->sector_buf[log * 2]);
+
+	return get_unaligned_le16(&dev->gp_log_dir[log * 2]);
 }
 
 static bool ata_identify_page_supported(struct ata_device *dev, u8 page)
@@ -2274,7 +2303,7 @@ static void ata_dev_config_ncq_non_data(struct ata_device *dev)
 
 	if (!ata_log_supported(dev, ATA_LOG_NCQ_NON_DATA)) {
 		ata_dev_warn(dev,
-			     "NCQ Send/Recv Log not supported\n");
+			     "NCQ Non-Data Log not supported\n");
 		return;
 	}
 	err_mask = ata_read_log_page(dev, ATA_LOG_NCQ_NON_DATA,
@@ -2327,6 +2356,24 @@ static bool ata_dev_check_adapter(struct ata_device *dev,
 	}
 
 	return false;
+}
+
+bool ata_adapter_is_online(struct ata_port *ap)
+{
+	struct device *dev;
+
+	if (!ap || !ap->host)
+		return false;
+
+	dev = ap->host->dev;
+	if (!dev)
+		return false;
+
+	if (dev_is_pci(dev) &&
+	    pci_channel_offline(to_pci_dev(dev)))
+		return false;
+
+	return true;
 }
 
 static int ata_dev_config_ncq(struct ata_device *dev,
@@ -2421,18 +2468,7 @@ static void ata_dev_config_zac(struct ata_device *dev)
 	dev->zac_zones_optimal_nonseq = U32_MAX;
 	dev->zac_zones_max_open = U32_MAX;
 
-	/*
-	 * Always set the 'ZAC' flag for Host-managed devices.
-	 */
-	if (dev->class == ATA_DEV_ZAC)
-		dev->flags |= ATA_DFLAG_ZAC;
-	else if (ata_id_zoned_cap(dev->id) == 0x01)
-		/*
-		 * Check for host-aware devices.
-		 */
-		dev->flags |= ATA_DFLAG_ZAC;
-
-	if (!(dev->flags & ATA_DFLAG_ZAC))
+	if (!ata_dev_is_zac(dev))
 		return;
 
 	if (!ata_identify_page_supported(dev, ATA_LOG_ZONED_INFORMATION)) {
@@ -2495,7 +2531,7 @@ static void ata_dev_config_trusted(struct ata_device *dev)
 		dev->flags |= ATA_DFLAG_TRUSTED;
 }
 
-void ata_dev_cleanup_cdl_resources(struct ata_device *dev)
+static void ata_dev_cleanup_cdl_resources(struct ata_device *dev)
 {
 	kfree(dev->cdl);
 	dev->cdl = NULL;
@@ -2801,17 +2837,71 @@ out:
 	kfree(buf);
 }
 
+/*
+ * Configure features related to link power management.
+ */
+static void ata_dev_config_lpm(struct ata_device *dev)
+{
+	struct ata_port *ap = dev->link->ap;
+	unsigned int err_mask;
+
+	if (ap->flags & ATA_FLAG_NO_LPM) {
+		/*
+		 * When the port does not support LPM, we cannot support it on
+		 * the device either.
+		 */
+		dev->quirks |= ATA_QUIRK_NOLPM;
+	} else {
+		/*
+		 * Some WD SATA-1 drives have issues with LPM, turn on NOLPM for
+		 * them.
+		 */
+		if ((dev->quirks & ATA_QUIRK_WD_BROKEN_LPM) &&
+		    (dev->id[ATA_ID_SATA_CAPABILITY] & 0xe) == 0x2)
+			dev->quirks |= ATA_QUIRK_NOLPM;
+
+		/* ATI specific quirk */
+		if ((dev->quirks & ATA_QUIRK_NO_LPM_ON_ATI) &&
+		    ata_dev_check_adapter(dev, PCI_VENDOR_ID_ATI))
+			dev->quirks |= ATA_QUIRK_NOLPM;
+	}
+
+	if (dev->quirks & ATA_QUIRK_NOLPM &&
+	    ap->target_lpm_policy != ATA_LPM_MAX_POWER) {
+		ata_dev_warn(dev, "LPM support broken, forcing max_power\n");
+		ap->target_lpm_policy = ATA_LPM_MAX_POWER;
+	}
+
+	/*
+	 * Device Initiated Power Management (DIPM) is normally disabled by
+	 * default on a device. However, DIPM may have been enabled and that
+	 * setting kept even after COMRESET because of the Software Settings
+	 * Preservation feature. So if the port does not support DIPM and the
+	 * device does, disable DIPM on the device.
+	 */
+	if (ap->flags & ATA_FLAG_NO_DIPM && ata_id_has_dipm(dev->id)) {
+		err_mask = ata_dev_set_feature(dev,
+					SETFEATURES_SATA_DISABLE, SATA_DIPM);
+		if (err_mask && err_mask != AC_ERR_DEV)
+			ata_dev_err(dev, "Disable DIPM failed, Emask 0x%x\n",
+				    err_mask);
+	}
+}
+
 static void ata_dev_print_features(struct ata_device *dev)
 {
-	if (!(dev->flags & ATA_DFLAG_FEATURES_MASK))
+	if (!(dev->flags & ATA_DFLAG_FEATURES_MASK) && !dev->cpr_log &&
+	    !ata_id_has_hipm(dev->id) && !ata_id_has_dipm(dev->id))
 		return;
 
 	ata_dev_info(dev,
-		     "Features:%s%s%s%s%s%s%s%s\n",
+		     "Features:%s%s%s%s%s%s%s%s%s%s\n",
 		     dev->flags & ATA_DFLAG_FUA ? " FUA" : "",
 		     dev->flags & ATA_DFLAG_TRUSTED ? " Trust" : "",
 		     dev->flags & ATA_DFLAG_DA ? " Dev-Attention" : "",
 		     dev->flags & ATA_DFLAG_DEVSLP ? " Dev-Sleep" : "",
+		     ata_id_has_hipm(dev->id) ? " HIPM" : "",
+		     ata_id_has_dipm(dev->id) ? " DIPM" : "",
 		     dev->flags & ATA_DFLAG_NCQ_SEND_RECV ? " NCQ-sndrcv" : "",
 		     dev->flags & ATA_DFLAG_NCQ_PRIO ? " NCQ-prio" : "",
 		     dev->flags & ATA_DFLAG_CDL ? " CDL" : "",
@@ -2848,6 +2938,9 @@ int ata_dev_configure(struct ata_device *dev)
 		return 0;
 	}
 
+	/* Clear the general purpose log directory cache. */
+	ata_clear_log_directory(dev);
+
 	/* Set quirks */
 	dev->quirks |= ata_dev_quirks(dev);
 	ata_force_quirks(dev);
@@ -2870,23 +2963,6 @@ int ata_dev_configure(struct ata_device *dev)
 	rc = ata_do_link_spd_quirk(dev);
 	if (rc)
 		return rc;
-
-	/* some WD SATA-1 drives have issues with LPM, turn on NOLPM for them */
-	if ((dev->quirks & ATA_QUIRK_WD_BROKEN_LPM) &&
-	    (id[ATA_ID_SATA_CAPABILITY] & 0xe) == 0x2)
-		dev->quirks |= ATA_QUIRK_NOLPM;
-
-	if (dev->quirks & ATA_QUIRK_NO_LPM_ON_ATI &&
-	    ata_dev_check_adapter(dev, PCI_VENDOR_ID_ATI))
-		dev->quirks |= ATA_QUIRK_NOLPM;
-
-	if (ap->flags & ATA_FLAG_NO_LPM)
-		dev->quirks |= ATA_QUIRK_NOLPM;
-
-	if (dev->quirks & ATA_QUIRK_NOLPM) {
-		ata_dev_warn(dev, "LPM support broken, forcing max_power\n");
-		dev->link->ap->target_lpm_policy = ATA_LPM_MAX_POWER;
-	}
 
 	/* let ACPI work its magic */
 	rc = ata_acpi_on_devcfg(dev);
@@ -2949,6 +3025,16 @@ int ata_dev_configure(struct ata_device *dev)
 		}
 
 		dev->n_sectors = ata_id_n_sectors(id);
+		if (ata_id_is_locked(id)) {
+			/*
+			 * If Security locked, set capacity to zero to prevent
+			 * any I/O, e.g. partition scanning, as any I/O to a
+			 * locked drive will result in user visible errors.
+			 */
+			ata_dev_info(dev,
+				"Security locked, setting capacity to zero\n");
+			dev->n_sectors = 0;
+		}
 
 		/* get current R/W Multiple count setting */
 		if ((dev->id[47] >> 8) == 0x80 && (dev->id[59] & 0x100)) {
@@ -2974,6 +3060,7 @@ int ata_dev_configure(struct ata_device *dev)
 			ata_dev_config_chs(dev);
 		}
 
+		ata_dev_config_lpm(dev);
 		ata_dev_config_fua(dev);
 		ata_dev_config_devslp(dev);
 		ata_dev_config_sense_reporting(dev);
@@ -3048,6 +3135,11 @@ int ata_dev_configure(struct ata_device *dev)
 				     ata_mode_string(xfer_mask),
 				     cdb_intr_string, atapi_an_string,
 				     dma_dir_string);
+
+		ata_dev_config_lpm(dev);
+
+		if (print_info)
+			ata_dev_print_features(dev);
 	}
 
 	/* determine max_sectors */
@@ -3449,7 +3541,7 @@ static int ata_dev_set_mode(struct ata_device *dev)
 }
 
 /**
- *	ata_do_set_mode - Program timings and issue SET FEATURES - XFER
+ *	ata_set_mode - Program timings and issue SET FEATURES - XFER
  *	@link: link on which timings will be programmed
  *	@r_failed_dev: out parameter for failed device
  *
@@ -3465,7 +3557,7 @@ static int ata_dev_set_mode(struct ata_device *dev)
  *	0 on success, negative errno otherwise
  */
 
-int ata_do_set_mode(struct ata_link *link, struct ata_device **r_failed_dev)
+int ata_set_mode(struct ata_link *link, struct ata_device **r_failed_dev)
 {
 	struct ata_port *ap = link->ap;
 	struct ata_device *dev;
@@ -3546,7 +3638,7 @@ int ata_do_set_mode(struct ata_link *link, struct ata_device **r_failed_dev)
 		*r_failed_dev = dev;
 	return rc;
 }
-EXPORT_SYMBOL_GPL(ata_do_set_mode);
+EXPORT_SYMBOL_GPL(ata_set_mode);
 
 /**
  *	ata_wait_ready - wait for link to become ready
@@ -4064,6 +4156,13 @@ static const struct ata_dev_quirks_entry __ata_dev_quirks[] = {
 	{ "ST3320[68]13AS",	"SD1[5-9]",	ATA_QUIRK_NONCQ |
 						ATA_QUIRK_FIRMWARE_WARN },
 
+	/* ADATA devices with LPM issues. */
+	{ "ADATA SU680",	NULL,		ATA_QUIRK_NOLPM },
+
+	/* Seagate disks with LPM issues */
+	{ "ST1000DM010-2EP102",	NULL,		ATA_QUIRK_NOLPM },
+	{ "ST2000DM008-2FR102",	NULL,		ATA_QUIRK_NOLPM },
+
 	/* drives which fail FPDMA_AA activation (some may freeze afterwards)
 	   the ST disks also have LPM issues */
 	{ "ST1000LM024 HN-M101MBB", NULL,	ATA_QUIRK_BROKEN_FPDMA_AA |
@@ -4104,6 +4203,7 @@ static const struct ata_dev_quirks_entry __ata_dev_quirks[] = {
 	/* Devices that do not need bridging limits applied */
 	{ "MTRON MSP-SATA*",		NULL,	ATA_QUIRK_BRIDGE_OK },
 	{ "BUFFALO HD-QSU2/R5",		NULL,	ATA_QUIRK_BRIDGE_OK },
+	{ "QEMU HARDDISK",		"2.5+",	ATA_QUIRK_BRIDGE_OK },
 
 	/* Devices which aren't very happy with higher link speeds */
 	{ "WD My Book",			NULL,	ATA_QUIRK_1_5_GBPS },
@@ -4541,7 +4641,7 @@ static unsigned int ata_dev_init_params(struct ata_device *dev,
 		return AC_ERR_INVALID;
 
 	/* set up init dev params taskfile */
-	ata_dev_dbg(dev, "init dev params \n");
+	ata_dev_dbg(dev, "init dev params\n");
 
 	ata_tf_init(dev, &tf);
 	tf.command = ATA_CMD_INIT_DEV_PARAMS;
@@ -4583,7 +4683,7 @@ int atapi_check_dma(struct ata_queued_cmd *qc)
 	 */
 	if (!(qc->dev->quirks & ATA_QUIRK_ATAPI_MOD16_DMA) &&
 	    unlikely(qc->nbytes & 15))
-		return 1;
+		return -EOPNOTSUPP;
 
 	if (ap->ops->check_atapi_dma)
 		return ap->ops->check_atapi_dma(qc);
@@ -4989,6 +5089,12 @@ void ata_qc_issue(struct ata_queued_cmd *qc)
 
 	qc->flags |= ATA_QCFLAG_ACTIVE;
 	ap->qc_active |= 1ULL << qc->tag;
+
+	/* Make sure the device is still accessible. */
+	if (!ata_adapter_is_online(ap)) {
+		qc->err_mask |= AC_ERR_HOST_BUS;
+		goto sys_err;
+	}
 
 	/*
 	 * We guarantee to LLDs that they will have at least one
@@ -5475,6 +5581,7 @@ struct ata_port *ata_port_alloc(struct ata_host *host)
 	mutex_init(&ap->scsi_scan_mutex);
 	INIT_DELAYED_WORK(&ap->hotplug_task, ata_scsi_hotplug);
 	INIT_DELAYED_WORK(&ap->scsi_rescan_task, ata_scsi_dev_rescan);
+	INIT_WORK(&ap->deferred_qc_work, ata_scsi_deferred_qc_work);
 	INIT_LIST_HEAD(&ap->eh_done_q);
 	init_waitqueue_head(&ap->eh_wait_q);
 	init_completion(&ap->park_req_pending);
@@ -6095,9 +6202,11 @@ static void ata_port_detach(struct ata_port *ap)
 	/* wait till EH commits suicide */
 	ata_port_wait_eh(ap);
 
-	/* it better be dead now */
+	/* It better be dead now and not have any remaining deferred qc. */
 	WARN_ON(!(ap->pflags & ATA_PFLAG_UNLOADED));
+	WARN_ON(ap->deferred_qc);
 
+	cancel_work_sync(&ap->deferred_qc_work);
 	cancel_delayed_work_sync(&ap->hotplug_task);
 	cancel_delayed_work_sync(&ap->scsi_rescan_task);
 
@@ -6681,12 +6790,6 @@ const struct ata_port_info ata_dummy_port_info = {
 	.port_ops		= &ata_dummy_port_ops,
 };
 EXPORT_SYMBOL_GPL(ata_dummy_port_info);
-
-void ata_print_version(const struct device *dev, const char *version)
-{
-	dev_printk(KERN_DEBUG, dev, "version %s\n", version);
-}
-EXPORT_SYMBOL(ata_print_version);
 
 EXPORT_TRACEPOINT_SYMBOL_GPL(ata_tf_load);
 EXPORT_TRACEPOINT_SYMBOL_GPL(ata_exec_command);

@@ -110,7 +110,7 @@ static int imx91_tmu_get_temp(struct thermal_zone_device *tz, int *temp)
 		return -EAGAIN;
 
 	data = readw_relaxed(tmu->base + DATA0);
-	*temp = data * 1000LL / 64LL;
+	*temp = data * 1000 / 64;
 	if (*temp < TMU_TEMP_LOW_LIMIT || *temp > TMU_TEMP_HIGH_LIMIT)
 		return -EAGAIN;
 

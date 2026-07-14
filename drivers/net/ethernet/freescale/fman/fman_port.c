@@ -989,7 +989,7 @@ static int init_low_level_driver(struct fman_port *port)
 		return -ENODEV;
 	}
 
-	/* The code bellow is a trick so the FM will not release the buffer
+	/* The code below is a trick so the FM will not release the buffer
 	 * to BM nor will try to enqueue the frame to QM
 	 */
 	if (port->port_type == FMAN_PORT_TYPE_TX) {
@@ -1741,20 +1741,14 @@ int fman_port_get_tstamp(struct fman_port *port, const void *data, u64 *tstamp)
 }
 EXPORT_SYMBOL(fman_port_get_tstamp);
 
-static int fwnode_match_devnode(struct device *dev, const void *fwnode)
-{
-	return dev->fwnode == fwnode;
-}
-
 static int fman_port_acpi_probe(struct platform_device *pdev)
 {
-	struct fwnode_handle *fman_fwnode = NULL;
-	struct fwnode_handle *port_fwnode = NULL;
+	struct fwnode_handle *port_fwnode = dev_fwnode(&pdev->dev);
+	struct fwnode_handle *fman_fwnode;
 	enum fman_port_type port_type = 0;
 	struct device *fman_dev = NULL;
 	struct fman_port *port = NULL;
 	struct fman *fman = NULL;
-	const char *cp = NULL;
 	struct resource res;
 	u16 port_speed;
 	int err = 0;
@@ -1768,19 +1762,22 @@ static int fman_port_acpi_probe(struct platform_device *pdev)
 	port->dev = &pdev->dev;
 
 	/* Get the FM node */
-	port_fwnode = fwnode_handle_get(pdev->dev.fwnode);
 	fman_fwnode = fwnode_get_parent(port_fwnode);
-	fman_dev = bus_find_device(&platform_bus_type, NULL, fman_fwnode,
-				   fwnode_match_devnode);
+	if (!fman_fwnode) {
+		err = -ENODEV;
+		goto out_free_port;
+	}
+
+	fman_dev = bus_find_device_by_fwnode(&platform_bus_type, fman_fwnode);
 	if (!fman_dev) {
 		err = -ENODEV;
-		goto return_err;
+		goto out_put_parent;
 	}
 	fman = dev_get_drvdata(fman_dev);
 	if (!fman) {
 		dev_err(&pdev->dev, "getting Fman drv data (fman) failed\n");
 		err = -EINVAL;
-		goto return_err;
+		goto out_put_parent;
 	}
 
 	err = fwnode_property_read_u32(port_fwnode, "cell-index", &val);
@@ -1788,31 +1785,30 @@ static int fman_port_acpi_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "%s: reading cell-index failed\n",
 			__func__);
 		err = -EINVAL;
-		goto return_err;
+		goto out_put_parent;
 	}
 	port_id = (u8)val;
 	port->dts_params.id = port_id;
 
-	fwnode_property_read_string(port_fwnode, "compatible", &cp);
-	if (!strcmp(cp, "fman-v3-port-tx")) {
+	if (fwnode_device_is_compatible(port_fwnode, "fman-v3-port-tx")) {
 		port_type = FMAN_PORT_TYPE_TX;
 		port_speed = 1000;
 		if (fwnode_property_present(port_fwnode,
 					    "fsl,fman-10g-port"))
 			port_speed = 10000;
-	} else if (!strcmp(cp, "fman-v2-port-tx")) {
+	} else if (fwnode_device_is_compatible(port_fwnode, "fman-v2-port-tx")) {
 		if (port_id >= TX_10G_PORT_BASE)
 			port_speed = 10000;
 		else
 			port_speed = 1000;
 		port_type = FMAN_PORT_TYPE_TX;
-	} else if (!strcmp(cp, "fman-v3-port-rx")) {
+	} else if (fwnode_device_is_compatible(port_fwnode, "fman-v3-port-rx")) {
 		port_type = FMAN_PORT_TYPE_RX;
 		port_speed = 1000;
 		if (fwnode_property_present(port_fwnode,
 					    "fsl,fman-10g-port"))
 			port_speed = 10000;
-	} else if (!strcmp(cp, "fman-v2-port-rx")) {
+	} else if (fwnode_device_is_compatible(port_fwnode, "fman-v2-port-rx")) {
 		if (port_id >= RX_10G_PORT_BASE)
 			port_speed = 10000;
 		else
@@ -1822,7 +1818,7 @@ static int fman_port_acpi_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "%s: Illegal port type\n",
 			__func__);
 		err = -EINVAL;
-		goto return_err;
+		goto out_put_parent;
 	}
 
 	port->dts_params.type = port_type;
@@ -1836,7 +1832,7 @@ static int fman_port_acpi_probe(struct platform_device *pdev)
 			dev_err(port->dev, "%s: incorrect qman-channel-id\n",
 				__func__);
 			err = -EINVAL;
-			goto return_err;
+			goto out_put_parent;
 		}
 		port->dts_params.qman_channel_id = qman_channel_id;
 	}
@@ -1855,7 +1851,9 @@ static int fman_port_acpi_probe(struct platform_device *pdev)
 
 	return 0;
 
-return_err:
+out_put_parent:
+	fwnode_handle_put(fman_fwnode);
+out_free_port:
 	kfree(port);
 	return err;
 }
@@ -2013,11 +2011,13 @@ static const struct of_device_id fman_port_match[] = {
 
 MODULE_DEVICE_TABLE(of, fman_port_match);
 
+#if IS_ENABLED(CONFIG_ACPI)
 static const struct acpi_device_id fman_port_acpi_match[] = {
 	{"NXP0026", 0},
 	{},
 };
 MODULE_DEVICE_TABLE(acpi, fman_port_acpi_match);
+#endif
 
 static struct platform_driver fman_port_driver = {
 	.driver = {

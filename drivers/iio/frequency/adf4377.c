@@ -501,7 +501,7 @@ static int adf4377_soft_reset(struct adf4377_state *st)
 		return ret;
 
 	return regmap_read_poll_timeout(st->regmap, 0x0, read_val,
-					!(read_val & (ADF4377_0000_SOFT_RESET_R_MSK |
+					!(read_val & (ADF4377_0000_SOFT_RESET_MSK |
 					ADF4377_0000_SOFT_RESET_R_MSK)), 200, 200 * 100);
 }
 
@@ -985,14 +985,14 @@ static int adf4377_probe(struct spi_device *spi)
 static const struct spi_device_id adf4377_id[] = {
 	{ "adf4377", (kernel_ulong_t)&adf4377_chip_info },
 	{ "adf4378", (kernel_ulong_t)&adf4378_chip_info },
-	{}
+	{ }
 };
 MODULE_DEVICE_TABLE(spi, adf4377_id);
 
 static const struct of_device_id adf4377_of_match[] = {
 	{ .compatible = "adi,adf4377", .data = &adf4377_chip_info },
 	{ .compatible = "adi,adf4378", .data = &adf4378_chip_info },
-	{}
+	{ }
 };
 MODULE_DEVICE_TABLE(of, adf4377_of_match);
 

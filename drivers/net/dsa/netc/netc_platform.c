@@ -13,7 +13,6 @@
 #define IMX94_PORT_BF_MAPPING(i)	((i) << 24 | (i) << 16 | (i) << 8 | (i))
 
 struct netc_switch_platform {
-	char compatible[128];
 	u16 revision;
 	const struct netc_switch_info *info;
 };
@@ -27,11 +26,10 @@ static void imx94_switch_phylink_get_caps(int port, struct phylink_config *confi
 	case 0 ... 1:
 		__set_bit(PHY_INTERFACE_MODE_SGMII,
 			  config->supported_interfaces);
-		__set_bit(PHY_INTERFACE_MODE_1000BASEX,
-			  config->supported_interfaces);
 		__set_bit(PHY_INTERFACE_MODE_2500BASEX,
 			  config->supported_interfaces);
 		config->mac_capabilities |= MAC_2500FD;
+		config->lpi_capabilities |= MAC_2500FD;
 		fallthrough;
 	case 2:
 		__set_bit(PHY_INTERFACE_MODE_MII, config->supported_interfaces);
@@ -40,6 +38,9 @@ static void imx94_switch_phylink_get_caps(int port, struct phylink_config *confi
 			__set_bit(PHY_INTERFACE_MODE_REVMII, config->supported_interfaces);
 
 		phy_interface_set_rgmii(config->supported_interfaces);
+		config->lpi_capabilities |= MAC_100FD | MAC_1000FD;
+		memcpy(config->lpi_interfaces, config->supported_interfaces,
+		       sizeof(config->lpi_interfaces));
 		break;
 	case 3: /* CPU port */
 		__set_bit(PHY_INTERFACE_MODE_INTERNAL, config->supported_interfaces);
@@ -55,7 +56,7 @@ static void imx94_switch_bpt_init(struct netc_switch *priv)
 		struct bpt_cfge_data *cfge = &priv->bpt_list[i];
 
 		cfge->max_thresh = cpu_to_le16(IMX94_BP_MAX_THRESH);
-		ntmp_bpt_update_entry(&priv->ntmp.cbdrs, i, cfge);
+		ntmp_bpt_update_entry(&priv->user, i, cfge);
 	}
 
 	/* For i.MX94, each port has two dedicated buffer pools,
@@ -96,7 +97,7 @@ static void imx94_port_tx_pause_config(struct netc_port *port, bool en)
 			cfge->fc_ports = cpu_to_le32(0);
 		}
 
-		ntmp_bpt_update_entry(&priv->ntmp.cbdrs, j, cfge);
+		ntmp_bpt_update_entry(&priv->user, j, cfge);
 	}
 }
 
@@ -111,8 +112,7 @@ static const struct netc_switch_info imx94_info = {
 };
 
 static const struct netc_switch_platform netc_platforms[] = {
-	{ .compatible = "nxp,imx94-netc-switch",
-	  .revision = NETC_SWITCH_REV_4_3,
+	{ .revision = NETC_SWITCH_REV_4_3,
 	  .info = &imx94_info,
 	},
 	{ },
@@ -120,16 +120,9 @@ static const struct netc_switch_platform netc_platforms[] = {
 
 static const struct netc_switch_info *netc_switch_get_info(struct netc_switch *priv)
 {
-	struct device_node *node = priv->dev->of_node;
 	int i;
 
-	/* Matches based on compatible string */
-	for (i = 0; i < ARRAY_SIZE(netc_platforms); i++) {
-		if (of_device_is_compatible(node, netc_platforms[i].compatible) > 0)
-			return netc_platforms[i].info;
-	}
-
-	/* Matches based on IP revision, some platform may have no device node */
+	/* Matches based on IP revision */
 	for (i = 0; i < ARRAY_SIZE(netc_platforms); i++) {
 		if (priv->revision == netc_platforms[i].revision)
 			return netc_platforms[i].info;

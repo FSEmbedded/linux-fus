@@ -32,6 +32,7 @@ int ele_msg_rcv(struct se_if_device_ctx *dev_ctx,
 {
 	struct se_if_priv *priv = dev_ctx->priv;
 	bool wait_timeout_enabled = true;
+	unsigned long flags;
 	unsigned int wait;
 	int err;
 
@@ -65,11 +66,30 @@ int ele_msg_rcv(struct se_if_device_ctx *dev_ctx,
 		}
 		if (err == 0) {
 			if (wait_timeout_enabled) {
+				/*
+				 * Take the lock so that a concurrently-running
+				 * se_if_rx_callback() that already snapshot a
+				 * valid rx_msg finishes its memcpy before we
+				 * return and the caller frees the buffer.
+				 */
+				spin_lock_irqsave(&priv->clbk_rx_lock, flags);
+				se_clbk_hdl->rx_msg = NULL;
+				/*
+				 * Open circuit breaker: reject future commands until ELE responds.
+				 */
+				if (!completion_done(&se_clbk_hdl->done))
+					atomic_set(&priv->fw_busy, 1);
+				spin_unlock_irqrestore(&priv->clbk_rx_lock, flags);
+				/*
+				 * Increment timeout counter for telemetry.
+				 */
+				atomic_inc(&priv->timeout_count);
 				err = -ETIMEDOUT;
 				dev_err(priv->dev,
-					"Fatal Error: SE interface: %s%d, hangs indefinitely.\n",
+					"Could be fatal error: SE interface: %s%d, hung (timeout #%d).\n",
 					get_se_if_name(priv->if_defs->se_if_type),
-					priv->if_defs->se_instance_id);
+					priv->if_defs->se_instance_id,
+					atomic_read(&priv->timeout_count));
 			}
 			break;
 		}
@@ -131,15 +151,28 @@ int ele_msg_send_rcv(struct se_if_device_ctx *dev_ctx,
 {
 	int err;
 	struct se_if_priv *priv = dev_ctx->priv;
+	bool do_unlock;
 
-	se_qualify_msg_seq_flow(&priv->se_msg_sq_ctl, tx_msg);
+	do_unlock = se_qualify_msg_seq_flow(&priv->se_msg_sq_ctl, tx_msg);
 
 	guard(mutex)(&priv->se_if_cmd_lock);
 
+	if (atomic_read(&priv->fw_busy)) {
+		dev_dbg(priv->dev, "%s: ELE became unresponsive while waiting for mutex\n",
+			dev_ctx->devname);
+		if (do_unlock)
+			se_halt_to_enforce_msg_seq_flow(&priv->se_msg_sq_ctl);
+		return -EBUSY;
+	}
+
 	/* Capture request timer */
-	ktime_get_raw_ts64(&priv->time_frame.t_start);
+	ktime_get_raw_ts64(&dev_ctx->time_frame.t_start);
+
+	reinit_completion(&priv->waiting_rsp_clbk_hdl.done);
+
 	priv->waiting_rsp_clbk_hdl.dev_ctx = dev_ctx;
 	priv->waiting_rsp_clbk_hdl.rx_msg_sz = exp_rx_msg_sz;
+
 	priv->waiting_rsp_clbk_hdl.rx_msg = rx_msg;
 
 	err = ele_msg_send(dev_ctx, tx_msg, tx_msg_sz);
@@ -153,14 +186,18 @@ int ele_msg_send_rcv(struct se_if_device_ctx *dev_ctx,
 		priv->waiting_rsp_clbk_hdl.signal_rcvd = false;
 		dev_err(priv->dev,
 			"%s: Err[0x%x]:Interrupted by signal.\n",
-			dev_ctx->devname,
-			err);
+			dev_ctx->devname, err);
 	}
-	priv->waiting_rsp_clbk_hdl.dev_ctx = NULL;
 
 	/* Capture response timer */
-	ktime_get_raw_ts64(&priv->time_frame.t_end);
+	ktime_get_raw_ts64(&dev_ctx->time_frame.t_end);
 exit:
+	priv->waiting_rsp_clbk_hdl.rx_msg = NULL;
+	priv->waiting_rsp_clbk_hdl.dev_ctx = NULL;
+
+	if (do_unlock)
+		se_halt_to_enforce_msg_seq_flow(&priv->se_msg_sq_ctl);
+
 	return err;
 }
 
@@ -170,9 +207,12 @@ static bool exception_for_size(struct se_if_priv *priv,
 	/* List of API(s) that can be accepte variable length
 	 * response buffer.
 	 */
-	if ((header->command == ELE_DEBUG_DUMP_REQ || header->command == V2X_DBG_DUMP_REQ) &&
+	if (((priv->if_defs->se_if_type == SE_TYPE_ID_HSM &&
+	      header->command == ELE_DEBUG_DUMP_REQ) ||
+	     (priv->if_defs->se_if_type == SE_TYPE_ID_V2X_DBG &&
+	      header->command == V2X_DBG_DUMP_REQ)) &&
 		header->ver == priv->if_defs->base_api_ver &&
-		header->size >= 0 &&
+		header->size >= 2 &&
 		header->size <= ELE_DEBUG_DUMP_RSP_SZ)
 		return true;
 
@@ -188,6 +228,7 @@ void se_if_rx_callback(struct mbox_client *mbox_cl, void *msg)
 	struct device *dev = mbox_cl->dev;
 	struct se_msg_hdr *header;
 	struct se_if_priv *priv;
+	unsigned long flags;
 	u32 rx_msg_sz;
 
 	priv = dev_get_drvdata(dev);
@@ -235,34 +276,53 @@ void se_if_rx_callback(struct mbox_client *mbox_cl, void *msg)
 			se_clbk_hdl->rx_msg_sz = MAX_NVM_MSG_LEN;
 		}
 		se_clbk_hdl->rx_msg_sz = rx_msg_sz;
-
+		memcpy(se_clbk_hdl->rx_msg, msg, se_clbk_hdl->rx_msg_sz);
+		complete(&se_clbk_hdl->done);
 	} else if (header->tag == priv->if_defs->rsp_tag) {
+		/* Size mismatch expected. */
+		bool sz_mismatch = exception_for_size(priv, header);
+		u32 exp_rx_msg_sz = 0;
+
 		se_clbk_hdl = &priv->waiting_rsp_clbk_hdl;
+		spin_lock_irqsave(&priv->clbk_rx_lock, flags);
+		if (!se_clbk_hdl->rx_msg) {
+			/* Close circuit breaker on spinlock race */
+			atomic_set(&priv->fw_busy, 0);
+			spin_unlock_irqrestore(&priv->clbk_rx_lock, flags);
+
+			atomic_inc(&priv->recovery_count);
+			dev_info(dev, "ELE responded (late), "
+				 "closing circuit breaker (recovery #%d).\n",
+				 atomic_read(&priv->recovery_count));
+			return;
+		}
+
 		dev_dbg(dev,
 			"Selecting resp waiter:%s for mesg header:0x%x.",
 			se_clbk_hdl->dev_ctx->devname,
 			*(u32 *) header);
 
-		if (rx_msg_sz != se_clbk_hdl->rx_msg_sz
-				&& !exception_for_size(priv, header)) {
+		if (rx_msg_sz != se_clbk_hdl->rx_msg_sz && !sz_mismatch) {
+			/* Printing size mismatch error message out of spin-lock */
+			sz_mismatch = true;
+			exp_rx_msg_sz = se_clbk_hdl->rx_msg_sz;
+
+			se_clbk_hdl->rx_msg_sz = min(rx_msg_sz, se_clbk_hdl->rx_msg_sz);
+		}
+		memcpy(se_clbk_hdl->rx_msg, msg, se_clbk_hdl->rx_msg_sz);
+		complete(&se_clbk_hdl->done);
+		spin_unlock_irqrestore(&priv->clbk_rx_lock, flags);
+
+		if (sz_mismatch && exp_rx_msg_sz)
 			dev_err(dev,
 				"%s: Rsp to CMD: hdr(0x%x) with different sz(%d != %d).\n",
 				se_clbk_hdl->dev_ctx->devname,
 				*(u32 *) header,
-				rx_msg_sz, se_clbk_hdl->rx_msg_sz);
-
-			se_clbk_hdl->rx_msg_sz = min(rx_msg_sz, se_clbk_hdl->rx_msg_sz);
-		}
+				rx_msg_sz, exp_rx_msg_sz);
 	} else {
 		dev_err(dev, "Failed to select a device for message: %.8x\n",
 			*((u32 *) header));
-		return;
 	}
-
-	memcpy(se_clbk_hdl->rx_msg, msg, se_clbk_hdl->rx_msg_sz);
-
-	/* Allow user to read */
-	complete(&se_clbk_hdl->done);
 }
 
 int se_val_rsp_hdr_n_status(struct se_if_priv *priv,
@@ -346,7 +406,6 @@ int se_save_imem_state(struct se_if_priv *priv, struct se_imem_buf *imem)
 	struct ele_dev_info s_info = {0};
 	int ret;
 
-	/* get info from ELE */
 	ret = ele_get_info(priv, &s_info);
 	if (ret) {
 		dev_err(priv->dev, "Failed to get info from ELE.\n");
@@ -393,9 +452,7 @@ int se_restore_imem_state(struct se_if_priv *priv, struct se_imem_buf *imem)
 	}
 	imem->state = s_info.d_addn_info.imem_state;
 
-	/* Get IMEM state, if 0xFE and saved/exported IMEM buffer size is non-zero,
-	 * then import IMEM
-	 */
+	/* Get IMEM state, if 0xFE then import IMEM */
 	if (s_info.d_addn_info.imem_state == ELE_IMEM_STATE_BAD && imem->size) {
 		/* IMPORT command will restore IMEM from the given
 		 * address, here size is the actual size returned by ELE

@@ -35,6 +35,8 @@
 		serial1 = &lpuart5;
 		serial2 = &lpuart6;
 		serial3 = &lpuart7;
+		spi0 = &lpspi4;
+		spi1 = &lpspi5;
 	};
 
 	cpus {
@@ -335,7 +337,6 @@
 						"ch20", "ch21", "ch22", "ch23",
 						"ch24", "ch25", "ch26", "ch27",
 						"ch28", "ch29", "ch30", "ch31";
-				status = "okay";
 			};
 
 			mu: mailbox@29220000 {
@@ -657,7 +658,7 @@
 			};
 
 			sai4: sai@29880000 {
-				compatible = "fsl,imx8ulp-sai", "fsl,imx7ulp-sai";
+				compatible = "fsl,imx8ulp-sai";
 				reg = <0x29880000 0x10000>;
 				interrupts = <GIC_SPI 108 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&pcc4 IMX8ULP_CLK_SAI4>, <&cgc1 IMX8ULP_CLK_DUMMY>,
@@ -666,12 +667,13 @@
 				clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3";
 				dmas = <&edma1 67 0 1>, <&edma1 68 0 0>;
 				dma-names = "rx", "tx";
+				#sound-dai-cells = <0>;
 				fsl,dataline = <0 0x03 0x03>;
 				status = "disabled";
 			};
 
 			sai5: sai@29890000 {
-				compatible = "fsl,imx8ulp-sai", "fsl,imx7ulp-sai";
+				compatible = "fsl,imx8ulp-sai";
 				reg = <0x29890000 0x10000>;
 				interrupts = <GIC_SPI 109 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&pcc4 IMX8ULP_CLK_SAI5>, <&cgc1 IMX8ULP_CLK_DUMMY>,
@@ -680,6 +682,7 @@
 				clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3";
 				dmas = <&edma1 69 0 1>, <&edma1 70 0 0>;
 				dma-names = "rx", "tx";
+				#sound-dai-cells = <0>;
 				fsl,dataline = <0 0x0f 0x0f>;
 				status = "disabled";
 			};
@@ -834,6 +837,7 @@
 					 <&pcc4 IMX8ULP_CLK_PCTLE>;
 				clock-names = "gpio", "port";
 				gpio-ranges = <&iomuxc1 0 32 24>;
+				ngpios = <24>;
 		};
 
 		gpiof: gpio@2d010000 {
@@ -849,6 +853,7 @@
 					 <&pcc4 IMX8ULP_CLK_PCTLF>;
 				clock-names = "gpio", "port";
 				gpio-ranges = <&iomuxc1 0 64 32>;
+				ngpios = <32>;
 		};
 
 		per_bridge5: bus@2d800000 {
@@ -920,7 +925,6 @@
 						"ch20", "ch21", "ch22", "ch23",
 						"ch24", "ch25", "ch26", "ch27",
 						"ch28", "ch29", "ch30", "ch31";
-				status = "okay";
 			};
 
 			avd_sim: syscon@2da50000 {
@@ -957,7 +961,7 @@
 			};
 
 			sai6: sai@2da90000 {
-				compatible = "fsl,imx8ulp-sai", "fsl,imx7ulp-sai";
+				compatible = "fsl,imx8ulp-sai";
 				reg = <0x2da90000 0x10000>;
 				interrupts = <GIC_SPI 110 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&pcc5 IMX8ULP_CLK_SAI6>, <&cgc1 IMX8ULP_CLK_DUMMY>,
@@ -966,12 +970,13 @@
 				clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3";
 				dmas = <&edma2 71 0 1>, <&edma2 72 0 0>;
 				dma-names = "rx", "tx";
+				#sound-dai-cells = <0>;
 				fsl,dataline = <0 0x0f 0x0f>;
 				status = "disabled";
 			};
 
 			sai7: sai@2daa0000 {
-				compatible = "fsl,imx8ulp-sai", "fsl,imx7ulp-sai";
+				compatible = "fsl,imx8ulp-sai";
 				reg = <0x2daa0000 0x10000>;
 				interrupts = <GIC_SPI 111 IRQ_TYPE_LEVEL_HIGH>;
 				clocks = <&pcc5 IMX8ULP_CLK_SAI7>, <&cgc1 IMX8ULP_CLK_DUMMY>,
@@ -980,6 +985,7 @@
 				clock-names = "bus", "mclk0", "mclk1", "mclk2", "mclk3";
 				dmas = <&edma2 73 0 1>, <&edma2 74 0 0>;
 				dma-names = "rx", "tx";
+				#sound-dai-cells = <0>;
 				fsl,dataline = <0 0x0f 0x0f>;
 				status = "disabled";
 			};
@@ -1243,6 +1249,7 @@
 				 <&pcc5 IMX8ULP_CLK_RGPIOD>;
 			clock-names = "gpio", "port";
 			gpio-ranges = <&iomuxc1 0 0 24>;
+			ngpios = <24>;
 		};
 	};
 

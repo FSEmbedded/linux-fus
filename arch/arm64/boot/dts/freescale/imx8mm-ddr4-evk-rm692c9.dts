@@ -1,0 +1,7 @@
+// SPDX-License-Identifier: GPL-2.0+
+/*
+ * Copyright 2025 NXP
+ */
+
+#include "imx8mm-ddr4-evk.dts"
+#include "imx8mm-evk-rm692c9-common.dtsi"

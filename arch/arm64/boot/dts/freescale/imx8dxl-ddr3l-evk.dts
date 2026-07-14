@@ -42,10 +42,15 @@
 			reg = <0 0x90010000 0 0x8000>;
 			no-map;
 		};
-		
+
 		vdev1vring1: vdev1vring1@90018000 {
 			compatible = "shared-dma-pool";
 			reg = <0 0x90018000 0 0x8000>;
+			no-map;
+		};
+
+		rsc_table: memory-rsc-table@900ff000 {
+			reg = <0 0x900ff000 0 0x1000>;
 			no-map;
 		};
 
@@ -71,6 +76,19 @@
 			alloc-ranges = <0 0x98000000 0 0x8000000>;
 			linux,cma-default;
 		};
+	};
+
+	imx8dxl_cm4: imx8dxl-cm4 {
+		compatible = "fsl,imx8qxp-cm4";
+		clocks = <&clk_dummy>;
+		mbox-names = "tx", "rx", "rxdb";
+		mboxes = <&lsio_mu5 0 1 &lsio_mu5 1 1 &lsio_mu5 3 1>;
+		memory-region = <&vdevbuffer>, <&vdev0vring0>, <&vdev0vring1>,
+				<&vdev1vring0>, <&vdev1vring1>, <&rsc_table>;
+		power-domains = <&pd IMX_SC_R_M4_0_PID0>, <&pd IMX_SC_R_M4_0_MU_1A>;
+		fsl,resource-id = <IMX_SC_R_M4_0_PID0>;
+		fsl,entry-address = <0x34fe0000>;
+		status = "disabled";
 	};
 
 	reg_can0_stby: regulator-can0-stby {
@@ -362,7 +380,7 @@
 				compatible = "wlf,wm8960";
 				reg = <0x1a>;
 				pinctrl-assert-gpios = <&pca6416_1 4 GPIO_ACTIVE_HIGH>;
-				clocks = <&mclkout0_lpcg 0>;
+				clocks = <&mclkout0_lpcg IMX_LPCG_CLK_0>;
 				clock-names = "mclk";
 				wlf,shared-lrclk;
 				wlf,hp-cfg = <2 2 3>;
@@ -370,7 +388,7 @@
 				assigned-clocks = <&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_PLL>,
 						  <&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_SLV_BUS>,
 						  <&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_MST_BUS>,
-						  <&mclkout0_lpcg 0>;
+						  <&mclkout0_lpcg IMX_LPCG_CLK_0>;
 				assigned-clock-rates = <786432000>, <49152000>, <12288000>, <12288000>;
 			};
 		};
@@ -384,7 +402,7 @@
 				compatible = "wlf,wm8960";
 				reg = <0x1a>;
 				pinctrl-assert-gpios = <&pca6416_1 4 GPIO_ACTIVE_HIGH>;
-				clocks = <&mclkout0_lpcg 0>;
+				clocks = <&mclkout0_lpcg IMX_LPCG_CLK_0>;
 				clock-names = "mclk";
 				wlf,shared-lrclk;
 				wlf,hp-cfg = <2 2 3>;
@@ -392,7 +410,7 @@
 				assigned-clocks = <&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_PLL>,
 						  <&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_SLV_BUS>,
 						  <&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_MST_BUS>,
-						  <&mclkout0_lpcg 0>;
+						  <&mclkout0_lpcg IMX_LPCG_CLK_0>;
 				assigned-clock-rates = <786432000>, <49152000>, <12288000>, <12288000>;
 			};
 		};
@@ -406,7 +424,7 @@
 				compatible = "wlf,wm8960";
 				reg = <0x1a>;
 				pinctrl-assert-gpios = <&pca6416_1 4 GPIO_ACTIVE_HIGH>;
-				clocks = <&mclkout0_lpcg 0>;
+				clocks = <&mclkout0_lpcg IMX_LPCG_CLK_0>;
 				clock-names = "mclk";
 				wlf,shared-lrclk;
 				wlf,hp-cfg = <2 2 3>;
@@ -414,7 +432,7 @@
 				assigned-clocks = <&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_PLL>,
 						  <&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_SLV_BUS>,
 						  <&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_MST_BUS>,
-						  <&mclkout0_lpcg 0>;
+						  <&mclkout0_lpcg IMX_LPCG_CLK_0>;
 				assigned-clock-rates = <786432000>, <49152000>, <12288000>, <12288000>;
 			};
 		};
@@ -428,7 +446,7 @@
 				compatible = "wlf,wm8960";
 				reg = <0x1a>;
 				pinctrl-assert-gpios = <&pca6416_1 4 GPIO_ACTIVE_HIGH>;
-				clocks = <&mclkout0_lpcg 0>;
+				clocks = <&mclkout0_lpcg IMX_LPCG_CLK_0>;
 				clock-names = "mclk";
 				wlf,shared-lrclk;
 				wlf,hp-cfg = <2 2 3>;
@@ -436,7 +454,7 @@
 				assigned-clocks = <&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_PLL>,
 						  <&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_SLV_BUS>,
 						  <&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_MST_BUS>,
-						  <&mclkout0_lpcg 0>;
+						  <&mclkout0_lpcg IMX_LPCG_CLK_0>;
 				assigned-clock-rates = <786432000>, <49152000>, <12288000>, <12288000>;
 			};
 		};
@@ -509,7 +527,6 @@
 };
 
 &lpspi3 {
-	fsl,spi-num-chipselects = <1>;
 	fsl,spi-only-use-cs1-sel;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_lpspi3>;
@@ -562,7 +579,7 @@
 	assigned-clocks = <&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_PLL>,
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_SLV_BUS>,
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_MST_BUS>,
-			<&sai0_lpcg 0>;
+			<&sai0_lpcg IMX_LPCG_CLK_0>;
 	assigned-clock-rates = <786432000>, <49152000>, <12288000>, <49152000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_sai0>;
@@ -573,7 +590,7 @@
 	assigned-clocks = <&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_PLL>,
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_SLV_BUS>,
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_MST_BUS>,
-			<&sai1_lpcg 0>;
+			<&sai1_lpcg IMX_LPCG_CLK_0>;
 	assigned-clock-rates = <786432000>, <49152000>, <12288000>, <49152000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_sai1>;
@@ -584,7 +601,7 @@
 	assigned-clocks = <&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_PLL>,
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_SLV_BUS>,
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_MST_BUS>,
-			<&sai2_lpcg 0>;
+			<&sai2_lpcg IMX_LPCG_CLK_0>;
 	assigned-clock-rates = <786432000>, <49152000>, <12288000>, <49152000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_sai2>;
@@ -596,7 +613,7 @@
 	assigned-clocks = <&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_PLL>,
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_SLV_BUS>,
 			<&clk IMX_SC_R_AUDIO_PLL_0 IMX_SC_PM_CLK_MST_BUS>,
-			<&sai3_lpcg 0>;
+			<&sai3_lpcg IMX_LPCG_CLK_0>;
 	assigned-clock-rates = <786432000>, <49152000>, <12288000>, <49152000>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_sai3>;
@@ -926,10 +943,4 @@
 				IMX8DXL_USB_SS3_TC1_CONN_USB_OTG2_PWR		0x00000021
 			>;
 		};
-};
-
-&imx8dxl_cm4 {
-	memory-region = <&vdev0vring0>, <&vdev0vring1>, <&vdevbuffer>,
-			<&vdev1vring0>, <&vdev1vring1>;
-	status = "disabled";
 };

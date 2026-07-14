@@ -1310,8 +1310,8 @@ int kbase_kinstr_prfcnt_init(struct kbase_hwcnt_virtualizer *hvirt,
 
 	mutex_init(&kinstr_ctx->lock);
 	INIT_LIST_HEAD(&kinstr_ctx->clients);
-	hrtimer_init(&kinstr_ctx->dump_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
-	kinstr_ctx->dump_timer.function = kbasep_kinstr_prfcnt_dump_timer;
+	hrtimer_setup(&kinstr_ctx->dump_timer, kbasep_kinstr_prfcnt_dump_timer,
+		      CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	INIT_WORK(&kinstr_ctx->dump_work, kbasep_kinstr_prfcnt_dump_worker);
 
 	*out_kinstr_ctx = kinstr_ctx;
