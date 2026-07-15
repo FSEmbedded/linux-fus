@@ -81,6 +81,7 @@
 /* Must align with System Manager Firmware */
 #define IMX95_M7_CPUID			1
 #define IMX95_M7_LMID			1
+
 /**
  * struct imx_rproc_mem - slim internal memory structure
  * @cpu_addr: MPU virtual address of the memory region
@@ -144,6 +145,7 @@ static const struct imx_rproc_att imx_rproc_att_imx95_m7[] = {
 	/* dev addr , sys addr  , size	    , flags */
 	/* TCM CODE NON-SECURE */
 	{ 0x00000000, 0x203C0000, 0x00040000, ATT_OWN | ATT_IOMEM },
+
 	/* TCM SYS NON-SECURE*/
 	{ 0x20000000, 0x20400000, 0x00040000, ATT_OWN | ATT_IOMEM },
 
@@ -191,7 +193,6 @@ static const struct imx_rproc_att imx_rproc_att_imx94_m33s[] = {
 	/* DDR */
 	{ 0x80000000, 0x80000000, 0x50000000, 0 },
 };
-
 
 static const struct imx_rproc_att imx_rproc_att_imx93[] = {
 	/* dev addr , sys addr  , size	    , flags */
@@ -420,17 +421,16 @@ static int imx_rproc_sm_lmm_start(struct rproc *rproc)
 		dev_err(dev, "Failed to set reset vector lmid(%u), cpuid(%u): %d\n",
 			dcfg->lmid, dcfg->cpuid, ret);
 		return ret;
-
-		}
+	}
 
 	ret = scmi_imx_lmm_operation(dcfg->lmid, SCMI_IMX_LMM_BOOT, 0);
-			if (ret) {
+	if (ret) {
 		dev_err(dev, "Failed to boot lmm(%d): %d\n", ret, dcfg->lmid);
 		return ret;
-			}
+	}
 
 	return 0;
-			}
+}
 
 static int imx_rproc_start(struct rproc *rproc)
 {
@@ -439,7 +439,7 @@ static int imx_rproc_start(struct rproc *rproc)
 	int ret;
 
 	ret = imx_rproc_xtr_mbox_init(rproc, true);
-			if (ret)
+	if (ret)
 		return ret;
 
 	if (!priv->ops.start)
@@ -474,16 +474,16 @@ static int imx_rproc_mmio_stop(struct rproc *rproc)
 	const struct imx_rproc_dcfg *dcfg = priv->dcfg;
 	int ret;
 
-		if (priv->gpr) {
+	if (priv->gpr) {
 		ret = regmap_set_bits(priv->gpr, dcfg->gpr_reg, dcfg->gpr_wait);
-			if (ret) {
+		if (ret) {
 			dev_err(priv->dev, "Failed to quiescence M4 platform!\n");
-				return ret;
-			}
+			return ret;
 		}
+	}
 
 	return regmap_update_bits(priv->regmap, dcfg->src_reg, dcfg->src_mask, dcfg->src_stop);
-	}
+}
 
 static int imx_rproc_scu_api_stop(struct rproc *rproc)
 {
@@ -669,6 +669,7 @@ static int imx_rproc_sm_prepare(struct rproc *rproc)
 
 	return ret;
 }
+
 static int imx_rproc_prepare(struct rproc *rproc)
 {
 	struct imx_rproc *priv = rproc->priv;
@@ -782,6 +783,7 @@ static int imx_rproc_detach(struct rproc *rproc)
 
 	return priv->ops.detach(rproc);
 }
+
 static struct resource_table *imx_rproc_get_loaded_rsc_table(struct rproc *rproc, size_t *table_sz)
 {
 	struct imx_rproc *priv = rproc->priv;
@@ -809,6 +811,7 @@ imx_rproc_elf_find_loaded_rsc_table(struct rproc *rproc, const struct firmware *
 	/* No resource table in the firmware */
 	if (!rproc->table_ptr)
 		return NULL;
+
 	if (priv->rsc_table)
 		return (struct resource_table *)priv->rsc_table;
 
@@ -1093,7 +1096,7 @@ static int imx_rproc_attach_pd(struct imx_rproc *priv)
 			detached = false;
 			break;
 		}
-}
+	}
 
 	if (detached)
 		priv->rproc->state = RPROC_DETACHED;
@@ -1131,7 +1134,7 @@ static int imx_rproc_mmio_detect_mode(struct rproc *rproc)
 	if (IS_ERR(regmap)) {
 		dev_err(dev, "failed to find syscon\n");
 		return PTR_ERR(regmap);
-		}
+	}
 
 	priv->regmap = regmap;
 	regmap_attach_dev(dev, regmap, &config);
@@ -1147,19 +1150,19 @@ static int imx_rproc_mmio_detect_mode(struct rproc *rproc)
 			imx_rproc_stop(priv->rproc);
 			return 0;
 		}
-		}
+	}
 
 	ret = regmap_read(regmap, dcfg->src_reg, &val);
-		if (ret) {
+	if (ret) {
 		dev_err(dev, "Failed to read src\n");
-			return ret;
-		}
+		return ret;
+	}
 
 	if ((val & dcfg->src_mask) != dcfg->src_stop)
 		priv->rproc->state = RPROC_DETACHED;
 
 	return 0;
-		}
+}
 
 static int imx_rproc_scu_api_detect_mode(struct rproc *rproc)
 {
@@ -1168,64 +1171,65 @@ static int imx_rproc_scu_api_detect_mode(struct rproc *rproc)
 	int ret;
 	u8 pt;
 
-		ret = imx_scu_get_handle(&priv->ipc_handle);
-		if (ret)
-			return ret;
-		ret = of_property_read_u32(dev->of_node, "fsl,resource-id", &priv->rsrc_id);
-		if (ret) {
-			dev_err(dev, "No fsl,resource-id property\n");
-			return ret;
-		}
+	ret = imx_scu_get_handle(&priv->ipc_handle);
+	if (ret)
+		return ret;
+	ret = of_property_read_u32(dev->of_node, "fsl,resource-id", &priv->rsrc_id);
+	if (ret) {
+		dev_err(dev, "No fsl,resource-id property\n");
+		return ret;
+	}
 
-		if (priv->rsrc_id == IMX_SC_R_M4_1_PID0)
-			priv->core_index = 1;
-		else
-			priv->core_index = 0;
+	if (priv->rsrc_id == IMX_SC_R_M4_1_PID0)
+		priv->core_index = 1;
+	else
+		priv->core_index = 0;
 
 	ret = devm_add_action_or_reset(dev, imx_rproc_put_scu, priv);
 	if (ret)
 		return dev_err_probe(dev, ret, "Failed to add action for put scu\n");
-		/*
-		 * If Mcore resource is not owned by Acore partition, It is kicked by ROM,
-		 * and Linux could only do IPC with Mcore and nothing else.
-		 */
-		if (imx_sc_rm_is_resource_owned(priv->ipc_handle, priv->rsrc_id)) {
-			if (of_property_read_u32(dev->of_node, "fsl,entry-address", &priv->entry))
-				return -EINVAL;
 
-			return imx_rproc_attach_pd(priv);
-		}
+	/*
+	 * If Mcore resource is not owned by Acore partition, It is kicked by ROM,
+	 * and Linux could only do IPC with Mcore and nothing else.
+	 */
+	if (imx_sc_rm_is_resource_owned(priv->ipc_handle, priv->rsrc_id)) {
+		if (of_property_read_u32(dev->of_node, "fsl,entry-address", &priv->entry))
+			return -EINVAL;
 
-		priv->rproc->state = RPROC_DETACHED;
-		priv->rproc->recovery_disabled = false;
-		rproc_set_feature(priv->rproc, RPROC_FEAT_ATTACH_ON_RECOVERY);
-
-		/* Get partition id and enable irq in SCFW */
-		ret = imx_sc_rm_get_resource_owner(priv->ipc_handle, priv->rsrc_id, &pt);
-		if (ret) {
-			dev_err(dev, "not able to get resource owner\n");
-			return ret;
-		}
-
-		priv->rproc_pt = pt;
-		priv->rproc_nb.notifier_call = imx_rproc_partition_notify;
-
-		ret = imx_scu_irq_register_notifier(&priv->rproc_nb);
-		if (ret) {
-			dev_err(dev, "register scu notifier failed, %d\n", ret);
-			return ret;
-		}
-
-		ret = imx_scu_irq_group_enable(IMX_SC_IRQ_GROUP_REBOOTED, BIT(priv->rproc_pt),
-					       true);
-		if (ret) {
-			imx_scu_irq_unregister_notifier(&priv->rproc_nb);
-			dev_err(dev, "Enable irq failed, %d\n", ret);
-			return ret;
-		}
-
-		return 0;
+		return imx_rproc_attach_pd(priv);
 	}
+
+	priv->rproc->state = RPROC_DETACHED;
+	priv->rproc->recovery_disabled = false;
+	rproc_set_feature(priv->rproc, RPROC_FEAT_ATTACH_ON_RECOVERY);
+
+	/* Get partition id and enable irq in SCFW */
+	ret = imx_sc_rm_get_resource_owner(priv->ipc_handle, priv->rsrc_id, &pt);
+	if (ret) {
+		dev_err(dev, "not able to get resource owner\n");
+		return ret;
+	}
+
+	priv->rproc_pt = pt;
+	priv->rproc_nb.notifier_call = imx_rproc_partition_notify;
+
+	ret = imx_scu_irq_register_notifier(&priv->rproc_nb);
+	if (ret) {
+		dev_err(dev, "register scu notifier failed, %d\n", ret);
+		return ret;
+	}
+
+	ret = imx_scu_irq_group_enable(IMX_SC_IRQ_GROUP_REBOOTED, BIT(priv->rproc_pt),
+				       true);
+	if (ret) {
+		imx_scu_irq_unregister_notifier(&priv->rproc_nb);
+		dev_err(dev, "Enable irq failed, %d\n", ret);
+		return ret;
+	}
+
+	return 0;
+}
 
 static int imx_rproc_sm_detect_mode(struct rproc *rproc)
 {
@@ -1243,11 +1247,11 @@ static int imx_rproc_sm_detect_mode(struct rproc *rproc)
 		return ret;
 	}
 
-			/*
+	/*
 	 * Check whether remote processor is in same Logical Machine as Linux.
 	 * If no, use Logical Machine API to manage remote processor.
 	 * If yes, use CPU protocol API to manage remote processor.
-			 */
+	 */
 	if (dcfg->lmid != info.lmid) {
 		priv->ops.start = &imx_rproc_sm_lmm_start;
 		priv->ops.stop = &imx_rproc_sm_lmm_stop;
@@ -1269,7 +1273,6 @@ static int imx_rproc_sm_detect_mode(struct rproc *rproc)
 
 static int imx_rproc_detect_mode(struct imx_rproc *priv)
 {
-
 	/*
 	 * To i.MX{7,8} ULP, Linux is under control of RTOS, no need
 	 * priv->ops.detect_mode, it is state RPROC_DETACHED.
@@ -1304,6 +1307,7 @@ static void imx_rproc_destroy_workqueue(void *data)
 
 	destroy_workqueue(workqueue);
 }
+
 static int imx_rproc_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -1330,6 +1334,7 @@ static int imx_rproc_probe(struct platform_device *pdev)
 
 	if (dcfg->ops)
 		memcpy(&priv->ops, dcfg->ops, sizeof(struct imx_rproc_plat_ops));
+
 	dev_set_drvdata(dev, rproc);
 	priv->workqueue = create_workqueue(dev_name(dev));
 	if (!priv->workqueue) {
@@ -1340,6 +1345,7 @@ static int imx_rproc_probe(struct platform_device *pdev)
 	ret = devm_add_action_or_reset(dev, imx_rproc_destroy_workqueue, priv->workqueue);
 	if (ret)
 		return dev_err_probe(dev, ret, "Failed to add devm destroy workqueue action\n");
+
 	INIT_WORK(&priv->rproc_work, imx_rproc_vq_work);
 
 	ret = imx_rproc_xtr_mbox_init(rproc, true);
@@ -1400,7 +1406,8 @@ static int imx_rproc_probe(struct platform_device *pdev)
 						    imx_rproc_sys_off_handler, rproc);
 		if (ret)
 			return dev_err_probe(dev, ret, "register restart handler failure\n");
-		}
+	}
+
 	pm_runtime_enable(dev);
 	ret = pm_runtime_resume_and_get(dev);
 	if (ret)
@@ -1571,6 +1578,7 @@ static const struct imx_rproc_dcfg imx_rproc_cfg_imx95_m7 = {
 	.cpuid		= IMX95_M7_CPUID,
 	.lmid		= IMX95_M7_LMID,
 };
+
 static const struct of_device_id imx_rproc_of_match[] = {
 	{ .compatible = "fsl,imx7ulp-cm4", .data = &imx_rproc_cfg_imx7ulp },
 	{ .compatible = "fsl,imx7d-cm4", .data = &imx_rproc_cfg_imx7d },

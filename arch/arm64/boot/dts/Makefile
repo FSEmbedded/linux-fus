@@ -18,7 +18,6 @@ subdir-y += cix
 subdir-y += exynos
 subdir-y += F+S
 subdir-y += freescale
-subdir-y += F+S
 subdir-y += hisilicon
 subdir-y += intel
 subdir-y += lg

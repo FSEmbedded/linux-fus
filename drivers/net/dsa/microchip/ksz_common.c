@@ -3260,7 +3260,7 @@ static void ksz_phylink_mac_link_down(struct phylink_config *config,
 {
 	struct dsa_port *dp = dsa_phylink_to_port(config);
 	struct ksz_device *dev = dp->ds->priv;
-
+	int port = dp->index;
 	/* Check if LEDs are used as GPIO */
 	if (dev->led_gpio_phy_link >= 0)
 	{

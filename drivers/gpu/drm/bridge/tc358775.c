@@ -592,33 +592,6 @@ static int tc358775_parse_dt(struct device_node *np, struct tc_data *tc)
 	return 0;
 }
 
-static int tc_bridge_attach(struct drm_bridge *bridge,
-			    enum drm_bridge_attach_flags flags)
-{
-	struct tc_data *tc = bridge_to_tc(bridge);
-	int ret;
-	ret = tc_attach_host(tc);
-	if (ret)
-		goto err_bridge_remove;
-	/* Attach the panel-bridge to the dsi bridge */
-	return drm_bridge_attach(bridge->encoder, tc->panel_bridge,
-				 &tc->bridge, flags);
-err_bridge_remove:
-	drm_bridge_remove(&tc->bridge);
-	return ret;
-}
-
-static const struct drm_bridge_funcs tc_bridge_funcs = {
-	.attach = tc_bridge_attach,
-	.atomic_pre_enable = tc_bridge_atomic_pre_enable,
-	.atomic_enable = tc_bridge_atomic_enable,
-	.mode_valid = tc_mode_valid,
-	.atomic_post_disable = tc_bridge_atomic_post_disable,
-	.atomic_reset = drm_atomic_helper_bridge_reset,
-	.atomic_duplicate_state = drm_atomic_helper_bridge_duplicate_state,
-	.atomic_destroy_state = drm_atomic_helper_bridge_destroy_state,
-};
-
 static int tc_attach_host(struct tc_data *tc)
 {
 	struct device *dev = &tc->i2c->dev;
@@ -668,6 +641,34 @@ static int tc_attach_host(struct tc_data *tc)
 
 	return 0;
 }
+
+static int tc_bridge_attach(struct drm_bridge *bridge,
+			    struct drm_encoder *encoder,
+			    enum drm_bridge_attach_flags flags)
+{
+	struct tc_data *tc = bridge_to_tc(bridge);
+	int ret;
+	ret = tc_attach_host(tc);
+	if (ret)
+		goto err_bridge_remove;
+	/* Attach the panel-bridge to the dsi bridge */
+	return drm_bridge_attach(encoder, tc->panel_bridge,
+				 &tc->bridge, flags);
+err_bridge_remove:
+	drm_bridge_remove(&tc->bridge);
+	return ret;
+}
+
+static const struct drm_bridge_funcs tc_bridge_funcs = {
+	.attach = tc_bridge_attach,
+	.atomic_pre_enable = tc_bridge_atomic_pre_enable,
+	.atomic_enable = tc_bridge_atomic_enable,
+	.mode_valid = tc_mode_valid,
+	.atomic_post_disable = tc_bridge_atomic_post_disable,
+	.atomic_reset = drm_atomic_helper_bridge_reset,
+	.atomic_duplicate_state = drm_atomic_helper_bridge_duplicate_state,
+	.atomic_destroy_state = drm_atomic_helper_bridge_destroy_state,
+};
 
 static int tc_probe(struct i2c_client *client)
 {
