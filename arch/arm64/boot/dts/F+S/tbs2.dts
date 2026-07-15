@@ -68,7 +68,7 @@
 /* ADC */
 #define CONFIG_ADS1015
 
-#include "../freescale/imx8mm.dtsi"
+#include "fsimx8mm.dtsi"
 #include <dt-bindings/pwm/pwm.h>
 #include <dt-bindings/rtc/nxp,pcf85263.h>
 
