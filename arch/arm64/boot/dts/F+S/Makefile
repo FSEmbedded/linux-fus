@@ -27,9 +27,6 @@ dtb-$(CONFIG_ARCH_MXC) += picocoremx8mm-lpddr4.dtb \
 			  picocoremx8mm-ddr3l-lcdif-adp-mipi2rgb.dtb \
 			  picocoremx8mm-ddr3l-tc358775-BT070L1060CS0I1AD-A.dtb \
 			  picocoremx8mm-ddr3l-tc358775-EE1010B1T-1CP.dtb
-dtb-$(CONFIG_ARCH_MXC) += efusmx8x.dtb \
-			  efusmx8x-lcdif-j070wvtc0211.dtb \
-			  efusmx8x-lcdif-rgt070qyh-13cp.dtb
 dtb-$(CONFIG_ARCH_MXC) += picocoremx8mn-lpddr4.dtb \
 			  picocoremx8mn-lpddr4-lcdif-tc358775-j070wvtc0211.dtb \
 			  picocoremx8mn-lpddr4-lcdif-adp-mipi2mipi1-ee0350et-2cp.dtb \
