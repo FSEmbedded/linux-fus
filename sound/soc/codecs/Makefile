@@ -861,10 +861,6 @@ obj-$(CONFIG_SND_SOC_WSA881X)	+= snd-soc-wsa881x.o
 obj-$(CONFIG_SND_SOC_WSA883X)	+= snd-soc-wsa883x.o
 obj-$(CONFIG_SND_SOC_WSA884X)	+= snd-soc-wsa884x.o
 obj-$(CONFIG_SND_SOC_ZL38060)	+= snd-soc-zl38060.o
-obj-$(CONFIG_SND_SOC_RPMSG_WM8960)	+= snd-soc-rpmsg-wm8960.o
-# Needs rework
-#obj-$(CONFIG_SND_SOC_RPMSG_SGTL5000)	+= snd-soc-rpmsg-sgtl5000.o
-obj-$(CONFIG_SND_SOC_RPMSG_AK4497)	+= snd-soc-rpmsg-ak4497.o
 
 # Amp
 obj-$(CONFIG_SND_SOC_MAX9877)	+= snd-soc-max9877.o
