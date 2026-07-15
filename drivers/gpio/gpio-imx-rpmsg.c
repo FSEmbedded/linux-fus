@@ -122,25 +122,25 @@ static int gpio_send_message(struct imx_rpmsg_gpio_port *port,
 	}
 
 	ret = wait_for_completion_timeout(&info->cmd_complete,
-					msecs_to_jiffies(RPMSG_TIMEOUT));
+				msecs_to_jiffies(RPMSG_TIMEOUT));
 	if (!ret) {
-			dev_err(&info->rpdev->dev, "rpmsg_send timeout!\n");
-			err = -ETIMEDOUT;
-			goto err_out;
-		}
+		dev_err(&info->rpdev->dev, "rpmsg_send timeout!\n");
+		err = -ETIMEDOUT;
+		goto err_out;
+	}
 
-		if (info->reply_msg->out.retcode != 0) {
-			dev_err(&info->rpdev->dev, "rpmsg not ack %d!\n",
-				info->reply_msg->out.retcode);
-			err = -EINVAL;
-			goto err_out;
-		}
+	if (info->reply_msg->out.retcode != 0) {
+		dev_err(&info->rpdev->dev, "rpmsg not ack %d!\n",
+			info->reply_msg->out.retcode);
+		err = -EINVAL;
+		goto err_out;
+	}
 
-		/* copy the reply message */
-		memcpy(&port->gpio_pins[info->reply_msg->pin_idx].msg,
-		       info->reply_msg, sizeof(*info->reply_msg));
+	/* copy the reply message */
+	memcpy(&port->gpio_pins[info->reply_msg->pin_idx].msg,
+	       info->reply_msg, sizeof(*info->reply_msg));
 
-		err = 0;
+	err = 0;
 
 err_out:
 	cpu_latency_qos_remove_request(&info->pm_qos_req);
@@ -258,6 +258,7 @@ static int imx_rpmsg_gpio_set(struct gpio_chip *gc, unsigned int gpio, int val)
 	ret = gpio_send_message(port, msg, &gpio_rpmsg);
 
 	mutex_unlock(&gpio_rpmsg.lock);
+
 	return ret;
 }
 
@@ -439,12 +440,6 @@ static struct irq_chip imx_rpmsg_irq_chip = {
 	.flags = IRQCHIP_IMMUTABLE,
 };
 
-static int imx_rpmsg_gpio_to_irq(struct gpio_chip *gc, unsigned offset)
-{
-	struct imx_rpmsg_gpio_port *port = gpiochip_get_data(gc);
-
-	return irq_find_mapping(port->domain, offset);
-}
 static int imx_rpmsg_gpio_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -476,7 +471,6 @@ static int imx_rpmsg_gpio_probe(struct platform_device *pdev)
 	gc->direction_output = imx_rpmsg_gpio_direction_output;
 	gc->get = imx_rpmsg_gpio_get;
 	gc->set = imx_rpmsg_gpio_set;
-	gc->can_sleep = true;
 
 	platform_set_drvdata(pdev, port);
 
@@ -486,11 +480,9 @@ static int imx_rpmsg_gpio_probe(struct platform_device *pdev)
 	girq->num_parents = 0;
 	girq->parents = NULL;
 	girq->chip->name = kasprintf(GFP_KERNEL, "rpmsg-irq-port-%d", port->idx);
-	
-	port->gc.to_irq = imx_rpmsg_gpio_to_irq;
 
 	return devm_gpiochip_add_data(dev, gc, port);
-	}
+}
 
 static const struct of_device_id imx_rpmsg_gpio_dt_ids[] = {
 	{ .compatible = "fsl,imx-rpmsg-gpio" },
@@ -522,6 +514,7 @@ static int gpio_rpmsg_probe(struct rpmsg_device *rpdev)
 					    GFP_KERNEL);
 	if (!gpio_rpmsg.notify_msg)
 		return -ENOMEM;
+
 	init_completion(&gpio_rpmsg.cmd_complete);
 	mutex_init(&gpio_rpmsg.lock);
 
@@ -532,6 +525,7 @@ static void gpio_rpmsg_remove(struct rpmsg_device *rpdev)
 {
 	platform_driver_unregister(&imx_rpmsg_gpio_driver);
 }
+
 static struct rpmsg_device_id gpio_rpmsg_id_table[] = {
 	{ .name = "rpmsg-io-channel" },
 	{},
