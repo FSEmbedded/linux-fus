@@ -1310,7 +1310,8 @@ lt9211_mode_valid(struct drm_bridge *bridge,
 }
 
 static int lt9211_bridge_attach(struct drm_bridge *bridge,
-				enum drm_bridge_attach_flags flags)
+			    struct drm_encoder *encoder,
+			    enum drm_bridge_attach_flags flags)
 {
 	struct lt9211 *lt9211 = bridge_to_lt9211(bridge);
 	struct mipi_dsi_host *host;
@@ -1347,7 +1348,7 @@ static int lt9211_bridge_attach(struct drm_bridge *bridge,
 	}
 
 	/* Attach the panel-bridge to the dsi bridge */
-	return drm_bridge_attach(bridge->encoder, lt9211->panel_bridge,
+	return drm_bridge_attach(encoder, lt9211->panel_bridge,
 				 &lt9211->bridge, flags);
 
 err_dsi_attach:

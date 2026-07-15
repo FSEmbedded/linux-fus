@@ -1,4 +1,6 @@
 #include "../freescale/imx8mp.dtsi"
+#include "../freescale/imx8mp-nxp-display.dtsi"
+#include "../freescale/imx8mp-nxp-capture.dtsi"
 
 /delete-node/ &gpu_reserved;
 

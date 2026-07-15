@@ -89,10 +89,9 @@ static int tps65185_hwmon_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int tps65185_hwmon_remove(struct platform_device *pdev)
+static void tps65185_hwmon_remove(struct platform_device *pdev)
 {
 	// Do Nothing
-	return 0;
 }
 
 static const struct platform_device_id tps65185_hwmon_id[] = {

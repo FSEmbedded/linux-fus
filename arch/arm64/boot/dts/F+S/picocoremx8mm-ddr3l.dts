@@ -1150,7 +1150,11 @@
 	cpu-supply = <&buck2_reg>;
 };
 
-&gpu {
+&gpu_3d {
+	status = "okay";
+};
+
+&gpu_2d {
 	status = "okay";
 };
 

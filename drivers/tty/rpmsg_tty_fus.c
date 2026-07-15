@@ -17,6 +17,8 @@
 #include <linux/io.h>
 #include <linux/imx_rpmsg.h>
 #include <linux/of_device.h>
+#include <linux/platform_device.h>
+#include <linux/of.h>
 #include <linux/module.h>
 #include <linux/rpmsg.h>
 #include <linux/slab.h>

@@ -155,7 +155,7 @@ static int imx93_set_intf_mode(struct plat_stmmacenet_data *plat_dat)
 	int val, ret;
 
 	struct device_node *np = dwmac->dev->of_node;
-	if (plat_dat->mac_interface == PHY_INTERFACE_MODE_RMII) {
+	if (plat_dat->phy_interface == PHY_INTERFACE_MODE_RMII) {
 		dwmac->enet_clk_sel_regmap = syscon_regmap_lookup_by_phandle(np, "enet_clk_sel");
 		if (IS_ERR(dwmac->enet_clk_sel_regmap))
 			return PTR_ERR(dwmac->enet_clk_sel_regmap);

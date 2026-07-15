@@ -450,8 +450,9 @@ static const struct i2c_device_id adv739x_id[] = {
 	{"adv739x", 0},
 	{},
 };
+MODULE_DEVICE_TABLE(i2c, adv739x_id);
 
-static const struct of_device_id adv739x_id_table[] = {
+static const struct of_device_id adv739x_of_match[] = {
 	{
 		.compatible = "adi,adv7391",
 		.data = &adv739x_info[ADV7391],
@@ -460,7 +461,7 @@ static const struct of_device_id adv739x_id_table[] = {
 		.data = &adv739x_info[ADV7393],
 	}, { /* sentinel */ }
 };
-MODULE_DEVICE_TABLE(i2c, adv739x_id_table);
+MODULE_DEVICE_TABLE(of, adv739x_of_match);
 
 static int adv739x_parse_dt(struct adv739x_state *state)
 {
@@ -486,7 +487,7 @@ static int adv739x_probe(struct i2c_client *client)
 		return -ENOMEM;
 
 	if (IS_ENABLED(CONFIG_OF) && client->dev.of_node) {
-		of_id = of_match_node(adv739x_id_table, client->dev.of_node);
+		of_id = of_match_node(adv739x_of_match, client->dev.of_node);
 		err = adv739x_parse_dt(state);
 		if (err < 0) {
 			v4l_err(client, "DT parsing error\n");
@@ -555,7 +556,7 @@ static struct i2c_driver adv739x_driver = {
 	.driver = {
 		.owner	= THIS_MODULE,
 		.name	= "adv739x",
-		.of_match_table = adv739x_id_table,
+		.of_match_table = adv739x_of_match,
 	},
 	.probe		= adv739x_probe,
 	.remove		= adv739x_remove,

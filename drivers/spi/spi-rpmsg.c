@@ -31,7 +31,7 @@
 struct spi_rpmsg_msg {
     struct imx_rpmsg_head header;
     u8 bus_id;
-    u16 addr;
+    u8 addr;
     u8 flags;
     u32 speed_hz;
     u16 len;
@@ -115,7 +115,7 @@ static int spi_rpmsg_transfer_one_message(struct spi_controller *ctlr,
     req.header.cmd   = SPI_RPMSG_COMMAND_TRANSFER;
 
     req.bus_id = ctlr->bus_num;
-    req.addr   = msg->spi->chip_select;
+    req.addr   = spi_get_chipselect( msg->spi, 0);
     req.flags  = msg->spi->mode & (SPI_CPOL | SPI_CPHA);
     req.len    = total_len;
 
@@ -181,26 +181,26 @@ static int spi_rpbus_probe(struct platform_device *pdev)
 {
     struct device *dev = &pdev->dev;
     struct device_node *np = dev->of_node;
-    struct spi_master *master;
+    struct spi_controller *controller;
     struct spi_rpmsg *info = devm_kzalloc(dev, sizeof(*info), GFP_KERNEL);
     int ret;
 
-    master = spi_alloc_master(&pdev->dev, 0);
-    if (!master) {
-        dev_err(&pdev->dev, "failed to allocate spi master\n");
+    controller = spi_alloc_host(&pdev->dev, 0);
+    if (!controller) {
+        dev_err(&pdev->dev, "failed to allocate spi controller\n");
         return -ENOMEM;
     }
-    platform_set_drvdata(pdev, master);
+    platform_set_drvdata(pdev, controller);
 
     info = &spi_rpmsg;
     if (!info) {
-        dev_err(dev, "failed to get master devdata\n");
-        spi_master_put(master);
+        dev_err(dev, "failed to get controller devdata\n");
+        spi_controller_put(controller);
         return -ENOMEM;
     }
 
     if (!spi_rpmsg.rpdev || !spi_rpmsg.rpdev->ept) {
-        spi_master_put(master);
+        spi_controller_put(controller);
         return -EPROBE_DEFER;
     }
 
@@ -209,51 +209,49 @@ static int spi_rpbus_probe(struct platform_device *pdev)
     info->dev = &pdev->dev;
 
     info->rpdev = spi_rpmsg.rpdev;
-    info->controller = master;
+    info->controller = controller;
 
-    spi_controller_set_devdata(master, info);
+    spi_controller_set_devdata(controller, info);
 
-    master->bus_num = of_alias_get_id(np, "spi");
-    if (master->bus_num < 0) {
-        dev_err(dev, "invalid or missing spi alias id: %d\n", master->bus_num);
-        spi_master_put(master);
+    controller->bus_num = of_alias_get_id(np, "spi");
+    if (controller->bus_num < 0) {
+        dev_err(dev, "invalid or missing spi alias id: %d\n", controller->bus_num);
+        spi_controller_put(controller);
         return -EINVAL;
     }
-    if (master->bus_num >= 256) {
+    if (controller->bus_num >= 256) {
         dev_err(dev, "spi bus_num out of range\n");
-        spi_master_put(master);
+        spi_controller_put(controller);
         return -EINVAL;
     }
 
-    master->num_chipselect = 1;
-    master->mode_bits = SPI_CPOL | SPI_CPHA;
-    master->bits_per_word_mask = SPI_BPW_MASK(8);
-    master->transfer_one_message = spi_rpmsg_transfer_one_message;
-    master->dev.of_node = np;
-    master->use_gpio_descriptors = true;
+    controller->num_chipselect = 1;
+    controller->mode_bits = SPI_CPOL | SPI_CPHA;
+    controller->bits_per_word_mask = SPI_BPW_MASK(8);
+    controller->transfer_one_message = spi_rpmsg_transfer_one_message;
+    controller->dev.of_node = np;
+    controller->use_gpio_descriptors = true;
 
-    ret = spi_register_master(master);
+    ret = spi_register_controller(controller);
     if (ret < 0) {
-        dev_err(&pdev->dev, "failed to register spi master: %d\n", ret);
-        spi_master_put(master);
+        dev_err(&pdev->dev, "failed to register spi controller: %d\n", ret);
+        spi_controller_put(controller);
         return ret;
     }
 
-    dev_info(&pdev->dev, "registered spi master:spi %d\n", master->bus_num);
+    dev_info(&pdev->dev, "registered spi controller:spi %d\n", controller->bus_num);
 
     return 0;
 }
 
-static int spi_rpbus_remove(struct platform_device *pdev)
+static void spi_rpbus_remove(struct platform_device *pdev)
 {
     struct spi_controller *ctlr = platform_get_drvdata(pdev);
 
     if (ctlr) {
-        spi_unregister_master(ctlr);
+        spi_unregister_controller(ctlr);
         platform_set_drvdata(pdev, NULL);
     }
-
-    return 0;
 }
 
 static const struct of_device_id spi_rpmsg_dt_ids[] = {

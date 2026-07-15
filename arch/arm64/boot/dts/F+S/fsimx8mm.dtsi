@@ -1,1 +1,2 @@
 #include "../freescale/imx8mm.dtsi"
+#include "../freescale/imx8mm-nxp-display.dtsi"

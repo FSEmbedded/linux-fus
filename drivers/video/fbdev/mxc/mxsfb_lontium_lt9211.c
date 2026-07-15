@@ -634,8 +634,6 @@ static int lt9211_fb_event(struct notifier_block *nb, unsigned long val, void *v
 			return ret;
 		}
 		break;
-	case FB_EVENT_MODE_CHANGE:
-	case FB_EVENT_BLANK:
 	default:
 		break;
 	}

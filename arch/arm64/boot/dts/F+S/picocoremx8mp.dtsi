@@ -1189,15 +1189,15 @@ fs_usb_host: &usb_dwc3_0 {};
 	status = "okay";
 };
 
-&gpu_3d {
+&gpu3d {
 	status = "okay";
 };
 
-&gpu_2d {
+&gpu2d {
 	status = "okay";
 };
 
-&ml_vipsi {
+&npu {
 	status = "okay";
 };
 

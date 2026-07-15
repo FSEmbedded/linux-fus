@@ -369,7 +369,7 @@ static int pca963x_led_set(struct led_classdev *led_cdev,
 	return pca963x_set_brightness(pca963x, entry->led_num, value);
 }
 
-enum led_brightness pca963x_led_get(struct led_classdev *led_cdev)
+static enum led_brightness pca963x_led_get(struct led_classdev *led_cdev)
 {
 	struct pca963x_entry *entry;
 	struct pca963x *pca963x;
@@ -517,7 +517,7 @@ static const struct pwm_ops pca963x_pwm_ops = {
 /* -------- GPIO interface -------- */
 
 #ifdef CONFIG_GPIOLIB
-static void pca963x_gpio_set(struct gpio_chip *chip, unsigned offset, int value)
+static int pca963x_gpio_set(struct gpio_chip *chip, unsigned offset, int value)
 {
 	struct pca963x *pca963x;
 
@@ -527,6 +527,8 @@ static void pca963x_gpio_set(struct gpio_chip *chip, unsigned offset, int value)
 		value = 256;
 
 	pca963x_set_brightness(pca963x, offset, value);
+
+	return 0;
 }
 
 static int pca963x_gpio_get(struct gpio_chip *chip, unsigned offset)

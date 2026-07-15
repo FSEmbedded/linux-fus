@@ -114,7 +114,7 @@ enum aux_state {
 	aux_undefined,
 };
 
-int arch_auxiliary_core_set_reset_address(u32 boot_private_data)
+static int arch_auxiliary_core_set_reset_address(u32 boot_private_data)
 {
 	void __iomem *tcm_base_addr = NULL;
 	void __iomem *mem_base_addr = NULL;
@@ -137,7 +137,7 @@ int arch_auxiliary_core_set_reset_address(u32 boot_private_data)
 	return 0;
 }
 
-void arch_auxiliary_core_set(u32 core_id, enum aux_state old_state, enum aux_state new_state)
+static void arch_auxiliary_core_set(u32 core_id, enum aux_state old_state, enum aux_state new_state)
 {
 	/* FIXME: we are mapping a register were mutual exclusion of the
 	 *        register not be guaranteed
@@ -187,7 +187,7 @@ void arch_auxiliary_core_set(u32 core_id, enum aux_state old_state, enum aux_sta
 	iounmap(src_base_addr);
 }
 
-enum aux_state arch_auxiliary_core_get(u32 core_id)
+static enum aux_state arch_auxiliary_core_get(u32 core_id)
 {
 	/* FIXME: we are mapping a register were mutual exclusion of the
 	 *        register not be guaranteed
@@ -446,6 +446,7 @@ fail:
 	return count;
 }
 
+
 static ssize_t mem_addr_store(struct kobject *kobj,
 		struct kobj_attribute *attr, const char *buf, size_t count)
 {
@@ -539,7 +540,7 @@ static void auxiliary_core_free(void)
 	}
 }
 
-static int auxiliary_core_remove(struct platform_device *pdev)
+static void auxiliary_core_remove(struct platform_device *pdev)
 {
 	/* ###TODO: get from pdev */
 	if (ac.auxiliary_core_kobj) {
@@ -548,8 +549,6 @@ static int auxiliary_core_remove(struct platform_device *pdev)
 	}
 
 	auxiliary_core_free();
-
-	return 0;
 }
 
 static int auxiliary_core_probe_dts(struct platform_device *pdev)
