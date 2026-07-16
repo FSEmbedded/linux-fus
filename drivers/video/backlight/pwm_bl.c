@@ -34,9 +34,6 @@ struct pwm_bl_data {
 	void			(*notify_after)(struct device *,
 					int brightness);
 	void			(*exit)(struct device *);
-#ifdef CONFIG_OF
-	struct property		*fb_names_prop;
-#endif
 };
 
 static void pwm_backlight_power_on(struct pwm_bl_data *pb)
@@ -231,21 +228,6 @@ int pwm_backlight_brightness_default(struct device *dev,
 	return 0;
 }
 
-static int pwm_backlight_check_fb_name(struct device *dev, struct fb_info *info)
-{
-	struct backlight_device *bl = dev_get_drvdata(dev);
-	struct pwm_bl_data *pb = bl_get_data(bl);
-	const char *cp;
-
-	for (cp = of_prop_next_string(pb->fb_names_prop, NULL); cp;
-		     cp = of_prop_next_string(pb->fb_names_prop, cp)) {
-		if (!strcmp(info->fix.id, cp))
-			return true;
-	}
-
-	return false;
-}
-
 static int pwm_backlight_parse_dt(struct device *dev,
 				  struct platform_pwm_backlight_data *data)
 {
@@ -262,7 +244,6 @@ static int pwm_backlight_parse_dt(struct device *dev,
 		return -ENODEV;
 
 	memset(data, 0, sizeof(*data));
-
 
 	/*
 	 * These values are optional and set as 0 by default, the out values
@@ -375,6 +356,7 @@ static int pwm_backlight_parse_dt(struct device *dev,
 
 		data->max_brightness = num_levels - 1;
 	}
+
 	return 0;
 }
 
@@ -476,14 +458,9 @@ static int pwm_backlight_probe(struct platform_device *pdev)
 	struct backlight_device *bl;
 	struct pwm_bl_data *pb;
 	struct pwm_state state;
-	struct device *dev = &pdev->dev;
-	struct device_node *node = dev->of_node;
 	unsigned int i;
 	int ret;
 
-	pb = devm_kzalloc(&pdev->dev, sizeof(*pb), GFP_KERNEL);
-	if (!pb)
-		return -ENOMEM;
 	if (!data) {
 		ret = pwm_backlight_parse_dt(&pdev->dev, &defdata);
 		if (ret < 0)
@@ -491,19 +468,18 @@ static int pwm_backlight_probe(struct platform_device *pdev)
 					     "failed to find platform data\n");
 
 		data = &defdata;
+	}
 
-#ifdef CONFIG_OF
-		pb->fb_names_prop = of_find_property(node, "fb-names", NULL);
-		if (pb->fb_names_prop)
-			data->check_fb = &pwm_backlight_check_fb_name;
-#endif
-	} else {
 	if (data->init) {
 		ret = data->init(&pdev->dev);
 		if (ret < 0)
 			return ret;
 	}
 
+	pb = devm_kzalloc(&pdev->dev, sizeof(*pb), GFP_KERNEL);
+	if (!pb) {
+		ret = -ENOMEM;
+		goto err_alloc;
 	}
 
 	pb->notify = data->notify;
