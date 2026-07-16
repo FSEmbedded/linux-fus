@@ -330,9 +330,6 @@ static int inRange(unsigned low, unsigned high, unsigned x)
 	return (low <= x && x <= high);
 }
 
-void print_valid_adresses(void){
-}
-
 static struct allowed_mem* check_mem_addr(unsigned int addr) {
 
 	/* In tcm only 0x7f8000 is allowed as start address*/
@@ -372,28 +369,24 @@ static ssize_t mem_store(struct kobject *kobj,
 	struct kstat stat;
 	void __iomem *mem_base_addr = NULL;
 	char *raw_fmts =  NULL;
-	mm_segment_t fs = 0;
 	int logstrs_size = 0;
 	int error = 0;
-	int len = 0;
+	ssize_t bytes_read = 0;
 
 	if(!__clk_is_enabled(ac.clk)) {
 		dev_err(&ac.pdev->dev, "auxiliary core clock is not enabled! \n");
-		goto fail;
+		return -EINVAL;
 	}
 
-	len  = strnlen(buf, PATH_MAX);
-	if (len && buf[len - 1] != '\n')
-		len++;
 	if (ac.path != NULL)
 		kfree(ac.path);
 
-	ac.path = kmalloc(len, GFP_KERNEL);
-	memcpy(ac.path, buf, len - 1);
-	ac.path[len - 1] = '\0';
-
-	fs = get_fs();
-	set_fs(KERNEL_DS);
+	ac.path = kstrndup(buf, count, GFP_KERNEL);
+	if (!ac.path) {
+		dev_err(&ac.pdev->dev, "Failed to allocate path memory \n");
+		return -ENOMEM;
+	}
+	strim(ac.path);
 
 	filep = filp_open(ac.path, O_RDONLY, 0);
 	if (IS_ERR(filep)) {
@@ -414,34 +407,37 @@ static ssize_t mem_store(struct kobject *kobj,
 		dev_err(&ac.pdev->dev, "File size to big for memory! \n");
 		goto fail;
 	}
+
 	raw_fmts = kmalloc(logstrs_size, GFP_KERNEL);
 	if (raw_fmts == NULL) {
 		dev_err(&ac.pdev->dev, "Failed to allocate memory \n");
 		goto fail;
 	}
-	/* FIXME: we are mapping a register were mutual exclusion of
-	 *        the register not be guaranteed
+
+	/* FIXME: we are mapping a register where mutual exclusion of
+	 *        the register cannot be guaranteed
 	 */
 	mem_base_addr = ioremap(ac.mem_addr, logstrs_size);
-	if (vfs_read(filep, mem_base_addr, logstrs_size,
-				&filep->f_pos) != logstrs_size) {
-		dev_err(&ac.pdev->dev, "Failed to read file %s \n",
-							ac.path);
+	if (!mem_base_addr) {
+		dev_err(&ac.pdev->dev, "Failed to ioremap memory \n");
+		goto fail;
+	}
+
+	bytes_read = kernel_read(filep, (void *)mem_base_addr, logstrs_size, &filep->f_pos);
+	if (bytes_read != logstrs_size) {
+		dev_err(&ac.pdev->dev, "Failed to read file %s (Read %zd of %d bytes)\n",
+							ac.path, bytes_read, logstrs_size);
 		iounmap(mem_base_addr);
 		goto fail;
 	}
 	iounmap(mem_base_addr);
 
-
 fail:
 	if (raw_fmts)
 		kfree(raw_fmts);
 
-	if (!IS_ERR(filep) && filep)
+	if (filep && !IS_ERR(filep))
 		filp_close(filep, NULL);
-
-	if (fs)
-		set_fs(fs);
 
 	return count;
 }
