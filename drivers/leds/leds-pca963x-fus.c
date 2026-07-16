@@ -152,7 +152,7 @@ struct pca963x {
 #endif
 #ifdef CONFIG_PWM
 	int n_pwm;
-	struct pwm_chip pwm_chip;
+	struct pwm_chip *pwm_chip;
 #endif
 	int period;
 };
@@ -440,7 +440,7 @@ static int pca963x_pwm_config(struct pwm_chip *chip, struct pwm_device *pwm,
 			      int duty_ns, int period_ns)
 {
 	int value;
-	struct pca963x *pca963x = container_of(chip, struct pca963x, pwm_chip);
+	struct pca963x *pca963x = pwmchip_get_drvdata(chip);
 
 	if (period_ns != pca963x->chipdef->single_period &&
 		period_ns != pca963x->chipdef->grp_period ) {
@@ -469,7 +469,7 @@ static int pca963x_pwm_config(struct pwm_chip *chip, struct pwm_device *pwm,
 
 static int pca963x_pwm_request(struct pwm_chip *chip, struct pwm_device *pwm)
 {
-	struct pca963x *pca963x = container_of(chip, struct pca963x, pwm_chip);
+	struct pca963x *pca963x = pwmchip_get_drvdata(chip);
 	struct pca963x_entry *entry = &pca963x->entries[pwm->hwpwm];
 	int value;
 
@@ -510,7 +510,6 @@ static int pca963x_pwm_apply(struct pwm_chip *chip, struct pwm_device *pwm,
 static const struct pwm_ops pca963x_pwm_ops = {
 	.apply = pca963x_pwm_apply,
 	.request = pca963x_pwm_request,
-	.owner = THIS_MODULE,
 };
 #endif
 
@@ -569,6 +568,7 @@ const struct gpio_chip pca963x_gpio_ops = {
 	.get		= pca963x_gpio_get,
 	.set		= pca963x_gpio_set,
 	.direction_output = pca963x_gpio_direction_output,
+	.can_sleep	= true,
 	.owner		= THIS_MODULE,
 };
 #endif
@@ -862,15 +862,22 @@ static int pca963x_probe(struct i2c_client *client)
 	}
 #ifdef CONFIG_PWM
 	if (pca963x->n_pwm > 0) {
-		pca963x->pwm_chip.of_pwm_n_cells = 3;
-		pca963x->pwm_chip.of_xlate = of_pwm_xlate_with_flags;
-		pca963x->pwm_chip.dev = &client->dev;
-		pca963x->pwm_chip.ops = &pca963x_pwm_ops;
-		pca963x->pwm_chip.npwm = pca963x->chipdef->n_leds;
-		pca963x->pwm_chip.base = -1;
-		err = pwmchip_add(&pca963x->pwm_chip);
-		if (err < 0) {
-			dev_err(&client->dev,"could not register PWM chip\n");
+		pca963x->pwm_chip = devm_pwmchip_alloc(&client->dev,
+						       pca963x->chipdef->n_leds, 0);
+		if (IS_ERR(pca963x->pwm_chip)) {
+			err = PTR_ERR(pca963x->pwm_chip);
+			pca963x->pwm_chip = NULL;
+			goto exit;
+		}
+
+		pca963x->pwm_chip->of_xlate = of_pwm_xlate_with_flags;
+		pca963x->pwm_chip->ops = &pca963x_pwm_ops;
+		pwmchip_set_drvdata(pca963x->pwm_chip, pca963x);
+
+		err = devm_pwmchip_add(&client->dev, pca963x->pwm_chip);
+ 		if (err < 0) {
+ 			dev_err(&client->dev,"could not register PWM chip\n");
+			pca963x->pwm_chip = NULL;
 			goto exit;
 		}
 	}
@@ -883,7 +890,8 @@ static int pca963x_probe(struct i2c_client *client)
 		pca963x->gpio_chip.ngpio = pca963x->chipdef->n_leds;
 		pca963x->gpio_chip.parent = &client->dev;
 		pca963x->gpio_chip.base = -1;
-		err = gpiochip_add(&pca963x->gpio_chip);
+		err = devm_gpiochip_add_data(&client->dev, &pca963x->gpio_chip,
+					     pca963x);
 		if (err < 0) {
 			dev_err(&client->dev, "could not register GPIO chip\n");
 			goto err_gpio;
@@ -903,7 +911,6 @@ static int pca963x_probe(struct i2c_client *client)
 	return 0;
 
 err_gpio:
-	pwmchip_remove(&pca963x->pwm_chip);
 exit:
 	pca963x_free_leds(pca963x, i);
 err_reg:
@@ -918,14 +925,6 @@ static void pca963x_remove(struct i2c_client *client)
 
 	pca963x = i2c_get_clientdata(client);
 
-#ifdef CONFIG_GPIOLIB
-	if (pca963x->n_gpio > 0)
-		gpiochip_remove(&pca963x->gpio_chip);
-#endif
-#ifdef CONFIG_PWM
-	if (pca963x->n_pwm > 0)
-		pwmchip_remove(&pca963x->pwm_chip);
-#endif
 	if (!IS_ERR(pca963x->vdd))
 		regulator_disable(pca963x->vdd);
 	/* LEDs are automatically removed by the devm infrastructure */
@@ -957,3 +956,4 @@ module_exit(pca963x_exit);
 MODULE_AUTHOR("Peter Meerwald <p.meerwald@bct-electronic.com>");
 MODULE_DESCRIPTION("PCA963X LED driver");
 MODULE_LICENSE("GPL v2");
+
