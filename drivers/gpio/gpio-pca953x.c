@@ -234,13 +234,12 @@ static const struct pca953x_reg_config tca6418_regs = {
 	.input = TCA6418_INPUT,
 	.invert = 0xFF, /* Does not apply */
 };
-
-struct max7313_pwm_data {
-	struct gpio_desc *desc;
-};
+struct pca953x_chip;
 
 struct max7313_pwm {
-	struct pwm_chip chip;
+	struct pwm_chip *chip;
+	struct pca953x_chip *pca_chip;
+	struct gpio_desc *desc[MAX_PWM_MAX_COUNT];
 	/*
 	 * Protect races when counting active PWMs for enabling or disabling
 	 * the internal oscillator.
@@ -992,6 +991,7 @@ static bool pca953x_irq_pending(struct pca953x_chip *chip, unsigned long *pendin
 	DECLARE_BITMAP(edges, MAX_LINE);
 	int ret;
 
+
 	if (chip->driver_data & PCA_PCAL) {
 		/* Read INT_STAT before it is cleared by the input-port read. */
 		ret = pca953x_read_regs(chip, PCAL953X_INT_STAT, int_stat);
@@ -1029,7 +1029,7 @@ static bool pca953x_irq_pending(struct pca953x_chip *chip, unsigned long *pendin
 	    bitmap_empty(chip->irq_trig_level_low, gc->ngpio)) {
 		if (bitmap_empty(trigger, gc->ngpio) &&
 		    bitmap_empty(int_stat, gc->ngpio))
-		return false;
+			return false;
 	}
 
 	bitmap_and(cur_stat, chip->irq_trig_fall, old_stat, gc->ngpio);
@@ -1239,12 +1239,7 @@ static int pca953x_get_and_enable_regulator(struct pca953x_chip *chip)
 
 static struct max7313_pwm *to_max7313_pwm(struct pwm_chip *chip)
 {
-	return container_of(chip, struct max7313_pwm, chip);
-}
-
-static struct pca953x_chip *to_pca953x(struct max7313_pwm *chip)
-{
-	return container_of(chip, struct pca953x_chip, pwm);
+	return pwmchip_get_drvdata(chip);
 }
 
 static unsigned int max7313_pwm_intensity_to_duty(u8 intensity)
@@ -1346,12 +1341,14 @@ static int max7313_pwm_set_state(struct pca953x_chip *pca_chip,
 				 struct pwm_device *pwm,
 				 unsigned int intensity)
 {
-	struct max7313_pwm_data *data = pwm_get_chip_data(pwm);
-	struct gpio_desc *desc = data->desc;
+	struct max7313_pwm *max_pwm = &pca_chip->pwm;
+	struct gpio_desc *desc = max_pwm->desc[pwm->hwpwm];
 	unsigned int idx = pwm->hwpwm, reg, output;
 	bool phase;
 	int ret;
 
+	if (!desc)
+		return -ENODEV;
 	/* Retrieve the phase */
 	reg = pca953x_recalc_addr(pca_chip, pca_chip->regs->output, idx);
 
@@ -1405,9 +1402,8 @@ static int max7313_pwm_request(struct pwm_chip *chip,
 			       struct pwm_device *pwm)
 {
 	struct max7313_pwm *max_pwm = to_max7313_pwm(chip);
-	struct pca953x_chip *pca_chip = to_pca953x(max_pwm);
+	struct pca953x_chip *pca_chip = max_pwm->pca_chip;
 	struct device *dev = &pca_chip->client->dev;
-	struct max7313_pwm_data *data;
 	struct gpio_desc *desc;
 
 	desc = gpiochip_request_own_desc(&pca_chip->gpio_chip, pwm->hwpwm,
@@ -1418,14 +1414,7 @@ static int max7313_pwm_request(struct pwm_chip *chip,
 		return PTR_ERR(desc);
 	}
 
-	data = kzalloc(sizeof(*data), GFP_KERNEL);
-	if (!data) {
-		gpiochip_free_own_desc(desc);
-		return -ENOMEM;
-	}
-
-	data->desc = desc;
-	pwm_set_chip_data(pwm, data);
+	max_pwm->desc[pwm->hwpwm] = desc;
 
 	return 0;
 }
@@ -1433,10 +1422,13 @@ static int max7313_pwm_request(struct pwm_chip *chip,
 static void max7313_pwm_free(struct pwm_chip *chip,
 			     struct pwm_device *pwm)
 {
-	struct max7313_pwm_data *data = pwm_get_chip_data(pwm);
+	struct max7313_pwm *max_pwm = to_max7313_pwm(chip);
 
-	gpiochip_free_own_desc(data->desc);
-	kfree(data);
+	if (!max_pwm->desc[pwm->hwpwm])
+		return;
+
+	gpiochip_free_own_desc(max_pwm->desc[pwm->hwpwm]);
+	max_pwm->desc[pwm->hwpwm] = NULL;
 }
 
 static int max7313_pwm_apply(struct pwm_chip *chip,
@@ -1444,7 +1436,7 @@ static int max7313_pwm_apply(struct pwm_chip *chip,
 			     const struct pwm_state *state)
 {
 	struct max7313_pwm *max_pwm = to_max7313_pwm(chip);
-	struct pca953x_chip *pca_chip = to_pca953x(max_pwm);
+	struct pca953x_chip *pca_chip = max_pwm->pca_chip;
 	unsigned int intensity, active, duty_cycle;
 	int ret = 0;
 
@@ -1503,7 +1495,7 @@ static int max7313_pwm_get_state(struct pwm_chip *chip,
 				  struct pwm_state *state)
 {
 	struct max7313_pwm *max_pwm = to_max7313_pwm(chip);
-	struct pca953x_chip *pca_chip = to_pca953x(max_pwm);
+	struct pca953x_chip *pca_chip = max_pwm->pca_chip;
 	u8 intensity;
 
 	state->enabled = true;
@@ -1520,25 +1512,28 @@ static const struct pwm_ops max7313_pwm_ops = {
 	.free = max7313_pwm_free,
 	.apply = max7313_pwm_apply,
 	.get_state = max7313_pwm_get_state,
-	.owner = THIS_MODULE,
 };
 
 static int max7313_pwm_probe(struct device *dev,
 			     struct pca953x_chip *pca_chip)
 {
 	struct max7313_pwm *max_pwm = &pca_chip->pwm;
-	struct pwm_chip *chip = &max_pwm->chip;
+	struct pwm_chip *chip;
 	int ret, i;
 
 	if (!(pca_chip->driver_data & MAX_PWM))
 		return 0;
 
-	chip->of_pwm_n_cells = 3;
+	chip = devm_pwmchip_alloc(dev, pca_chip->gpio_chip.ngpio, 0);
+	if (IS_ERR(chip))
+		return PTR_ERR(chip);
+
+	max_pwm->chip = chip;
+	max_pwm->pca_chip = pca_chip;
+	pwmchip_set_drvdata(chip, max_pwm);
 	chip->of_xlate = of_pwm_xlate_with_flags;
-	chip->dev = dev;
 	chip->ops = &max7313_pwm_ops;
 	chip->npwm = pca_chip->gpio_chip.ngpio;
-	chip->base = -1;
 
 	/* Disable global control (does not affect GPIO functionality) */
 	mutex_lock(&pca_chip->i2c_lock);
@@ -1567,23 +1562,11 @@ static int max7313_pwm_probe(struct device *dev,
 	if (ret)
 		return ret;
 
-	ret = pwmchip_add(chip);
+	ret = devm_pwmchip_add(dev, chip);
 
 	return ret;
 }
 
-static int max7313_pwm_remove(struct pca953x_chip *pca_chip)
-{
-	struct max7313_pwm *max_pwm = &pca_chip->pwm;
-	struct pwm_chip *chip = &max_pwm->chip;
-
-	if (!(pca_chip->driver_data & MAX_PWM))
-		return 0;
-
-	pwmchip_remove(chip);
-
-	return 0;
-}
 static int pca953x_probe(struct i2c_client *client)
 {
 	struct device *dev = &client->dev;
@@ -1627,7 +1610,7 @@ static int pca953x_probe(struct i2c_client *client)
 
 	ret = pca953x_get_and_enable_regulator(chip);
 	if (ret)
-		return ret;
+			return ret;
 
 	i2c_set_clientdata(client, chip);
 
@@ -1685,6 +1668,7 @@ static int pca953x_probe(struct i2c_client *client)
 	lockdep_set_subclass(&chip->i2c_lock,
 			     i2c_adapter_depth(client->adapter));
 
+
 	/* Configure output: set open-drain or default to push-pull */
 	if (device_property_read_bool(&client->dev, "pcal6416,open-drain")) {
 		/* Enable ODEN0 and ODEN1 */
@@ -1727,12 +1711,6 @@ static int pca953x_probe(struct i2c_client *client)
 		}
 	}
 
-	if (pdata && pdata->setup) {
-		ret = pdata->setup(client, chip->gpio_chip.base,
-				   chip->gpio_chip.ngpio, pdata->context);
-		if (ret < 0)
-			dev_warn(&client->dev, "setup failed, %d\n", ret);
-	}
 
 	return 0;
 
@@ -1817,7 +1795,6 @@ static void pca953x_save_context(struct pca953x_chip *chip)
 		disable_irq(chip->client->irq);
 	regcache_cache_only(chip->regmap, true);
 }
-
 static int pca953x_suspend(struct device *dev)
 {
 	struct pca953x_chip *chip = dev_get_drvdata(dev);
@@ -1858,10 +1835,10 @@ static int pca953x_resume(struct device *dev)
 		ret = pca953x_restore_context(chip);
 		if (ret)
 			dev_err(dev, "Failed to restore register map: %d\n", ret);
-	}
+		}
 
-	return ret;
-}
+			return ret;
+		}
 
 static DEFINE_SIMPLE_DEV_PM_OPS(pca953x_pm_ops, pca953x_suspend, pca953x_resume);
 
@@ -1924,6 +1901,7 @@ static const struct of_device_id pca953x_dt_ids[] = {
 };
 
 MODULE_DEVICE_TABLE(of, pca953x_dt_ids);
+
 
 static struct i2c_driver pca953x_driver = {
 	.driver = {
