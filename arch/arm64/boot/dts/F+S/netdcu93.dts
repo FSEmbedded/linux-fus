@@ -1,0 +1,324 @@
+/*
+ * Copyright (C) 2026 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+/* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
+#define CONFIG_PICOCOREMX93_BOARD_REVISION	110
+/* Set baseboard revision as 3-digit number, e.g. 110 for board rev. 1.10 */
+#define CONFIG_NDCU_BOARD_REVISION	120
+
+// #define SUPPORT_M33
+// #define SUPPORT_RPMSG
+
+/* Network */
+#define CONFIG_PICOCOREMX93_ETH_A
+#define CONFIG_PICOCOREMX93_ETH_A_LED_LINK
+//#define CONFIG_PICOCOREMX93_ETH_A_LED_ACT
+
+#define CONFIG_PICOCOREMX93_ETH_B
+#define CONFIG_PICOCOREMX93_ETH_B_LED_LINK
+//#define CONFIG_PICOCOREMX93_ETH_B_LED_ACT
+
+/* CAN - CAN1 extern J1 pins 10,12*/
+#define CONFIG_PICOCOREMX93_CAN
+
+/* I2C */
+/* intern EEPROM and extern J1 pins 4,6 */
+#define CONFIG_PICOCOREMX93_I2C_A
+/* extern J1 pins 3,5 */
+#define CONFIG_PICOCOREMX93_I2C_B
+/* extern J1 pins 40, 42 */
+#define CONFIG_PICOCOREMX93_I2C_C
+/* intern RTC, Audio, PMIC, GPIO_Exp.
+ * and extern pins J1 48,50
+ */
+#define CONFIG_PICOCOREMX93_I2C_D
+
+/* SPI_A - LPSPI6 extern pins 64,66,68,70 */
+#define CONFIG_PICOCOREMX93_SPI_A
+/* SPI_B - LPSPI3 extern pins 56,58,60,62 */
+#define CONFIG_PICOCOREMX93_SPI_B
+
+/* PWM and backlight brightness */
+#define CONFIG_PICOCOREMX93_PWM_A
+#define CONFIG_PICOCOREMX93_BL_CTRL
+
+/* UART_A - UART2 */
+#define CONFIG_PICOCOREMX93_UART_A
+#define CONFIG_PICOCOREMX93_UART_A_RTSCTS
+
+/* UART_B - UART6 */
+#define CONFIG_PICOCOREMX93_UART_B
+#define CONFIG_PICOCOREMX93_UART_B_RTSCTS
+#define CONFIG_PICOCOREMX93_UART_B_BT
+
+/* UART_C - UART1 */
+#define CONFIG_PICOCOREMX93_UART_C
+
+/* UART_D - UART3 extern J1 34,36
+ * SKIT: J11 13,15
+ */
+#define CONFIG_PICOCOREMX93_UART_D
+
+/* SD_A - SD2 */
+#define CONFIG_PICOCOREMX93_SD_A
+
+/* SD_B - SD3 */
+#define CONFIG_PICOCOREMX93_SD_B
+
+/* ADC0..3 extern J2 73,75,77,79
+ * SKIT: J11 7,9,10,12
+ */
+// #define CONFIG_PICOCOREMX93_ADC
+/* extern RTC */
+#define CONFIG_PICOCOREMX93_EXT_RTC
+/* Audio: SGTL5000 codec */
+#define CONFIG_PICOCOREMX93_SGTL5000_AUDIO
+#define CONFIG_PICOCOREMX93_I2S_A
+
+/*
+ * Exclude devices from Linux that are used by the Cortex-M33 FreeRTOS examples
+ *
+ * - UART_C: Debug Console for Cortex-M33
+ * - PWM_A: PWM Signal for the PWM example
+ * - CAN_A: CAN-Signal for FlexCAN examples
+ * - I2C_A:  I2C Bus used in I2C examples
+ * - SPI_B:  SPI_B is used for ECSPI examples
+ *
+ */
+
+#ifdef SUPPORT_M33
+/* TODO: */
+#else
+#undef SUPPORT_RPMSG
+#endif
+
+#ifdef CONFIG_PICOCOREMX93_ETH_A_LED_LINK
+#undef CONFIG_PICOCOREMX93_ETH_A_LED_ACT
+#endif
+
+#ifdef CONFIG_PICOCOREMX93_ETH_B_LED_LINK
+#undef CONFIG_PICOCOREMX93_ETH_B_LED_ACT
+#endif
+
+#include "picocoremx93.dtsi"
+
+ndcu_i2c_a: &pc_i2c_a {};
+ndcu_i2c_b: &pc_i2c_b {};
+ndcu_i2c_c: &pc_i2c_c {};
+ndcu_i2c_int: &pc_i2c_d {};
+ndcu_uart_a: &pc_uart_a {};
+ndcu_uart_b: &pc_uart_b {};
+ndcu_uart_c: &pc_uart_c {};
+ndcu_uart_d: &pc_uart_d {};
+ndcu_eth_a: &pc_eth_a {};
+ndcu_eth_b: &pc_eth_b {};
+ndcu_usb_a: &pc_usb_1 {};
+ndcu_usb_b: &pc_usb_2 {};
+ndcu_sdio_a: &pc_sdio_a {};
+ndcu_spi_a: &pc_spi_a {};
+ndcu_spi_b: &pc_spi_b {};
+ndcu_sai: &pc_sai {};
+
+/ {
+	model = "F+S NetDCU93";
+	compatible = "fus,imx93-netdcu93", "fsl,imx93";
+
+	chosen {
+		bootargs = "console=ttyLP0,115200";
+		stdout-path = &ndcu_uart_c;
+	};
+
+	/delete-node/ aliases;
+	aliases {
+		ethernet0 = &ndcu_eth_a;
+		ethernet1 = &ndcu_eth_b;
+		i2c0 = &ndcu_i2c_int;
+		i2c1 = &ndcu_i2c_a;
+		i2c2 = &ndcu_i2c_b;
+		i2c3 = &ndcu_i2c_c;
+		mmc0 = &emmc;
+		mmc1 = &ndcu_sdio_a;
+		mmc2 = &pc_sdio_b;	// PC WLAN
+		serial0 = &pc_uart_c;	// DEBUG
+		serial1 = &pc_uart_a;
+		serial2 = &pc_uart_b;	// PC BT
+		serial4 = &pc_uart_d;
+		spi0 = &ndcu_spi_a;
+		spi1 = &ndcu_spi_b;
+		rtc0 = &ext_rtc;
+		rtc1 = &bbnsm_rtc;
+		adc  = &adc1;
+	};
+
+	regulators{
+		compatible = "simple-bus";
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		reg_ndcu_3v3: regulator_ndcu_3v3 {
+			compatible = "regulator-fixed";
+			regulator-name = "ndcu-3V3";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			regulator-always-on;
+		};
+
+		reg_ndcu_1v8: regulator_ndcu_1v8 {
+			compatible = "regulator-fixed";
+			regulator-name = "ndcu-1V8";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+			regulator-always-on;
+		};
+	};
+};
+
+/*==== Ethernet ====*/
+&ndcu_eth_a {
+	status = "okay";
+};
+
+&ndcu_eth_b {
+	status = "okay";
+};
+
+/*====== I2C ======*/
+&ndcu_i2c_int {
+	status = "okay";
+};
+
+&ndcu_i2c_a {
+	status = "okay";
+};
+
+&ndcu_i2c_b {
+	status = "okay";
+};
+
+&ndcu_i2c_c {
+	status = "okay";
+};
+
+/*===== UART =====*/
+&ndcu_uart_a {
+	status = "okay";
+};
+
+#ifndef CONFIG_PICOCOREMX93_UART_B_BT
+&ndcu_uart_b {
+	linux,rs485-enabled-at-boot-time;
+	status = "okay";
+};
+#endif
+
+&ndcu_uart_c {
+	status = "okay";
+};
+
+&ndcu_uart_d {
+	status = "okay";
+};
+
+/*====== SD ======*/
+&ndcu_sdio_a {
+	status = "okay";
+};
+
+/*===== FSBUS =====*/
+&ndcu_i2c_a {
+	fsbus: pcal6416a@20 {
+		compatible = "nxp,pcal6416";
+		reg = <0x20>;
+		vcc-supply = <&reg_ndcu_3v3>;
+		gpio-controller;
+		#gpio-cells = <2>;
+		gpio-line-names =
+		  /* 0 - 3*/	"PIF_D0", "PIF_D1", "PIF_D2", "PIF_D3",
+		  /* 4 - 7 */	"PIF_D4", "PIF_D5", "PIF_D6", "PIF_D7",
+		  /* 8 - 11 */	"PIF_IRQ", "PIF_CS", "PIF_RW", "PIF_ADE",
+		  /* 12 -15 */	"", "", "", "";
+		status = "okay";
+	};
+};
+
+/**
+ * TODO: Write driver for FSBUS-FPGA
+ * /
+
+/* === I2C Periphery === */
+/{
+	leds {
+		compatible = "gpio-leds";
+
+		LED_RUN {
+			label = "LED_RUN";
+			gpios = <&exp_misc 3 GPIO_ACTIVE_LOW>;
+			linux,default-trigger = "default-on";
+			default-state = "on";
+		};
+
+		LED_STAT1 {
+			label = "LED_STAT1";
+			gpios = <&exp_misc 4 GPIO_ACTIVE_LOW>;
+			linux,default-trigger = "mmc0";
+			default-state = "on";
+		};
+
+		LED_STAT2 {
+			label = "LED_STAT2";
+			gpios = <&exp_misc 5 GPIO_ACTIVE_LOW>;
+			default-state = "off";
+		};
+	};
+};
+
+&ndcu_i2c_int {
+	exp_misc: pcal6416a@21 {
+		compatible = "nxp,pcal6416";
+		reg = <0x21>;
+		vcc-supply = <&reg_ndcu_3v3>;
+		gpio-controller;
+		#gpio-cells = <2>;
+		gpio-line-names =
+		  /* 0 - 3*/	"DISP_BL_EN", "RGB_DEN", "DISP_VDD_EN", "LED_RUN",
+		  /* 4 - 7 */	"LED_STAT1", "LED_STAT2", "", "FPGA_PRST",
+		  /* 8 - 11 */	"FPGA_EN", "FPGA_PWR", "FPGA_IO0", "FPGA_IO1",
+		  /* 12 -15 */	"COL3_IOEXP", "COL2_IOEXP", "COL4_IOEXP", "COL5_IOEXP";
+		status = "okay";
+	};
+
+	ndcu_eeprom: eeprom@50 {
+		compatible = "onnn,n24s64b", "atmel,24c64";
+		reg = <0x50>;
+		size = <8192>;
+		pagesize = <32>;
+	};
+};
+
+&ndcu_i2c_b {
+		tsc: tsc2004@49 {
+  		compatible = "ti,tsc2004";
+  		reg = <0x49>;
+		reset-gpios = <&gpio2 19 GPIO_ACTIVE_LOW>;
+
+		vio-supply = <&reg_vref_3v3>;
+		interrupts-extended = <&gpio2 15 IRQ_TYPE_EDGE_FALLING>;
+		touchscreen-fuzz-x = <4>;
+		touchscreen-fuzz-y = <7>;
+		touchscreen-fuzz-pressure = <20>;
+		touchscreen-size-x = <4096>;
+		touchscreen-size-y = <4096>;
+		touchscreen-max-pressure = <2048>;
+		touchscreen-inverted-y;
+		ti,x-plate-ohms = <280>;
+		ti,pre-charge-time = <4>;
+		ti,sense-time-sel = <3>;
+
+		status = "okay";
+	};
+};

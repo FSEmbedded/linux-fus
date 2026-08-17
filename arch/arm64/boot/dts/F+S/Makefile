@@ -106,3 +106,6 @@ dtb-$(CONFIG_ARCH_MXC) += \
 dtb-$(CONFIG_ARCH_MXC) += \
 			  picocom93.dtb \
 			  picocom93-ET070080DH6.dtb
+dtb-$(CONFIG_ARCH_MXC) += \
+			  netdcu93.dtb \
+
