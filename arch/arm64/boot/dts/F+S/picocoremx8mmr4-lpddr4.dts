@@ -1,0 +1,499 @@
+/*
+ * Copyright (C) 2019 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+/dts-v1/;
+
+/* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
+#define CONFIG_PICOCOREMX8MM_BOARD_REVISION	100
+/* Set baseboard revision as 3-digit number, e.g. 110 for board rev. 1.10 */
+#define CONFIG_PICOCOREBBDSI_BOARD_REVISION	140
+
+/* Activate this if you want to use the Cortex-M4 core */
+//#define SUPPORT_M4
+
+/* Display device-trees enables MIPI DSI */
+/* MIPI DSI */
+//#define CONFIG_PICOCOREMX8MM_MIPI_DSI
+
+/*### UBoot deactivates on of the two boot medium NAND/eMMC */
+/* On-board NAND */
+#define CONFIG_PICOCOREMX8MM_NAND
+
+/* On-board eMMC */
+#define CONFIG_PICOCOREMX8MM_EMMC
+
+/* Network */
+#define CONFIG_PICOCOREMX8MM_ETH
+
+#define CONFIG_PICOCOREMX8MM_WLAN
+#define CONFIG_PICOCOREMX8MM_BLUETOOTH
+
+/* USB */
+#define CONFIG_PICOCOREMX8MM_USB_OTG1
+#define CONFIG_PICOCOREMX8MM_USB_HOST
+#define CONFIG_PICOCOREMX8MM_USB_OTG1_USBC
+/* USB Type-C ALERT signal is available on J2_77 on BBDSI baseboard since
+   Revision 1.40. Otherwise use polling with ~100ms */
+#define CONFIG_PICOCOREMX8MM_USB_OTG1_USBC_ALERT
+
+/* PCIe */
+#define CONFIG_PICOCOREMX8MM_PCIE
+
+/* I2C */
+#define CONFIG_PICOCOREMX8MM_I2C_A
+#define CONFIG_PICOCOREMX8MM_I2C_B
+#define CONFIG_PICOCOREMX8MM_I2C_C
+#define CONFIG_PICOCOREMX8MM_I2C_D
+
+/* PWM and backlight brightness */
+#define CONFIG_PICOCOREMX8MM_PWM_A
+#define CONFIG_PICOCOREMX8MM_BL_CTRL
+
+/* UART_A - UART1 */
+#define CONFIG_PICOCOREMX8MM_UART_A
+#define CONFIG_PICOCOREMX8MM_UART_A_RTSCTS
+
+/* UART_B - UART2 */
+#define CONFIG_PICOCOREMX8MM_UART_B
+#define CONFIG_PICOCOREMX8MM_UART_B_RTSCTS
+
+/* UART_C - UART4 */
+#define CONFIG_PICOCOREMX8MM_UART_C
+
+/* UART_D - UART3 */
+#define CONFIG_PICOCOREMX8MM_UART_D
+
+#define CONFIG_PICOCOREMX8MM_SPI_A
+#define CONFIG_PICOCOREMX8MM_SPI_A_CAN_CONVERTER
+//### TODO: implement QSPI support
+#define CONFIG_PICOCOREMX8MM_SPI_B
+
+
+/* CAN-FD - optional */
+//#define CONFIG_PICOCOREMX8MM_CAN_A
+
+/* Audio */
+#define CONFIG_PICOCOREMX8MM_SGTL5000_AUDIO
+/* AUDIO_B is an example implementation and must be
+ * modified.
+ */
+//#define CONFIG_PICOCOREMX8MM_AUDIO_B
+
+/* Camera on parallel CSI interface */
+//#define CONFIG_PICOCOREMX8MM_PARALLEL_CAMERA
+
+/* Camera on serial MIPI CSI interface */
+//#define CONFIG_PICOCOREMX8MM_SERIAL_CAMERA
+/* Experimental implementation for Basler dart daA4200-30mci.
+ * Define CONFIG_PICOCOREMX8MM_SERIAL_CAMERA must also be set.
+ */
+//#define CONFIG_PICOCOREMX8MM_CAMERA_BASLER_daA4200
+
+/*
+ * SD_A - External SD port with Card Detect (CD) and Write Protect (WP)
+ * On picocoremx8mm SKIT: external port is Micro-SD card slot with CD but
+ * without WP
+ */
+#define CONFIG_PICOCOREMX8MM_SD_A
+#define CONFIG_PICOCOREMX8MM_SD_A_CD
+//#define CONFIG_PICOCOREMX8MM_SD_A_WP
+//#define CONFIG_PICOCOREMX8MM_SD_A_8_BIT
+
+/*
+ * SD_B - External SD port with Card Detect (CD) and Write Protect (WP)
+ * only available if WLAN is not equipped.
+ */
+#define CONFIG_PICOCOREMX8MM_SD_B
+#define CONFIG_PICOCOREMX8MM_SD_B_CD
+#define CONFIG_PICOCOREMX8MM_SD_B_WP
+
+/* Check for invalid CONFIG combinations */
+
+/*
+ * Exclude devices from Linux that are used by the Cortex-M4 FreeRTOS examples
+ *
+ * - UART_D: Debug Console for Cortex-M4
+ * - I2C_A:  I2C Bus used in I2C examples
+ * - I2C_D:  I2C Bus used by the Audio Codec in SAI examples
+ * - SPI_B:  SPI_B is used for ECSPI examples
+ * - SDMA1:  Gets removed at another Point, it is used by SPI_B and UART driver
+ *           examples
+ * - SPI_A:  SPI_A using SDMA1 but SDMA1 is excluded so also exclude SPI_A
+ *
+ * In addition the following pins are already predefined in FreeRTOS to be used
+ * as arbitrary GPIOs. Please remove the comment of the appropriate line of
+ * each device from which you use any signal in your own application.
+ *
+ * - AUDIO_3: GPT capture driver example uses one of its Pins
+ */
+#ifdef SUPPORT_M4
+#undef CONFIG_PICOCOREMX8MM_UART_C
+#undef CONFIG_PICOCOREMX8MM_I2C_A
+#undef CONFIG_PICOCOREMX8MM_SPI_B
+/* Only undef if using audio/sai examples */
+//#undef CONFIG_PICOCOREMX8MM_I2C_D
+//#undef CONFIG_PICOCOREMX8MM_SGTL5000_AUDIO
+#endif
+
+/* If WLAN is equipped, SD_B is not available */
+#ifdef CONFIG_PICOCOREMX8MM_WLAN
+#undef CONFIG_PICOCOREMX8MM_SD_B
+#undef CONFIG_PICOCOREMX8MM_SD_B_CD
+#undef CONFIG_PICOCOREMX8MM_SD_B_WP
+#endif
+
+/* Set different settings for corresponding baseboard revision */
+#if CONFIG_PICOCOREBBDSI_BOARD_REVISION >= 130
+#undef CONFIG_PICOCOREMX8MM_SPI_A_CAN_CONVERTER
+#else
+#undef CONFIG_PICOCOREMX8MM_USB_OTG1_USBC
+#endif
+
+#if !defined(CONFIG_PICOCOREMX8MM_USB_OTG1_USB) \
+    || (CONFIG_PICOCOREBBDSI_BOARD_REVISION < 140)
+#undef CONFIG_PICOCOREMX8MM_USB_OTG1_USBC_ALERT
+#endif
+
+#include "picocoremx8mm.dtsi"
+
+/ {
+	model = "F&S PicoCoreMX8MMr4-LPDDR4";
+
+	usdhc2_pwrseq: usdhc2_pwrseq {
+		compatible = "mmc-pwrseq-simple";
+		reset-gpios = <&gpio2 19 GPIO_ACTIVE_LOW>;
+	};
+};
+
+&bdinfo{
+	board_name = "picocoremx8mmr4-lpddr4";
+};
+
+#ifdef CONFIG_PICOCOREMX8MM_ETH
+&fec1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_fec1>;
+	phy-mode = "rgmii-id";
+	phy-handle = <&ethphy4>;
+	fsl,magic-packet;
+	status = "okay";
+
+	mdio {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		ethphy4: ethernet-phy@4 {
+			compatible = "ethernet-phy-ieee802.3-c22";
+			reg = <4>;
+			rtl821x,clkout-disable;
+			rtl821x,aldps-enable;
+			rtl821x,ssc-rxc-enable;
+			rtl821x,ssc-sysclk-enable;
+			rtl821x,ssc-clkout-enable;
+			rtl821x,led-link = <1>; // LED1 for link indication
+			rtl821x,led-act = <1>; // LED1 for activity
+			interrupt-parent = <&gpio1>;
+			interrupts = <4 IRQ_TYPE_LEVEL_LOW>;
+			eee-broken-1000t;
+		};
+	};
+};
+#endif
+
+#ifdef CONFIG_PICOCOREMX8MM_BLUETOOTH
+&uart3 {
+	pinctrl-0 = <&pinctrl_uart3_bt>;
+	uart-has-rtscts;
+	status = "okay";
+
+	bluetooth: bluetooth {
+		compatible = "nxp,88w8987-bt";
+		fw-init-baudrate = <115200>;
+	};
+};
+#endif
+
+&ecspi1 { status="disabled";};
+#ifdef CONFIG_PICOCOREMX8MM_SPI_A
+#ifdef CONFIG_PICOCOREMX8MM_CAN_A
+/delete-node/ &mcp25xxfd_clk;
+#endif
+#endif
+
+#ifdef CONFIG_PICOCOREMX8MM_SPI_A
+&ecspi3 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_ecspi3>;
+	num-cs = <1>;
+	cs-gpios = <&gpio5 25 GPIO_ACTIVE_LOW>;
+	status = "okay";
+
+#ifdef CONFIG_PICOCOREMX8MM_CAN_A
+	mcp25xxfd@0 {
+		compatible = "microchip,mcp2518fd";
+		reg = <0>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_can>;
+		spi-max-frequency = <10000000>;
+		interrupts-extended = <&gpio4 26 IRQ_TYPE_LEVEL_LOW>;
+		clocks = <&mcp25xxfd_clk>;
+		status = "okay";
+
+		mcp25xxfd_clk: oscillator-mcp25xxfd {
+			#clock-cells = <0>;
+			compatible = "fixed-clock";
+			clock-frequency = <20000000>; //20MHz
+		};
+	};
+#else
+	spidev@0 {
+		compatible = "linux,spidev";
+		spi-max-frequency = <20000000>;
+		reg = <0>;
+		status = "okay";
+	};
+#endif
+};
+#endif
+
+#ifdef CONFIG_PICOCOREMX8MM_WLAN
+&usdhc2 {
+	mmc-pwrseq = <&usdhc2_pwrseq>;
+	vmmc-supply = <&reg_vref_3v3>;
+	vqmmc-supply = <&reg_vref_1v8>;
+	/delete-node/ mwifiex;
+	wlan_wake: wifi_wake_host {
+		compatible = "nxp,wifi-wake-host";
+	};
+};
+
+#endif 
+&pcie0 {
+	reset-gpio = <&gpio4 15 GPIO_ACTIVE_LOW>;
+	/* the wake pin of PCIe must be configured as normal
+	 * wakeup source and it is not a specific driver issue
+	 */
+	//wake-gpio = <&gpio4 14 GPIO_ACTIVE_LOW>;
+};
+
+/* GPIO declarations */
+&gpio1 {
+	gpio-line-names =
+	/* 0 */  "I2C_B_IRQ", "GPIO_J1_7", "PMIC_WDOGn", "SD_A_VSEL",
+	/* 4 */  "ETH_A_PHY_INTn", "ETH_A_PHY_RST", "SD_A_CD", "SD_A_WP",
+	/* 8 */  "GPIO_J1_44", "GPIO_J1_46", "GPIO_J1_52", "GPIO_J1_54",
+	/* 12 */ "USB_OTG_PWRn", "GPIO_J1_2", "USB_HOST_PWRn", "LVDS_CLK",
+	/* 16 */ "ETH_A_D1P", "ETH_A_D1N", "ETH_A_D4N", "ETH_A_D4P",
+	/* 20 */ "ETH_A_D3N", "ETH_A_D3P", "ETH_A_D2P", "ETH_A_D2N",
+	/* 24 */ "ETH_B_D1P", "ETH_B_D1N", "ETH_B_D2P", "ETH_B_D2N",
+	/* 28 */ "ETH_B_D3P", "ETH_B_D3N", "", "";
+	status = "okay";
+};
+
+&gpio2 {
+	gpio-line-names =
+	/* 0 */  "SD_A_CLK", "SD_A_CMD", "SD_A_DATA0", "SD_A_DATA1",
+	/* 4 */  "SD_A_DATA2", "SD_A_DATA3", "SD_A_DATA4", "SD_A_DATA5",
+	/* 8 */  "SD_A_DATA6", "SD_A_DATA7", "SD_A_RST", "SD_A_STROBE",
+	/* 12 */ "SD_B_CD", "SD_B_CLK", "SD_B_CMD", "SD_B_DATA0",
+	/* 16 */ "SD_B_DATA1", "SD_B_DATA2", "SD_B_DATA3", "SD_B_RST",
+	/* 20 */ "SD_B_WP", "", "", "",
+	/* 24 */ "", "", "", "",
+	/* 28 */ "", "", "", "";
+	status = "okay";
+};
+
+&gpio3 {
+	gpio-line-names =
+	/* 0 */  "QSPI_SCLK", "QSPI_CS0", "SD_C_STROBE", "SD_C_DATA5",
+	/* 4 */  "SD_C_DATA6", "SD_C_DATA7", "QSPI_DATA0", "QSPI_DATA1",
+	/* 8 */  "QSPI_DATA2", "QSPI_DATA3", "SD_C_DATA0", "SD_C_DATA1",
+	/* 12 */ "SD_C_DATA2", "SD_C_DATA3", "", "SD_C_DATA4",
+	/* 16 */ "SD_C_RESET_B", "SD_C_CLK", "SD_C_CMD", "SPI_A_SS0",
+	/* 20 */ "LVDS_RST", "I2S_DIN", "I2S_LRCLK", "I2S_SCLK",
+	/* 24 */ "I2S_DOUT", "I2S_MCLK", "", "",
+	/* 28 */ "", "", "", "";
+	status = "okay";
+};
+
+&gpio4 {
+	gpio-line-names =
+	/* 0 */  "AUDIO_A_MIC", "AUDIO_A_LIN_R", "GPIO_J2_89", "",
+	/* 4 */  "WLAN_WAKE_DEV", "BT_WAKE_DEV", "GPIO_J2_79", "GPIO_J2_75",
+	/* 8 */  "GPIO_J2_77", "GPIO_J2_85", "BT_WAKE_HOST", "GPIO_J2_87",
+	/* 12 */ "CAN_INT0n", "CAN_INT1n", "mPCIE_WAKE", "mPCIE_PERST",
+	/* 16 */ "GPIO_J2_69", "GPIO_J2_73", "GPIO_J2_67", "GPIO_J2_65",
+	/* 20 */ "GPIO_J2_83", "UART_A_TXD", "UART_A_RXD", "UART_A_CTS",
+	/* 24 */ "UART_A_RTS", "CAN_CLKO/SOF", "CAN_INTn", "WLAN_WAKE_HOST",
+	/* 28 */ "VLCD_ON", "UART_B_RTS", "UART_B_CTS", "UART_B_RXD";
+	status = "okay";
+};
+
+&gpio5 {
+	gpio-line-names =
+	/* 0 */  "UART_B_TXD", "SE050_ENA", "PMIC_IRQ_B", "BL_ON",
+	/* 4 */  "BL_PWM", "PWM", "UART_BT_RXD", "UART_BT_TXD",
+	/* 8 */  "UART_BT_RTS", "UART_BT_CTS", "SPI_B_SCLK", "SPI_B_MOSI",
+	/* 12 */ "SPI_B_MISO", "SPI_B_SS0", "I2C_A_SCL", "I2C_A_SDA",
+	/* 16 */ "I2C_B_SCL", "I2C_B_SDA", "I2C_C_SCL", "I2C_C_SDA",
+	/* 20 */ "I2C_D_SCL", "I2C_D_SDA", "SPI_A_SCLK", "SPI_A_MOSI",
+	/* 24 */ "SPI_A_MISO", "ECSPI3_SS0", "UART_D_RXD", "UART_D_TXD",
+	/* 28 */ "UART_C_RXD", "UART_C_TXD", "", "";
+	status = "okay";
+};
+
+/delete-node/ &pinctrl_hog;
+
+&iomuxc {
+	/delete-property/ pinctrl-names;
+	/delete-property/ pinctrl-0;
+
+	imx8mm-picocoremx8mm {
+#ifdef CONFIG_PICOCOREMX8MM_MIPI_DSI_LVDS
+		pinctrl_mipi_dsi_lvds_en: mipi_dsi_lvds_en {
+			fsl,pins = <
+				/* LVDS RESET / TC358764 RST */
+				MX8MM_IOMUXC_SAI5_RXC_GPIO3_IO20	0x00016
+				/* For EXTCLK use the following setting
+				 * in your display DTS
+				 */
+//				 MX8MM_IOMUXC_GPIO1_IO15_CCMSRCGPCMIX_CLKO2	0x00059
+				MX8MM_IOMUXC_GPIO1_IO15_GPIO1_IO15	0x00016
+			>;
+		};
+#endif
+
+		pinctrl_fec1: fec1grp {
+			fsl,pins = <
+				MX8MM_IOMUXC_ENET_MDC_ENET1_MDC		0x00003
+				MX8MM_IOMUXC_ENET_MDIO_ENET1_MDIO	0x00003
+				MX8MM_IOMUXC_ENET_TD3_ENET1_RGMII_TD3	0x0001f
+				MX8MM_IOMUXC_ENET_TD2_ENET1_RGMII_TD2	0x0001f
+				MX8MM_IOMUXC_ENET_TD1_ENET1_RGMII_TD1	0x0001f
+				MX8MM_IOMUXC_ENET_TD0_ENET1_RGMII_TD0	0x0001f
+				MX8MM_IOMUXC_ENET_RD3_ENET1_RGMII_RD3	0x00091
+				MX8MM_IOMUXC_ENET_RD2_ENET1_RGMII_RD2	0x00091
+				MX8MM_IOMUXC_ENET_RD1_ENET1_RGMII_RD1	0x00091
+				MX8MM_IOMUXC_ENET_RD0_ENET1_RGMII_RD0	0x00091
+				MX8MM_IOMUXC_ENET_TXC_ENET1_RGMII_TXC	0x0001f
+				MX8MM_IOMUXC_ENET_RXC_ENET1_RGMII_RXC	0x00091
+				MX8MM_IOMUXC_ENET_RX_CTL_ENET1_RGMII_RX_CTL	0x00091
+				MX8MM_IOMUXC_ENET_TX_CTL_ENET1_RGMII_TX_CTL	0x0001f
+				/* reset */
+				MX8MM_IOMUXC_GPIO1_IO05_GPIO1_IO5	0x00019
+				/* INTn */
+				MX8MM_IOMUXC_GPIO1_IO04_GPIO1_IO4	0x00019
+			>;
+		};
+#ifdef CONFIG_PICOCOREMX8MM_SPI_A
+		pinctrl_ecspi3: ecspi3grp {
+			fsl,pins = <
+				MX8MM_IOMUXC_UART1_RXD_ECSPI3_SCLK	0x00082
+				MX8MM_IOMUXC_UART1_TXD_ECSPI3_MOSI	0x00082
+				MX8MM_IOMUXC_UART2_RXD_ECSPI3_MISO	0x00082
+				MX8MM_IOMUXC_UART2_TXD_GPIO5_IO25	0x40000
+				MX8MM_IOMUXC_SAI5_RXFS_GPIO3_IO19	0x00004
+			>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOREMX8MM_UART_A
+		pinctrl_uart1: uart1grp {
+			fsl,pins = <
+				MX8MM_IOMUXC_SAI2_RXC_UART1_DCE_RX	0x00000
+				MX8MM_IOMUXC_SAI2_RXFS_UART1_DCE_TX	0x00000
+#ifdef CONFIG_PICOCOREMX8MM_UART_A_RTSCTS
+				/* CTS */
+				MX8MM_IOMUXC_SAI2_RXD0_UART1_DCE_RTS_B	0x00000
+				/* RTS */
+				MX8MM_IOMUXC_SAI2_TXFS_UART1_DCE_CTS_B	0x00000
+#endif
+			>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOREMX8MM_UART_B
+		pinctrl_uart2: uart2grp {
+			fsl,pins = <
+				MX8MM_IOMUXC_SAI3_TXFS_UART2_DCE_RX	0x00000
+				MX8MM_IOMUXC_SAI3_TXC_UART2_DCE_TX	0x00000
+#ifdef CONFIG_PICOCOREMX8MM_UART_B_RTSCTS
+				/* CTS */
+				MX8MM_IOMUXC_SAI3_RXC_UART2_DCE_CTS_B	0x00000
+				/* RTS */
+				MX8MM_IOMUXC_SAI3_RXD_UART2_DCE_RTS_B	0x00000
+#endif
+			>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOREMX8MM_BLUETOOTH
+		pinctrl_uart3_bt: uart3btgrp {
+			fsl,pins = <
+				MX8MM_IOMUXC_ECSPI1_MISO_UART3_DCE_CTS_B 0x00000
+				MX8MM_IOMUXC_ECSPI1_MOSI_UART3_DCE_TX	0x00000
+				MX8MM_IOMUXC_ECSPI1_SCLK_UART3_DCE_RX	0x00000
+				MX8MM_IOMUXC_ECSPI1_SS0_UART3_DCE_RTS_B 0x00000
+				/* BT_WAKE_DEV */
+				MX8MM_IOMUXC_SAI1_RXD3_GPIO4_IO5		0x00004
+				/* BT_WAKE_HOST */
+				MX8MM_IOMUXC_SAI1_TXFS_GPIO4_IO10		0x00004
+			>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOREMX8MM_CAN_A
+		pinctrl_can: pinctrl_cangrp {
+			fsl,pins = <
+				/* CAN_CLKO/SOF */
+				MX8MM_IOMUXC_SAI2_TXC_GPIO4_IO25	0x00004
+				/* CAN_INTn */
+				MX8MM_IOMUXC_SAI2_TXD0_GPIO4_IO26	0x00019
+				/* CAN_INT0n */
+				MX8MM_IOMUXC_SAI1_TXD0_GPIO4_IO12	0x00004
+				/* CAN_INT1n */
+				MX8MM_IOMUXC_SAI1_TXD1_GPIO4_IO13	0x00004
+			>;
+		};
+#endif
+
+#ifdef CONFIG_PICOCOREMX8MM_PCIE
+		pinctrl_pcie0: pcie0grp {
+			fsl,pins = <
+				/* mPCIE_PERST */
+				MX8MM_IOMUXC_SAI1_TXD3_GPIO4_IO15	0x00001
+				/* mPCIE_WAKE */
+				MX8MM_IOMUXC_SAI1_TXD2_GPIO4_IO14	0x00004
+			>;
+		};
+#endif
+
+#if defined(CONFIG_PICOCOREMX8MM_WLAN) || defined(CONFIG_PICOCOREMX8MM_SD_B)
+		pinctrl_usdhc2_gpio: usdhc2grpgpio {
+			fsl,pins = <
+#ifdef CONFIG_PICOCOREMX8MM_SD_B_CD
+				/* CD */
+				MX8MM_IOMUXC_SD2_CD_B_GPIO2_IO12	0x00084
+#endif
+#ifdef CONFIG_PICOCOREMX8MM_SD_B_WP
+				/* WP */
+				MX8MM_IOMUXC_SD2_WP_GPIO2_IO20		0x00084
+#endif
+
+#ifdef CONFIG_PICOCOREMX8MM_SD_B
+				MX8MM_IOMUXC_SD2_RESET_B_USDHC2_RESET_B	0x00001
+#else
+				MX8MM_IOMUXC_SD2_RESET_B_GPIO2_IO19	0x00084
+#endif
+			>;
+		};
+#endif
+	};
+};
