@@ -1,0 +1,149 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * Copyright (C) 2026 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+/dts-v1/;
+
+#define CONFIG_PICOCOREMX95_BOARD_REVISION 100
+
+// #define SUPPORT_RPMSG
+
+#include "picocoremx95.dtsi"
+
+/* ==== Ethernet ==== */
+&netc_timer {
+	status = "okay";
+};
+
+&netc_blk_ctrl {
+	status = "okay";
+};
+
+&netc_emdio {
+	status = "okay";
+};
+
+&fs_eth_a {
+	status = "okay";
+};
+
+&fs_eth_b {
+	status = "okay";
+};
+
+/* ==== UART ==== */
+&fs_uart_a {
+	status = "okay";
+};
+
+&fs_uart_b {
+	status = "okay";
+};
+
+&fs_uart_c {
+	status = "okay";
+};
+
+&fs_uart_d {
+	status = "okay";
+};
+
+/* ==== I2C ==== */
+/* FS_I2C_INT reserved for Cortex-M33 */
+&fs_i2c_int {
+	status = "disabled";
+};
+
+&fs_i2c_a {
+    status = "okay";
+};
+
+&fs_i2c_b {
+	status = "okay";
+};
+
+&fs_i2c_c {
+	status = "okay";
+};
+
+&fs_i2c_d {
+	status = "okay";
+};
+
+/* ==== Audio ==== */
+&sound_sgtl5000 {
+    status = "okay";
+};
+
+&sgtl5000 {
+	status = "okay";
+};
+
+&fs_i2s_a {
+	status = "okay";
+};
+
+/* ==== SPI ==== */
+&fs_spi_a {
+	status = "okay";
+};
+
+&fs_spi_b {
+	status = "okay";
+};
+
+/* ==== SDIO ==== */
+&fs_sdio_a {
+	status = "okay";
+};
+
+&fs_sdio_b {
+	status = "disabled";
+};
+
+/* ==== CAN ==== */
+&fs_can_a {
+	status = "okay";
+};
+
+/* ==== USB ==== */
+/* OTG */
+&fs_usb_otg {
+	status = "okay";
+};
+
+/* HOST */
+&fs_usb_host {
+	status = "okay";
+};
+
+&usb3_phy {
+	status = "okay";
+};
+
+/* ==== MISC ====*/
+&neoisp0 {
+	status = "disabled";
+};
+
+&dpu {
+	status = "disabled";
+};
+
+&adc1 {
+	status = "disabled";
+};
+
+&pcie0 {
+	status = "okay";
+};
+
+&pcie0_ep {
+	status = "disabled";
+};
+

@@ -1,0 +1,1143 @@
+// SPDX-License-Identifier: GPL-2.0
+/*
+ * Copyright (C) 2026 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+// #include <dt-bindings/i3c/i3c.h>
+// #include <dt-bindings/leds/common.h>
+// #include <dt-bindings/phy/phy-imx8-pcie.h>
+// #include <dt-bindings/pwm/pwm.h>
+// #include <dt-bindings/usb/pd.h>
+#include <dt-bindings/rtc/pcf85363.h>
+#include "../freescale/imx95.dtsi"
+#include <fsversion.h>
+
+fs_eth_a: &enetc_port0 {};
+fs_eth_b: &enetc_port1 {};
+fs_uart_a: &lpuart7 {};
+fs_uart_b: &lpuart6 {};
+fs_uart_c: &lpuart1 {};
+fs_uart_d: &lpuart2 {};
+fs_i2c_int: &lpi2c2 {};
+fs_i2c_a: &lpi2c1 {};
+fs_i2c_b: &lpi2c8 {};
+fs_i2c_c: &lpi2c4 {};
+fs_i2c_d: &lpi2c3 {};
+fs_i2s_a: &sai5 {};
+fs_i2s_b: &sai4 {};
+fs_spi_a: &lpspi6 {};
+fs_spi_b: &lpspi1 {};
+emmc: &usdhc1 {};
+fs_sdio_a: &usdhc2 {};
+fs_sdio_b: &usdhc3 {};
+fs_can_a: &flexcan1 {};
+fs_usb_otg: &usb2 {};
+fs_usb_host: &usb3 {};
+fs_pwm: &tpm6 {};
+fs_disp_pwm: &tpm3 {};
+
+
+/ {
+	compatible = "fus,picocoremx95", "fsl,imx95";
+	model = "F+S PicoCoreMX95";
+
+	/delete-node/ aliases;
+	aliases {
+		ethernet0 = &fs_eth_a;
+		ethernet1 = &fs_eth_b;
+		gpio0 = &gpio1;
+		gpio1 = &gpio2;
+		gpio2 = &gpio3;
+		gpio3 = &gpio4;
+		gpio4 = &gpio5;
+		i2c0 = &fs_i2c_int;
+		i2c1 = &fs_i2c_a;
+		i2c2 = &fs_i2c_b;
+		i2c3 = &fs_i2c_c;
+		i2c4 = &fs_i2c_d;
+		mmc0 = &emmc;
+		mmc1 = &fs_sdio_a;
+		mmc2 = &fs_sdio_b;
+		serial0 = &fs_uart_a;
+		serial1 = &fs_uart_b;
+		serial2 = &fs_uart_c;
+		serial3 = &fs_uart_d;
+		rtc1 = &rtc85263;
+	};
+
+	chosen {
+		bootargs = "console=ttyLP0,115200";
+		stdout-path = &fs_uart_a;
+	};
+
+	memory@80000000 {
+		/* fixup in u-boot */
+		device_type = "memory";
+		reg = <0x0 0x80000000 0 0x80000000>;
+	};
+
+	reserved-memory {
+		ranges;
+		#address-cells = <2>;
+		#size-cells = <2>;
+
+		linux_cma: linux,cma {
+			compatible = "shared-dma-pool";
+			alloc-ranges = <0 0x80000000 0 0x7F000000>;
+			reusable;
+			size = <0 0x3c000000>;
+			linux,cma-default;
+		};
+
+		vpu_boot: vpu_boot@a0000000 {
+			reg = <0 0xa0000000 0 0x100000>;
+			no-map;
+		};
+
+		mali_protected: mali_protected {
+			reg = <0 0xa0100000 0 0x1000000>;
+			no-map;
+		};
+
+		ele_reserved: ele-reserved@a4120000 {
+			compatible = "shared-dma-pool";
+			reg = <0 0xa4120000 0 0x100000>;
+			no-map;
+		};
+
+#ifdef SUPPORT_RPMSG
+		vdev0vring0: vdev0vring0@88000000 {
+			reg = <0 0x88000000 0 0x8000>;
+			no-map;
+		};
+
+		vdev0vring1: vdev0vring1@88008000 {
+			reg = <0 0x88008000 0 0x8000>;
+			no-map;
+		};
+
+		vdev1vring0: vdev1vring0@88010000 {
+			reg = <0 0x88010000 0 0x8000>;
+			no-map;
+		};
+
+		vdev1vring1: vdev1vring1@88018000 {
+			reg = <0 0x88018000 0 0x8000>;
+			no-map;
+		};
+
+		vdevbuffer: vdevbuffer@88020000 {
+			compatible = "shared-dma-pool";
+			reg = <0 0x88020000 0 0x100000>;
+			no-map;
+		};
+
+		rsc_table: rsc-table@88220000 {
+			reg = <0 0x88220000 0 0x1000>;
+			no-map;
+		};
+#endif /* SUPPORT_RPMSG */
+	};
+
+	regulators {
+		compatible = "simple-bus";
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		reg_5v0: regulator-5v {
+			compatible = "regulator-fixed";
+			regulator-name = "5V0";
+			regulator-min-microvolt = <5000000>;
+			regulator-max-microvolt = <5000000>;
+			regulator-always-on;
+			regulator-boot-on;
+		};
+
+		reg_3v3: regulator-3v3 {
+			compatible = "regulator-fixed";
+			regulator-name = "3V3";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			vin-supply = <&reg_5v0>;
+			regulator-always-on;
+			regulator-boot-on;
+		};
+
+		reg_1v8: regulator-1v8 {
+			compatible = "regulator-fixed";
+			regulator-name = "1V8";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+			vin-supply = <&reg_5v0>;
+			regulator-always-on;
+			regulator-boot-on;
+		};
+
+		reg_usb_otg: regulator_usb_otg {
+			compatible = "regulator-fixed";
+			regulator-name = "usb-otg";
+			regulator-min-microvolt = <5000000>;
+			regulator-max-microvolt = <5000000>;
+			gpio = <&gpio2 22 GPIO_ACTIVE_HIGH>;
+			enable-active-high;
+		};
+
+		reg_usb_host: regulator_usb_host {
+			compatible = "regulator-fixed";
+			regulator-name = "usb-host";
+			regulator-min-microvolt = <5000000>;
+			regulator-max-microvolt = <5000000>;
+			gpio = <&gpio2 24 GPIO_ACTIVE_HIGH>;
+			enable-active-high;
+		};
+
+		/* SGTL5000 analog voltage */
+ 		reg_sgtl5000_vdda: sgtl5000_vdda {
+ 			compatible = "regulator-fixed";
+ 			regulator-name = "VDDA-supply";
+ 			regulator-min-microvolt = <3300000>;
+ 			regulator-max-microvolt = <3300000>;
+			vin-supply = <&reg_3v3>;
+ 			regulator-always-on;
+ 		};
+
+ 		/* SGTL5000 I/O voltage */
+ 		reg_sgtl5000_vddio: sgtl5000_vddio {
+ 			compatible = "regulator-fixed";
+ 			regulator-name = "VDDIO-supply";
+ 			regulator-min-microvolt = <1800000>;
+ 			regulator-max-microvolt = <1800000>;
+			vin-supply = <&reg_1v8>;
+			regulator-always-on;
+ 		};
+
+ 		/* SGTL5000 internal digital voltage */
+ 		reg_sgtl5000_vddd: sgtl5000_vddd {
+ 			compatible = "regulator-fixed";
+ 			regulator-name = "VDDD-supply";
+ 			regulator-min-microvolt = <1800000>;
+ 			regulator-max-microvolt = <1800000>;
+			vin-supply = <&reg_1v8>;
+ 			regulator-always-on;
+		};
+	};
+
+	mali_pma: protected-memory-allocator {
+		 compatible = "arm,protected-memory-allocator";
+		 memory-region = <&mali_protected>;
+	};
+
+	/* NOTE:
+	 * SGTL SYSCLK supports only one static frequency, here it is 48kHz.
+	 * Simple-Audio-Card only supports 48Khz for Input and Output.
+	 * use this driver to force user-space to use 48kHz sample rate.
+	 */
+	sound_sgtl5000: sound {
+		compatible = "simple-audio-card";
+		simple-audio-card,name = "sgtl5000-audio";
+		simple-audio-card,format = "i2s";
+		simple-audio-card,frame-master = <&cpu_dai>;
+		simple-audio-card,bitclock-master = <&cpu_dai>;
+		status = "disabled";
+
+		cpu_dai: simple-audio-card,cpu {
+			sound-dai = <&fs_i2s_a>;
+		};
+
+		codec_dai: simple-audio-card,codec {
+			sound-dai = <&sgtl5000>;
+		};
+	};
+
+#ifdef SUPPORT_RPMSG
+	cm7: imx95-cm7 {
+		compatible = "fsl,imx95-cm7";
+		mbox-names = "tx", "rx", "rxdb";
+		mboxes = <&mu7 0 1
+			  &mu7 1 1
+			  &mu7 3 1>;
+		memory-region = <&vdevbuffer>, <&vdev0vring0>, <&vdev0vring1>,
+				<&vdev1vring0>, <&vdev1vring1>, <&rsc_table>;
+		/* cpuid and lmmid must align with SM firmware */
+		fsl,cpu-id = <1>;
+		fsl,lmm-id = <1>;
+		fsl,startup-delay-ms = <50>;
+		status = "okay";
+	};
+#endif /* SUPPORT_RPMSG */
+
+};
+
+/* ==== Ethernet ==== */
+/* The default setting in i.mx95.dtsi are for i.MX95 19x19,
+ * so change them for i.MX95 15x15 here.
+ */
+&netc_bus0 {
+	msi-map = <0x00 &its 0x60 0x1>,	//ENETC0 PF
+		  <0x10 &its 0x61 0x1>, //ENETC0 VF0
+		  <0x20 &its 0x62 0x1>, //ENETC0 VF1
+		  <0x40 &its 0x63 0x1>, //ENETC1 PF
+		  <0x50 &its 0x65 0x1>, //ENETC1 VF0
+		  <0x60 &its 0x66 0x1>, //ENETC1 VF1
+		  <0x80 &its 0x64 0x1>, //ENETC2 PF
+		  <0xc0 &its 0x67 0x1>; //NETC Timer
+	iommu-map = <0x0 &smmu 0x20 0x1>,
+		    <0x10 &smmu 0x21 0x1>,
+		    <0x20 &smmu 0x22 0x1>,
+		    <0x40 &smmu 0x23 0x1>,
+		    <0x50 &smmu 0x25 0x1>,
+		    <0x60 &smmu 0x26 0x1>,
+		    <0x80 &smmu 0x24 0x1>,
+		    <0xc0 &smmu 0x27 0x1>;
+};
+
+// TODO: Check if needed
+&netc_timer {
+	status = "disabled";
+};
+
+&netc_blk_ctrl {
+	status = "disabled";
+};
+
+&netc_emdio {
+	pinctrl-0 = <&pinctrl_emdio>;
+	pinctrl-names = "default";
+	status = "disabled";
+
+	//TODO: Phys
+	// RESET via SM
+	ethphy0: ethernet-phy@4 {
+		reg = <4>;
+		// reset-assert-us = <10000>;
+		// reset-deassert-us = <150000>;
+		// reset-gpios = <&dummy 4 GPIO_ACTIVE_LOW>;
+		realtek,clkout-disable;
+		interrupt-parent = <&gpio4>;
+		interrupts = <14 IRQ_TYPE_EDGE_FALLING>;
+	};
+
+	ethphy1: ethernet-phy@5 {
+		reg = <5>;
+		// reset-assert-us = <10000>;
+		// reset-deassert-us = <150000>;
+		// reset-gpios = <&dummy 5 GPIO_ACTIVE_LOW>;
+		realtek,clkout-disable;
+		interrupt-parent = <&gpio4>;
+		interrupts = <15 IRQ_TYPE_EDGE_FALLING>;
+	};
+};
+
+&fs_eth_a {
+	pinctrl-0 = <&pinctrl_enetc0>;
+	pinctrl-names = "default";
+	phy-mode = "rgmii-id";
+	phy-handle = <&ethphy0>;
+	status = "disabled";
+};
+
+&fs_eth_b {
+	pinctrl-0 = <&pinctrl_enetc1>;
+	pinctrl-names = "default";
+	phy-mode = "rgmii-id";
+	phy-handle = <&ethphy1>;
+	status = "disabled";
+};
+
+/* ==== UART ==== */
+&fs_uart_a {
+	pinctrl-0 = <&pinctrl_lpuart7>;
+	pinctrl-names = "default";
+	status = "okay";
+};
+
+&fs_uart_b {
+	pinctrl-0 = <&pinctrl_lpuart6>;
+	pinctrl-names = "default";
+	status = "disabled";
+};
+
+&fs_uart_c {
+	pinctrl-0 = <&pinctrl_lpuart1>;
+	pinctrl-names = "default";
+	status = "disabled";
+};
+
+&fs_uart_d {
+	pinctrl-0 = <&pinctrl_lpuart2>;
+	pinctrl-names = "default";
+	status = "disabled";
+};
+
+/* ==== I2C ==== */
+&fs_i2c_int {
+	/* LPI2C2 reserved for Cortex-M33 */
+	pinctrl-0 = <&pinctrl_lpi2c2>;
+	pinctrl-names = "default";
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "disabled";
+
+	rtc85263: rtc85263@51 {
+		compatible = "nxp,pcf85263";
+		reg = <0x51>;
+		clock-out = <PCF85363_COF_32768Hz>;
+		quartz-load-femtofarads = <PCF85363_CAP_12p5pF>;
+		quartz-drive-strength = <PCF85363_OSC_DRIVE_LOW>;
+	};
+
+	pcal6408: pcal6408@21 {
+		compatible = "nxp,pcal6408";
+		reg = <0x21>;
+		gpio-controller;
+		#gpio-cells = <2>;
+		interrupt-parent = <&gpio1>;
+		interrupts = <10 IRQ_TYPE_EDGE_FALLING>;
+		interrupt-controller;
+		#interrupt-cells = <2>;
+		vcc-supply = <&reg_5v0>;
+		gpio-line-names =
+		/* 0-3 */	"V_ARM_PGOOD","V_SOC_PGOOD","RTC_IRQ","PMIC_IRQ",
+		/* 4-7 */	"PCIe_WAKE","PCIE_PERST","ETH_A_PHY_RST","ETH_B_PHY_RST";
+	};
+};
+
+&fs_i2c_a {
+	pinctrl-0 = <&pinctrl_lpi2c1>;
+	pinctrl-names = "default";
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "disabled";
+
+	eeprom: eeprom@50 {
+		compatible = "onnn,n24s64b", "atmel,24c64";
+		reg = <0x50>;
+		size = <8192>;
+		pagesize = <32>;
+	};
+};
+
+&fs_i2c_b {
+	pinctrl-0 = <&pinctrl_lpi2c8>;
+	pinctrl-names = "default";
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "disabled";
+};
+
+&fs_i2c_c {
+	pinctrl-0 = <&pinctrl_lpi2c4>;
+	pinctrl-names = "default";
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "disabled";
+};
+
+&fs_i2c_d {
+	pinctrl-0 = <&pinctrl_lpi2c3>;
+	pinctrl-names = "default";
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "disabled";
+
+	sgtl5000: sgtl5000@a {
+		/* NOTE: Codec supports only 48KHz */
+		compatible = "fsl,sgtl5000";
+		#sound-dai-cells = <0>;
+		reg = <0xa>;
+		VDDA-supply = <&reg_sgtl5000_vdda>;
+		VDDIO-supply = <&reg_sgtl5000_vddio>;
+		VDDD-supply = <&reg_sgtl5000_vddd>;
+		clocks = <&scmi_clk IMX95_CLK_CCMCKO1>;
+		clock-names = "mclk";
+		assigned-clocks = <&scmi_clk IMX95_CLK_CCMCKO1>;
+		assigned-clock-parents = <&scmi_clk IMX95_CLK_AUDIOPLL1>;
+		assigned-clock-rates = <12288000>; //48kHz * 256
+		mono2both;
+		status = "disabled";
+	};
+};
+
+/* ==== SAI ==== */
+&fs_i2s_a {
+	#sound-dai-cells = <0>;
+	pinctrl-0 = <&pinctrl_sai5>;
+	pinctrl-names = "default";
+	assigned-clocks = <&scmi_clk IMX95_CLK_AUDIOPLL1_VCO>,
+			  <&scmi_clk IMX95_CLK_AUDIOPLL2_VCO>,
+			  <&scmi_clk IMX95_CLK_AUDIOPLL1>,
+			  <&scmi_clk IMX95_CLK_AUDIOPLL2>,
+			  <&scmi_clk IMX95_CLK_SAI5>;
+	assigned-clock-parents = <0>, <0>, <0>, <0>, <&scmi_clk IMX95_CLK_AUDIOPLL1>;
+	assigned-clock-rates = <3932160000>, <3612672000>, <393216000>, <361267200>, <12288000>;
+	status = "disabled";
+};
+
+&fs_i2s_b {
+	#sound-dai-cells = <0>;
+	pinctrl-0 = <&pinctrl_sai4>;
+	pinctrl-names = "default";
+	status = "disabled";
+};
+
+/* ==== SPI ==== */
+&fs_spi_a {
+	pinctrl-0 = <&pinctrl_lpspi6>;
+	pinctrl-names = "default";
+	// cs-gpios = <&gpio2 0 GPIO_ACTIVE_LOW>;
+	// num-cs = <1>;
+	status = "disabled";
+};
+
+&fs_spi_b {
+	pinctrl-0 = <&pinctrl_lpspi1>;
+	pinctrl-names = "default";
+	// cs-gpios = <&gpio1 11 GPIO_ACTIVE_LOW>;
+	// num-cs = <1>;
+	status = "disabled";
+#if CONFIG_PICOCOREMX95_BOARD_REVISION == 100
+	swap_sout_sin;
+#endif
+};
+
+/* ==== SDIO ==== */
+&emmc {
+	pinctrl-names = "default", "state_100mhz", "state_200mhz";
+	pinctrl-0 = <&pinctrl_usdhc1>;
+	pinctrl-1 = <&pinctrl_usdhc1_100mhz>;
+	pinctrl-2 = <&pinctrl_usdhc1_200mhz>;
+	vmmc-supply = <&reg_3v3>;
+	vqmmc-supply = <&reg_1v8>;
+	bus-width = <8>;
+	mmc-hs200-1_8v;
+	mmc-hs400-1_8v;
+	non-removable;
+	status = "okay";
+};
+
+&fs_sdio_a {
+	pinctrl-names = "default", "state_100mhz", "state_200mhz";
+	pinctrl-0 = <&pinctrl_usdhc2>;
+	pinctrl-1 = <&pinctrl_usdhc2_100mhz>;
+	pinctrl-2 = <&pinctrl_usdhc2_200mhz>;
+	bus-width = <4>;
+	status = "disabled";
+};
+
+&fs_sdio_b {
+	pinctrl-names = "default", "state_100mhz", "state_200mhz";
+	pinctrl-0 = <&pinctrl_usdhc3>;
+	pinctrl-1 = <&pinctrl_usdhc3_100mhz>;
+	pinctrl-2 = <&pinctrl_usdhc3_200mhz>;
+	bus-width = <4>;
+	status = "disabled";
+};
+
+/* ==== CAN ==== */
+&fs_can_a {
+	pinctrl-0 = <&pinctrl_flexcan1>;
+	pinctrl-names = "default";
+	status = "disabled";
+};
+
+/* ==== USB ==== */
+/* OTG */
+&fs_usb_otg {
+	dr_mode = "otg";
+	vbus-supply = <&reg_usb_otg>;
+	disable-over-current;
+	status = "disabled";
+};
+
+/* HOST */
+&fs_usb_host {
+	status = "disabled";
+};
+
+&usb3_dwc3 {
+	dr_mode = "host";
+	vbus-supply = <&reg_usb_host>;
+};
+
+&usb3_phy {
+	status = "disabled";
+};
+
+/* ==== PWM ====*/
+&fs_pwm {
+	pinctrl-0 = <&pinctrl_tpm6>;
+	pinctrl-names = "default";
+};
+
+&fs_disp_pwm {
+	pinctrl-0 = <&pinctrl_tpm3>;
+	pinctrl-names = "default";
+};
+
+/* ==== GPIOs ==== */
+&gpio1 {
+	/* GPIO1 reserved for Cortex-M33 */
+	pinctrl-0 = <&pinctrl_gpio1>;
+	pinctrl-names = "default";
+	status = "disabled";
+
+	gpio-line-names = 
+	/* 0 */   "I2C_A_SCL", "I2C_A_SDA", "I2C_SM_SCL", "I2C_SM_SDA",
+	/* 4 */   "UART_C_RX", "UART_C_TX", "UART_D_RX", "UART_D_TX",
+	/* 8 */   "", "", "IOEXP_IRQ", "SPI_B_CS",
+	/* 12 */  "SPI_B_MISO", "SPI_B_CLK", "SPI_B_MOSI", "",
+	/* 16 */  "", "", "", "",
+	/* 20 */  "", "", "", "",
+	/* 24 */  "", "", "", "",
+	/* 28 */  "", "", "", "";
+};
+
+&gpio2 {
+	pinctrl-0 = <&pinctrl_gpio2>;
+	pinctrl-names = "default";
+	status = "okay";
+
+	gpio-line-names = 
+	/* 0 */   "SPI_A_CS", "SPI_A_MISO", "SPI_A_MOSI", "SPI_A_CLK",
+	/* 4 */   "UART_B_TX", "UART_B_RX", "UART_B_CTS", "UART_B_RTS",
+	/* 8 */   "UART_A_TX", "UART_A_RX", "UART_A_CTS", "UART_A_RTS",
+	/* 12 */  "I2C_B_SDA", "I2C_B_SCL", "GPIO_J1_7", "I2C_B_IRQ",
+	/* 16 */  "GPIO_J1_44", "GPIO_J1_46", "GPIO_J1_52", "GPIO_J1_54",
+	/* 20 */  "DISP_BL_PWM", "DISP_VDD_EN", "USB_OTG_PWR", "PWM",
+	/* 24 */  "USB_HOST_PWR", "USB_TYPEC_EN", "DISP_BL_EN", "USB_TYPEC_EN",
+	/* 28 */  "I2C_D_SDA", "I2C_D_SCL", "I2C_C_SDA", "I2C_C_SCL";
+};
+
+&gpio3 {
+	pinctrl-0 = <&pinctrl_gpio3>;
+	pinctrl-names = "default";
+	status = "okay";
+
+	gpio-line-names = 
+	/* 0 */   "SD_A_CD", "SD_A_CLK", "SD_A_CMD", "SD_A_D0",
+	/* 4 */   "SD_A_D1", "SD_A_D2", "SD_A_D3", "SD_A_D4",
+	/* 8 */   "eMMC_CLK", "eMMC_CMD", "eMMC_D0", "eMMC_D1",
+	/* 12 */  "eMMC_D2", "eMMC_D3", "eMMC_D4", "eMMC_D5",
+	/* 16 */  "eMMC_D6", "eMMC_D7", "eMMC_DS", "SD_A_VSEL",
+	/* 20 */  "SD_B_CLK", "SD_B_CMD", "SD_B_D0", "SD_B_D1",
+	/* 24 */  "SD_B_D2", "SD_B_D3", "I2S_A_MCLK", "GPIO_J2_87",
+	/* 28 */  "I2S_B_MCLK", "", "", "";
+};
+
+&gpio4 {
+	pinctrl-0 = <&pinctrl_gpio4>;
+	pinctrl-names = "default";
+	status = "okay";
+
+	gpio-line-names = 
+	/* 0 */   "RGMII_MDC", "RGMII_MDIO", "ETH_A_RGMII_TXD3", "ETH_A_RGMII_TXD2",
+	/* 4 */   "ETH_A_RGMII_TXD1", "ETH_A_RGMII_TXD0", "ETH_A_RGMII_TXCTL", "ETH_A_RGMII_TXC",
+	/* 8 */   "ETH_A_RGMII_RXCTL", "ETH_A_RGMII_RXC", "ETH_A_RGMII_RXD0", "ETH_A_RGMII_RXD1",
+	/* 12 */  "ETH_A_RGMII_RXD2", "ETH_A_RGMII_RXD3", "ETH_A_PHY_INT", "ETH_B_PHY_INT",
+	/* 16 */  "ETH_B_RGMII_TXD3", "ETH_B_RGMII_TXD2", "ETH_B_RGMII_TXD1", "ETH_B_RGMII_TXD0",
+	/* 20 */  "ETH_B_RGMII_TXCTL", "ETH_B_RGMII_TXC", "ETH_B_RGMII_RXCTL", "ETH_B_RGMII_RXC",
+	/* 24 */  "ETH_B_RGMII_RXD0", "ETH_B_RGMII_RXD1", "ETH_B_RGMII_RXD2", "ETH_B_RGMII_RXD3",
+	/* 28 */  "", "GPIO_J2_89", "", "";
+};
+
+&gpio5 {
+	pinctrl-0 = <&pinctrl_gpio5>;
+	pinctrl-names = "default";
+	status = "okay";
+
+	gpio-line-names = 
+	/* 0 */   "I2S_B_TX_BITCLK", "I2S_B_TX_LRCLK", "I2S_B_DOUT", "I2S_B_DIN",
+	/* 4 */   "I2S_A_DOUT", "I2S_A_LRCLK", "I2S_A_BITCLK", "I2S_A_DIN",
+	/* 8 */   "GPIO_J2_85", "", "", "GPIO_J2_83",
+	/* 12 */  "", "", "", "",
+	/* 16 */  "", "", "", "",
+	/* 20 */  "", "", "", "",
+	/* 24 */  "", "", "", "",
+	/* 28 */  "", "", "", "";
+};
+
+/* ==== MISC ==== */
+&ele_if0 {
+	memory-region = <&ele_reserved>;
+};
+
+#ifdef SUPPORT_RPMSG
+&mu7 {
+	status = "okay";
+};
+#endif
+
+&wdog3 {
+	status = "okay";
+};
+
+&displaymix_irqsteer {
+	status = "okay";
+};
+
+&vpuctrl {
+	boot = <&vpu_boot>;
+	sram = <&sram1>;
+};
+
+&mali {
+	protected-memory-allocator = <&mali_pma>;
+};
+
+&neoisp0 {
+	status = "disabled";
+};
+
+&dpu {
+	status = "disabled";
+};
+
+&adc1 {
+	vref-supply = <&reg_1v8>;
+	status = "disabled";
+};
+
+&pcie0 {
+	/* TODO: GPIO-Support from SM */
+	// reset-gpio = <&gpio5 13 GPIO_ACTIVE_LOW>;
+	status = "disabled";
+};
+
+&pcie0_ep {
+	status = "disabled";
+};
+
+// TODO:
+// &scmi_misc {
+// 	nxp,ctrl-ids = <BRD_SM_CTRL_SD3_WAKE		1>,
+// 		       <BRD_SM_CTRL_PCIE1_WAKE		1>,
+// 		       <BRD_SM_CTRL_BT_WAKE		1>,
+// 		       <BRD_SM_CTRL_PCIE2_WAKE		1>,
+// 		       <BRD_SM_CTRL_BUTTON		1>;
+// };
+
+&thermal_zones {
+	pf09-thermal {
+		polling-delay = <2000>;
+		polling-delay-passive = <250>;
+		thermal-sensors = <&scmi_sensor 2>;
+
+		trips {
+			pf09_alert: trip0 {
+				hysteresis = <2000>;
+				temperature = <140000>;
+				type = "passive";
+			};
+
+			pf09_crit: trip1 {
+				hysteresis = <2000>;
+				temperature = <155000>;
+				type = "critical";
+			};
+		};
+	};
+
+	pf53arm-thermal {
+		polling-delay = <2000>;
+		polling-delay-passive = <250>;
+		thermal-sensors = <&scmi_sensor 4>;
+
+		cooling-maps {
+			map0 {
+				cooling-device = <&A55_0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
+						 <&A55_1 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
+						 <&A55_2 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
+						 <&A55_3 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
+						 <&A55_4 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
+						 <&A55_5 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
+				trip = <&pf5301_alert>;
+			};
+		};
+
+		trips {
+			pf5301_alert: trip0 {
+				hysteresis = <2000>;
+				temperature = <140000>;
+				type = "passive";
+			};
+
+			pf5301_crit: trip1 {
+				hysteresis = <2000>;
+				temperature = <155000>;
+				type = "critical";
+			};
+		};
+	};
+
+	pf53soc-thermal {
+		polling-delay = <2000>;
+		polling-delay-passive = <250>;
+		thermal-sensors = <&scmi_sensor 3>;
+
+		trips {
+			pf5302_alert: trip0 {
+				hysteresis = <2000>;
+				temperature = <140000>;
+				type = "passive";
+			};
+
+			pf5302_crit: trip1 {
+				hysteresis = <2000>;
+				temperature = <155000>;
+				type = "critical";
+			};
+		};
+	};
+};
+
+/* ==== IOMUXC ==== */
+&scmi_iomuxc {
+	pinctrl_emdio: emdiogrp {
+		fsl,pins = <
+			IMX95_PAD_ENET1_MDC__NETCMIX_TOP_NETC_MDC	0x50e
+			IMX95_PAD_ENET1_MDIO__NETCMIX_TOP_NETC_MDIO	0x90e
+		>;
+	};
+
+	pinctrl_enetc0: enetc0grp {
+		fsl,pins = <
+			IMX95_PAD_ENET1_TD3__NETCMIX_TOP_ETH0_RGMII_TD3		0x50e
+			IMX95_PAD_ENET1_TD2__NETCMIX_TOP_ETH0_RGMII_TD2		0x50e
+			IMX95_PAD_ENET1_TD1__NETCMIX_TOP_ETH0_RGMII_TD1		0x50e
+			IMX95_PAD_ENET1_TD0__NETCMIX_TOP_ETH0_RGMII_TD0		0x50e
+			IMX95_PAD_ENET1_TX_CTL__NETCMIX_TOP_ETH0_RGMII_TX_CTL	0x50e
+			IMX95_PAD_ENET1_TXC__NETCMIX_TOP_ETH0_RGMII_TX_CLK	0x50e
+			IMX95_PAD_ENET1_RX_CTL__NETCMIX_TOP_ETH0_RGMII_RX_CTL	0x50e
+			IMX95_PAD_ENET1_RXC__NETCMIX_TOP_ETH0_RGMII_RX_CLK	0x50e
+			IMX95_PAD_ENET1_RD0__NETCMIX_TOP_ETH0_RGMII_RD0		0x50e
+			IMX95_PAD_ENET1_RD1__NETCMIX_TOP_ETH0_RGMII_RD1		0x50e
+			IMX95_PAD_ENET1_RD2__NETCMIX_TOP_ETH0_RGMII_RD2		0x50e
+			IMX95_PAD_ENET1_RD3__NETCMIX_TOP_ETH0_RGMII_RD3		0x50e
+		>;
+	};
+
+	pinctrl_enetc1: enetc1grp {
+		fsl,pins = <
+			IMX95_PAD_ENET2_TD3__NETCMIX_TOP_ETH1_RGMII_TD3		0x50e
+			IMX95_PAD_ENET2_TD2__NETCMIX_TOP_ETH1_RGMII_TD2		0x50e
+			IMX95_PAD_ENET2_TD1__NETCMIX_TOP_ETH1_RGMII_TD1		0x50e
+			IMX95_PAD_ENET2_TD0__NETCMIX_TOP_ETH1_RGMII_TD0		0x50e
+			IMX95_PAD_ENET2_TX_CTL__NETCMIX_TOP_ETH1_RGMII_TX_CTL	0x50e
+			IMX95_PAD_ENET2_TXC__NETCMIX_TOP_ETH1_RGMII_TX_CLK	0x50e
+			IMX95_PAD_ENET2_RX_CTL__NETCMIX_TOP_ETH1_RGMII_RX_CTL	0x50e
+			IMX95_PAD_ENET2_RXC__NETCMIX_TOP_ETH1_RGMII_RX_CLK	0x50e
+			IMX95_PAD_ENET2_RD0__NETCMIX_TOP_ETH1_RGMII_RD0		0x50e
+			IMX95_PAD_ENET2_RD1__NETCMIX_TOP_ETH1_RGMII_RD1		0x50e
+			IMX95_PAD_ENET2_RD2__NETCMIX_TOP_ETH1_RGMII_RD2		0x50e
+			IMX95_PAD_ENET2_RD3__NETCMIX_TOP_ETH1_RGMII_RD3		0x50e
+		>;
+	};
+
+	pinctrl_lpuart7: lpuart7grp {
+		fsl,pins = <
+			IMX95_PAD_GPIO_IO08__LPUART7_TX		0x50e
+			IMX95_PAD_GPIO_IO09__LPUART7_RX		0x50e
+			IMX95_PAD_GPIO_IO10__LPUART7_CTS_B	0x50e
+			IMX95_PAD_GPIO_IO11__LPUART7_RTS_B	0x50e
+		>;
+	};
+
+	pinctrl_lpuart6: lpuart6grp {
+		fsl,pins = <
+			IMX95_PAD_GPIO_IO04__LPUART6_TX		0x50e
+			IMX95_PAD_GPIO_IO05__LPUART6_RX		0x50e
+			IMX95_PAD_GPIO_IO06__LPUART6_CTS_B	0x50e
+			IMX95_PAD_GPIO_IO07__LPUART6_RTS_B	0x50e
+		>;
+	};
+
+	pinctrl_lpuart1: lpuart1grp{
+		fsl,pins = <
+			IMX95_PAD_UART1_RXD__AONMIX_TOP_LPUART1_RX	0x50e
+			IMX95_PAD_UART1_TXD__AONMIX_TOP_LPUART1_TX	0x50e
+		>;
+	};
+
+	pinctrl_lpuart2: lpuart2grp{
+		fsl,pins = <
+			IMX95_PAD_UART2_RXD__AONMIX_TOP_LPUART2_RX	0x50e
+			IMX95_PAD_UART2_TXD__AONMIX_TOP_LPUART2_TX	0x50e
+		>;
+	};
+
+	pinctrl_lpi2c1: lpi2c1grp {
+		fsl,pins = <
+			IMX95_PAD_I2C1_SCL__AONMIX_TOP_LPI2C1_SCL	0x4000099e
+			IMX95_PAD_I2C1_SDA__AONMIX_TOP_LPI2C1_SDA	0x4000099e
+		>;
+	};
+
+	pinctrl_lpi2c2: lpi2c1grp {
+		fsl,pins = <
+			IMX95_PAD_I2C2_SCL__AONMIX_TOP_LPI2C2_SCL	0x4000099e
+			IMX95_PAD_I2C2_SDA__AONMIX_TOP_LPI2C2_SDA	0x4000099e
+		>;
+	};
+
+	pinctrl_lpi2c8: lpi2c8grp {
+		fsl,pins = <
+			IMX95_PAD_GPIO_IO12__LPI2C8_SDA		0x4000099e
+			IMX95_PAD_GPIO_IO13__LPI2C8_SCL		0x4000099e
+		>;
+	};
+
+	pinctrl_lpi2c4: lpi2c4grp {
+		fsl,pins = <
+			IMX95_PAD_GPIO_IO30__LPI2C4_SDA		0x4000099e
+			IMX95_PAD_GPIO_IO31__LPI2C4_SCL		0x4000099e
+		>;
+	};
+
+	pinctrl_lpi2c3: lpi2c3grp {
+		fsl,pins = <
+			IMX95_PAD_GPIO_IO28__LPI2C3_SDA		0x4000099e
+			IMX95_PAD_GPIO_IO29__LPI2C3_SCL		0x4000099e
+		>;
+	};
+
+	pinctrl_sai4: sai4grp {
+		fsl,pins = <
+			IMX95_PAD_XSPI1_DATA3__SAI4_RX_DATA_BIT0	0x31e
+			IMX95_PAD_XSPI1_DATA2__SAI4_TX_DATA_BIT0	0x31e
+			IMX95_PAD_XSPI1_DATA1__SAI4_TX_SYNC		0x31e
+			IMX95_PAD_XSPI1_DATA0__SAI4_TX_BCLK		0x31e
+			IMX95_PAD_XSPI1_SCLK__SAI4_RX_SYNC		0x31e
+			IMX95_PAD_XSPI1_SS0_B__SAI4_RX_BCLK		0x31e
+			IMX95_PAD_CCM_CLKO3__CCMSRCGPCMIX_TOP_CLKO_3	0x31e
+		>;
+
+	};
+
+	pinctrl_sai5: sai5grp {
+		fsl,pins = <
+			IMX95_PAD_XSPI1_DATA7__SAI5_RX_DATA_BIT0	0x31e
+			IMX95_PAD_XSPI1_DATA6__SAI5_TX_BCLK		0x31e
+			IMX95_PAD_XSPI1_DATA5__SAI5_TX_SYNC		0x31e
+			IMX95_PAD_XSPI1_DATA4__SAI5_TX_DATA_BIT0	0x31e
+			IMX95_PAD_CCM_CLKO1__CCMSRCGPCMIX_TOP_CLKO_1	0x31e
+		>;
+	};
+
+	pinctrl_lpspi6: lpspi6grp {
+		fsl,pins = <
+			IMX95_PAD_GPIO_IO00__LPSPI6_PCS0	0x31e
+			// IMX95_PAD_GPIO_IO00__GPIO2_IO_BIT0	0x31e
+			IMX95_PAD_GPIO_IO01__LPSPI6_SIN		0x31e
+			IMX95_PAD_GPIO_IO02__LPSPI6_SOUT	0x31e
+			IMX95_PAD_GPIO_IO03__LPSPI6_SCK		0x31e
+		>;
+	};
+
+	pinctrl_lpspi1: lpspi1grp {
+		fsl,pins = <
+			IMX95_PAD_SAI1_TXFS__AONMIX_TOP_LPSPI1_PCS0	0x31e
+			// IMX95_PAD_SAI1_TXFS__AONMIX_TOP_GPIO1_IO_BIT11	0x31e
+			IMX95_PAD_SAI1_TXC__AONMIX_TOP_LPSPI1_SIN	0x31e
+			IMX95_PAD_SAI1_TXD0__AONMIX_TOP_LPSPI1_SCK	0x31e
+			IMX95_PAD_SAI1_RXD0__AONMIX_TOP_LPSPI1_SOUT	0x31e
+		>;
+	};
+
+	pinctrl_usdhc1: usdhc1grp {
+		fsl,pins = <
+			IMX95_PAD_SD1_CLK__USDHC1_CLK			0x158e
+			IMX95_PAD_SD1_CMD__USDHC1_CMD			0x138e
+			IMX95_PAD_SD1_DATA0__USDHC1_DATA0		0x138e
+			IMX95_PAD_SD1_DATA1__USDHC1_DATA1		0x138e
+			IMX95_PAD_SD1_DATA2__USDHC1_DATA2		0x138e
+			IMX95_PAD_SD1_DATA3__USDHC1_DATA3		0x138e
+			IMX95_PAD_SD1_DATA4__USDHC1_DATA4		0x138e
+			IMX95_PAD_SD1_DATA5__USDHC1_DATA5		0x138e
+			IMX95_PAD_SD1_DATA6__USDHC1_DATA6		0x138e
+			IMX95_PAD_SD1_DATA7__USDHC1_DATA7		0x138e
+			IMX95_PAD_SD1_STROBE__USDHC1_STROBE		0x158e
+		>;
+	};
+
+	pinctrl_usdhc1_100mhz: usdhc1-100mhzgrp {
+		fsl,pins = <
+			IMX95_PAD_SD1_CLK__USDHC1_CLK				0x158e
+			IMX95_PAD_SD1_CMD__USDHC1_CMD				0x138e
+			IMX95_PAD_SD1_DATA0__USDHC1_DATA0			0x138e
+			IMX95_PAD_SD1_DATA1__USDHC1_DATA1			0x138e
+			IMX95_PAD_SD1_DATA2__USDHC1_DATA2			0x138e
+			IMX95_PAD_SD1_DATA3__USDHC1_DATA3			0x138e
+			IMX95_PAD_SD1_DATA4__USDHC1_DATA4			0x138e
+			IMX95_PAD_SD1_DATA5__USDHC1_DATA5			0x138e
+			IMX95_PAD_SD1_DATA6__USDHC1_DATA6			0x138e
+			IMX95_PAD_SD1_DATA7__USDHC1_DATA7			0x138e
+			IMX95_PAD_SD1_STROBE__USDHC1_STROBE			0x158e
+		>;
+	};
+
+	pinctrl_usdhc1_200mhz: usdhc1-200mhzgrp {
+		fsl,pins = <
+			IMX95_PAD_SD1_CLK__USDHC1_CLK				0x15fe
+			IMX95_PAD_SD1_CMD__USDHC1_CMD				0x13fe
+			IMX95_PAD_SD1_DATA0__USDHC1_DATA0			0x13fe
+			IMX95_PAD_SD1_DATA1__USDHC1_DATA1			0x13fe
+			IMX95_PAD_SD1_DATA2__USDHC1_DATA2			0x13fe
+			IMX95_PAD_SD1_DATA3__USDHC1_DATA3			0x13fe
+			IMX95_PAD_SD1_DATA4__USDHC1_DATA4			0x13fe
+			IMX95_PAD_SD1_DATA5__USDHC1_DATA5			0x13fe
+			IMX95_PAD_SD1_DATA6__USDHC1_DATA6			0x13fe
+			IMX95_PAD_SD1_DATA7__USDHC1_DATA7			0x13fe
+			IMX95_PAD_SD1_STROBE__USDHC1_STROBE			0x15fe
+		>;
+	};
+
+	pinctrl_usdhc2: usdhc2grp {
+		fsl,pins = <
+			IMX95_PAD_SD2_CLK__USDHC2_CLK			0x158e
+			IMX95_PAD_SD2_CMD__USDHC2_CMD			0x138e
+			IMX95_PAD_SD2_DATA0__USDHC2_DATA0		0x138e
+			IMX95_PAD_SD2_DATA1__USDHC2_DATA1		0x138e
+			IMX95_PAD_SD2_DATA2__USDHC2_DATA2		0x138e
+			IMX95_PAD_SD2_DATA3__USDHC2_DATA3		0x138e
+			IMX95_PAD_SD2_VSELECT__USDHC2_VSELECT		0x51e
+			IMX95_PAD_SD2_RESET_B__USDHC2_RESET_B		0x31e
+			IMX95_PAD_SD2_CD_B__USDHC2_CD_B			0x31e
+			// IMX95_PAD_SD2_CD_B__GPIO3_IO_BIT0		0x31e
+		>;
+	};
+
+	pinctrl_usdhc2_100mhz: usdhc2-100mhzgrp {
+		fsl,pins = <
+			IMX95_PAD_SD2_CLK__USDHC2_CLK			0x158e
+			IMX95_PAD_SD2_CMD__USDHC2_CMD			0x138e
+			IMX95_PAD_SD2_DATA0__USDHC2_DATA0		0x138e
+			IMX95_PAD_SD2_DATA1__USDHC2_DATA1		0x138e
+			IMX95_PAD_SD2_DATA2__USDHC2_DATA2		0x138e
+			IMX95_PAD_SD2_DATA3__USDHC2_DATA3		0x138e
+			IMX95_PAD_SD2_VSELECT__USDHC2_VSELECT		0x51e
+			IMX95_PAD_SD2_RESET_B__USDHC2_RESET_B		0x31e
+			IMX95_PAD_SD2_CD_B__USDHC2_CD_B			0x31e
+			// IMX95_PAD_SD2_CD_B__GPIO3_IO_BIT0		0x31e
+		>;
+	};
+
+	pinctrl_usdhc2_200mhz: usdhc2-200mhzgrp {
+		fsl,pins = <
+			IMX95_PAD_SD2_CLK__USDHC2_CLK			0x15fe
+			IMX95_PAD_SD2_CMD__USDHC2_CMD			0x13fe
+			IMX95_PAD_SD2_DATA0__USDHC2_DATA0		0x13fe
+			IMX95_PAD_SD2_DATA1__USDHC2_DATA1		0x13fe
+			IMX95_PAD_SD2_DATA2__USDHC2_DATA2		0x13fe
+			IMX95_PAD_SD2_DATA3__USDHC2_DATA3		0x13fe
+			IMX95_PAD_SD2_VSELECT__USDHC2_VSELECT		0x51e
+			IMX95_PAD_SD2_RESET_B__USDHC2_RESET_B		0x31e
+			IMX95_PAD_SD2_CD_B__USDHC2_CD_B			0x31e
+			// IMX95_PAD_SD2_CD_B__GPIO3_IO_BIT0		0x31e
+		>;
+	};
+
+	pinctrl_usdhc3: usdhc3grp {
+		fsl,pins = <
+			IMX95_PAD_SD3_CLK__USDHC3_CLK				0x158e
+			IMX95_PAD_SD3_CMD__USDHC3_CMD				0x138e
+			IMX95_PAD_SD3_DATA0__USDHC3_DATA0			0x138e
+			IMX95_PAD_SD3_DATA1__USDHC3_DATA1			0x138e
+			IMX95_PAD_SD3_DATA2__USDHC3_DATA2			0x138e
+			IMX95_PAD_SD3_DATA3__USDHC3_DATA3			0x138e
+		>;
+	};
+
+	pinctrl_usdhc3_100mhz: usdhc3-100mhzgrp {
+		fsl,pins = <
+			IMX95_PAD_SD3_CLK__USDHC3_CLK				0x158e
+			IMX95_PAD_SD3_CMD__USDHC3_CMD				0x138e
+			IMX95_PAD_SD3_DATA0__USDHC3_DATA0			0x138e
+			IMX95_PAD_SD3_DATA1__USDHC3_DATA1			0x138e
+			IMX95_PAD_SD3_DATA2__USDHC3_DATA2			0x138e
+			IMX95_PAD_SD3_DATA3__USDHC3_DATA3			0x138e
+		>;
+	};
+
+	pinctrl_usdhc3_200mhz: usdhc3-200mhzgrp {
+		fsl,pins = <
+			IMX95_PAD_SD3_CLK__USDHC3_CLK				0x15fe
+			IMX95_PAD_SD3_CMD__USDHC3_CMD				0x13fe
+			IMX95_PAD_SD3_DATA0__USDHC3_DATA0			0x13fe
+			IMX95_PAD_SD3_DATA1__USDHC3_DATA1			0x13fe
+			IMX95_PAD_SD3_DATA2__USDHC3_DATA2			0x13fe
+			IMX95_PAD_SD3_DATA3__USDHC3_DATA3			0x13fe
+		>;
+	};
+
+	pinctrl_flexcan1: flexcan1grp{
+		fsl,pins = <
+			IMX95_PAD_PDM_CLK__AONMIX_TOP_CAN1_TX		0x39e
+			IMX95_PAD_PDM_BIT_STREAM0__AONMIX_TOP_CAN1_RX	0x39e
+		>;
+	};
+
+	pinctrl_tpm6: tpm6grp {
+		fsl,pins = <
+			IMX95_PAD_GPIO_IO23__TPM6_CH1	0x31e
+		>;
+	};
+
+	pinctrl_tpm3: tpm3grp {
+		fsl,pins = <
+			IMX95_PAD_GPIO_IO20__TPM3_CH1  	0x31e
+		>;
+	};
+
+	pinctrl_gpio1: gpio1grp {
+		fsl,pins = <
+			IMX95_PAD_PDM_BIT_STREAM1__AONMIX_TOP_GPIO1_IO_BIT10	0x31e
+		>;
+	};
+
+	pinctrl_gpio2: gpio2grp {
+		fsl,pins = <
+			IMX95_PAD_GPIO_IO14__GPIO2_IO_BIT14	0x50e
+			IMX95_PAD_GPIO_IO15__GPIO2_IO_BIT15	0x30e
+			IMX95_PAD_GPIO_IO16__GPIO2_IO_BIT16	0x50e
+			IMX95_PAD_GPIO_IO17__GPIO2_IO_BIT17	0x50e
+			IMX95_PAD_GPIO_IO18__GPIO2_IO_BIT18	0x50e
+			IMX95_PAD_GPIO_IO19__GPIO2_IO_BIT19	0x50e
+			IMX95_PAD_GPIO_IO20__GPIO2_IO_BIT20	0x50e
+			IMX95_PAD_GPIO_IO21__GPIO2_IO_BIT21	0x50e
+			IMX95_PAD_GPIO_IO22__GPIO2_IO_BIT22	0x50e
+			IMX95_PAD_GPIO_IO24__GPIO2_IO_BIT24	0x50e
+			IMX95_PAD_GPIO_IO25__GPIO2_IO_BIT25	0x50e
+			IMX95_PAD_GPIO_IO26__GPIO2_IO_BIT26	0x50e
+			IMX95_PAD_GPIO_IO27__GPIO2_IO_BIT27	0x50e
+		>;
+	};
+
+	pinctrl_gpio3: gpio3grp {
+		fsl,pins = <
+			IMX95_PAD_CCM_CLKO2__GPIO3_IO_BIT27	0x50e
+		>;
+	};
+
+	pinctrl_gpio4: gpio4grp {
+		fsl,pins = <
+			IMX95_PAD_ENET2_MDC__GPIO4_IO_BIT14	0x50e
+			IMX95_PAD_ENET2_MDIO__GPIO4_IO_BIT15	0x50e
+			IMX95_PAD_CCM_CLKO4__GPIO4_IO_BIT29	0x50e
+		>;
+	};
+
+	pinctrl_gpio5: gpio5grp {
+		fsl,pins = <
+			IMX95_PAD_XSPI1_DQS__GPIO5_IO_BIT8	0x50e
+			IMX95_PAD_XSPI1_SS1_B__GPIO5_IO_BIT11	0x50e
+			IMX95_PAD_GPIO_IO32__GPIO5_IO_BIT12
+			IMX95_PAD_GPIO_IO33__GPIO5_IO_BIT13	0x31e
+			IMX95_PAD_GPIO_IO34__GPIO5_IO_BIT14	0x50e
+		>;
+	};
+};
+
