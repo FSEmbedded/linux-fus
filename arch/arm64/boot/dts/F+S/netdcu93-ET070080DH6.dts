@@ -1,0 +1,80 @@
+/*
+ * Copyright (C) 2026 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+#define CONFIG_IMX93_DISPLAY
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/pwm/pwm.h>
+#include "netdcu93.dts"
+
+/ {
+	lvds_panel {
+		compatible = "panel-lvds";
+		power-supply = <&reg_vlcd>;
+		backlight = <&backlight_ldb>;
+
+		data-mapping = "vesa-24";
+		label = "ET070080DH6";
+		width-mm = <152>;
+		height-mm = <91>;
+		status = "okay";
+
+		panel-timing {
+			clock-frequency = <30100000>;
+			hactive = <800>;
+			vactive = <480>;
+			hback-porch = <218>;
+			hfront-porch = <38>;
+			hsync-len = <2>;
+			vback-porch = <33>;
+			vfront-porch = <10>;
+			vsync-len = <2>;
+			pixelclk-active = <1>;
+		};
+		port {
+			panel_lvds_in: endpoint {
+				remote-endpoint = <&lvds_out>;
+			};
+		};
+	};
+};
+
+&reg_bl_on {
+	gpio = <&exp_misc 0 GPIO_ACTIVE_HIGH>;
+};
+
+&reg_vlcd {
+	gpio = <&exp_misc 2 GPIO_ACTIVE_HIGH>;
+};
+
+&lcdif {
+	assigned-clock-rates = <1039500000>, <49500000>, <400000000>, <133333333>;
+	status = "okay";
+};
+
+&ldb_phy {
+	status = "okay";
+};
+
+&ldb {
+	status = "okay";
+
+	lvds-channel@0 {
+		fsl,data-mapping = "spwg";
+		fsl,data-width = <24>;
+		status = "okay";
+		port@1 {
+			reg = <1>;
+
+			lvds_out: endpoint {
+				remote-endpoint = <&panel_lvds_in>;
+			};
+		};
+	};
+};
+

@@ -44,8 +44,8 @@ pc_sai: &sai3	{};
 	compatible = "fus,imx93-picocoremx93", "fsl,imx93";
 
 	chosen {
-		bootargs = "console=ttyLP6,115200";
-		stdout-path = &lpuart7;
+		bootargs = "console=ttyLP0,115200";
+		stdout-path = &pc_uart_a;
 	};
 
 	aliases {
