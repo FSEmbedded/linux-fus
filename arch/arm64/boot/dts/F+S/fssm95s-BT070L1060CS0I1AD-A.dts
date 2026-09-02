@@ -1,0 +1,13 @@
+// SPDX-License-Identifier: GPL-2.0+
+/*
+ * Copyright 2026 F&S Elektronik Systeme GmbH
+ */
+
+#define IMX95_TOUCH_INTERRUPT_GPIO_BANK		gpio5
+#define IMX95_TOUCH_INTERRUPT_GPIO_NUM		10
+
+#define IMX95_TOUCH_I2C fs_i2c_lcd
+#define IMX95_LVDS_I2C fs_i2c_lcd
+
+#include "fssm95s.dts"
+#include "displays/imx95-BT070L1060CS0I1AD-A.dtsi"

@@ -292,6 +292,10 @@ static struct tca_blk *imx95_usb_phy_get_tca(struct platform_device *pdev,
 	mutex_init(&tca->mutex);
 
 	tca->orientation = TYPEC_ORIENTATION_NORMAL;
+
+	if(of_property_present(dev->of_node, "fsl,tca-reverse-orientation"))
+		tca->orientation = TYPEC_ORIENTATION_REVERSE;
+
 	tca->sw = tca_blk_get_typec_switch(pdev, imx_phy);
 
 	return tca;
