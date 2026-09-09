@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024 F&S Elektronik Systeme GmbH
+ * Copyright (C) 2025 F&S Elektronik Systeme GmbH
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -73,6 +73,8 @@
 #define CONFIG_OSM8MP_I2S_A
 //#define CONFIG_OSM8MP_I2S_B
 
+#define CONFIG_OSM8MP_SGTL5000_AUDIO
+
 /* Camera on serial MIPI CSI interface */
 #define CONFIG_OSM8MP_SERIAL_CAMERA
 /* Experimental implementation for Basler dart daA3840-30mci.
@@ -143,121 +145,186 @@
 #undef CONFIG_OSM8MP_USB_A_USBC_ALERT
 #endif
 
-#include "osm8mp.dtsi"
 
-/* osm_spi_a overwritten by SPI bitbanging driver */
-/delete-node/ &osm_spi_a;
-
+#include "osm8mp.dts"
+#include <fsversion.h>
 / {
-	model = "F&S OSM8MP";
+	model = "F&S OSM8MP-BBDSI";
 
-	regulators {
-		/* SGTL5000 analog voltage */
-		reg_sgtl5000_vdda: sgtl5000_vdda {
-			compatible = "regulator-fixed";
-			regulator-name = "VDDA-supply";
-			regulator-min-microvolt = <3300000>;
-			regulator-max-microvolt = <3300000>;
-			regulator-always-on;
-		};
-
-		/* SGTL5000 I/O voltage */
-		reg_sgtl5000_vddio: sgtl5000_vddio {
-			compatible = "regulator-fixed";
-			regulator-name = "VDDIO-supply";
-			regulator-min-microvolt = <1800000>;
-			regulator-max-microvolt = <1800000>;
-			regulator-always-on;
-		};
-
-		/* SGTL5000 internal digital voltage */
-		reg_sgtl5000_vddd: sgtl5000_vddd {
-			compatible = "regulator-fixed";
-			regulator-name = "VDDD-supply";
-			regulator-min-microvolt = <1800000>;
-			regulator-max-microvolt = <1800000>;
-			regulator-always-on;
-		};
-
-#ifdef CONFIG_OSM8MP_CAMERA
-		reg_camera_dovdd: camera_dovdd {
-			compatible = "regulator-fixed";
-			regulator-name = "DOVDD-supply";
-			regulator-min-microvolt = <1800000>;
-			regulator-max-microvolt = <1800000>;
-		};
-
-		reg_camera_avdd: camera_avdd {
-			compatible = "regulator-fixed";
-			regulator-name = "VAVDD-supply";
-			regulator-min-microvolt = <2800000>;
-			regulator-max-microvolt = <2800000>;
-		};
-
-		reg_camera_dvdd: camera_dvdd {
-			compatible = "regulator-fixed";
-			regulator-name = "DVDD-supply";
-			regulator-min-microvolt = <1500000>;
-			regulator-max-microvolt = <1500000>;
-		};
-#endif /* CONFIG_OSM8MP_CAMERA */
-
-		reg_mipi_rst: regulator_mipi_rst {
-			compatible = "regulator-fixed";
-			regulator-name = "MIPI_RST";
-			gpio = <&gpio1 7 GPIO_ACTIVE_HIGH>;
-			regulator-min-microvolt = <3300000>;
-			regulator-max-microvolt = <3300000>;
-			regulator-boot-on;
-			regulator-always-on;
-			enable-active-high;
-			startup-delay-us = <1000>;
-			off-on-delay-us = <12000>;
-		};
-
-		reg_touch_rst: regulator_touch_rst {
-			compatible = "regulator-fixed";
-			regulator-name = "TOUCH_RST";
-			gpio = <&gpio1 8 GPIO_ACTIVE_HIGH>;
-			regulator-min-microvolt = <3300000>;
-			regulator-max-microvolt = <3300000>;
-			regulator-boot-on;
-			regulator-always-on;
-			enable-active-high;
-			startup-delay-us = <1000>;
-			off-on-delay-us = <12000>;
-		};
-
-#if CONFIG_ADP_OSM_BOARD_REVISION >= 120
-		reg_eth_rst: regulator_eth_rst {
-			compatible = "regulator-fixed";
-			regulator-name = "ETH_RST";
-			gpio = <&gpio1 5 GPIO_ACTIVE_HIGH>;
-			regulator-min-microvolt = <3300000>;
-			regulator-max-microvolt = <3300000>;
-			regulator-boot-on;
-			regulator-always-on;
-			enable-active-high;
-			startup-delay-us = <1000>;
-			off-on-delay-us = <12000>;
-		};
-#endif
+	chosen {
+		bootargs = "console=ttymxc0,115200 earlycon=ec_imx6q,0x30890000,115200";
+		stdout-path = &osm_uart_con;
 	};
 
-	sound_sgtl5000: sound-sgtl5000 {
-		compatible = "fsl,imx-audio-sgtl5000";
-		model = "imx-sgtl5000";
-		audio-cpu = <&osm_i2s_a>;
-		audio-codec = <&sgtl5000>;
-		audio-asrc = <&easrc>;
-		audio-routing =
-			"LINE_IN", "Line In Jack",
-			"Mic Jack", "Mic Bias",
-			"MIC_IN", "Mic Jack",
-			"Line Out Jack", "LINE_OUT",
-			"Headphone Jack", "HP_OUT";
+	reg_mipi_rst: regulator_mipi_rst {
+		compatible = "regulator-fixed";
+		regulator-name = "MIPI_RST";
+		gpio = <&pca6416 5 GPIO_ACTIVE_HIGH>;
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		regulator-boot-on;
+		regulator-always-on;
+		enable-active-high;
+		startup-delay-us = <1000>;
+		off-on-delay-us = <12000>;
 	};
 
+	reg_touch_rst: regulator_touch_rst {
+		compatible = "regulator-fixed";
+		regulator-name = "TOUCH_RST";
+		gpio = <&pca6416 6 GPIO_ACTIVE_HIGH>;
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		regulator-boot-on;
+		regulator-always-on;
+		enable-active-high;
+		startup-delay-us = <1000>;
+		off-on-delay-us = <12000>;
+	};
+
+};
+
+&reserved_mem {
+	#address-cells = <2>;
+	#size-cells = <2>;
+	ranges;
+
+	linux,cma {
+		compatible = "shared-dma-pool";
+		reusable;
+		size = <0 0x14000000>;
+		alloc-ranges = <0 0x40000000 0 0x40000000>;
+		linux,cma-default;
+	};
+};
+
+&bdinfo{
+	dts_version = FS_LINUX_VERSION;
+	board_name = "osm8mp";
+};
+
+#if defined(CONFIG_OSM8MP_BL_CTRL) || defined(CONFIG_OSM8MP_PWM_0)
+&osm_pwm_0 { status = "okay"; };
+#endif /* CONFIG_OSM8MP_BL_CTRL || CONFIG_OSM8MP_PWM_0 */
+
+#ifdef CONFIG_OSM8MP_PWM_1
+&osm_pwm_1 { status = "okay"; };
+#endif /* CONFIG_OSM8MP_PWM_1 */
+
+#ifdef CONFIG_OSM8MP_PWM_2
+&osm_pwm_2 { status = "okay"; };
+#endif /* CONFIG_OSM8MP_PWM_2 */
+
+#ifdef CONFIG_OSM8MP_PWM_3
+&osm_pwm_3 { status = "okay"; };
+#endif /* CONFIG_OSM8MP_PWM_3 */
+
+#ifdef CONFIG_OSM8MP_ETH_A
+&osm_eth_a {
+	phy-mode = "rgmii-id";
+	phy-handle = <&ethphy4>;
+	status = "okay";
+
+	mdio {
+		compatible = "snps,dwmac-mdio";
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		ethphy4: ethernet-phy@4 {
+			compatible = "ethernet-phy-ieee802.3-c22";
+			reg = <4>;
+			rtl821x,clkout-disable;
+			rtl821x,aldps-enable;
+			rtl821x,ssc-rxc-enable;
+			rtl821x,ssc-sysclk-enable;
+			rtl821x,ssc-clkout-enable;
+			rtl821x,led-link = <2>; // LED1 for link indication
+			rtl821x,led-act = <2>; // LED1 for activity
+			reset-gpios = <&pca6416 0 GPIO_ACTIVE_LOW>;
+			reset-assert-us = <10000>;
+			reset-deassert-us = <100000>;
+			interrupt-parent = <&pca6416>;
+			interrupts = <2 IRQ_TYPE_EDGE_FALLING>;
+			eee-broken-1000t;
+		};
+	};
+};
+#endif /* CONFIG_OSM8MP_ETH_A */
+
+#ifdef CONFIG_OSM8MP_ETH_B
+&osm_eth_b {
+	phy-mode = "rgmii-id";
+	phy-handle = <&ethphy2>;
+	status = "okay";
+
+	mdio {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		ethphy2: ethernet-phy@2 {
+			compatible = "ethernet-phy-ieee802.3-c22";
+			reg = <2>;
+			rtl821x,clkout-disable;
+			rtl821x,aldps-enable;
+			rtl821x,ssc-rxc-enable;
+			rtl821x,ssc-sysclk-enable;
+			rtl821x,ssc-clkout-enable;
+			rtl821x,led-link = <2>; // LED1 for link indication
+			rtl821x,led-act = <2>; // LED1 for activity
+			reset-gpios = <&pca6416 1 GPIO_ACTIVE_LOW>;
+			reset-assert-us = <10000>;
+			reset-deassert-us = <100000>;
+			interrupt-parent = <&pca6416>;
+			interrupts = <3 IRQ_TYPE_EDGE_FALLING>;
+			eee-broken-1000t;
+		};
+	};
+};
+#endif /* CONFIG_OSM8MP_ETH_B */
+
+#ifdef CONFIG_OSM8MP_I2C_A
+&osm_i2c_a { status = "okay"; };
+#ifdef CONFIG_OSM8MP_EEPROM
+&eeprom { status = "okay"; };
+#endif /* CONFIG_OSM8MP_EEPROM */
+#endif /* CONFIG_OSM8MP_I2C_A */
+
+#ifdef CONFIG_OSM8MP_I2C_B
+&osm_i2c_b { status = "okay"; };
+#if CONFIG_ADP_OSM_BOARD_REVISION >= 130
+&osm_i2c_b {
+	/* GPIO expander */
+	pca6416: gpio@20 {
+		compatible = "nxp,pcal6416";
+		reg = <0x20>;
+		vcc-supply = <&reg_vref_1v8>;
+		gpio-controller;
+		#gpio-cells = <2>;
+		interrupt-controller;
+		#interrupt-cells = <2>;
+		interrupt-parent = <&gpio1>;
+		interrupts = <6 IRQ_TYPE_LEVEL_LOW>;
+		/* Enable Open-Drain for Port 0 and 1 */
+		pcal6416,open-drain;
+		gpio-line-names =
+		/*  0 */ "", "", "", "",
+		/*  4 */ "AUDIO_B_I2S_RXFS", "GPIO_J1_7", "GPIO_J1_2", "BL_ON",
+		/*  8 */ "VLCD_ON", "GPIO_J1_44", "GPIO_J1_46", "",
+		/* 12 */ "", "", "", "";
+		status = "okay";
+	};
+};
+#endif /* CONFIG_ADP_OSM_BOARD_REVISION >= 130 */
+#endif /* CONFIG_OSM8MP_I2C_B */
+
+#ifdef CONFIG_OSM8MP_I2C_CAM_PCI
+&osm_i2c_cam_pci { status = "okay"; };
+#endif /* CONFIG_OSM8MP_I2C_CAM_PCI */
+
+#ifdef CONFIG_OSM8MP_SPI_A
+/ {
+	/* osm_spi_a overwritten by SPI bitbanging driver */
+	/delete-node/ &osm_spi_a;
 	/* SPI bitbanging driver */
 	osm_spi_a: spi {
 		compatible = "spi-gpio";
@@ -278,83 +345,104 @@
 		};
 	};
 };
+#endif /* CONFIG_OSM8MP_SPI_A */
 
-&bdinfo{
-	board_name = "osm8mp";
-};
+#ifdef CONFIG_OSM8MP_SPI_B
+&osm_spi_b {
+#ifdef CONFIG_OSM8MP_SPI_B_CS1
+	pinctrl-0 = <&pinctrl_osm_spi_b &pinctrl_osm_spi_b_cs0 &pinctrl_osm_spi_b_cs1>;
+	cs-gpios = <&gpio5 13 GPIO_ACTIVE_LOW>, <&gpio3 20 GPIO_ACTIVE_LOW>;
+	num-cs = <2>;
+#else
+	pinctrl-0 = <&pinctrl_osm_spi_b &pinctrl_osm_spi_b_cs0>;
+	cs-gpios = <&gpio5 13 GPIO_ACTIVE_LOW>;
+	num-cs = <1>;
+#endif
+	status = "okay";
 
-#if CONFIG_ADP_OSM_BOARD_REVISION < 120
-#if defined(CONFIG_OSM8MP_MIPI_DSI) \
-|| defined(CONFIG_OSM8MP_MIPI_DSI_LVDS)
-&reg_vlcd {
-	gpio = <&gpio1 5 GPIO_ACTIVE_HIGH>;
+	spidev@0 {
+		compatible = "linux,spidev";
+		spi-max-frequency = <20000000>;
+		reg = <0>;
+		status = "okay";
+	};
 };
 #endif
 
-#ifdef CONFIG_OSM8MP_BL_CTRL
-&reg_ldb_bl {
-	gpio = <&gpio1 6 GPIO_ACTIVE_HIGH>;
-};
-#endif
-#endif
 
-#if CONFIG_ADP_OSM_BOARD_REVISION >= 130
-&osm_i2c_b {
-	/* GPIO expander */
-	pca6416: gpio@20 {
-		compatible = "nxp,pcal6416";
-		reg = <0x20>;
-		vcc-supply = <&reg_vref_1v8>;
-		gpio-controller;
-		#gpio-cells = <2>;
-		interrupt-controller;
-		#interrupt-cells = <2>;
-		interrupt-parent = <&gpio1>;
-		interrupts = <6 IRQ_TYPE_LEVEL_LOW>;
-		/* Enable Open-Drain for Port 0 and 1 */
-		pcal6416,open-drain;
+#ifdef CONFIG_OSM8MP_CAN_A
+&osm_can_a { status = "okay"; };
+#endif /* CONFIG_OSM8MP_CAN_A */
+
+#ifdef CONFIG_OSM8MP_CAN_B
+&osm_can_b { status = "okay"; };
+#endif /* CONFIG_OSM8MP_CAN_B */
+
+#ifdef CONFIG_OSM8MP_PCIE_A
+&osm_pcie_a{ status = "okay";};
+&pcie_phy{ status = "okay";};
+#endif /* CONFIG_OSM8MP_PCIE_A */
+
+#ifdef CONFIG_OSM8MP_I2S_A
+&osm_i2s_a { status = "okay"; };
+
+#ifdef CONFIG_OSM8MP_SGTL5000_AUDIO
+/{
+	regulators {
+		/* SGTL5000 analog voltage */
+		reg_sgtl5000_vdda: sgtl5000_vdda {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDA-supply";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			regulator-always-on;
+		};
+
+		/* SGTL5000 I/O voltage */
+		reg_sgtl5000_vddio: sgtl5000_vddio {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDIO-supply";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			regulator-always-on;
+		};
+
+		/* SGTL5000 internal digital voltage */
+		reg_sgtl5000_vddd: sgtl5000_vddd {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDD-supply";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+			regulator-always-on;
+		};
+	};
+
+	reg_sgtl_clk: regulator-sgtl-clk {
+			compatible = "regulator-fixed-clock";
+			regulator-always-on;
+			regulator-name = "SGTL_CLK";
+			clocks = <&clk IMX8MP_CLK_CLKOUT1>;
+			assigned-clocks = <&clk IMX8MP_CLK_CLKOUT1>;
+			assigned-clock-rates = <24576000>;
+	};
+
+	sound_sgtl5000: sound-sgtl5000 {
+		compatible = "fsl,imx-audio-sgtl5000";
+		model = "imx-sgtl5000";
+		audio-cpu = <&osm_i2s_a>;
+		audio-codec = <&sgtl5000>;
+		audio-asrc = <&easrc>;
+		audio-routing =
+			"LINE_IN", "Line In Jack",
+			"Mic Jack", "Mic Bias",
+			"MIC_IN", "Mic Jack",
+			"Line Out Jack", "LINE_OUT",
+			"Headphone Jack", "HP_OUT";
 	};
 };
 
-&reg_mipi_rst {
-	gpio = <&pca6416 5 GPIO_ACTIVE_HIGH>;
-};
-
-&reg_touch_rst {
-	gpio = <&pca6416 6 GPIO_ACTIVE_HIGH>;
-};
-
-/delete-node/ &reg_eth_rst;
-
-#endif
-
-&clk {
-	assigned-clocks = <&clk IMX8MP_CLK_A53_SRC>,
-			  <&clk IMX8MP_CLK_A53_CORE>,
-			  <&clk IMX8MP_CLK_NOC>,
-			  <&clk IMX8MP_CLK_NOC_IO>,
-			  <&clk IMX8MP_CLK_GIC>,
-			  <&clk IMX8MP_CLK_AUDIO_AHB>,
-			  <&clk IMX8MP_CLK_AUDIO_AXI_SRC>,
-			  <&clk IMX8MP_AUDIO_PLL1>,
-			  <&clk IMX8MP_AUDIO_PLL2>,
-			  <&clk IMX8MP_VIDEO_PLL1>,
-			  <&clk IMX8MP_CLK_CLKOUT1>;
-	assigned-clock-rates = <0>, <0>,
-			       <1000000000>,
-			       <800000000>,
-			       <500000000>,
-			       <400000000>,
-			       <800000000>,
-			       <393216000>,
-			       <361267200>,
-			       <1039500000>,
-			       <24576000>;
-
-	init-on-array = <IMX8MP_CLK_HSIO_ROOT>, <IMX8MP_CLK_CLKOUT1>;
-};
-
 &osm_i2c_b {
+	status = "okay";
 	sgtl5000: sgtl5000@a {
 		compatible = "fsl,sgtl5000";
 		reg = <0xa>;
@@ -364,8 +452,70 @@
 		VDDIO-supply = <&reg_sgtl5000_vddio>;
 		VDDD-supply = <&reg_sgtl5000_vddd>;
 	};
+};
+
+&easrc {
+	fsl,asrc-rate  = <48000>;
+	status = "okay";
+};
+#endif /* CONFIG_OSM8MP_SGTL5000_AUDIO */
+#endif /* CONFIG_OSM8MP_I2S_A */
+
+#ifdef CONFIG_OSM8MP_I2S_B
+&osm_i2s_b { status = "okay"; };
+#endif /* CONFIG_OSM8MP_I2S_B */
+
+#ifdef CONFIG_OSM8MP_UART_CON
+&osm_uart_con { status = "okay"; };
+#endif /* CONFIG_OSM8MP_UART_CON */
+
+#ifdef CONFIG_OSM8MP_UART_A
+&osm_uart_a {
+#ifdef CONFIG_OSM8MP_UART_A_RTSCTS
+	pinctrl-0 = <&pinctrl_osm_uart_a &pinctrl_osm_uart_a_rtscts>;
+	fsl,uart-has-rtscts;
+#endif
+	status = "okay";
+};
+#endif /* CONFIG_OSM8MP_UART_A */
+
+#ifdef CONFIG_OSM8MP_UART_B
+&osm_uart_b {
+#ifdef CONFIG_OSM8MP_UART_B_RTSCTS
+	pinctrl-0 = <&pinctrl_osm_uart_b &pinctrl_osm_uart_b_rtscts>;
+	fsl,uart-has-rtscts;
+#endif
+	status = "okay";
+};
+#endif /* CONFIG_OSM8MP_UART_B */
+
+#ifdef CONFIG_OSM8MP_UART_C
+&osm_uart_c { status = "okay"; };
+#endif /* CONFIG_OSM8MP_UART_C */
+
+#ifdef CONFIG_OSM8MP_USB_A
+&usb3_phy0 { status = "okay"; };
+
+&usb3_0 { status = "okay"; };
+
+&osm_usb_a {
+	dr_mode = "otg";
+#ifdef CONFIG_OSM8MP_USB_A_USBC
+	hnp-disable;
+	srp-disable;
+	adp-disable;
+	usb-role-switch;
+	status = "okay";
+	port {
+		usb1_drd_sw: endpoint {
+			remote-endpoint = <&typec1_dr_sw>;
+		};
+	};
+#endif
+};
 
 #ifdef CONFIG_OSM8MP_USB_A_USBC
+&osm_i2c_b {
 	/* USB-C */
 	ptn5110: tcpc@52 {
 		compatible = "nxp,ptn5110";
@@ -398,169 +548,192 @@
 			self-powered;
 		};
 	};
+};
+#endif  /* CONFIG_OSM8MP_USB_A_USBC */
+#endif  /* CONFIG_OSM8MP_USB_A */
+
+#ifdef CONFIG_OSM8MP_USB_C
+&usb3_phy1 {
+	status = "okay";
+};
+
+&usb3_1 {
+	status = "okay";
+};
+
+&osm_usb_c {
+	dr_mode = "host";
+	status = "okay";
+};
+#endif /* CONFIG_OSM8MP_USB_C */
+
+#ifdef CONFIG_OSM8MP_SDIO_A
+&osm_sdio_a { status = "okay"; };
+#endif /* CONFIG_OSM8MP_SDIO_A */
+
+#ifdef CONFIG_OSM8MP_SDIO_B
+&osm_sdio_b {
+	pinctrl-0 = <&pinctrl_osm_sdio_b>, <&pinctrl_osm_sdio_b_cd>, <&pinctrl_osm_sdio_b_wp>, <&pinctrl_osm_sdio_b_rst>;
+	pinctrl-1 = <&pinctrl_osm_sdio_b_100mhz>, <&pinctrl_osm_sdio_b_cd>, <&pinctrl_osm_sdio_b_wp>, <&pinctrl_osm_sdio_b_rst>;
+	pinctrl-2 = <&pinctrl_osm_sdio_b_200mhz>, <&pinctrl_osm_sdio_b_cd>, <&pinctrl_osm_sdio_b_wp>, <&pinctrl_osm_sdio_b_rst>;
+	vqmmc-supply = <&reg_vref_1v8>;
+#ifdef CONFIG_OSM8MP_SDIO_B_8_Bit
+	bus-width = <8>;
+#else
+	bus-width = <4>;
 #endif
-};
-
-&osm_i2c_cam_pci {
-	basler_camera_mipi1: basler_camera_mipi_vvcam@36 {
-		compatible = "basler,basler-camera-vvcam", "basler-camera-vvcam";
-		reg = <0x36>;
-		csi_id = <0x00>;
-		status = "okay";
-
-		port {
-			basler_camera_mipi1_ep: endpoint {
-				data-lanes = <1 2 3 4>;
-				clock-lanes = <0>;
-				link-frequencies = /bits/ 64 <750000000>;
-				max-lane-frequency = /bits/ 64 <750000000>;
-				max-pixel-frequency = /bits/ 64 <500000000>;
-				max-data-rate = /bits/ 64 <0>;
-				remote-endpoint = <&mipi1_sensor_ep>;
-			};
-		};
-	};
-};
-
-#if 0
-/* SPI not implemented in NXP FlexSPI driver, so use SPI-GPIO */
-&osm_spi_a {
-	cs-gpios = <0>;
-
-	spidev@0 {
-		spi-tx-bus-width = <1>;
-		spi-rx-bus-width = <1>;
-	};
+	status = "okay";
 };
 #endif
 
-&osm_eth_a {
-	phy-mode = "rgmii-id";
-	phy-handle = <&ethphy4>;
-
-	mdio {
-		compatible = "snps,dwmac-mdio";
-		#address-cells = <1>;
-		#size-cells = <0>;
-
-		ethphy4: ethernet-phy@4 {
-			compatible = "ethernet-phy-ieee802.3-c22";
-			reg = <4>;
-			rtl821x,clkout-disable;
-			rtl821x,aldps-enable;
-			rtl821x,ssc-rxc-enable;
-			rtl821x,ssc-sysclk-enable;
-			rtl821x,ssc-clkout-enable;
-			rtl821x,led-link = <2>; // LED1 for link indication
-			rtl821x,led-act = <2>; // LED1 for activity
-#if CONFIG_ADP_OSM_BOARD_REVISION >= 130
-			reset-gpios = <&pca6416 0 GPIO_ACTIVE_LOW>;
-			reset-assert-us = <10000>;
-			reset-deassert-us = <100000>;
-			interrupt-parent = <&pca6416>;
-			interrupts = <2 IRQ_TYPE_EDGE_FALLING>;
-#endif
-			eee-broken-1000t;
-		};
-	};
-};
-
-&osm_eth_b {
-	phy-mode = "rgmii-id";
-	phy-handle = <&ethphy2>;
-
-	mdio {
-		#address-cells = <1>;
-		#size-cells = <0>;
-
-		ethphy2: ethernet-phy@2 {
-			compatible = "ethernet-phy-ieee802.3-c22";
-			reg = <2>;
-			rtl821x,clkout-disable;
-			rtl821x,aldps-enable;
-			rtl821x,ssc-rxc-enable;
-			rtl821x,ssc-sysclk-enable;
-			rtl821x,ssc-clkout-enable;
-			rtl821x,led-link = <2>; // LED1 for link indication
-			rtl821x,led-act = <2>; // LED1 for activity
-#if CONFIG_ADP_OSM_BOARD_REVISION >= 130
-			reset-gpios = <&pca6416 1 GPIO_ACTIVE_LOW>;
-			reset-assert-us = <10000>;
-			reset-deassert-us = <100000>;
-			interrupt-parent = <&pca6416>;
-			interrupts = <3 IRQ_TYPE_EDGE_FALLING>;
-#endif
-			eee-broken-1000t;
-		};
-	};
-};
-
-&osm_usb_a {
-	dr_mode = "otg";
-#ifdef CONFIG_OSM8MP_USB_A_USBC
-	hnp-disable;
-	srp-disable;
-	adp-disable;
-	usb-role-switch;
-
-	port {
-		usb1_drd_sw: endpoint {
-			remote-endpoint = <&typec1_dr_sw>;
-		};
-	};
-#endif
-};
-
+#ifdef CONFIG_OSM8MP_SERIAL_CAMERA
 &osm_csi {
-	/delete-property/ csi,mipi_rst;
+	status = "okay";
+	csi,mipi_rst = <&gpio4 2 GPIO_ACTIVE_LOW>;
+};
+#endif
 
-	port@0 {
-		reg = <0>;
-		mipi1_sensor_ep: endpoint@1 {
-			remote-endpoint = <&basler_camera_mipi1_ep>;
-			data-lanes = <4>;
-			csis-hs-settle = <16>;
-		};
+#ifdef CONFIG_OSM8MP_HDMI
+&hdmi {
+
+pinctrl-0 =<
+#ifdef CONFIG_OSM8MP_HDMI_I2C
+			&pinctrl_hdmi_i2c
+#endif
+#ifdef CONFIG_OSM8MP_HDMI_HPD
+			&pinctrl_hdmi_hdp
+#endif
+#ifdef CONFIG_OSM8MP_HDMI_CEC
+			&pinctrl_hdmi_cec
+#endif
+			>;
+
+#ifndef CONFIG_OSM8MP_HDMI_I2C
+	ddc-i2c-bus = <&fs_i2c_c>;
+#endif
+	status = "okay";
+
+};
+
+&irqsteer_hdmi { status = "okay"; };
+&hdmi_pavi { status = "okay"; };
+&hdmi { status="okay"; };
+&hdmiphy { status="okay"; };
+&hdmi_blk_ctrl { status="okay"; };
+&lcdif3 { status = "okay"; };
+
+#ifdef CONFIG_OSM8MP_HDMI_AUDIO
+/{
+	sound-hdmi { status = "okay"; };
+};
+&aud2htx { status = "okay"; };
+#endif /* CONFIG_OSM8MP_HDMI_AUDIO */
+#endif /* CONFIG_OSM8MP_HDMI */
+
+#ifdef CONFIG_OSM8MP_VPU
+&vpu_g1 { status = "okay"; };
+&vpu_g2 { status = "okay"; };
+&vpu_vc8000e { status = "okay"; };
+&vpu_v4l2 { status = "okay"; };
+#endif /* CONFIG_OSM8MP_VPU */
+
+#ifdef CONFIG_OSM8MP_GPU
+&gpu_3d { status = "okay"; };
+&gpu_2d { status = "okay"; };
+#endif /* CONFIG_OSM8MP_GPU */
+
+#ifdef CONFIG_OSM8MP_ML
+&ml_vipsi { status = "okay"; };
+&mix_gpu_ml { status = "okay"; };
+#endif /* CONFIG_OSM8MP_ML */
+
+#ifdef CONFIG_OSM8MP_DSP
+&reserved_mem {
+	dsp_reserved: dsp@53000000 {
+		reg = <0 0x53000000 0 0x1000000>;
+		no-map;
+	};
+	dsp_reserved_heap: dsp_reserved_heap@54000000 {
+		reg = <0 0x54000000 0 0xef0000>;
+		no-map;
+	};
+	dsp_vdev0vring0: vdev0vring0@54ef0000 {
+		reg = <0 0x54ef0000 0 0x8000>;
+		no-map;
+	};
+	dsp_vdev0vring1: vdev0vring1@54ef8000 {
+		reg = <0 0x54ef8000 0 0x8000>;
+		no-map;
+	};
+	dsp_vdev0buffer: vdev0buffer@54f00000{
+		compatible = "shared-dma-pool";
+		reg = <0 0x54f00000 0 0x100000>;
+		no-map;
 	};
 };
 
-&cameradev {
+&dsp {
+	memory-region = <&dsp_vdev0buffer>, <&dsp_vdev0vring0>,
+			<&dsp_vdev0vring1>, <&dsp_reserved>;
 	status = "okay";
 };
+#endif /* CONFIG_OSM8MP_DSP */
 
-&isi_0 {
-	status = "disabled";
+#ifdef SUPPORT_M7
+&reserved_mem {
+	#address-cells = <2>;
+	#size-cells = <2>;
+	ranges;
+
+		m7_reserved: m7@55500000 {
+			no-map;
+			reg = <0 0x55500000 0 0x1000000>;
+		};
+
+		vdev0vring0: vdev0vring0@55000000 {
+			reg = <0 0x55000000 0 0x8000>;
+			no-map;
+		};
+
+		vdev0vring1: vdev0vring1@55008000 {
+			reg = <0 0x55008000 0 0x8000>;
+			no-map;
+		};
+
+		vdevbuffer: vdevbuffer@55400000 {
+			compatible = "shared-dma-pool";
+			reg = <0 0x55400000 0 0x100000>;
+			no-map;
+		};
+
+		rsc_table: rsc-table@550ff000 {
+			reg = <0 0x550ff000 0 0x1000>;
+			no-map;
+		};
 };
 
-&isp_0 {
-	status = "okay";
+/ {
+	imx8mp-cm7 {
+		compatible = "fsl,imx8mp-cm7";
+		clocks = <&clk IMX8MP_CLK_M7_DIV>;
+		rsc-da = <0x55000000>;
+		mbox-names = "tx", "rx", "rxdb";
+		mboxes = <&mu 0 1
+			  &mu 1 1
+			  &mu 3 1>;
+		memory-region = <&m7_reserved>, <&vdevbuffer>, <&vdev0vring0>, <&vdev0vring1>, <&rsc_table>;
+		status = "okay";
+		fsl,startup-delay-ms = <500>;
+	};
 };
-
-&dewarp {
-	status = "okay";
-};
-
-&pca6416 {
-	gpio-line-names =
-	/*  0 */ "", "", "", "",
-	/*  4 */ "AUDIO_B_I2S_RXFS", "GPIO_J1_7", "GPIO_J1_2", "BL_ON",
-	/*  8 */ "VLCD_ON", "GPIO_J1_44", "GPIO_J1_46", "",
-	/* 12 */ "", "", "", "";
-	status = "okay";
-};
+#endif /* SUPPORT_M7 */
 
 &iomuxc {
-#ifdef IMX8MP_TOUCH_INTERRUPT_PINCTRL
 	pinctrl_touch_int: touchintgrp {
 		fsl,pins = <
-#if CONFIG_ADP_OSM_BOARD_REVISION < 130
 			MX8MP_IOMUXC_GPIO1_IO01__GPIO1_IO01	0x00084
-#else
-			MX8MP_IOMUXC_GPIO1_IO05__GPIO1_IO05	0x00084
-#endif
 		>;
 	};
-#endif
 };
 
 /*

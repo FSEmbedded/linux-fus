@@ -1,0 +1,89 @@
+#include "armstonemx8mp-common.dtsi"
+
+/ {
+	model = "F&S armStoneMX8MPr2";
+	compatible = "fus,imx8mp-armstonemx8mpr2", "fsl,imx8mp";
+
+	fs_sdio_a_pwrseq: fs_sdio_a_pwrseq {
+		compatible = "mmc-pwrseq-simple";
+		reset-gpios = <&gpio3 22 GPIO_ACTIVE_LOW>;
+		status = "disabled";
+	};
+};
+
+&bdinfo {
+	board_name = "armstonemx8mpr2";
+};
+
+&fs_sdio_a {
+	pinctrl-names = "default", "state_100mhz", "state_200mhz";
+	pinctrl-0 = <&pinctrl_fs_sdio_a &pinctrl_fs_sdio_a_wlan_rst>;
+	pinctrl-1 = <&pinctrl_fs_sdio_a_100mhz &pinctrl_fs_sdio_a_wlan_rst>;
+	pinctrl-2 = <&pinctrl_fs_sdio_a_200mhz &pinctrl_fs_sdio_a_wlan_rst>;
+	mmc-pwrseq = <&fs_sdio_a_pwrseq>;
+	vmmc-supply = <&reg_vref_3v3>;
+	vqmmc-supply = <&reg_vref_1v8>;
+	vqmmc-1-8-v;
+	bus-width = <4>;
+	keep-power-in-suspend;
+	non-removable;
+	wakeup-source;
+	//fsl,sdio-async-interrupt-enabled;
+	//pm-ignore-notify;
+	status = "disabled";
+	wlan_wake: wifi_wake_host {
+		compatible = "nxp,wifi-wake-host";
+	};
+};
+
+&fs_uart_d {
+	bluetooth: bluetooth {
+		compatible = "nxp,88w8987-bt";
+		fw-init-baudrate = <115200>;
+		status = "disabled";
+	};
+};
+
+
+/* SD_B - internal Micro-SD */
+
+&fs_sdio_b {
+	pinctrl-names = "default", "state_100mhz", "state_200mhz";
+	pinctrl-0 = <&pinctrl_fs_sdio_b &pinctrl_fs_sdio_b_vsel &pinctrl_fs_sdio_b_cd>;
+	pinctrl-1 = <&pinctrl_fs_sdio_b_100mhz &pinctrl_fs_sdio_b_vsel &pinctrl_fs_sdio_b_cd>;
+	pinctrl-2 = <&pinctrl_fs_sdio_b_200mhz &pinctrl_fs_sdio_b_vsel &pinctrl_fs_sdio_b_cd>;
+	bus-width = <4>;
+	cd-gpios = <&gpio2 12 GPIO_ACTIVE_LOW>;
+	status = "disabled";
+};
+
+&iomuxc {
+	imx8mp-armstonemx8mp {
+
+		pinctrl_hog: hoggrp {
+			fsl,pins = <
+				/* SE050_ENA */
+				MX8MP_IOMUXC_GPIO1_IO01__GPIO1_IO01	0x00012
+			>;
+		};
+
+		pinctrl_fs_sdio_b_cd: ecspi3grp-cd {
+			fsl,pins = <
+				MX8MP_IOMUXC_SD2_CD_B__GPIO2_IO12	0x1c4
+			>;
+		};
+
+		pinctrl_fs_sdio_b_vsel: ecspi3grp-vsel {
+			fsl,pins = <
+				MX8MP_IOMUXC_GPIO1_IO04__USDHC2_VSELECT 0x0c1
+			>;
+		};
+
+		pinctrl_fs_sdio_a_wlan_rst: ecspi2grp-rst {
+			fsl,pins = <
+				/* WLAN RST */
+				MX8MP_IOMUXC_SAI5_RXD1__GPIO3_IO22	0x1c4
+			>;
+		};
+	};
+};

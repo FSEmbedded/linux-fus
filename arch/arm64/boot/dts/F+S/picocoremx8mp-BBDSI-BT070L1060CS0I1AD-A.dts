@@ -5,9 +5,11 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
-#define CONFIG_PICOCOREMX8MP_MIPI_DSI_LVDS
-#define CONFIG_PICOCOREMX8MP_INVERTED_XY
-/* TODO: does not work */
-//#define CONFIG_PICOCOREMX8MP_LDB_DUAL_CHANNEL
-#include "picocoremx8mpr2.dts"
-#include "displays/imx8mp-lcdif-j070wvtc0211.dtsi"
+
+#define IMX8MP_TOUCH_I2C 				i2c4
+#define IMX8MP_TOUCH_INTERRUPT_GPIO_BANK 		gpio1
+#define IMX8MP_TOUCH_INTERRUPT_GPIO_NUM 		13
+#define IMX8MP_LVDS_CHANNEL 1
+
+#include "picocoremx8mp-BBDSI.dts"
+#include "displays/imx8mp-BT070L1060CS0I1AD-A.dtsi"

@@ -16,7 +16,7 @@
 #define IMX8MP_TOUCH_I2C osm_i2c_cam_pci
 #define IMX8MP_LVDS_CHANNEL 0
 
-#include "osm8mp-adp.dtsi"
+#include "osm8mp-BBDSI.dts"
 
 #define IMX8MP_TOUCH_INTERRUPT_GPIO_BANK	gpio1
 #if CONFIG_ADP_OSM_BOARD_REVISION < 130
@@ -27,16 +27,6 @@
 
 #include "displays/imx8mp-EE1010B1T-1CP.dtsi"
 
-&ldb {
-	status = "okay";
-	/* DSI_B */
-	lvds-channel@1 {
-		fsl,data-mapping = "spwg";
-		fsl,data-width = <24>;
-		status = "disabled";
-		/delete-node/ port@1;
-	};
-};
 
 #ifdef IMX8MP_TOUCH_INTERRUPT_PINCTRL
 &touch {

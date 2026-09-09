@@ -9,5 +9,5 @@
 #define CONFIG_PICOCOREMX8MP_MIPI_DSI
 #define CONFIG_ADP_MIPI2MIPI1_BOARD_REVISION	120
 //#define CONFIG_ADP_MIPI2MIPI1_BOARD_REVISION	100
-#include "picocoremx8mp.dts"
+#include "picocoremx8mpr2-BBDSI.dts"
 #include "displays/imx8mp-lcdif-adp-mipi2mipi1-ee0350et-2cp.dtsi"

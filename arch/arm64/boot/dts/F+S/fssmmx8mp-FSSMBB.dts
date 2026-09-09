@@ -1,0 +1,502 @@
+/*
+* Copyright (C) 2024 F&S Elektronik Systeme GmbH
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License version 2 as
+* published by the Free Software Foundation.
+*/
+
+/dts-v1/;
+
+/* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
+#define CONFIG_FSSMMX8MP_BOARD_REVISION	100
+/* Set baseboard revision as 3-digit number, e.g. 110 for board rev. 1.10 */
+#define CONFIG_FSSMBB_BOARD_REVISION	100
+//#define SUPPORT_M7
+
+/* HDMI */
+#define CONFIG_FSSMMX8MP_HDMI
+//#define CONFIG_FSSMMX8MP_HDMI_AUDIO
+
+/* Network */
+#define CONFIG_FSSMMX8MP_GBE0
+#define CONFIG_FSSMMX8MP_GBE1
+
+/* Add entry configuration for marvell wlan, bluetooth driver.
+ * The entry is for NXP driver not needed. */
+#define CONFIG_FSSMMX8MP_WLAN_MARVELL_DRV
+
+/* CAN */
+#define CONFIG_FSSMMX8MP_CAN0
+#define CONFIG_FSSMMX8MP_CAN1
+
+/* I2C */
+#define CONFIG_FSSMMX8MP_I2C_GP
+#define CONFIG_FSSMMX8MP_I2C_PM
+#define CONFIG_FSSMMX8MP_I2C_LCD
+#define CONFIG_FSSMMX8MP_I2C_CAM0
+#define CONFIG_FSSMMX8MP_I2C_CAM1
+
+/*
+ * SDIO - External SD port with Card Detect (CD) and Write Protect (WP).
+ */
+#define CONFIG_FSSMMX8MP_SDIO
+
+/* PWM and backlight brightness */
+/* GPIO5 / PWM_OUT */
+#define CONFIG_FSSMMX8MP_PWM_OUT
+/* LCD0_BKLT_EN */
+/* Function on FSSMBB: LCD0_IRQ LCD0_RST */
+// #define CONFIG_FSSMMX8MP_LCD0_BKLT
+/* LCD1_BKLT_EN */
+#define CONFIG_FSSMMX8MP_LCD1_BKLT
+
+#define CONFIG_FSSMMX8MP_SER1
+#define CONFIG_FSSMMX8MP_SER0
+#define CONFIG_FSSMMX8MP_SER0_RTSCTS
+#define CONFIG_FSSMMX8MP_SER3
+#define CONFIG_FSSMMX8MP_SER2
+#define CONFIG_FSSMMX8MP_SER2_RTSCTS
+
+#define CONFIG_FSSMMX8MP_SPI0
+#define CONFIG_FSSMMX8MP_SPI1
+
+#define CONFIG_FSSMMX8MP_I2S0
+#define CONFIG_FSSMMX8MP_SGTL5000_AUDIO
+#define CONFIG_FSSMMX8MP_I2S2
+
+/* Camera on serial MIPI CSI interface */
+//#define CONFIG_FSSMMX8MP_CSI0
+//#define CONFIG_FSSMMX8MP_CSI1
+/* Enable Basler da4200 camera */
+//#define CONFIG_FSSMMX8MP_CAMERA_BASLER_daA4200
+//#define CONFIG_FSSMMX8MP_CAMERA_BASLER_daA3840
+/* USB Device TypeC and USB Host 2 Type A*/
+#define CONFIG_FSSMMX8MP_USB0 /* FSSMBB: USB OTG */
+#define CONFIG_FSSMMX8MP_USB1 /* FSSMBB: USB Host */
+/* External RTC */
+#define CONFIG_FSSMMX8MP_EXT_RTC
+/* Analog I/O */
+#define CONFIG_FSSMMX8MP_ADC
+/* Security chip */
+#define CONFIG_FSSMMX8MP_SECURE
+#define CONFIG_FSSMMX8MP_EEPROM
+
+#define CONFIG_FSSMMX8MP_PCIE
+
+#define CONFIG_FSSMMX8MP_VPU
+#define CONFIG_FSSMMX8MP_GPU
+#define CONFIG_FSSMMX8MP_ML
+
+/* HIFI4 DSP */
+//#define CONFIG_FSSMMX8MP_DSP
+
+#ifdef SUPPORT_M7
+#undef CONFIG_FSSMMX8MP_I2C_PM
+#undef CONFIG_FSSMMX8MP_SER1
+#undef CONFIG_FSSMMX8MP_SPI0
+#undef CONFIG_FSSMMX8MP_CAN0
+#undef CONFIG_FSSMMX8MP_PWM_OUT
+#endif
+
+#include "fssmmx8mp.dts"
+#include <fsversion.h>
+
+/ {
+	model = "F&S FSSMMX8MP-FSSMBB";
+	chosen {
+		stdout-path = &sm_ser0;
+	};
+};
+
+&bdinfo {
+	dts_version = FS_LINUX_VERSION;
+};
+
+&snvs_pwrkey {
+	status = "okay";
+};
+
+#ifdef CONFIG_FSSMMX8MP_GBE0
+&sm_gbe0 { status = "okay"; };
+#endif /* CONFIG_FSSMMX8MP_GBE0 */
+
+#ifdef CONFIG_FSSMMX8MP_GBE1
+&sm_gbe1 { status = "okay"; };
+#endif /* CONFIG_FSSMMX8MP_GBE1 */
+
+#ifdef CONFIG_FSSMMX8MP_PWM_OUT
+&sm_pwm_out { status = "okay"; };
+#endif /* CONFIG_FSSMMX8MP_PWM_OUT */
+
+#ifdef CONFIG_FSSMMX8MP_LCD0_BKLT
+&sm_lcd0_bklt_pwm { status = "okay"; };
+#endif /* CONFIG_FSSMMX8MP_LCD0_BKLT */
+
+#ifdef CONFIG_FSSMMX8MP_LCD1_BKLT
+&sm_lcd1_bklt_pwm { status = "okay"; };
+#endif /* CONFIG_FSSMMX8MP_LCD1_BKLT */
+
+#ifdef CONFIG_FSSMMX8MP_I2C_CAM0
+&sm_i2c_cam0 { status = "okay"; };
+#endif /* CONFIG_FSSMMX8MP_I2C_CAM0 */
+
+#ifdef CONFIG_FSSMMX8MP_I2C_CAM1
+&sm_i2c_cam1 { status = "okay"; };
+#endif /* CONFIG_FSSMMX8MP_I2C_CAM1 */
+
+#ifdef CONFIG_FSSMMX8MP_I2C_GP
+&sm_i2c_gp { status = "okay"; };
+#ifdef CONFIG_FSSMMX8MP_EEPROM
+&eeprom { status = "okay"; };
+#endif /* CONFIG_FSSMMX8MP_EEPROM */
+#endif /* CONFIG_FSSMMX8MP_I2C_GP */
+
+#ifdef CONFIG_FSSMMX8MP_I2C_PM
+&sm_i2c_pm { status = "okay"; };
+#endif /* CONFIG_FSSMMX8MP_I2C_PM */
+
+#ifdef CONFIG_FSSMMX8MP_I2C_LCD
+&sm_i2c_lcd { status = "okay"; };
+#endif /* CONFIG_FSSMMX8MP_I2C_LCD */
+
+#ifdef CONFIG_FSSMMX8MP_EXT_RTC
+&rtc85263 { status = "okay"; };
+#endif /* CONFIG_FSSMMX8MP_EXT_RTC */
+
+#ifdef CONFIG_FSSMMX8MP_SPI0
+&sm_spi0 {
+	num-cs = <1>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_sm_spi0 &pinctrl_sm_spi0_cs>;
+	cs-gpios = <0>, <&gpio5 21 GPIO_ACTIVE_LOW>;
+	status = "okay";
+
+	spidev@0 {
+		compatible = "linux,spidev";
+		spi-max-frequency = <20000000>;
+		reg = <0>;
+		status = "okay";
+	};
+
+	spidev@1 {
+		compatible = "linux,spidev";
+		spi-max-frequency = <20000000>;
+		reg = <1>;
+		status = "okay";
+	};
+
+};
+#endif /* CONFIG_FSSMMX8MP_SPI0 */
+
+
+#ifdef CONFIG_FSSMMX8MP_SPI1
+&sm_spi1 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	num-cs = <1>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_sm_spi1 &pinctrl_sm_spi1_cs>;
+	cs-gpios = <0>, <&gpio1 3 GPIO_ACTIVE_LOW>;
+	status = "okay";
+
+	spidev@0 {
+		compatible = "linux,spidev";
+		spi-max-frequency = <20000000>;
+		reg = <0>;
+		status = "okay";
+	};
+
+	spidev@1 {
+		compatible = "linux,spidev";
+		spi-max-frequency = <20000000>;
+		reg = <1>;
+		status = "okay";
+	};
+
+};
+#endif /* CONFIG_FSSMMX8MP_SPI1 */
+
+/* Feature Connector J20 - Pins 63, 64 */
+#ifdef CONFIG_FSSMMX8MP_CAN0
+&sm_can0 { status = "okay"; };
+#endif /* CONFIG_FSSMMX8MP_CAN0 */
+
+/* CAN Connector J15 */
+#ifdef CONFIG_FSSMMX8MP_CAN1
+&sm_can1 { status = "okay"; };
+#endif /* CONFIG_FSSMMX8MP_CAN1 */
+
+#ifdef CONFIG_FSSMMX8MP_I2S0
+&sm_i2s0 { status = "okay"; };
+#endif /* CONFIG_FSSMMX8MP_I2S0 */
+
+#ifdef CONFIG_FSSMMX8MP_I2S2
+&sm_i2s2 { status = "okay"; };
+#endif /* CONFIG_FSSMMX8MP_I2S2 */
+
+
+#ifdef CONFIG_FSSMMX8MP_SER1
+&sm_ser1 { status = "okay"; };
+#endif /* CONFIG_FSSMMX8MP_SER1 */
+
+#ifdef CONFIG_FSSMMX8MP_SER0
+&sm_ser0 {
+#ifdef CONFIG_FSSMMX8MP_SER0_RTSCTS
+	pinctrl-0 = <&pinctrl_sm_ser0 &pinctrl_sm_ser0_rtscts>;
+	fsl,uart-has-rtscts;
+#endif
+	status = "okay";
+};
+#endif /* CONFIG_FSSMMX8MP_SER0 */
+
+#ifdef CONFIG_FSSMMX8MP_SER3
+&sm_ser3 { status = "okay";};
+#endif /* CONFIG_FSSMMX8MP_SER3 */
+
+#ifdef CONFIG_FSSMMX8MP_SER2
+&sm_ser2 {
+#ifdef CONFIG_FSSMMX8MP_SER2_RTSCTS
+	pinctrl-0 = <&pinctrl_sm_ser2 &pinctrl_sm_ser2_rtscts>;
+	fsl,uart-has-rtscts;
+#endif
+	status = "okay";
+};
+#endif /* CONFIG_FSSMMX8MP_SER2 */
+
+#ifdef CONFIG_FSSMMX8MP_PCIE
+&pcie { status = "okay"; };
+&pcie_phy { status = "okay"; };
+#endif /* CONFIG_FSSMMX8MP_PCIE */
+
+#ifdef CONFIG_FSSMMX8MP_USB0
+&usb3_phy0 { status = "okay"; };
+&usb3_0 { status = "okay"; };
+&sm_usb0 { status = "okay"; };
+#endif /* CONFIG_FSSMMX8MP_USB0 */
+
+#ifdef CONFIG_FSSMMX8MP_USB1
+&usb_host_reset { status = "okay"; };
+&usb3_phy1 { status = "okay"; };
+&usb3_1 { status = "okay"; };
+&sm_usb1 { status = "okay"; };
+#endif /* CONFIG_FSSMMX8MP_USB1 */
+
+#ifdef CONFIG_FSSMMX8MP_SDIO
+/* SD_A - internal Micro-SD */
+&sm_sdio { status = "okay"; };
+#endif /* CONFIG_FSSMMX8MP_SDIO */
+
+#ifdef CONFIG_FSSMMX8MP_WLAN_MARVELL_DRV
+&reg_wlan_pdn { status = "okay"; };
+/* SD_WLAN */
+&sd_wlan { status = "okay"; };
+&mwifiex { status = "okay"; };
+#endif /* CONFIG_FSSMMX8MP_WLAN_MARVELL_DRV */
+
+
+#ifdef CONFIG_FSSMMX8MP_CSI0
+&sm_csi0 { status = "okay"; };
+#endif 	/* CONFIG_FSSMMX8MP_CSI0 */
+
+#ifdef CONFIG_FSSMMX8MP_CSI1
+&sm_csi1 {
+	status = "okay";
+#if defined (CONFIG_FSSMMX8MP_CAMERA_BASLER_daA4200) || \
+    defined (CONFIG_FSSMMX8MP_CAMERA_BASLER_daA3840)
+	port@1 {
+		reg = <1>;
+		mipi_csi1_ep: endpoint {
+			remote-endpoint = <&basler_ep_0>;
+			data-lanes = <4>;
+			csis-hs-settle = <16>;
+		};
+	};
+#endif /* CONFIG_FSSMMX8MP_CAMERA_BASLER_daA4200 */
+};
+#endif /* CONFIG_FSSMMX8MP_CSI1 */
+
+
+#ifdef CONFIG_FSSMMX8MP_HDMI
+&hdmi {
+	pinctrl-names = "default";
+	pinctrl-0 = < &pinctrl_hdmi_i2c &pinctrl_hdmi_hdp>;
+	status = "okay";
+};
+
+&irqsteer_hdmi { status = "okay"; };
+&hdmi_pavi { status = "okay"; };
+&hdmi { status = "okay"; };
+&hdmiphy { status = "okay"; };
+&hdmi_blk_ctrl { status = "okay"; };
+&lcdif3 { status = "okay"; };
+
+#ifdef CONFIG_FSSMMX8MP_HDMI_AUDIO
+/{
+	sound-hdmi { status = "okay"; };
+};
+&aud2htx { status = "okay"; };
+#endif /* CONFIG_FSSMMX8MP_HDMI_AUDIO */
+#endif /* CONFIG_FSSMMX8MP_HDMI */
+
+#ifdef CONFIG_FSSMMX8MP_SGTL5000_AUDIO
+/{
+	regulators {
+		/* SGTL5000 analog voltage */
+		reg_sgtl5000_vdda: sgtl5000_vdda {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDA-supply";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			regulator-always-on;
+		};
+
+		/* SGTL5000 I/O voltage */
+		reg_sgtl5000_vddio: sgtl5000_vddio {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDIO-supply";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			regulator-always-on;
+		};
+
+		/* SGTL5000 internal digital voltage */
+		reg_sgtl5000_vddd: sgtl5000_vddd {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDD-supply";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+			regulator-always-on;
+		};
+	};
+
+	sound_sgtl5000: sound-sgtl5000 {
+		compatible = "fsl,imx-audio-sgtl5000";
+		model = "imx-sgtl5000";
+		audio-cpu = <&sm_i2s0>;
+		audio-codec = <&sgtl5000>;
+		audio-asrc = <&easrc>;
+		audio-routing =
+			"LINE_IN", "Line In Jack",
+			"Mic Jack", "Mic Bias",
+			"MIC_IN", "Mic Jack",
+			"Line Out Jack", "LINE_OUT",
+			"Headphone Jack", "HP_OUT";
+	};
+};
+
+&sm_i2c_gp {
+	status = "okay";
+	sgtl5000: sgtl5000@a {
+		#sound-dai-cells = <0>;
+		compatible = "fsl,sgtl5000";
+		clocks = <&clk IMX8MP_CLK_CLKOUT1>;
+		reg = <0xa>;
+		//mono2both;
+		VDDA-supply = <&reg_sgtl5000_vdda>;
+		VDDIO-supply = <&reg_sgtl5000_vddio>;
+		VDDD-supply = <&reg_sgtl5000_vddd>;
+		status = "okay";
+	};
+};
+
+#endif /* CONFIG_FSSMMX8MP_SGTL5000_AUDIO */
+
+#ifdef CONFIG_FSSMMX8MP_VPU
+&vpu_g1 { status = "okay"; };
+&vpu_g2 { status = "okay"; };
+&vpu_vc8000e { status = "okay"; };
+&vpu_v4l2 { status = "okay"; };
+#endif /* CONFIG_FSSMMX8MP_VPU */
+
+#ifdef CONFIG_FSSMMX8MP_GPU
+&gpu_3d { status = "okay"; };
+&gpu_2d { status = "okay"; };
+#endif /* CONFIG_FSSMMX8MP_GPU */
+
+#ifdef CONFIG_FSSMMX8MP_ML
+&ml_vipsi { status = "okay"; };
+&mix_gpu_ml { status = "okay"; };
+#endif /* CONFIG_FSSMMX8MP_ML */
+
+#ifdef CONFIG_FSSMMX8MP_DSP
+&reserved_mem {
+	dsp_reserved: dsp@53000000 {
+		reg = <0 0x53000000 0 0x1000000>;
+		no-map;
+	};
+	dsp_reserved_heap: dsp_reserved_heap@54000000 {
+		reg = <0 0x54000000 0 0xef0000>;
+		no-map;
+	};
+	dsp_vdev0vring0: vdev0vring0@54ef0000 {
+		reg = <0 0x54ef0000 0 0x8000>;
+		no-map;
+	};
+	dsp_vdev0vring1: vdev0vring1@54ef8000 {
+		reg = <0 0x54ef8000 0 0x8000>;
+		no-map;
+	};
+	dsp_vdev0buffer: vdev0buffer@54f00000{
+		compatible = "shared-dma-pool";
+		reg = <0 0x54f00000 0 0x100000>;
+		no-map;
+	};
+};
+
+&dsp {
+	memory-region = <&dsp_vdev0buffer>, <&dsp_vdev0vring0>,
+			<&dsp_vdev0vring1>, <&dsp_reserved>;
+	status = "okay";
+};
+#endif /* CONFIG_FSSMMX8MP_DSP */
+
+#ifdef SUPPORT_M7
+&reserved_mem {
+	#address-cells = <2>;
+	#size-cells = <2>;
+	ranges;
+
+		m7_reserved: m7@55500000 {
+			no-map;
+			reg = <0 0x55500000 0 0x1000000>;
+		};
+
+		vdev0vring0: vdev0vring0@55000000 {
+			reg = <0 0x55000000 0 0x8000>;
+			no-map;
+		};
+
+		vdev0vring1: vdev0vring1@55008000 {
+			reg = <0 0x55008000 0 0x8000>;
+			no-map;
+		};
+
+		vdevbuffer: vdevbuffer@55400000 {
+			compatible = "shared-dma-pool";
+			reg = <0 0x55400000 0 0x100000>;
+			no-map;
+		};
+
+		rsc_table: rsc-table@550ff000 {
+			reg = <0 0x550ff000 0 0x1000>;
+			no-map;
+		};
+};
+
+/ {
+	imx8mp-cm7 {
+		compatible = "fsl,imx8mp-cm7";
+		clocks = <&clk IMX8MP_CLK_M7_DIV>;
+		rsc-da = <0x55000000>;
+		mbox-names = "tx", "rx", "rxdb";
+		mboxes = <&mu 0 1
+			  &mu 1 1
+			  &mu 3 1>;
+		memory-region = <&m7_reserved>, <&vdevbuffer>, <&vdev0vring0>, <&vdev0vring1>, <&rsc_table>;
+		status = "okay";
+		fsl,startup-delay-ms = <500>;
+	};
+};
+#endif /* SUPPORT_M7 */
+

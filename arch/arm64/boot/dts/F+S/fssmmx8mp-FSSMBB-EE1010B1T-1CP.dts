@@ -6,12 +6,12 @@
  * published by the Free Software Foundation.
  */
 //#define CONFIG_FSSMMX8MP_MIPI_DSI_LVDS
-#define IMX8MP_TOUCH_I2C 			i2c5
+#define IMX8MP_TOUCH_I2C 			sm_i2c_lcd
 #define IMX8MP_TOUCH_INTERRUPT_GPIO_BANK 	gpio4
 #define IMX8MP_TOUCH_INTERRUPT_GPIO_NUM 		1
 #define IMX8MP_MIPI_RESET_GPIO_BANK 	gpio5
 #define IMX8MP_MIPI_RESET_GPIO_NUM 		2
 #define IMX8MP_LVDS_CHANNEL 1
 
-#include "fssmmx8mp.dts"
+#include "fssmmx8mp-FSSMBB.dts"
 #include "displays/imx8mp-EE1010B1T-1CP.dtsi"

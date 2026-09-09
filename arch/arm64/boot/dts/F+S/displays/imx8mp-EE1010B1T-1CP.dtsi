@@ -7,6 +7,18 @@
  */
 
 / {
+	regulators {
+
+
+		reg_ldb_bl_adp: ldb-bl {
+			compatible = "regulator-fixed";
+			regulator-name = "ldb-bl";
+			gpio = <&gpio_adp 0 GPIO_ACTIVE_HIGH>;
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			enable-active-high;
+		};
+	};
 	lvds_panel {
 		compatible = "panel-lvds";
 		backlight = <&backlight_ldb>;
@@ -40,18 +52,18 @@
 			};
 		};
 	};
-};
-
-&backlight_ldb {
-	pwms = <&gpio_adp 1 5263157 1>;
-	brightness-levels = <0 1 5 10 18 28 41 56
+	backlight_ldb: backlight_ldb {
+		compatible = "pwm-backlight";
+		#pwm-cells = <3>;
+		pwms = <&gpio_adp 1 5263157 1>;
+		power-supply = <&reg_ldb_bl_adp>;
+		brightness-levels = <0 1 5 10 18 28 41 56
 				 73 92 113 137 163 192 222 255>;
-	default-brightness-level = <14>;
+		default-brightness-level = <14>;
+		fb-names = "mxs-lcdif0";
+	};
 };
 
-&reg_ldb_bl{
-	gpio = <&gpio_adp 0 GPIO_ACTIVE_HIGH>;
-};
 
 /* LVDS */
 &lcdif2 {

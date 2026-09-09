@@ -1,0 +1,642 @@
+/*
+ * Copyright (C) 2023 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+/dts-v1/;
+
+/* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
+#define CONFIG_EFUSMX8MP_BOARD_REVISION	100
+
+//#define SUPPORT_M7
+
+/* Network */
+#define CONFIG_EFUSMX8MP_ETH_A
+#define CONFIG_EFUSMX8MP_ETH_B
+
+/* CAN */
+/* CAN_A: Goldfinger 29,31
+ * J13 - pins 3,4
+*/
+#define CONFIG_EFUSMX8MP_CAN_A
+/* CAN_B: Goldfinger 35,37
+ *   SKIT: J22 feature connector 55,56
+ */
+#define CONFIG_EFUSMX8MP_CAN_B
+
+/* I2C busses */
+/* I2C_A: Goldfinger connector 151,155*/
+#define CONFIG_EFUSMX8MP_I2C_A
+/* I2C_B: Goldfinger connector 82,84*/
+#define CONFIG_EFUSMX8MP_I2C_B
+/* I2C_C: Goldfinger connector 130,132*/
+#define CONFIG_EFUSMX8MP_I2C_C
+/* I2C_E: internal */
+#define CONFIG_EFUSMX8MP_I2C_E
+
+/*
+ * SD_A (default) or WLAN: Goldfinger connector
+ * pins 16,18,20,22,24,26,28,32,34
+ * in case of WLAN pins are not connected.
+ *	SKIT:
+ *		J28 Micro-SD if WLAN is not equipped.
+ */
+//#define CONFIG_EFUSMX8MP_SD_A
+
+/* enable HS400 for highspeed micro SD cards */
+//#define CONFIG_EFUSMX8MP_SD_A_HS400
+/* WLAN is in U-Boot not supported */
+/* wlan specific settigs */
+#define CONFIG_EFUSMX8MP_WLAN
+/* Add entry configuration for marvell wlan, bluetooth driver.
+ * The entry is for NXP driver not needed.
+ */
+#define CONFIG_EFUSMX8MP_WLAN_MARVELL_DRV
+
+/* SD_B or QSPI_NAND (default) */
+#define CONFIG_EFUSMX8MP_SD_B
+
+/* SD_C: eMMC internal */
+#define CONFIG_EFUSMX8MP_SD_C
+
+/* PWM and backlight brightness */
+/* PWM_A - Goldfinger connector J3 pin 25 */
+#define CONFIG_EFUSMX8MP_PWM_A
+/* PWM_B - Goldfinger connector J3 pin 23 */
+#define CONFIG_EFUSMX8MP_PWM_B
+/* BL_PWM - Goldfinger connector J3 pin 87 */
+#define CONFIG_EFUSMX8MP_BL_CTRL
+
+/* UARTs */
+/* UART_A - Goldfinger connector J3 pins 92,94 */
+#define CONFIG_EFUSMX8MP_UART_A
+/* UART_B - Goldfinger connector J3 pins 102,104,106,108 */
+#define CONFIG_EFUSMX8MP_UART_B
+#define CONFIG_EFUSMX8MP_UART_B_RTSCTS
+/* UART_C - Goldfinger connector J3 pins 15,17,19,21 */
+#define CONFIG_EFUSMX8MP_UART_C
+#define CONFIG_EFUSMX8MP_UART_C_RTSCTS
+/* UART_D - Goldfinger connector J3 pins 96,98*/
+#define CONFIG_EFUSMX8MP_UART_D
+
+/* SPIs */
+/* SPI_A - Goldfinger connector J3 pins 66,68,70,72,74,76,78 */
+#define CONFIG_EFUSMX8MP_SPI_A
+/* SPI_B - Goldfinger connector J3 pins 50,52,54,56,58,60,62 */
+#define CONFIG_EFUSMX8MP_SPI_B
+
+/* Audio */
+/* I2S - Goldfinger connector J3 pins 112,116,120,124,126 */
+#define CONFIG_EFUSMX8MP_I2S_A
+/* Codec SKIT: SGTL5000 */
+#define CONFIG_EFUSMX8MP_SGTL5000_AUDIO
+
+/* Camera on serial MIPI CSI interface */
+#define CONFIG_EFUSMX8MP_CSI_A
+/* Enable Basler da4200 camera */
+//#define CONFIG_EFUSMX8MP_CAMERA_BASLER_daA4200
+
+/* USB */
+#define CONFIG_EFUSMX8MP_USB_OTG
+#define CONFIG_EFUSMX8MP_USB_HOST
+/* External RTC */
+#define CONFIG_EFUSMX8MP_EXT_RTC
+/* Analog I/O */
+#define CONFIG_EFUSMX8MP_ADC
+/* Security chip */
+#define CONFIG_EFUSMX8MP_SECURE
+#define CONFIG_EFUSMX8MP_EEPROM
+/* PCIE */
+#define CONFIG_EFUSMX8MP_PCIE
+
+/* HIFI4 Digital Signal Processor */
+//#define CONFIG_EFUSMX8MP_DSP
+/* Video Processing Unit */
+#define CONFIG_EFUSMX8MP_VPU
+/* Graphics Processing Unit */
+#define CONFIG_EFUSMX8MP_GPU
+/* Machine Learning Accelerator */
+#define CONFIG_EFUSMX8MP_ML
+
+
+#ifdef SUPPORT_M7
+#undef CONFIG_EFUSMX8MP_I2C_B
+#undef CONFIG_EFUSMX8MP_UART_B
+#undef CONFIG_EFUSMX8MP_SPI_B
+#undef CONFIG_EFUSMX8MP_CAN_A
+#undef CONFIG_EFUSMX8MP_PWM_A
+#endif
+
+/* Do we have HDMI? */
+#define CONFIG_EFUSMX8MP_HDMI
+#define CONFIG_EFUSMX8MP_HDMI_AUDIO
+#define CONFIG_EFUSMX8MP_HDMI_CEC
+#define CONFIG_EFUSMX8MP_HDMI_HPD
+
+#ifndef CONFIG_EFUSMX8MP_I2C_C
+#define CONFIG_EFUSMX8MP_HDMI_I2C
+#endif
+
+/* Check for invalid CONFIG combinations */
+
+/* If SD_A is not active, also CD and WP may not be used */
+#ifndef CONFIG_EFUSMX8MP_SD_A
+#undef CONFIG_EFUSMX8MP_SD_A_CD
+#undef CONFIG_EFUSMX8MP_SD_A_WP
+#endif
+
+#include "efusmx8mp.dts"
+#include <fsversion.h>
+
+/ {
+	model = "F&S efusMX8MP-SINTF";
+
+	chosen {
+		stdout-path = &fs_uart_a;
+	};
+
+	aliases {
+		sound-sgtl5000 = &sound_sgtl5000;
+		sgtl5000 = &sgtl5000;
+		wlan = &mwifiex;
+	};
+};
+
+&reserved_mem {
+	#address-cells = <2>;
+	#size-cells = <2>;
+	ranges;
+
+	linux,cma {
+		compatible = "shared-dma-pool";
+		reusable;
+		size = <0 0x14000000>;
+		alloc-ranges = <0 0x40000000 0 0x40000000>;
+		linux,cma-default;
+	};
+};
+
+&bdinfo {
+	dts_version = FS_LINUX_VERSION;
+};
+
+&snvs_pwrkey {
+	status = "okay";
+};
+
+
+#ifdef CONFIG_EFUSMX8MP_I2C_A
+&fs_i2c_a {
+	pinctrl-0 = <&pinctrl_fs_i2c_a>, <&pinctrl_fs_i2c_a_rst>,<&pinctrl_fs_i2c_a_irq>;
+	status = "okay";
+};
+#endif /* CONFIG_EFUSMX8MP_I2C_A */
+
+#ifdef CONFIG_EFUSMX8MP_I2C_B
+&fs_i2c_b {
+	pinctrl-0 = <&pinctrl_fs_i2c_b>, <&pinctrl_fs_i2c_b_rst>,<&pinctrl_fs_i2c_b_irq>;
+	status = "okay";
+};
+#endif /* CONFIG_EFUSMX8MP_I2C_B */
+
+#ifdef CONFIG_EFUSMX8MP_I2C_C
+&fs_i2c_c { status = "okay"; };
+#endif /* CONFIG_EFUSMX8MP_I2C_C */
+
+#ifdef CONFIG_EFUSMX8MP_I2C_E
+&fs_i2c_e {
+	status = "okay";
+	pinctrl-0 = <&pinctrl_fs_i2c_e>, <&pinctrl_fs_i2c_e_gpio>;
+
+	ads1015@48 { status = "okay"; };
+	eeprom@50 { status = "okay"; };
+	rtc85263@51 { status = "okay";};
+};
+#endif /* CONFIG_EFUSMX8MP_I2C_E */
+
+#ifdef CONFIG_EFUSMX8MP_I2C_LVDS
+&fs_i2c_lvds {
+	pinctrl-0 = <&pinctrl_fs_i2c_lvds>, <&pinctrl_fs_i2c_lvds_rst>, <&pinctrl_fs_i2c_lvds_int>;
+	status = "okay";
+};
+#endif /* CONFIG_EFUSMX8MP_I2C_A */
+
+#ifdef CONFIG_EFUSMX8MP_SPI_A
+&fs_spi_a {
+	status = "okay";
+	pinctrl-0 = <&pinctrl_fs_spi_a>, <&pinctrl_fs_spi_a_cs>, <&pinctrl_fs_spi_a_irq>;
+	num-cs = <2>;
+	cs-gpios = <&gpio5 25 GPIO_ACTIVE_LOW>,
+		   <&gpio3 1 GPIO_ACTIVE_LOW>;
+
+	spidev@0 {
+		compatible = "linux,spidev";
+		spi-max-frequency = <20000000>;
+		reg = <0>;
+		status = "okay";
+	};
+	spidev@1 {
+		compatible = "linux,spidev";
+		spi-max-frequency = <20000000>;
+		reg = <1>;
+		status = "okay";
+	};
+};
+#endif /* CONFIG_EFUSMX8MP_SPI_A */
+
+#ifdef CONFIG_EFUSMX8MP_SPI_B
+&fs_spi_b {
+	status = "okay";
+	pinctrl-0 = <&pinctrl_fs_spi_b>, <&pinctrl_fs_spi_b_cs>, <&pinctrl_fs_spi_b_irq>;
+	num-cs = <2>;
+	cs-gpios = <&gpio5 13 GPIO_ACTIVE_LOW>,
+		   <&gpio3 16 GPIO_ACTIVE_LOW>;
+
+	spidev@0 {
+		compatible = "linux,spidev";
+		spi-max-frequency = <20000000>;
+		reg = <0>;
+		status = "okay";
+	};
+	spidev@1 {
+		compatible = "linux,spidev";
+		spi-max-frequency = <20000000>;
+		reg = <1>;
+		status = "okay";
+	};
+};
+#endif /* CONFIG_EFUSMX8MP_SPI_B */
+
+#ifdef CONFIG_EFUSMX8MP_CAN_A
+&fs_can_a { status = "okay"; };
+#endif /* CONFIG_EFUSMX8MP_CAN_A */
+
+/* Goldfinger Connector J3 - Pins 35, 37 */
+#ifdef CONFIG_EFUSMX8MP_CAN_B
+&fs_can_b { status = "okay"; };
+#endif /* CONFIG_EFUSMX8MP_CAN_B */
+
+#ifdef CONFIG_EFUSMX8MP_I2S_A
+&fs_i2s_a { status = "okay"; };
+#endif /* CONFIG_EFUSMX8MP_I2S_A */
+
+#ifdef CONFIG_EFUSMX8MP_UART_A
+/* console */
+&fs_uart_a { status = "okay"; };
+#endif /* CONFIG_EFUSMX8MP_UART_A */
+
+#ifdef CONFIG_EFUSMX8MP_UART_B
+&fs_uart_b {
+
+#ifdef CONFIG_EFUSMX8MP_UART_B_RTSCTS
+	pinctrl-0 = <&pinctrl_fs_uart_b>, <&pinctrl_fs_uart_b_rtscts>;
+	fsl,uart-has-rtscts;
+#endif
+	status = "okay";
+};
+#endif /* CONFIG_EFUSMX8MP_UART_B */
+
+#ifdef CONFIG_EFUSMX8MP_UART_C
+&fs_uart_c {
+#ifdef CONFIG_EFUSMX8MP_UART_C_RTSCTS
+	pinctrl-0 = <&pinctrl_fs_uart_c>, <&pinctrl_fs_uart_c_rtscts>;
+	fsl,uart-has-rtscts;
+#endif
+	status = "okay";
+};
+#endif /* CONFIG_EFUSMX8MP_UART_C */
+
+#ifdef CONFIG_EFUSMX8MP_UART_D
+&fs_uart_d { status = "okay"; };
+#endif /* CONFIG_EFUSMX8MP_UART_D */
+
+#ifdef CONFIG_EFUSMX8MP_PWM_A
+&fs_pwm_a { status = "okay"; };
+#endif /* CONFIG_EFUSMX8MP_PWM_A */
+
+#ifdef CONFIG_EFUSMX8MP_PWM_B
+&fs_pwm_b { status = "okay"; };
+#endif /* CONFIG_EFUSMX8MP_PWM_B */
+
+#ifdef CONFIG_EFUSMX8MP_PCIE
+&fs_pcie { status = "okay"; };
+&pcie_phy { status = "okay"; };
+#endif /* CONFIG_EFUSMX8MP_PCIE */
+
+#ifdef CONFIG_EFUSMX8MP_USB_HOST
+/* USB1 */
+&reg_fs_usb_host_vbus { status = "okay"; };
+&usb3_phy0 { status = "okay"; };
+&usb3_0 { status = "okay"; };
+&fs_usb_host { status = "okay"; };
+#endif
+
+#ifdef CONFIG_EFUSMX8MP_USB_OTG
+/* USB2 */
+&extcon_usb { status = "okay"; };
+&usb3_phy1 { status = "okay"; };
+&usb3_1 { status = "okay"; };
+&fs_usb_otg { status = "okay"; };
+#endif
+
+#ifdef CONFIG_EFUSMX8MP_ETH_A
+&fs_eth_a { status = "okay"; };
+#endif /* CONFIG_EFUSMX8MP_ETH_A */
+
+#ifdef CONFIG_EFUSMX8MP_ETH_B
+&fs_eth_b { status = "okay"; };
+#endif /* CONFIG_EFUSMX8MP_ETH_B */
+
+#ifdef CONFIG_EFUSMX8MP_SD_C
+/* SD_C - internal eMCC  */
+&fs_emmc { status = "okay"; };
+#endif /* CONFIG_EFUSMX8MP_SD_C */
+
+#ifdef CONFIG_EFUSMX8MP_SD_A
+/* SD_A (default) - internal WLAN or external SD_A  */
+&fs_sdio_a {
+
+	pinctrl-names = "default", "state_100mhz";
+
+	pinctrl-0 = <&pinctrl_fs_sdio_a &pinctrl_fs_sdio_a_cd
+		     &pinctrl_fs_sdio_a_wp &pinctrl_fs_sdio_a_rst>;
+	pinctrl-1 = <&pinctrl_fs_sdio_a_100mhz &pinctrl_fs_sdio_a_cd
+		     &pinctrl_fs_sdio_a_wp &pinctrl_fs_sdio_a_rst>;
+
+
+#ifdef CONFIG_EFUSMX8MP_SD_A_HS400
+	pinctrl-names = "default", "state_100mhz", "state_200mhz";
+	pinctrl-2 = <&pinctrl_fs_sdio_a_200mhz &pinctrl_fs_sdio_a_cd
+		     &pinctrl_fs_sdio_a_wp &pinctrl_fs_sdio_a_rst>;
+#endif
+	vqmmc-supply = <&reg_vref_1v8>;
+
+	status = "okay";
+
+	cd-gpios = <&gpio2 12 GPIO_ACTIVE_LOW>;
+};
+#endif /* CONFIG_EFUSMX8MP_SD_A */
+
+#ifdef CONFIG_EFUSMX8MP_WLAN
+&fs_sdio_a_pwrseq {
+	status = "okay";
+};
+
+&fs_sdio_a {
+	vqmmc-supply = <&reg_vref_1v8>;
+	mmc-pwrseq = <&fs_sdio_a_pwrseq>;
+	pm-ignore-notify;
+	keep-power-in-suspend;
+	non-removable;
+	cap-power-off-card;
+	fsl,sdio-async-interrupt-enabled;
+	#address-cells = <1>;
+	status = "okay";
+	#size-cells = <0>;
+#ifdef CONFIG_EFUSMX8MP_WLAN_MARVELL_DRV
+	mwifiex: wifi@1 {
+		compatible = "marvell,sd8997";
+		reg = <1>;
+	};
+#endif
+};
+#endif /* CONFIG_EFUSMX8MP_WLAN_MARVELL_DRV */
+
+
+#ifdef CONFIG_EFUSMX8MP_SD_B
+/* SD_B - internal SD */
+&fs_sdio_b { status = "okay"; };
+#endif
+
+#ifdef CONFIG_EFUSMX8MP_FLEXSPI
+&flexspi {
+	status = "okay";
+
+	f50l2g41lb@2 {
+		status = "okay";
+	};
+};
+#endif /* CONFIG_EFUSMX8MP_FLEXSPI */
+
+
+#ifdef CONFIG_EFUSMX8MP_CSI_A
+&fs_csi_a {
+	status = "okay";
+#ifdef CONFIG_EFUSMX8MP_CAMERA_BASLER_daA4200
+	port@0 {
+		reg = <0>;
+		mipi_csi0_ep: endpoint {
+			remote-endpoint = <&basler_ep_0>;
+			data-lanes = <4>;
+			csis-hs-settle = <16>;
+		};
+	};
+#endif /* CONFIG_EFUSMX8MP_CAMERA_BASLER_daA4200 */
+};
+#endif
+
+#ifdef CONFIG_EFUSMX8MP_HDMI
+&hdmi {
+	pinctrl-names = "default";
+	pinctrl-0 = <
+#ifdef CONFIG_EFUSMX8MP_HDMI_I2C
+		     &pinctrl_hdmi_i2c
+#endif
+#ifdef CONFIG_EFUSMX8MP_HDMI_HPD
+		     &pinctrl_hdmi_hdp
+#endif
+#ifdef CONFIG_EFUSMX8MP_HDMI_CEC
+		     &pinctrl_hdmi_cec
+#endif
+    >;
+
+#ifndef CONFIG_EFUSMX8MP_HDMI_I2C
+	ddc-i2c-bus = <&fs_i2c_c>;
+#endif
+	status = "okay";
+};
+
+&irqsteer_hdmi { status = "okay"; };
+&hdmi_pavi { status = "okay"; };
+&hdmi { status = "okay"; };
+&hdmiphy { status  ="okay"; };
+&hdmi_blk_ctrl { status = "okay"; };
+&lcdif3 { status = "okay"; };
+
+#ifdef CONFIG_EFUSMX8MP_HDMI_AUDIO
+/{
+	sound-hdmi { status = "okay"; };
+};
+&aud2htx { status = "okay"; };
+#endif /* CONFIG_EFUSMX8MP_HDMI_AUDIO */
+#endif /* CONFIG_EFUSMX8MP_HDMI */
+
+#ifdef CONFIG_EFUSMX8MP_SGTL5000_AUDIO
+/{
+	regulators {
+		/* SGTL5000 analog voltage */
+		reg_sgtl5000_vdda: sgtl5000_vdda {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDA-supply";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			regulator-always-on;
+		};
+
+		/* SGTL5000 I/O voltage */
+		reg_sgtl5000_vddio: sgtl5000_vddio {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDIO-supply";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			regulator-always-on;
+		};
+
+		/* SGTL5000 internal digital voltage */
+		reg_sgtl5000_vddd: sgtl5000_vddd {
+			compatible = "regulator-fixed";
+			regulator-name = "VDDD-supply";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+			regulator-always-on;
+		};
+	};
+
+	sound_sgtl5000: sound-sgtl5000 {
+		compatible = "fsl,imx-audio-sgtl5000";
+		model = "imx-sgtl5000";
+		audio-cpu = <&fs_i2s_a>;
+		audio-codec = <&sgtl5000>;
+		audio-asrc = <&easrc>;
+		audio-routing =
+			"LINE_IN", "Line In Jack",
+			"Mic Jack", "Mic Bias",
+			"MIC_IN", "Mic Jack",
+			"Line Out Jack", "LINE_OUT",
+			"Headphone Jack", "HP_OUT";
+	};
+};
+
+&fs_i2c_c {
+	status = "okay";
+
+	sgtl5000: sgtl5000@a {
+		#sound-dai-cells = <0>;
+		compatible = "fsl,sgtl5000";
+		reg = <0xa>;
+		mono2both;
+		clocks = <&audio_blk_ctrl IMX8MP_CLK_AUDIOMIX_SAI2_MCLK1>;
+		mclk-extern-enabled;
+		VDDA-supply = <&reg_sgtl5000_vdda>;
+		VDDIO-supply = <&reg_sgtl5000_vddio>;
+		VDDD-supply = <&reg_sgtl5000_vddd>;
+		status = "okay";
+	};
+};
+
+&easrc {
+	fsl,asrc-rate  = <48000>;
+	status = "okay";
+};
+#endif /* CONFIG_EFUSMX8MP_SGTL5000_AUDIO */
+
+#ifdef CONFIG_EFUSMX8MP_VPU
+&vpu_g1 { status = "okay"; };
+&vpu_g2 { status = "okay"; };
+&vpu_vc8000e { status = "okay"; };
+&vpu_v4l2 { status = "okay"; };
+#endif /* CONFIG_EFUSMX8MP_VPU */
+
+#ifdef CONFIG_EFUSMX8MP_GPU
+&gpu_3d { status = "okay"; };
+&gpu_2d { status = "okay"; };
+#endif /* CONFIG_EFUSMX8MP_GPU */
+
+#ifdef CONFIG_EFUSMX8MP_ML
+&ml_vipsi { status = "okay"; };
+&mix_gpu_ml { status = "okay"; };
+#endif /* CONFIG_EFUSMX8MP_ML */
+
+#ifdef CONFIG_EFUSMX8MP_DSP
+&reserved_mem {
+	dsp_reserved: dsp@53000000 {
+		reg = <0 0x53000000 0 0x1000000>;
+		no-map;
+	};
+	dsp_reserved_heap: dsp_reserved_heap@54000000 {
+		reg = <0 0x54000000 0 0xef0000>;
+		no-map;
+	};
+	dsp_vdev0vring0: vdev0vring0@54ef0000 {
+		reg = <0 0x54ef0000 0 0x8000>;
+		no-map;
+	};
+	dsp_vdev0vring1: vdev0vring1@54ef8000 {
+		reg = <0 0x54ef8000 0 0x8000>;
+		no-map;
+	};
+	dsp_vdev0buffer: vdev0buffer@54f00000{
+		compatible = "shared-dma-pool";
+		reg = <0 0x54f00000 0 0x100000>;
+		no-map;
+	};
+};
+
+&dsp {
+	memory-region = <&dsp_vdev0buffer>, <&dsp_vdev0vring0>,
+			<&dsp_vdev0vring1>, <&dsp_reserved>;
+	status = "okay";
+};
+#endif /* CONFIG_EFUSMX8MP_DSP */
+
+#ifdef SUPPORT_M7
+&reserved_mem {
+	#address-cells = <2>;
+	#size-cells = <2>;
+	ranges;
+
+		m7_reserved: m7@55500000 {
+			no-map;
+			reg = <0 0x55500000 0 0x1000000>;
+		};
+
+		vdev0vring0: vdev0vring0@55000000 {
+			reg = <0 0x55000000 0 0x8000>;
+			no-map;
+		};
+
+		vdev0vring1: vdev0vring1@55008000 {
+			reg = <0 0x55008000 0 0x8000>;
+			no-map;
+		};
+
+		vdevbuffer: vdevbuffer@55400000 {
+			compatible = "shared-dma-pool";
+			reg = <0 0x55400000 0 0x100000>;
+			no-map;
+		};
+
+		rsc_table: rsc-table@550ff000 {
+			reg = <0 0x550ff000 0 0x1000>;
+			no-map;
+		};
+};
+
+/ {
+	imx8mp-cm7 {
+		compatible = "fsl,imx8mp-cm7";
+		clocks = <&clk IMX8MP_CLK_M7_DIV>;
+		rsc-da = <0x55000000>;
+		mbox-names = "tx", "rx", "rxdb";
+		mboxes = <&mu 0 1
+			  &mu 1 1
+			  &mu 3 1>;
+		memory-region = <&m7_reserved>, <&vdevbuffer>, <&vdev0vring0>, <&vdev0vring1>, <&rsc_table>;
+		status = "okay";
+		fsl,startup-delay-ms = <500>;
+	};
+};
+#endif /* SUPPORT_M7 */

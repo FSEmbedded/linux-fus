@@ -1,0 +1,651 @@
+/*
+ * Copyright (C) 2021 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+/dts-v1/;
+
+/* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
+#define CONFIG_PICOCOREMX8MPR2_BOARD_REVISION	110
+/* Set baseboard revision as 3-digit number, e.g. 110 for board rev. 1.10 */
+#define CONFIG_PICOCOREBBDSI_BOARD_REVISION	140
+
+//#define SUPPORT_M7
+
+/* Network */
+#define CONFIG_PICOCOREMX8MP_ETH_A
+#define CONFIG_PICOCOREMX8MP_ETH_B
+
+/* WLAN/BLUETOOTH; either WLAN-only or combined WLAN/Bluetooth chip */
+/* If WLAN is equipped on PCore module, SD_B on BBDSI is not available */
+#define CONFIG_PICOCOREMX8MP_WLAN
+/* Add entry configuration for marvell wlan, bluetooth driver.
+ * The entry is for NXP driver not needed.
+ */
+#define CONFIG_PICOCOREMX8MP_WLAN_MARVELL_DRV
+
+/* USB */
+#define CONFIG_PICOCOREMX8MP_USB_OTG
+#define CONFIG_PICOCOREMX8MP_USB_HOST
+
+/* EEPROM - default not mounted */
+//#define CONFIG_PICOCOREMX8MP_EEPROM
+
+/* PCIe */
+#define CONFIG_PICOCOREMX8MP_PCIE
+
+/* CAN - default not mounted */
+#define CONFIG_PICOCOREMX8MP_CAN_A
+#define CONFIG_PICOCOREMX8MP_CAN_B
+
+/* I2C */
+/* default CAN_B */
+#define CONFIG_PICOCOREMX8MP_I2C_A
+#define CONFIG_PICOCOREMX8MP_I2C_B
+#define CONFIG_PICOCOREMX8MP_I2C_C
+#define CONFIG_PICOCOREMX8MP_I2C_D
+#define CONFIG_PICOCOREMX8MP_I2C_E
+//#define CONFIG_PICOCOREMX8MP_I2C_D_A71CH
+
+/* PWM and backlight brightness */
+#define CONFIG_PICOCOREMX8MP_PWM_A
+#define CONFIG_PICOCOREMX8MP_BL_CTRL
+
+/* UART_A - UART2 */
+#define CONFIG_PICOCOREMX8MP_UART_A
+#define CONFIG_PICOCOREMX8MP_UART_A_RTSCTS
+
+/* UART_B - UART4 */
+#define CONFIG_PICOCOREMX8MP_UART_B
+#define CONFIG_PICOCOREMX8MP_UART_B_RTSCTS
+
+/* UART_C - UART1 */
+#define CONFIG_PICOCOREMX8MP_UART_C
+
+/* UART_D - UART3 */
+#define CONFIG_PICOCOREMX8MP_UART_D
+
+/* SPI */
+#define CONFIG_PICOCOREMX8MP_SPI_A
+#define CONFIG_PICOCOREMX8MP_SPI_B
+#define CONFIG_PICOCOREMX8MP_SPI_C
+
+/* Audio */
+#define CONFIG_PICOCOREMX8MP_I2S_A
+#define CONFIG_PICOCOREMX8MP_I2S_B
+/* SGTL5000 needs I2S_A */
+#define CONFIG_PICOCOREMX8MP_SGTL5000_AUDIO
+
+/* External RTC - default not mounted */
+#define CONFIG_PICOCOREMX8MP_EXT_RTC
+
+#define CONFIG_PICOCOREMX8MP_CAMERA
+
+/* Camera on parallel CSI interface */
+//#define CONFIG_PICOCOREMX8MP_PARALLEL_CAMERA
+
+/* Camera on serial MIPI CSI interface */
+//#define CONFIG_PICOCOREMX8MP_SERIAL_CAMERA
+
+/*
+ * SD_A - External SD port with Card Detect (CD) and Write Protect (WP)
+ * On picocoremx8mp SKIT: external port is Micro-SD card slot with CD but without WP
+ */
+#define CONFIG_PICOCOREMX8MP_SD_A
+//#define CONFIG_PICOCOREMX8MP_SD_A_8_Bit
+
+/*
+ * SD_B - External SD port with Card Detect (CD) and Write Protect (WP)
+ * only available if WLAN is not equipped.
+ */
+#define CONFIG_PICOCOREMX8MP_SD_B
+
+/* HDMI over BBDSI needs a special adapter, usually not used */
+//#define CONFIG_PICOCOREMX8MP_HDMI
+
+/* HIFI4 DSP */
+//#define CONFIG_PICOCOREMX8MP_DSP
+
+/* Without display, leave GPU support uncommented */
+#define CONFIG_PICOCOREMX8MP_GPU
+/* Video Processing Unit */
+#define CONFIG_PICOCOREMX8MP_VPU
+/* Machine Learning Accelerator */
+#define CONFIG_PICOCOREMX8MP_ML
+
+/* If WLAN is equipped, SD_B is not available */
+#ifdef CONFIG_PICOCOREMX8MP_WLAN
+#undef CONFIG_PICOCOREMX8MP_SD_B
+#endif
+
+#ifdef CONFIG_PICOCOREMX8MP_HDMI
+#define CONFIG_PICOCOREMX8MP_HDMI_CEC
+#define CONFIG_PICOCOREMX8MP_HDMI_HPD
+#undef CONFIG_PICOCOREMX8MP_I2C_A
+#undef CONFIG_PICOCOREMX8MP_CAN_B
+#undef CONFIG_PICOCOREMX8MP_CAN_A
+#endif
+
+#ifdef CONFIG_PICOCOREMX8MP_CAN_B
+#undef CONFIG_PICOCOREMX8MP_I2C_A
+#undef CONFIG_PICOCOREMX8MP_HDMI_CEC
+#undef CONFIG_PICOCOREMX8MP_HDMI_HPD
+#endif
+
+#ifdef CONFIG_PICOCOREMX8MP_I2C_A
+#undef CONFIG_PICOCOREMX8MP_CAN_B
+#undef CONFIG_PICOCOREMX8MP_HDMI_CEC
+#undef CONFIG_PICOCOREMX8MP_HDMI_HPD
+#endif
+
+#ifdef CONFIG_PICOCOREMX8MP_SGTL5000_AUDIO
+#define CONFIG_PICOCOREMX8MP_I2S_A
+#endif
+
+/*
+ * Exclude devices from Linux that are used by the Cortex-M7 FreeRTOS examples
+ *
+ * - UART_C: Debug Console for Cortex-M7
+ * - PWM_A: PWM Signal for the PWM example
+ * - CAN_A: CAN-Signal for FlexCAN examples
+ * - I2C_A:  I2C Bus used in I2C examples
+ * - SPI_B:  SPI_B is used for ECSPI examples
+ *
+ */
+
+#ifdef SUPPORT_M7
+#undef CONFIG_PICOCOREMX8MP_UART_C
+#undef CONFIG_PICOCOREMX8MP_PWM_A
+#undef CONFIG_PICOCOREMX8MP_CAN_A
+#undef CONFIG_PICOCOREMX8MP_I2C_A
+#undef CONFIG_PICOCOREMX8MP_SPI_B
+#endif
+
+#include <fsversion.h>
+#include "picocoremx8mpr2.dts"
+
+/ {
+	model = "F&S PicoCoreMX8MPr2-BBDSI";
+
+	chosen {
+		stdout-path = &fs_uart_a;
+	};
+};
+
+&reserved_mem {
+	#address-cells = <2>;
+	#size-cells = <2>;
+	ranges;
+
+	linux,cma {
+		compatible = "shared-dma-pool";
+		reusable;
+		size = <0 0x14000000>;
+		alloc-ranges = <0 0x40000000 0 0x40000000>;
+		linux,cma-default;
+	};
+};
+
+&bdinfo {
+	dts_version = FS_LINUX_VERSION;
+};
+
+&snvs_pwrkey {
+	status = "okay";
+};
+
+/* CAN */
+#ifdef CONFIG_PICOCOREMX8MP_CAN_A
+&fs_can_a { status = "okay"; };
+#endif /* CONFIG_PICOCOREMX8MP_CAN_A */
+
+#ifdef CONFIG_PICOCOREMX8MP_CAN_B
+&fs_can_b { status = "okay"; };
+#endif /* CONFIG_PICOCOREMX8MP_CAN_B */
+
+#ifdef CONFIG_PICOCOREMX8MP_UART_A
+&fs_uart_a {
+
+#ifdef CONFIG_PICOCOREMX8MP_UART_A_RTSCTS
+	pinctrl-0 = <&pinctrl_fs_uart_a>, <&pinctrl_fs_uart_a_rtscts>;
+	fsl,uart-has-rtscts;
+#endif
+	status = "okay";
+};
+#endif /* CONFIG_PICOCOREMX8MP_UART_A */
+
+#ifdef CONFIG_PICOCOREMX8MP_UART_B
+&fs_uart_b {
+
+#ifdef CONFIG_PICOCOREMX8MP_UART_B_RTSCTS
+	pinctrl-0 = <&pinctrl_fs_uart_b>, <&pinctrl_fs_uart_b_rtscts>;
+	fsl,uart-has-rtscts;
+#endif
+	status = "okay";
+};
+#endif /* CONFIG_PICOCOREMX8MP_UART_B */
+
+#ifdef CONFIG_PICOCOREMX8MP_UART_C
+&fs_uart_c { status = "okay"; };
+#endif /* CONFIG_PICOCOREMX8MP_UART_C */
+
+#ifdef CONFIG_PICOCOREMX8MP_UART_D
+&fs_uart_d { status = "okay"; };
+#endif /* CONFIG_PICOCOREMX8MP_UART_D */
+
+/* Ethernet */
+#ifdef CONFIG_PICOCOREMX8MP_ETH_A
+&fs_eth_a { status = "okay"; };
+#endif /* CONFIG_PICOCOREMX8MP_ETH_A */
+
+#ifdef CONFIG_PICOCOREMX8MP_ETH_B
+&fs_eth_b { status = "okay"; };
+#endif /* CONFIG_PICOCOREMX8MP_ETH_B */
+
+/* I2C */
+#ifdef CONFIG_PICOCOREMX8MP_I2C_A
+&fs_i2c_a { status = "okay"; };
+#endif /* CONFIG_PICOCOREMX8MP_I2C_A */
+
+#ifdef CONFIG_PICOCOREMX8MP_I2C_B
+&fs_i2c_b { status = "okay"; };
+#endif /* CONFIG_PICOCOREMX8MP_I2C_B */
+
+#ifdef CONFIG_PICOCOREMX8MP_I2C_C
+&fs_i2c_c { status = "okay"; };
+#endif /* CONFIG_PICOCOREMX8MP_I2C_C */
+
+#ifdef CONFIG_PICOCOREMX8MP_I2C_D
+&fs_i2c_d { status = "okay"; };
+#ifdef CONFIG_PICOCOREMX8MP_EEPROM
+&eeprom {status = "okay"; };
+#endif /* CONFIG_PICOCOREMX8MP_EEPROM */
+#endif /* CONFIG_PICOCOREMX8MP_I2C_D */
+
+#ifdef CONFIG_PICOCOREMX8MP_I2C_E
+&fs_i2c_e {
+	status = "okay";
+#ifdef CONFIG_PICOCOREMX8MP_EXT_RTC
+	rtc85263@51 { status = "okay"; };
+#endif
+};
+#endif /* CONFIG_PICOCOREMX8MP_I2C_E */
+
+/* PCIe */
+#ifdef CONFIG_PICOCOREMX8MP_PCIE
+&fs_pcie { status = "okay"; };
+&pcie_phy { status = "okay"; };
+#endif /* CONFIG_PICOCOREMX8MP_PCIE */
+
+/* PWM */
+#ifdef CONFIG_PICOCOREMX8MP_PWM_A
+&fs_pwm_a { status = "okay"; };
+#endif /* CONFIG_PICOCOREMX8MP_PWM_A */
+
+#ifdef CONFIG_PICOCOREMX8MP_BL_CTRL
+&fs_bl_pwm { status = "okay"; };
+#endif /* CONFIG_PICOCOREMX8MP_BL_CTRL */
+
+/* SDIO */
+#ifdef CONFIG_PICOCOREMX8MP_SD_A
+&reg_usdhc1_vmmc{status = "okay";};
+
+&fs_sdio_a {
+	pinctrl-names = "default", "state_100mhz", "state_200mhz";
+	pinctrl-0 = <&pinctrl_fs_sdio_a &pinctrl_fs_sdio_a_vsel
+		     &pinctrl_fs_sdio_a_cd>;
+	pinctrl-1 = <&pinctrl_fs_sdio_a_100mhz &pinctrl_fs_sdio_a_vsel
+		     &pinctrl_fs_sdio_a_cd>;
+	pinctrl-2 = <&pinctrl_fs_sdio_a_200mhz &pinctrl_fs_sdio_a_vsel
+		     &pinctrl_fs_sdio_a_cd>;
+#ifdef CONFIG_PICOCOREMX8MP_SD_A_8_Bit
+	pinctrl-0 = <&pinctrl_fs_sdio_a_8bit &pinctrl_fs_sdio_a_vsel
+		     &pinctrl_fs_sdio_a_cd>;
+	pinctrl-1 = <&pinctrl_fs_sdio_a_8bit_100mhz &pinctrl_fs_sdio_a_vsel
+		     &pinctrl_fs_sdio_a_cd>;
+	pinctrl-2 = <&pinctrl_fs_sdio_a_8bit_200mhz &pinctrl_fs_sdio_a_vsel
+		     &pinctrl_fs_sdio_a_cd>;
+	bus-width = <8>;
+#endif /* CONFIG_PICOCOREMX8MP_SD_A_8_Bit */
+	cd-gpios = <&gpio1 6 GPIO_ACTIVE_LOW>;
+	vmmc-supply = <&reg_usdhc1_vmmc>;
+
+	status = "okay";
+};
+
+/* Check drive-strength for SDIO_A; Depends on layout and speed */
+
+#endif /* CONFIG_PICOCOREMX8MP_SD_A */
+
+#ifdef CONFIG_PICOCOREMX8MP_SD_B
+&fs_sdio_b {
+	pinctrl-0 = <&pinctrl_fs_sdio_b &pinctrl_fs_sdio_b_cd
+		     &pinctrl_fs_sdio_b_wp &pinctrl_fs_sdio_b_rst>;
+	pinctrl-1 = <&pinctrl_fs_sdio_b_100mhz &pinctrl_fs_sdio_b_cd
+		     &pinctrl_fs_sdio_b_wp &pinctrl_fs_sdio_b_rst>;
+	pinctrl-2 = <&pinctrl_fs_sdio_b_200mhz &pinctrl_fs_sdio_b_cd
+		     &pinctrl_fs_sdio_b_wp &pinctrl_fs_sdio_b_rst>;
+
+	cd-gpios = <&gpio2 12 GPIO_ACTIVE_LOW>;
+	wp-gpios = <&gpio2 20 GPIO_ACTIVE_HIGH>;
+	vmmc-supply = <&reg_vref_3v3>;
+
+	status = "okay";
+};
+#endif /* CONFIG_PICOCOREMX8MP_SD_B */
+/* Check drive-strength for SDIO_B; Depends on layout and speed */
+
+#ifdef CONFIG_PICOCOREMX8MP_WLAN
+&reg_wlan_pdn { status = "okay"; };
+
+&fs_sdio_b {
+	vmmc-supply = <&reg_wlan_pdn>;
+	fsl,sdio-async-interrupt-enabled;
+	pm-ignore-notify;
+	keep-power-in-suspend;
+	non-removable;
+	cap-power-off-card;
+	status = "okay";
+#ifdef CONFIG_PICOCOREMX8MP_WLAN_MARVELL_DRV
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	mwifiex: wifi@1 {
+		compatible = "marvell,sd8997";
+		reg = <1>;
+	};
+#endif /* CONFIG_PICOCOREMX8MP_WLAN_MARVELL_DRV */
+};
+#endif /* CONFIG_PICOCOREMX8MP_WLAN */
+
+/* SPI */
+#ifdef CONFIG_PICOCOREMX8MP_SPI_A
+&fs_spi_a {
+	num-cs = <1>;
+	pinctrl-0 = <&pinctrl_fs_spi_a &pinctrl_fs_spi_a_cs>;
+	cs-gpios = <&gpio5 25 GPIO_ACTIVE_LOW>;
+	status = "okay";
+
+	spidev@0 {
+		compatible = "linux,spidev";
+		spi-max-frequency = <20000000>;
+		reg = <0>;
+		status = "okay";
+	};
+};
+#endif /* CONFIG_PICOCOREMX8MP_SPI_A */
+
+#ifdef CONFIG_PICOCOREMX8MP_SPI_B
+&fs_spi_b {
+	num-cs = <1>;
+	pinctrl-0 = <&pinctrl_fs_spi_b &pinctrl_fs_spi_b_cs>;
+	cs-gpios = <&gpio5 13 GPIO_ACTIVE_LOW>;
+	status = "okay";
+
+	spidev@0 {
+		compatible = "linux,spidev";
+		spi-max-frequency = <20000000>;
+		reg = <0>;
+		status = "okay";
+	};
+};
+#endif /* CONFIG_PICOCOREMX8MP_SPI_B */
+
+#ifdef CONFIG_PICOCOREMX8MP_SPI_C
+&fs_spi_c {
+	num-cs = <1>;
+	pinctrl-0 = <&pinctrl_fs_spi_c &pinctrl_fs_spi_c_cs>;
+	cs-gpios = <&gpio5 17 GPIO_ACTIVE_LOW>;
+	status = "okay";
+
+	spidev@0 {
+		compatible = "linux,spidev";
+		spi-max-frequency = <20000000>;
+		reg = <0>;
+		status = "okay";
+	};
+};
+#endif /* CONFIG_PICOCOREMX8MP_SPI_C */
+
+
+/* USB */
+#ifdef CONFIG_PICOCOREMX8MP_USB_HOST
+/* USB1 */
+&usb3_phy0 { status = "okay"; };
+&usb3_0 { status = "okay"; };
+&fs_usb_host {
+	dr_mode = "host";
+	status = "okay";
+};
+#endif /* CONFIG_PICOCOREMX8MP_USB_HOST */
+
+#ifdef CONFIG_PICOCOREMX8MP_USB_OTG
+/ {
+	cbtl04gp {
+		compatible = "nxp,cbtl04gp";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_typec_mux>;
+		switch-gpios = <&gpio1 9 GPIO_ACTIVE_LOW>;
+		orientation-switch;
+
+		port {
+			usb3_data_ss: endpoint {
+				remote-endpoint = <&typec_con_ss>;
+			};
+		};
+	};
+};
+&reg_usb2_otg_vbus { status = "okay"; };
+
+&fs_i2c_d {
+	status = "okay";
+	/* USB Type-C */
+	ptn5110: tcpc@52 {
+		compatible = "nxp,ptn5110";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_typec>;
+		reg = <0x52>;
+		interrupt-parent = <&gpio1>;
+		interrupts = <8 IRQ_TYPE_LEVEL_LOW>;
+
+		port {
+			typec_dr_sw: endpoint {
+				remote-endpoint = <&usb3_drd_sw>;
+			};
+		};
+
+		usb_con: connector {
+			compatible = "usb-c-connector";
+			label = "USB-C";
+			power-role = "dual";
+			data-role = "dual";
+			try-power-role = "sink";
+			source-pdos = <PDO_FIXED(5000, 3000, PDO_FIXED_USB_COMM)>;
+			sink-pdos = <PDO_FIXED(5000, 3000, PDO_FIXED_USB_COMM)
+				     PDO_VAR(5000, 20000, 3000)>;
+			op-sink-microwatt = <15000000>;
+			self-powered;
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				port@1 {
+					reg = <1>;
+					typec_con_ss: endpoint {
+						remote-endpoint = <&usb3_data_ss>;
+					};
+				};
+			};
+		};
+	};
+};
+
+&usb3_phy1 {
+	vbus-power-supply = <&ptn5110>;
+	status = "okay";
+};
+&usb3_1 { status = "okay"; };
+&fs_usb_otg {
+	dr_mode = "otg";
+	usb-role-switch;
+	role-switch-default-mode = "none";
+	status = "okay";
+
+	port {
+		usb3_drd_sw: endpoint {
+			remote-endpoint = <&typec_dr_sw>;
+		};
+	};
+};
+#endif /* CONFIG_PICOCOREMX8MP_USB_OTG */
+
+#ifdef CONFIG_PICOCOREMX8MP_I2S_A
+&fs_i2s_a { status = "okay"; };
+
+#ifdef CONFIG_PICOCOREMX8MP_SGTL5000_AUDIO
+&reg_sgtl5000_vdda { status = "okay"; };
+&reg_sgtl5000_vddio { status = "okay"; };
+&reg_sgtl5000_vddd { status = "okay"; };
+&sound_sgtl5000 { status = "okay"; };
+&sgtl5000 { status = "okay"; };
+&easrc {
+	fsl,asrc-rate  = <48000>;
+	status = "okay";
+};
+#endif /* CONFIG_PICOCOREMX8MP_SGTL5000_AUDIO */
+#endif /* CONFIG_PICOCOREMX8MP_I2S_A */
+
+#ifdef CONFIG_PICOCOREMX8MP_I2S_B
+&fs_i2s_b { status = "okay"; };
+#endif /* CONFIG_PICOCOREMX8MP_I2S_B */
+
+/* GPU */
+#ifdef CONFIG_PICOCOREMX8MP_GPU
+&gpu_3d { status = "okay"; };
+&gpu_2d { status = "okay"; };
+#endif /* CONFIG_PICOCOREMX8MP_GPU */
+
+/* VPU */
+#ifdef CONFIG_PICOCOREMX8MP_VPU
+&vpu_g1 { status = "okay"; };
+&vpu_g2 { status = "okay"; };
+&vpu_vc8000e { status = "okay"; };
+&vpu_v4l2 { status = "okay"; };
+#endif /* CONFIG_PICOCOREMX8MP_VPU */
+
+/* ML */
+#ifdef CONFIG_PICOCOREMX8MP_ML
+&ml_vipsi { status = "okay"; };
+&mix_gpu_ml { status = "okay"; };
+#endif /* CONFIG_PICOCOREMX8MP_ML */
+
+/* HDMI */
+#ifdef CONFIG_PICOCOREMX8MP_HDMI
+&hdmi_blk_ctrl { status = "okay"; };
+&irqsteer_hdmi { status = "okay"; };
+&hdmi_pavi { status = "okay"; };
+&hdmi {
+	pinctrl-names = "default";
+	pinctrl-0 = <
+		&pinctrl_hdmi_i2c
+#ifdef CONFIG_PICOCOREMX8MP_HDMI_HPD
+		&pinctrl_hdmi_hdp
+#endif
+#ifdef CONFIG_PICOCOREMX8MP_HDMI_CEC
+		&pinctrl_hdmi_cec
+#endif
+	>;
+	status = "okay";
+};
+&hdmiphy { status = "okay"; };
+&lcdif3 {
+	thres-low  = <1 2>;             /* (FIFO * 1 / 2) */
+	thres-high = <3 4>;             /* (FIFO * 3 / 4) */
+	status = "okay";
+};
+#endif /* CONFIG_PICOCOREMX8MP_HDMI */
+
+#ifdef CONFIG_PICOCOREMX8MP_DSP
+&reserved_mem {
+	dsp_reserved: dsp@53000000 {
+		reg = <0 0x53000000 0 0x1000000>;
+		no-map;
+	};
+	dsp_reserved_heap: dsp_reserved_heap@54000000 {
+		reg = <0 0x54000000 0 0xef0000>;
+		no-map;
+	};
+	dsp_vdev0vring0: vdev0vring0@54ef0000 {
+		reg = <0 0x54ef0000 0 0x8000>;
+		no-map;
+	};
+	dsp_vdev0vring1: vdev0vring1@54ef8000 {
+		reg = <0 0x54ef8000 0 0x8000>;
+		no-map;
+	};
+	dsp_vdev0buffer: vdev0buffer@54f00000 {
+		compatible = "shared-dma-pool";
+		reg = <0 0x54f00000 0 0x100000>;
+		no-map;
+	};
+};
+
+&dsp {
+	memory-region = <&dsp_vdev0buffer>, <&dsp_vdev0vring0>,
+			<&dsp_vdev0vring1>, <&dsp_reserved>;
+	status = "okay";
+};
+#endif /* CONFIG_PICOCOREMX8MP_DSP */
+
+#ifdef SUPPORT_M7
+&reserved_mem {
+	#address-cells = <2>;
+	#size-cells = <2>;
+	ranges;
+
+	m7_reserved: m7@55500000 {
+		no-map;
+		reg = <0 0x55500000 0 0x1000000>;
+	};
+
+	vdev0vring0: vdev0vring0@55000000 {
+		reg = <0 0x55000000 0 0x8000>;
+		no-map;
+	};
+
+	vdev0vring1: vdev0vring1@55008000 {
+		reg = <0 0x55008000 0 0x8000>;
+		no-map;
+	};
+
+	vdevbuffer: vdevbuffer@55400000 {
+		compatible = "shared-dma-pool";
+		reg = <0 0x55400000 0 0x100000>;
+		no-map;
+	};
+
+	rsc_table: rsc-table@550ff000 {
+		reg = <0 0x550ff000 0 0x1000>;
+		no-map;
+	};
+};
+
+/ {
+	imx8mp-cm7 {
+		compatible = "fsl,imx8mp-cm7";
+		clocks = <&clk IMX8MP_CLK_M7_DIV>;
+		rsc-da = <0x55000000>;
+		mbox-names = "tx", "rx", "rxdb";
+		mboxes = <&mu 0 1
+			  &mu 1 1
+			  &mu 3 1>;
+		memory-region = <&m7_reserved>, <&vdevbuffer>, <&vdev0vring0>, <&vdev0vring1>, <&rsc_table>;
+		status = "okay";
+		fsl,startup-delay-ms = <500>;
+	};
+};
+#endif /* SUPPORT_M7 */

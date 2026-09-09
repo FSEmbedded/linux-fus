@@ -8,48 +8,65 @@
 
 / {
 
-        lvds1_panel {
-                compatible = "panel-lvds";
-                backlight = <&backlight_ldb>;
-                /* MIPI_RST from board */
-                //enable-gpios = <&IMX8MP_MIPI_RESET_GPIO_BANK IMX8MP_MIPI_RESET_GPIO_NUM GPIO_ACTIVE_HIGH>;
-                /* Mounting option for MIPI_RST on pca9634 (ADP-LVDS2LVDS2) */
-                enable-gpios = <&pca963x 3 GPIO_ACTIVE_HIGH>;
-                data-mapping = "vesa-24";
-                label = "BT070L1060CS0I1AD-A";
-                width-mm = <155>;
-                height-mm = <86>;
-                status = "okay";
-                panel-timing {
-                        clock-frequency = <49500000>;
-                        hactive = <1024>;
-                        vactive = <600>;
-                        hback-porch = <160>;
-                        hfront-porch = <76>;
-                        hsync-len = <140>;
-                        vback-porch = <23>;
-                        vfront-porch = <107>;
-                        vsync-len = <20>;
-                        pixelclk-active = <0>;
-                        de-active = <1>;
-                };
-                port {
-                        panel_lvds1_in: endpoint {
-                                remote-endpoint = <&lvds1_out>;
-                        };
-                };
-        };
+	regulators {
+
+		reg_ldb_bl_adp: ldb-bl {
+			compatible = "regulator-fixed";
+			regulator-name = "ldb-bl";
+			gpio = <&gpio_adp 0 GPIO_ACTIVE_HIGH>;
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			enable-active-high;
+		};
+	};
+
+	lvds_panel {
+            compatible = "panel-lvds";
+            backlight = <&backlight_ldb>;
+            /* MIPI_RST from board */
+            //enable-gpios = <&IMX8MP_MIPI_RESET_GPIO_BANK IMX8MP_MIPI_RESET_GPIO_NUM GPIO_ACTIVE_HIGH>;
+            /* Mounting option for MIPI_RST on pca9634 (ADP-LVDS2LVDS2) */
+			enable-gpios = <&gpio_adp 3 GPIO_ACTIVE_HIGH>;
+            data-mapping = "vesa-24";
+            label = "BT070L1060CS0I1AD-A";
+            width-mm = <155>;
+            height-mm = <86>;
+            status = "okay";
+            panel-timing {
+                    clock-frequency = <49500000>;
+                    hactive = <1024>;
+                    vactive = <600>;
+                    hback-porch = <160>;
+                    hfront-porch = <76>;
+                    hsync-len = <140>;
+                    vback-porch = <23>;
+                    vfront-porch = <107>;
+                    vsync-len = <20>;
+                    pixelclk-active = <0>;
+                    de-active = <1>;
+            };
+            port {
+			panel_lvds_in: endpoint {
+				remote-endpoint = <&lvds_out>;
+			};
+                    };
+            };
+
+
+	backlight_ldb: backlight_ldb {
+		compatible = "pwm-backlight";
+		#pwm-cells = <3>;
+		pwms = <&gpio_adp 1 5263157 1>;
+		power-supply = <&reg_ldb_bl_adp>;
+		brightness-levels = <0 1 5 10 18 28 41 56
+				     73 92 113 137 163 192 222 255>;
+		default-brightness-level = <14>;
+		fb-names = "mxs-lcdif0";
+	};
 };
 
-&backlight_ldb {
-	pwms = <&pca963x 1 5263157 1>;
-	brightness-levels = <0 1 5 10 18 28 41 56
-		                 73 92 113 137 163 192 222 255>;
-	default-brightness-level = <14>;
-};
-
-&reg_ldb_bl{
-	gpio = <&pca963x 0 GPIO_ACTIVE_HIGH>;
+&reg_vlcd {
+	status = "okay";
 };
 
 /* LVDS */
@@ -63,18 +80,7 @@
 
 &ldb {
 	status = "okay";
-	/* TODO: disabled for now because does not work */
-#ifdef CONFIG_PICOCOREMX8MP_LDB_DUAL_CHANNEL
-	fsl,dual-channel;
-#endif /* CONFIG_PICOCOREMX8MP_LDB_DUAL_CHANNEL */
-	/* DSI_A */
-	lvds-channel@0 {
-		fsl,data-mapping = "spwg";
-		fsl,data-width = <24>;
-		status = "disabled";
-	};
-	/* DSI_B */
-	lvds-channel@1 {
+	lvds-channel@IMX8MP_LVDS_CHANNEL {
 		#address-cells = <1>;
 		#size-cells = <0>;
 		fsl,data-mapping = "spwg";
@@ -82,8 +88,8 @@
 		status = "okay";
 		port@1 {
 			reg = <1>;
-			lvds1_out: endpoint {
-				remote-endpoint = <&panel_lvds1_in>;
+			lvds_out: endpoint {
+				remote-endpoint = <&panel_lvds_in>;
 			};
 		};
 	};
@@ -91,7 +97,7 @@
 
 &IMX8MP_TOUCH_I2C {
 	clock-frequency = <400000>;
-	pca963x: pca9634@61 {
+	gpio_adp: pca9634@61 {
                         compatible = "fus,pca9634";
                         reg = <0x61>;
                         vdd-supply = <&reg_vlcd>;
@@ -131,7 +137,6 @@
                                 label = "MIPI_RST";
                                 type = "GPIO";
                                 active-high;
-                                default-on;             /* or: keep-value */
                         };
                         led@4 {
                                 reg = <4>;
@@ -144,7 +149,7 @@
                                 label = "I2C_RST";
                                 type = "GPIO";
                                 active-high;
-                                default-on;             /* or: keep-value */
+				default-on;     /* or: keep-value */
                         };
                         led@6 {
                                 reg = <6>;
@@ -165,6 +170,6 @@
                 reg = <0x41>;
                 interrupt-parent = <&IMX8MP_TOUCH_INTERRUPT_GPIO_BANK>;
                 interrupts = <IMX8MP_TOUCH_INTERRUPT_GPIO_NUM IRQ_TYPE_EDGE_RISING>;
-                reset-gpios = <&pca963x 5 GPIO_ACTIVE_LOW>;
+                reset-gpios = <&gpio_adp 5 GPIO_ACTIVE_LOW>;
         };
 };

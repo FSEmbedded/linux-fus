@@ -120,7 +120,7 @@
 		 */
 		pclk-invert;
 
-		/* s. datasheet reg 0x856d rgd_ttl_tx_24B_mode_sel 
+		/* s. datasheet reg 0x856d rgd_ttl_tx_24B_mode_sel
 		 * 	0 - output 3 channel 8 bit data
 		 * 	1 - output 2 channel 12 bit data
 		 *  ...
@@ -128,7 +128,7 @@
 		 *  5 - output 3 channel 6 bit (low 18 bit active)
 		 *  ...
 		 * */
-		rgb-output-mode = /bits/ 8 <0>; 
+		rgb-output-mode = /bits/ 8 <0>;
         reset-gpios = <&pca963x 3 GPIO_ACTIVE_HIGH>;
 		/* TODO: in driver not supported */
 		//interrupts-extended = <&gpio4 20 IRQ_TYPE_EDGE_FALLING>;

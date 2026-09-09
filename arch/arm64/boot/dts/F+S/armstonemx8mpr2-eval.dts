@@ -1,0 +1,478 @@
+/*
+ * Copyright (C) 2026 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+/dts-v1/;
+
+/* Set board revision as 3-digit number, e.g. 110 for board rev. 1.10 */
+#define CONFIG_ARMSTONEMX8MPR2_BOARD_REVISION	100
+//#define SUPPORT_M7
+
+/* Network */
+#define CONFIG_ARMSTONEMX8MP_ETH_A
+#define CONFIG_ARMSTONEMX8MP_ETH_B
+
+/* CAN */
+/* Feature connector - J20 pins 63, 64 */
+#define CONFIG_ARMSTONEMX8MP_CAN_A
+/* CAN connector - J15 pins 3, 4 */
+#define CONFIG_ARMSTONEMX8MP_CAN_B
+
+/* I2C */
+/* I2C_A - Feature connector J20 pins 8,10 optional */
+#define CONFIG_ARMSTONEMX8MP_I2C_A
+/* I2C_B - Feature connector J18 pins 2,3 */
+#define CONFIG_ARMSTONEMX8MP_I2C_B
+/* I2C_C - Feature connector J20 pins 19,21 optional */
+#define CONFIG_ARMSTONEMX8MP_I2C_C
+/* I2C_D - Feature connector J20 pins 29,31 optional */
+#define CONFIG_ARMSTONEMX8MP_I2C_D
+
+#define CONFIG_ARMSTONEMX8MP_SD_A
+/*
+ * SD_B - External SD port with Card Detect (CD) and Write Protect (WP).
+ * 		  WP is fix low.
+ */
+#define CONFIG_ARMSTONEMX8MP_SD_B
+
+/* PWM and backlight brightness */
+/* PWM_A - Feature connector J20 pin 28 */
+#define CONFIG_ARMSTONEMX8MP_PWM_A
+/* PWM_B - Feature connector J20 pin 30 */
+#define CONFIG_ARMSTONEMX8MP_PWM_B
+/* PWM_C - Feature connector J20 pin 32 */
+#define CONFIG_ARMSTONEMX8MP_PWM_C
+/* BL_PWM - Feature connector J10 pin 3 */
+#define CONFIG_ARMSTONEMX8MP_BL_CTRL
+
+/* UART_A - Feature connector J20 pins 55,56,57,58 */
+#define CONFIG_ARMSTONEMX8MP_UART_A
+#define CONFIG_ARMSTONEMX8MP_UART_A_RTSCTS
+
+/* UART_B - Feature connector J20 pins 17,19
+ * Optional
+ */
+
+/* TODO: RX <-> TX inverted in Rev. 1.00 */
+#define CONFIG_ARMSTONEMX8MP_UART_B
+//#define CONFIG_ARMSTONEMX8MP_UART_B_RTSCTS
+//#define CONFIG_ARMSTONEMX8MP_RS485
+/* UART_C - Feature connector J20 pins 36,38 */
+#define CONFIG_ARMSTONEMX8MP_UART_C
+/* UART_D - Feature connector J20 pins 18,20,22,24*/
+#define CONFIG_ARMSTONEMX8MP_UART_D
+#define CONFIG_ARMSTONEMX8MP_UART_D_RTSCTS
+/* UART_D - MAYA Bluetooth, mounting option */
+#define CONFIG_ARMSTONEMX8MP_UART_D_BT
+
+/* SPI_A - Feature connector J20 pins 12,14,16,17 */
+#define CONFIG_ARMSTONEMX8MP_SPI_A
+/* SPI_B - Feature connector J20 pins 4,6,8,10 */
+#define CONFIG_ARMSTONEMX8MP_SPI_B
+
+/* Audio */
+/* If codec isn't equipped I2S only
+ * Feature connector J20 pins 41,44,45,48,49
+ */
+#define CONFIG_ARMSTONEMX8MP_I2S
+/* Codec - Feature connector J20 pins 41,43,44,45,48,49 */
+#define CONFIG_ARMSTONEMX8MP_AUDIO_CODEC
+
+/* USB Device TypeC and USB Host 2 Type A*/
+#define CONFIG_ARMSTONEMX8MP_USB_OTG
+#define CONFIG_ARMSTONEMX8MP_USB_HOST
+/* External RTC */
+#define CONFIG_ARMSTONEMX8MP_EXT_RTC
+/* Analog I/O */
+#define CONFIG_ARMSTONEMX8MP_ADC
+/* Security chip */
+#define CONFIG_ARMSTONEMX8MP_SECURE
+/* Keypad matrix on feature connector - J20 */
+#define CONFIG_ARMSTONEMX8MP_KEYPAD_MATRIX
+/* HIFI4 Digital Signal Processor */
+//#define CONFIG_ARMSTONEMX8MP_DSP
+/* Video Processing Unit */
+#define CONFIG_ARMSTONEMX8MP_VPU
+/* Graphics Processing Unit */
+#define CONFIG_ARMSTONEMX8MP_GPU
+/* Machine Learning Accelerator */
+#define CONFIG_ARMSTONEMX8MP_ML
+/* EEPROM */
+#define  CONFIG_ARMSTONEMX8MP_EEPROM
+
+#define CONFIG_ARMSTONEMX8MP_PCIE
+
+#define CONFIG_ARMSTONEMX8MP_HDMI
+//#define CONFIG_ARMSTONEMX8MP_HDMI_AUDIO // TODO:
+#define CONFIG_ARMSTONEMX8MP_HDMI_CEC
+#ifdef SUPPORT_M7
+#undef CONFIG_ARMSTONEMX8MP_UART_C
+#undef CONFIG_ARMSTONEMX8MP_PWM_A
+#undef CONFIG_ARMSTONEMX8MP_CAN_A
+#undef CONFIG_ARMSTONEMX8MP_I2C_C
+#undef CONFIG_ARMSTONEMX8MP_SPI_B
+#endif
+#ifdef CONFIG_ARMSTONEMX8MP_I2C_C
+#undef CONFIG_ARMSTONEMX8MP_UART_B
+#undef CONFIG_ARMSTONEMX8MP_UART_B_RTSCTS
+#endif
+
+#if defined(CONFIG_ARMSTONEMX8MP_UART_D) || defined(CONFIG_ARMSTONEMX8MP_UART_D_RTSCTS) \
+	|| defined(CONFIG_ARMSTONEMX8MP_SPI_B) || defined(CONFIG_ARMSTONEMX8MP_I2C_C) \
+	|| defined(CONFIG_ARMSTONEMX8MP_UART_B) || defined(CONFIG_ARMSTONEMX8MP_UART_C)
+#undef CONFIG_ARMSTONEMX8MP_KEYPAD_MATRIX
+#endif
+
+#include "armstonemx8mpr2.dts"
+#include <fsversion.h>
+
+/ {
+	model = "F&S armStoneMX8MPr2-EVAL";
+	chosen {
+		stdout-path = &fs_uart_a;
+	};
+};
+
+&bdinfo {
+	dts_version = FS_LINUX_VERSION;
+};
+
+&reserved_mem {
+	#address-cells = <2>;
+	#size-cells = <2>;
+	ranges;
+
+	linux,cma {
+		compatible = "shared-dma-pool";
+		reusable;
+		size = <0 0x14000000>;
+		alloc-ranges = <0 0x40000000 0 0x40000000>;
+		linux,cma-default;
+	};
+};
+
+&snvs_pwrkey {
+	status = "okay";
+};
+
+
+#ifdef CONFIG_ARMSTONEMX8MP_I2C_A
+&fs_i2c_a {
+	status = "okay";
+#ifdef CONFIG_ARMSTONEMX8MP_EEPROM
+	eeprom@50 { status = "okay"; };
+#endif
+};
+#endif /* CONFIG_ARMSTONEMX8MP_I2C_A */
+
+#ifdef CONFIG_ARMSTONEMX8MP_I2C_B
+&fs_i2c_b {
+	pinctrl-0 = <&pinctrl_fs_i2c_b>, <&pinctrl_fs_i2c_b_irq>, <&pinctrl_lvds_rst>;
+	status = "okay";
+};
+#endif /* CONFIG_ARMSTONEMX8MP_I2C_B */
+
+#ifdef CONFIG_ARMSTONEMX8MP_I2C_C
+&fs_i2c_c { status = "okay"; };
+#endif /* CONFIG_ARMSTONEMX8MP_I2C_C */
+
+#ifdef CONFIG_ARMSTONEMX8MP_I2C_D
+&fs_i2c_d {
+	status = "okay";
+#ifdef CONFIG_ARMSTONEMX8MP_ADC
+	ads1015@49 { status = "okay"; };
+#endif
+
+#ifdef CONFIG_ARMSTONEMX8MP_EXT_RTC
+	rtc85263@51 { status = "okay";};
+#endif
+};
+#endif /* CONFIG_ARMSTONEMX8MP_I2C_D */
+
+
+#ifdef CONFIG_ARMSTONEMX8MP_SPI_A
+&fs_spi_a {
+	status = "okay";
+	pinctrl-0 = <&pinctrl_fs_spi_a>, <&pinctrl_fs_spi_a_cs>;
+	cs-gpios = <&gpio5 25 GPIO_ACTIVE_LOW>;
+
+	spidev@0 {
+		compatible = "linux,spidev";
+		spi-max-frequency = <20000000>;
+		reg = <0>;
+		status = "okay";
+	};
+};
+#endif /* CONFIG_ARMSTONEMX8MP_SPI_A */
+
+#ifdef CONFIG_ARMSTONEMX8MP_SPI_B
+&fs_spi_b {
+	status = "okay";
+	pinctrl-0 = <&pinctrl_fs_spi_b>, <&pinctrl_fs_spi_b_cs>;
+	cs-gpios = <&gpio5 13 GPIO_ACTIVE_LOW>;
+
+	spidev@0 {
+		compatible = "linux,spidev";
+		spi-max-frequency = <20000000>;
+		reg = <0>;
+		status = "okay";
+	};
+};
+#endif /* CONFIG_ARMSTONEMX8MP_SPI_B */
+
+#ifdef CONFIG_ARMSTONEMX8MP_CAN_A
+&fs_can_a { status = "okay"; };
+#endif /* CONFIG_ARMSTONEMX8MP_CAN_A */
+
+/* Goldfinger Connector J3 - Pins 35, 37 */
+#ifdef CONFIG_ARMSTONEMX8MP_CAN_B
+&fs_can_b { status = "okay"; };
+#endif /* CONFIG_ARMSTONEMX8MP_CAN_B */
+
+#ifdef CONFIG_ARMSTONEMX8MP_UART_A
+/* console */
+&fs_uart_a {
+#ifdef CONFIG_ARMSTONEMX8MP_UART_A_RTSCTS
+	pinctrl-0 = <&pinctrl_fs_uart_a>, <&pinctrl_fs_uart_a_rtscts>;
+	fsl,uart-has-rtscts;
+#endif
+	status = "okay";
+};
+#endif /* CONFIG_ARMSTONEMX8MP_UART_A */
+
+#ifdef CONFIG_ARMSTONEMX8MP_UART_B
+&fs_uart_b {
+#ifdef CONFIG_ARMSTONEMX8MP_UART_B_RTSCTS
+	pinctrl-0 = <&pinctrl_fs_uart_b>, <&pinctrl_fs_uart_b_rtscts>;
+	fsl,uart-has-rtscts;
+#endif
+#ifdef CONFIG_ARMSTONEMX8MP_RS485
+	linux,rs485-enabled-at-boot-time;
+#endif
+	status = "okay";
+};
+#endif /* CONFIG_ARMSTONEMX8MP_UART_B */
+
+#ifdef CONFIG_ARMSTONEMX8MP_UART_C
+&fs_uart_c {
+	status = "okay";
+};
+#endif /* CONFIG_ARMSTONEMX8MP_UART_C */
+
+#ifdef CONFIG_ARMSTONEMX8MP_UART_D
+&fs_uart_d {
+#ifdef CONFIG_ARMSTONEMX8MP_UART_D_RTSCTS
+	pinctrl-0 = <&pinctrl_fs_uart_d>, <&pinctrl_fs_uart_d_rtscts>;
+	fsl,uart-has-rtscts;
+#endif
+	status = "okay";
+
+#ifdef CONFIG_ARMSTONEMX8MP_UART_D_BT
+	bluetooth: bluetooth {
+		compatible = "nxp,88w8987-bt";
+		fw-init-baudrate = <115200>;
+		status = "okay";
+	};
+#endif /* CONFIG_ARMSTONEMX8MP_UART_D_BT */
+};
+#endif /* CONFIG_ARMSTONEMX8MP_UART_D */
+
+#ifdef CONFIG_ARMSTONEMX8MP_PWM_A
+&fs_pwm_a { status = "okay"; };
+#endif /* CONFIG_ARMSTONEMX8MP_PWM_A */
+
+#ifdef CONFIG_ARMSTONEMX8MP_PWM_B
+&fs_pwm_b { status = "okay"; };
+#endif /* CONFIG_ARMSTONEMX8MP_PWM_B */
+
+#ifdef CONFIG_ARMSTONEMX8MP_PWM_C
+&fs_pwm_c { status = "okay"; };
+#endif /* CONFIG_ARMSTONEMX8MP_PWM_C */
+
+#ifdef CONFIG_ARMSTONEMX8MP_BL_CTRL
+&fs_bl_pwm { status = "okay"; };
+#endif /* CONFIG_ARMSTONEMX8MP_BL_CTRL */
+
+
+#ifdef CONFIG_ARMSTONEMX8MP_PCIE
+&fs_pcie { status = "okay"; };
+&pcie_phy { status = "okay"; };
+#endif /* CONFIG_ARMSTONEMX8MP_PCIE */
+
+#ifdef CONFIG_ARMSTONEMX8MP_USB_HOST
+/* USB1 */
+&usb_host_reset { status = "okay"; };
+&usb3_phy0 { status = "okay"; };
+&usb3_0 { status = "okay"; };
+&fs_usb_host { status = "okay"; };
+#endif
+
+#ifdef CONFIG_ARMSTONEMX8MP_USB_OTG
+/* USB2 */
+&fs_i2c_d { status = "okay"; };
+&ptn5110 { status = "okay"; };
+&cbtl04gp { status = "okay"; };
+&usb3_phy1 { status = "okay"; };
+&usb3_1 { status = "okay"; };
+&fs_usb_otg { status = "okay"; };
+#endif
+
+#ifdef CONFIG_ARMSTONEMX8MP_ETH_A
+&fs_eth_a { status = "okay"; };
+#endif /* CONFIG_ARMSTONEMX8MP_ETH_A */
+
+#ifdef CONFIG_ARMSTONEMX8MP_ETH_B
+&fs_eth_b { status = "okay"; };
+#endif /* CONFIG_ARMSTONEMX8MP_ETH_B */
+
+#ifdef CONFIG_ARMSTONEMX8MP_SD_A
+&fs_sdio_a_pwrseq { status = "okay"; };
+&fs_sdio_a { status = "okay"; };
+#endif /* CONFIG_ARMSTONEMX8MP_SD_A */
+
+#ifdef CONFIG_ARMSTONEMX8MP_SD_B
+&fs_sdio_b { status = "okay"; };
+#endif /* CONFIG_ARMSTONEMX8MP_SD_B */
+
+#ifdef CONFIG_ARMSTONEMX8MP_HDMI
+&hdmi {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_hdmi_i2c &pinctrl_hdmi_hdp &pinctrl_hdmi_cec>;
+	status = "okay";
+};
+
+&irqsteer_hdmi { status = "okay"; };
+&hdmi_pavi { status = "okay"; };
+&hdmi { status = "okay"; };
+&hdmiphy { status = "okay"; };
+&hdmi_blk_ctrl { status = "okay"; };
+&lcdif3 { status = "okay"; };
+
+#ifdef CONFIG_ARMSTONEMX8MP_HDMI_AUDIO
+/{
+	sound-hdmi { status = "okay"; };
+};
+&aud2htx { status = "okay"; };
+#endif /* CONFIG_ARMSTONEMX8MP_HDMI_AUDIO */
+#endif /* CONFIG_ARMSTONEMX8MP_HDMI */
+
+#ifdef CONFIG_ARMSTONEMX8MP_I2S
+&fs_i2s { status = "okay"; };
+#ifdef CONFIG_ARMSTONEMX8MP_AUDIO_CODEC
+&sound_wm8960 { status = "okay"; };
+&sound_wm8904 { status = "okay"; };
+&fs_i2c_d { status = "okay"; };
+&wm8960 { status = "okay"; };
+&wm8904 { status = "okay"; };
+&easrc {
+	fsl,asrc-rate = <48000>;
+	status = "okay";
+};
+#endif /* CONFIG_ARMSTONEMX8MP_AUDIO_CODEC */
+#endif /* CONFIG_ARMSTONEMX8MP_I2S*/
+
+#ifdef CONFIG_ARMSTONEMX8MP_VPU
+&vpu_g1 { status = "okay"; };
+&vpu_g2 { status = "okay"; };
+&vpu_vc8000e { status = "okay"; };
+&vpu_v4l2 { status = "okay"; };
+#endif /* CONFIG_ARMSTONEMX8MP_VPU */
+
+#ifdef CONFIG_ARMSTONEMX8MP_GPU
+&gpu_3d { status = "okay"; };
+&gpu_2d { status = "okay"; };
+#endif /* CONFIG_ARMSTONEMX8MP_GPU */
+
+#ifdef CONFIG_ARMSTONEMX8MP_ML
+&ml_vipsi { status = "okay"; };
+&mix_gpu_ml { status = "okay"; };
+#endif /* CONFIG_ARMSTONEMX8MP_ML */
+
+#ifdef CONFIG_ARMSTONEMX8MP_DSP
+&reserved_mem {
+	dsp_reserved: dsp@53000000 {
+		reg = <0 0x53000000 0 0x1000000>;
+		no-map;
+	};
+
+	dsp_reserved_heap: dsp_reserved_heap@54000000 {
+		reg = <0 0x54000000 0 0xef0000>;
+		no-map;
+	};
+
+	dsp_vdev0vring0: vdev0vring0@54ef0000 {
+		reg = <0 0x54ef0000 0 0x8000>;
+		no-map;
+	};
+
+	dsp_vdev0vring1: vdev0vring1@54ef8000 {
+		reg = <0 0x54ef8000 0 0x8000>;
+		no-map;
+	};
+
+	dsp_vdev0buffer: vdev0buffer@54f00000 {
+		compatible = "shared-dma-pool";
+		reg = <0 0x54f00000 0 0x100000>;
+		no-map;
+	};
+};
+
+&dsp {
+	memory-region = <&dsp_vdev0buffer>, <&dsp_vdev0vring0>,
+			<&dsp_vdev0vring1>, <&dsp_reserved>;
+	status = "okay";
+};
+#endif /* CONFIG_ARMSTONEMX8MP_DSP */
+
+#ifdef SUPPORT_M7
+&reserved_mem {
+	#address-cells = <2>;
+	#size-cells = <2>;
+	ranges;
+
+	m7_reserved: m7@55500000 {
+		no-map;
+		reg = <0 0x55500000 0 0x1000000>;
+	};
+
+	vdev0vring0: vdev0vring0@55000000 {
+		reg = <0 0x55000000 0 0x8000>;
+		no-map;
+	};
+
+	vdev0vring1: vdev0vring1@55008000 {
+		reg = <0 0x55008000 0 0x8000>;
+		no-map;
+	};
+
+	vdevbuffer: vdevbuffer@55400000 {
+		compatible = "shared-dma-pool";
+		reg = <0 0x55400000 0 0x100000>;
+		no-map;
+	};
+
+	rsc_table: rsc-table@550ff000 {
+		reg = <0 0x550ff000 0 0x1000>;
+		no-map;
+	};
+};
+
+/ {
+	imx8mp-cm7 {
+		compatible = "fsl,imx8mp-cm7";
+		clocks = <&clk IMX8MP_CLK_M7_DIV>;
+		rsc-da = <0x55000000>;
+		mbox-names = "tx", "rx", "rxdb";
+		mboxes = <&mu 0 1
+			  &mu 1 1
+			  &mu 3 1>;
+		memory-region = <&m7_reserved>, <&vdevbuffer>, <&vdev0vring0>, <&vdev0vring1>, <&rsc_table>;
+		status = "okay";
+		fsl,startup-delay-ms = <500>;
+	};
+};
+#endif /* SUPPORT_M7 */

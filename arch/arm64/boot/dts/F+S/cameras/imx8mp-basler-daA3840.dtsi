@@ -1,8 +1,5 @@
 
 &i2c1 {
-	clock-frequency = <400000>;
-	pinctrl-names = "default";
-	pinctrl-0 = <&pinctrl_i2c1>;
 	status = "okay";
 
 	basler_camera_vvcam@36 {

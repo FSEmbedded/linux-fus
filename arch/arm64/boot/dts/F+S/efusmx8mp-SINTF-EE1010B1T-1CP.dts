@@ -1,0 +1,19 @@
+/*
+* Copyright (C) 2026 F&S Elektronik Systeme GmbH
+*
+* This program is free software; you can redistribute it and/or modify
+* it under the terms of the GNU General Public License version 2 as
+* published by the Free Software Foundation.
+*/
+
+/dts-v1/;
+
+#define IMX8MP_TOUCH_I2C 				        fs_i2c_lvds
+#define IMX8MP_TOUCH_INTERRUPT_GPIO_BANK 		gpio3
+#define IMX8MP_TOUCH_INTERRUPT_GPIO_NUM 		15
+#define IMX8MP_LVDS_CHANNEL 0
+
+#define CONFIG_EFUSMX8MP_I2C_LVDS
+
+#include "efusmx8mp-SINTF.dts"
+#include "displays/imx8mp-EE1010B1T-1CP.dtsi"

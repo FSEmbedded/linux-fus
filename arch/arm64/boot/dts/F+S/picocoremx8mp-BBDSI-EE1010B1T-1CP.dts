@@ -11,5 +11,5 @@
 #define IMX8MP_TOUCH_INTERRUPT_GPIO_NUM 		13
 #define IMX8MP_LVDS_CHANNEL 1
 
-#include "picocoremx8mpr2.dts"
+#include "picocoremx8mp-BBDSI.dts"
 #include "displays/imx8mp-EE1010B1T-1CP.dtsi"
