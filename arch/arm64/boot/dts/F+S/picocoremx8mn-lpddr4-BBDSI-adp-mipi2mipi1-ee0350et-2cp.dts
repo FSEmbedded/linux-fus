@@ -8,7 +8,7 @@
 
 #define CONFIG_PICOCOREMX8MN_MIPI_DSI
 #include <dt-bindings/interrupt-controller/irq.h>
-#include "picocoremx8mn-lpddr4.dts"
+#include "picocoremx8mn-lpddr4-BBDSI.dts"
 
 / {
 	regulators {

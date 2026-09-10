@@ -16,5 +16,5 @@
 #define IMX8MM_TOUCH_I2C i2c2
 #define IMX8MM_LVDS_I2C i2c4
 
-#include "picocoremx8mn-lpddr4.dts"
+#include "picocoremx8mn-lpddr4-BBDSI.dts"
 #include "displays/imx8mm-tc358775-BT070L1060CS0I1AD-A.dtsi"

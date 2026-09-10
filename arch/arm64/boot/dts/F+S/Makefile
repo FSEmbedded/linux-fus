@@ -28,18 +28,6 @@ dtb-$(CONFIG_ARCH_MXC) += picocoremx8mm-ddr3l.dtb \
 			  picocoremx8mm-ddr3l-BBDSI-adp-mipi2rgb.dtb \
 			  picocoremx8mm-ddr3l-BBDSI-tc358775-BT070L1060CS0I1AD-A.dtb \
 			  picocoremx8mm-ddr3l-BBDSI-tc358775-EE1010B1T-1CP.dtb
-dtb-$(CONFIG_ARCH_MXC) += efusmx8x.dtb \
-			  efusmx8x-lcdif-j070wvtc0211.dtb \
-			  efusmx8x-lcdif-rgt070qyh-13cp.dtb
-dtb-$(CONFIG_ARCH_MXC) += picocoremx8mn-lpddr4.dtb \
-			  picocoremx8mn-lpddr4-lcdif-tc358775-j070wvtc0211.dtb \
-			  picocoremx8mn-lpddr4-lcdif-adp-mipi2mipi1-ee0350et-2cp.dtb \
-			  picocoremx8mn-lpddr4-tc358775-BT070L1060CS0I1AD-A.dtb \
-			  picocoremx8mn-ddr3l.dtb \
-			  picocoremx8mn-ddr3l-lcdif-tc358775-j070wvtc0211.dtb \
-			  picocoremx8mn-ddr3l-lcdif-adp-mipi2mipi1-ee0350et-2cp.dtb \
-			  picocoremx8mn-ddr3l-lcdif-adp-mipi2rgb.dtb \
-			  picocoremx8mn-ddr3l-tc358775-BT070L1060CS0I1AD-A.dtb
 dtb-$(CONFIG_ARCH_MXC) += picocoremx8mmr2-lpddr4.dtb \
 			  picocoremx8mmr2-lpddr4-eval.dtb \
 			  picocoremx8mmr2-lpddr4-BBDSI.dtb \
@@ -68,6 +56,19 @@ dtb-$(CONFIG_ARCH_MXC) += picocoremx8mpr2.dtb \
 			  picocoremx8mpr2-BBDSI-adp-mipi2mipi1-ee0350et-2cp.dtb \
 			  picocoremx8mpr2-BBDSI-BT070L1060CS0I1AD-A.dtb \
 			  picocoremx8mpr2-BBDSI-EE1010B1T-1CP.dtb
+dtb-$(CONFIG_ARCH_MXC) += picocoremx8mn-lpddr4.dtb \
+			  picocoremx8mn-lpddr4-eval.dtb \
+			  picocoremx8mn-lpddr4-BBDSI.dtb \
+			  picocoremx8mn-lpddr4-BBDSI-tc358775-j070wvtc0211.dtb \
+			  picocoremx8mn-lpddr4-BBDSI-adp-mipi2mipi1-ee0350et-2cp.dtb \
+			  picocoremx8mn-lpddr4-BBDSI-tc358775-BT070L1060CS0I1AD-A.dtb \
+			  picocoremx8mn-ddr3l.dtb \
+			  picocoremx8mn-ddr3l-eval.dtb \
+			  picocoremx8mn-ddr3l-BBDSI.dtb \
+			  picocoremx8mn-ddr3l-BBDSI-tc358775-j070wvtc0211.dtb \
+			  picocoremx8mn-ddr3l-BBDSI-adp-mipi2mipi1-ee0350et-2cp.dtb \
+			  picocoremx8mn-ddr3l-BBDSI-adp-mipi2rgb.dtb \
+			  picocoremx8mn-ddr3l-BBDSI-tc358775-BT070L1060CS0I1AD-A.dtb
 dtb-$(CONFIG_ARCH_MXC) += efusmx8mp.dtb \
 			  efusmx8mp-eval.dtb \
 			  efusmx8mp-SINTF.dtb \
@@ -121,6 +122,9 @@ dtb-$(CONFIG_ARCH_MXC) += \
 dtb-$(CONFIG_ARCH_MXC) += \
 			  netdcu93.dtb \
 			  netdcu93-ET070080DH6.dtb
+dtb-$(CONFIG_ARCH_MXC) += efusmx8x.dtb \
+			  efusmx8x-lcdif-j070wvtc0211.dtb \
+			  efusmx8x-lcdif-rgt070qyh-13cp.dtb
 dtb-$(CONFIG_ARCH_MXC) += \
 			  picocoremx91.dtb
 dtb-$(CONFIG_ARCH_MXC) += \
