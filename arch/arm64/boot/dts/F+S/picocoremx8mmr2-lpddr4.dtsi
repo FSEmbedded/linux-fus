@@ -1,0 +1,115 @@
+/*
+ * Copyright (C) 2026 F&S Elektronik Systeme GmbH
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+#include "picocoremx8mm-lpddr4-common.dtsi"
+
+fs_spi_a: &ecspi1 {};
+
+/ {
+	model = "F&S PicoCoreMX8MMr2-LPDDR4";
+};
+
+&bdinfo {
+	board_name = "picocoremx8mmr2-lpddr4";
+};
+
+/* rev2 uses a Realtek RTL821x PHY instead of the rev1 Atheros AR803x */
+&fs_eth_a {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_fs_eth_a>;
+	phy-mode = "rgmii-id";
+	phy-handle = <&ethphy4>;
+	fsl,magic-packet;
+	status = "disabled";
+
+	mdio {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		ethphy4: ethernet-phy@4 {
+			compatible = "ethernet-phy-ieee802.3-c22";
+			reg = <4>;
+			rtl821x,clkout-disable;
+			rtl821x,aldps-enable;
+			rtl821x,ssc-rxc-enable;
+			rtl821x,ssc-sysclk-enable;
+			rtl821x,ssc-clkout-enable;
+			rtl821x,led-link = <1>; // LED1 for link indication
+			rtl821x,led-act = <1>; // LED1 for activity
+			interrupt-parent = <&gpio1>;
+			interrupts = <4 IRQ_TYPE_LEVEL_LOW>;
+			eee-broken-1000t;
+		};
+	};
+};
+
+&fs_spi_a {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_fs_spi_a>;
+	status = "disabled";
+
+	fs_can_a: mcp25xxfd@0 {
+		compatible = "microchip,mcp2518fd";
+		reg = <0>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_can>;
+		spi-max-frequency = <10000000>;
+		interrupts-extended = <&gpio4 26 IRQ_TYPE_LEVEL_LOW>;
+		clocks = <&mcp25xxfd_clk>;
+		status = "disabled";
+
+		mcp25xxfd_clk: oscillator-mcp25xxfd {
+			#clock-cells = <0>;
+			compatible = "fixed-clock";
+			clock-frequency = <20000000>; //20MHz
+		};
+	};
+};
+
+&iomuxc {
+	imx8mm-picocoremx8mm {
+		pinctrl_fs_eth_a: fec1grp {
+			fsl,pins = <
+				MX8MM_IOMUXC_ENET_MDC_ENET1_MDC		0x00003
+				MX8MM_IOMUXC_ENET_MDIO_ENET1_MDIO	0x00003
+				MX8MM_IOMUXC_ENET_TD3_ENET1_RGMII_TD3	0x0001f
+				MX8MM_IOMUXC_ENET_TD2_ENET1_RGMII_TD2	0x0001f
+				MX8MM_IOMUXC_ENET_TD1_ENET1_RGMII_TD1	0x0001f
+				MX8MM_IOMUXC_ENET_TD0_ENET1_RGMII_TD0	0x0001f
+				MX8MM_IOMUXC_ENET_RD3_ENET1_RGMII_RD3	0x00091
+				MX8MM_IOMUXC_ENET_RD2_ENET1_RGMII_RD2	0x00091
+				MX8MM_IOMUXC_ENET_RD1_ENET1_RGMII_RD1	0x00091
+				MX8MM_IOMUXC_ENET_RD0_ENET1_RGMII_RD0	0x00091
+				MX8MM_IOMUXC_ENET_TXC_ENET1_RGMII_TXC	0x0001f
+				MX8MM_IOMUXC_ENET_RXC_ENET1_RGMII_RXC	0x00091
+				MX8MM_IOMUXC_ENET_RX_CTL_ENET1_RGMII_RX_CTL	0x00091
+				MX8MM_IOMUXC_ENET_TX_CTL_ENET1_RGMII_TX_CTL	0x0001f
+				/* reset */
+				MX8MM_IOMUXC_GPIO1_IO05_GPIO1_IO5	0x00019
+				/* INTn */
+				MX8MM_IOMUXC_GPIO1_IO04_GPIO1_IO4	0x00019
+			>;
+		};
+
+		pinctrl_fs_spi_a: ecspi1grp {
+			fsl,pins = <
+				MX8MM_IOMUXC_ECSPI1_SCLK_ECSPI1_SCLK	0x00082
+				MX8MM_IOMUXC_ECSPI1_MOSI_ECSPI1_MOSI	0x00082
+				MX8MM_IOMUXC_ECSPI1_MISO_ECSPI1_MISO	0x00082
+			>;
+		};
+
+		pinctrl_fs_spi_a_cs: ecspi1grp-cs {
+			fsl,pins = <
+				MX8MM_IOMUXC_ECSPI1_SS0_GPIO5_IO9	0x40000
+			>;
+		};
+	};
+};

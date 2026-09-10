@@ -46,10 +46,13 @@
 
 &reg_ldb_bl{
 	gpio = <&pca963x 0 GPIO_ACTIVE_HIGH>;
+    status = "okay";
 };
 
 &IMX8MM_TOUCH_I2C {
+    status = "okay";
 	clock-frequency = <400000>;
+
 	pca963x: pca9634@61 {
                         compatible = "nxp,pca9634";
                         reg = <0x61>;

@@ -30,6 +30,8 @@
 };
 
 &IMX8MM_LVDS_I2C {
+    status = "okay";
+
 	tc358775@f {
 
 		compatible = "toshiba,tc358775";
@@ -107,6 +109,7 @@
 
 
 &IMX8MM_TOUCH_I2C {
+    status = "okay";
 	/* touch I2C */
 	touch: focaltech@38 {
 		compatible = "focaltech,fts";

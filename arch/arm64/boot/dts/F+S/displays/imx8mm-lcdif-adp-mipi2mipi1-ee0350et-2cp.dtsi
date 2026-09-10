@@ -52,6 +52,8 @@
 };
 
 &IMX8MM_TOUCH_I2C {
+    status = "okay";
+
 	/* LED-driver on adapter board MIPI2MIPI1 */
 	max7315: max7315@20 { /* LED-driver */
 		compatible = "maxim,max7315";
@@ -67,7 +69,7 @@
 		#pwm-cells = <3>;
 		//#interrupt-cells = <2>;
 		//interrupt-controller;
-};
+    };
 
 	/* Atmel PCAP touch on Touch Connector (I2C) */
 	mxt336u@4a {
