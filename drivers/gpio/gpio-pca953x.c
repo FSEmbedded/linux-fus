@@ -1668,12 +1668,26 @@ static int pca953x_probe(struct i2c_client *client)
 	lockdep_set_subclass(&chip->i2c_lock,
 			     i2c_adapter_depth(client->adapter));
 
-
 	/* Configure output: set open-drain or default to push-pull */
 	if (device_property_read_bool(&client->dev, "pcal6416,open-drain")) {
 		/* Enable ODEN0 and ODEN1 */
 		i2c_smbus_write_byte_data(client, 0x4F, 0x3);
 	}
+
+	if (device_property_read_bool(&client->dev, "pcal6416,port0-open-drain")) {
+		/* Enable ODEN0*/
+		s32 val;
+		val = i2c_smbus_read_byte_data(client, 0x4F);
+		i2c_smbus_write_byte_data(client, 0x4F, val | 0x1);
+	}
+
+	if (device_property_read_bool(&client->dev, "pcal6416,port1-open-drain")) {
+		/* Enable ODEN1 */
+		s32 val;
+		val = i2c_smbus_read_byte_data(client, 0x4F);
+		i2c_smbus_write_byte_data(client, 0x4F, val | 0x2);
+	}
+
 	/*
 	 * initialize cached registers from their original values.
 	 * we can't share this chip with another i2c master.
