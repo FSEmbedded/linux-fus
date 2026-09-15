@@ -20,7 +20,7 @@
 	status = "okay";
 };
 
-&netcmix_blk_ctrl {
+&netc_blk_ctrl {
 	status = "okay";
 };
 

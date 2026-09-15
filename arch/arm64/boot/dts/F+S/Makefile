@@ -107,3 +107,4 @@ dtb-$(CONFIG_ARCH_MXC) += \
 			  fssm95s.dtb \
 			  fssm95s-BT070L1060CS0I1AD-A.dtb \
 			  picocoremx95.dtb
+

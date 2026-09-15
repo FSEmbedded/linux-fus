@@ -14,7 +14,7 @@
 // #include <dt-bindings/usb/pd.h>
 #include <dt-bindings/rtc/pcf85363.h>
 #include "../freescale/imx95.dtsi"
-// #include <fsversion.h>
+#include <fsversion.h>
 
 fs_eth_a: &enetc_port0 {};
 fs_eth_b: &enetc_port1 {};
@@ -188,7 +188,7 @@ fs_disp_pwm: &tpm3 {};
 
 		reg_usb_host: regulator_usb_host {
 			compatible = "regulator-fixed";
-			regulator-name = "usb-otg";
+			regulator-name = "usb-host";
 			regulator-min-microvolt = <5000000>;
 			regulator-max-microvolt = <5000000>;
 			gpio = <&gpio2 24 GPIO_ACTIVE_HIGH>;
@@ -273,32 +273,34 @@ fs_disp_pwm: &tpm3 {};
 };
 
 /* ==== Ethernet ==== */
-// TODO: Check if needed
-// &netc_bus0 {
-// 	msi-map = <0x00 &its 0x60 0x1>,	//ENETC0 PF
-// 		  <0x10 &its 0x61 0x1>, //ENETC0 VF0
-// 		  <0x20 &its 0x62 0x1>, //ENETC0 VF1
-// 		  <0x40 &its 0x63 0x1>, //ENETC1 PF
-// 		  <0x50 &its 0x65 0x1>, //ENETC1 VF0
-// 		  <0x60 &its 0x66 0x1>, //ENETC1 VF1
-// 		  <0x80 &its 0x64 0x1>, //ENETC2 PF
-// 		  <0xc0 &its 0x67 0x1>;
-// 	iommu-map = <0x0 &smmu 0x20 0x1>,
-// 		    <0x10 &smmu 0x21 0x1>,
-// 		    <0x20 &smmu 0x22 0x1>,
-// 		    <0x40 &smmu 0x23 0x1>,
-// 		    <0x50 &smmu 0x25 0x1>,
-// 		    <0x60 &smmu 0x26 0x1>,
-// 		    <0x80 &smmu 0x24 0x1>,
-// 		    <0xc0 &smmu 0x27 0x1>;
-// };
+/* The default setting in i.mx95.dtsi are for i.MX95 19x19,
+ * so change them for i.MX95 15x15 here.
+ */
+&netc_bus0 {
+	msi-map = <0x00 &its 0x60 0x1>,	//ENETC0 PF
+		  <0x10 &its 0x61 0x1>, //ENETC0 VF0
+		  <0x20 &its 0x62 0x1>, //ENETC0 VF1
+		  <0x40 &its 0x63 0x1>, //ENETC1 PF
+		  <0x50 &its 0x65 0x1>, //ENETC1 VF0
+		  <0x60 &its 0x66 0x1>, //ENETC1 VF1
+		  <0x80 &its 0x64 0x1>, //ENETC2 PF
+		  <0xc0 &its 0x67 0x1>; //NETC Timer
+	iommu-map = <0x0 &smmu 0x20 0x1>,
+		    <0x10 &smmu 0x21 0x1>,
+		    <0x20 &smmu 0x22 0x1>,
+		    <0x40 &smmu 0x23 0x1>,
+		    <0x50 &smmu 0x25 0x1>,
+		    <0x60 &smmu 0x26 0x1>,
+		    <0x80 &smmu 0x24 0x1>,
+		    <0xc0 &smmu 0x27 0x1>;
+};
 
 // TODO: Check if needed
 &netc_timer {
 	status = "disabled";
 };
 
-&netcmix_blk_ctrl {
+&netc_blk_ctrl {
 	status = "disabled";
 };
 
