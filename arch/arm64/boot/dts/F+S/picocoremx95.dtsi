@@ -270,6 +270,10 @@ fs_disp_pwm: &tpm3 {};
 	};
 #endif /* SUPPORT_RPMSG */
 
+	bdinfo: bdinfo {
+		compatible = "bdinfo";
+		dts_version = FS_LINUX_VERSION;
+	};
 };
 
 /* ==== Ethernet ==== */

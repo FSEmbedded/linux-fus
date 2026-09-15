@@ -11,6 +11,7 @@
 #include <dt-bindings/pwm/pwm.h>
 #include <dt-bindings/usb/pd.h>
 #include "../freescale/imx95.dtsi"
+#include <fsversion.h>
 
 #define DEV_SM_NUM_CTRL             0x8000
 
@@ -283,6 +284,11 @@ fs_can1: &flexcan3 {};
 		regulator-always-on;
 		enable-active-high;
 		status = "disabled";
+	};
+
+	bdinfo: bdinfo {
+		compatible = "bdinfo";
+		dts_version = FS_LINUX_VERSION;
 	};
 };
 
