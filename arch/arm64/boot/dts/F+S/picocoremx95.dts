@@ -13,6 +13,7 @@
 
 // #define SUPPORT_RPMSG
 
+#include <dt-bindings/usb/pd.h>
 #include "picocoremx95.dtsi"
 
 /* ==== Ethernet ==== */
@@ -49,8 +50,9 @@
 	status = "okay";
 };
 
+/* reserved for Cortex-M33 */
 &fs_uart_d {
-	status = "okay";
+	status = "disabled";
 };
 
 /* ==== I2C ==== */
@@ -73,6 +75,39 @@
 
 &fs_i2c_d {
 	status = "okay";
+
+	ptn5110: tcpc@52 {
+		compatible = "nxp,ptn5110", "tcpci";
+		reg = <0x52>;
+		interrupt-parent = <&gpio5>;
+		interrupts = <14 IRQ_TYPE_LEVEL_LOW>;
+
+		typec1_con: connector {
+			compatible = "usb-c-connector";
+			label = "USB-C";
+			power-role = "dual";
+			data-role = "dual";
+			try-power-role = "sink";
+			source-pdos = <PDO_FIXED(5000, 3000, PDO_FIXED_USB_COMM)>;
+			sink-pdos = <PDO_FIXED(5000, 3000, PDO_FIXED_USB_COMM)
+				     PDO_VAR(5000, 20000, 3000)>;
+			op-sink-microwatt = <15000000>;
+			self-powered;
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				port@0 {
+					reg = <0>;
+
+					typec1_dr_sw: endpoint {
+						remote-endpoint = <&usb1_drd_sw>;
+					};
+				};
+			};
+		};
+	};
 };
 
 /* ==== Audio ==== */
@@ -115,6 +150,12 @@
 /* OTG */
 &fs_usb_otg {
 	status = "okay";
+	usb-role-switch;
+	port {
+		usb1_drd_sw: endpoint {
+			remote-endpoint = <&typec1_dr_sw>;
+		};
+	};
 };
 
 /* HOST */
