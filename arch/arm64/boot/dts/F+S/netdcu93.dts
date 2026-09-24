@@ -293,10 +293,10 @@ ndcu_sai: &pc_sai {};
 	};
 
 	ndcu_eeprom: eeprom@50 {
-		compatible = "onnn,n24s64b", "atmel,24c64";
+		compatible = "atmel,24c02";
 		reg = <0x50>;
-		size = <8192>;
-		pagesize = <32>;
+		size = <256>;
+		pagesize = <16>;
 	};
 };
 

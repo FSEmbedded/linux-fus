@@ -120,8 +120,8 @@
 			reset-deassert-us = <50000>;
 			interrupt-parent = <&pcal6416>;
 			interrupts = <2 IRQ_TYPE_EDGE_FALLING>;
-			rtl821x,led-link = <2>; // LED2 for link indication
-			rtl821x,led-act = <1>; // LED1 for activity
+			rtl821x,led-link = <1>; // LED2 for link indication
+			rtl821x,led-act = <2>; // LED1 for activity
 		};
 
 		ethphy2: rtl8211fdi@2 {
@@ -131,8 +131,8 @@
 			reset-deassert-us = <50000>;
 			interrupt-parent = <&pcal6416>;
 			interrupts = <3 IRQ_TYPE_EDGE_FALLING>;
-			rtl821x,led-link = <2>; // LED2 for link indication
-			rtl821x,led-act = <1>; // LED1 for activity
+			rtl821x,led-link = <1>; // LED2 for link indication
+			rtl821x,led-act = <2>; // LED1 for activity
 		};
 	};
 #else
