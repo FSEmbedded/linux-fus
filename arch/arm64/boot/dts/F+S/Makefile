@@ -114,4 +114,8 @@ dtb-$(CONFIG_ARCH_MXC) += \
 dtb-$(CONFIG_ARCH_MXC) += \
 			  netdcu93.dtb \
 			  netdcu93-ET070080DH6.dtb
+dtb-$(CONFIG_ARCH_MXC) += \
+			  picocoremx91.dtb
+dtb-$(CONFIG_ARCH_MXC) += \
+			  fs-osm-sf-mx91-adp-osm-bb.dtb
 
