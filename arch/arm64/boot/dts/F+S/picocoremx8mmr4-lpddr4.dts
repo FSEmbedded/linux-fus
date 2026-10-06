@@ -73,6 +73,8 @@
 //### TODO: implement QSPI support
 #define CONFIG_PICOCOREMX8MM_SPI_B
 
+/* EEPROM on I2C_D */
+#define CONFIG_PICOCOREMX8MM_EEPROM
 
 /* CAN-FD - optional */
 //#define CONFIG_PICOCOREMX8MM_CAN_A
@@ -147,6 +149,11 @@
 #undef CONFIG_PICOCOREMX8MM_SD_B_WP
 #endif
 
+/* If I2C_D is not enabled, EEPROM is not available */
+#ifndef CONFIG_PICOCOREMX8MM_I2C_D
+#undef CONFIG_PICOCOREMX8MM_EEPROM
+#endif
+
 /* Set different settings for corresponding baseboard revision */
 #if CONFIG_PICOCOREBBDSI_BOARD_REVISION >= 130
 #undef CONFIG_PICOCOREMX8MM_SPI_A_CAN_CONVERTER
@@ -163,6 +170,12 @@
 
 / {
 	model = "F&S PicoCoreMX8MMr4-LPDDR4";
+
+	aliases {
+#ifdef CONFIG_PICOCOREMX8MM_EEPROM
+		eeprom = &eeprom;
+#endif
+	};
 
 	usdhc2_pwrseq: usdhc2_pwrseq {
 		compatible = "mmc-pwrseq-simple";
@@ -214,6 +227,17 @@
 	bluetooth: bluetooth {
 		compatible = "nxp,88w8987-bt";
 		fw-init-baudrate = <115200>;
+	};
+};
+#endif
+
+#ifdef CONFIG_PICOCOREMX8MM_EEPROM
+&i2c4 {
+	/* EEPROM */
+	eeprom: eeprom@50 {
+		compatible = "atmel,24c64";
+		reg = <0x50>;
+		pagesize = <8>;
 	};
 };
 #endif
