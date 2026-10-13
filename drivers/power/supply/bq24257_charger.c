@@ -18,8 +18,8 @@
 #include <linux/gpio/consumer.h>
 #include <linux/interrupt.h>
 #include <linux/delay.h>
+#include <linux/devm-helpers.h>
 #include <linux/workqueue.h>
-
 #include <linux/acpi.h>
 #include <linux/of.h>
 
@@ -1051,10 +1051,6 @@ static int bq24257_probe(struct i2c_client *client)
 	if (bq->chip == BQ24250)
 		bq->iilimit_autoset_enable = false;
 
-	if (bq->iilimit_autoset_enable)
-		INIT_DELAYED_WORK(&bq->iilimit_setup_work,
-				  bq24257_iilimit_setup_work);
-
 	/*
 	 * The BQ24250 doesn't have a dedicated Power Good (PG) pin so let's
 	 * not probe for it and instead use a SW-based approach to determine
@@ -1095,6 +1091,14 @@ static int bq24257_probe(struct i2c_client *client)
 		return ret;
 	}
 
+	if (bq->iilimit_autoset_enable) {
+		ret = devm_delayed_work_autocancel(dev,
+						   &bq->iilimit_setup_work,
+						   bq24257_iilimit_setup_work);
+		if (ret)
+			return ret;
+	}
+
 	if(client->irq){
 		ret = devm_request_threaded_irq(dev, client->irq, NULL,
 					bq24257_irq_handler_thread,
@@ -1118,9 +1122,6 @@ static int bq24257_probe(struct i2c_client *client)
 static void bq24257_remove(struct i2c_client *client)
 {
 	struct bq24257_device *bq = i2c_get_clientdata(client);
-
-	if (bq->iilimit_autoset_enable)
-		cancel_delayed_work_sync(&bq->iilimit_setup_work);
 
 	bq24257_field_write(bq, F_RESET, 1); /* reset to defaults */
 
